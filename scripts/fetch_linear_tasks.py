@@ -12,6 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 ENV_PATH = ROOT / ".env"
 OUTPUT_PATH = ROOT / "linear-tasks.txt"
+CARDS_PATH = ROOT / "linear-cards.json"
 API_URL = "https://api.linear.app/graphql"
 
 
@@ -26,6 +27,7 @@ query IssuesByWorkflowState($first: Int!) {
           identifier
           title
           completedAt
+          dueDate
           priorityLabel
           url
           state {
@@ -84,6 +86,14 @@ def is_recently_done(task, now, lookback_hours):
     return completed_at >= now - timedelta(hours=lookback_hours)
 
 
+def is_due_today(task):
+    due_date = task.get("dueDate")
+    if not due_date:
+        return False
+
+    return due_date == datetime.now().date().isoformat()
+
+
 def render(tasks, state_names, lookback_hours):
     timestamp = datetime.now().strftime("%a %H:%M")
     now = datetime.now(timezone.utc)
@@ -130,6 +140,27 @@ def render(tasks, state_names, lookback_hours):
         lines.append("${color 1e293b}------------------------------------------${color}")
 
     return "\n".join(lines).rstrip() + "\n"
+
+
+def render_cards(tasks, state_names, lookback_hours):
+    now = datetime.now(timezone.utc)
+    active = [task for task in tasks if task.get("state", {}).get("name") in state_names]
+    recently_done = [task for task in tasks if is_recently_done(task, now, lookback_hours)]
+    cards = []
+
+    for task in active + recently_done:
+        cards.append(
+            {
+                "title": task.get("title", "Untitled"),
+                "done": task in recently_done,
+                "dueToday": is_due_today(task),
+            }
+        )
+
+    return {
+        "updatedAt": datetime.now(timezone.utc).isoformat(),
+        "cards": cards,
+    }
 
 
 def collect_tasks(response, state_names):
@@ -194,6 +225,7 @@ def main():
     tasks = collect_tasks(response, state_names)
     output = render(tasks, state_names, lookback_hours)
     OUTPUT_PATH.write_text(output, encoding="utf-8")
+    CARDS_PATH.write_text(json.dumps(render_cards(tasks, state_names, lookback_hours), indent=2), encoding="utf-8")
     print(output, end="")
     return 0
 

@@ -1,4 +1,6 @@
 .env
 linear-tasks.txt
+linear-cards.json
+conky/generated/
 __pycache__/
 *.pyc

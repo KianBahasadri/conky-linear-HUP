@@ -1,8 +1,8 @@
 conky.config = {
-  alignment = 'top_right',
+  alignment = 'top_left',
   background = true,
   border_width = 0,
-  default_color = 'e2e8f0',
+  default_color = '000000',
   default_outline_color = '111827',
   default_shade_color = '111827',
   double_buffer = true,
@@ -12,22 +12,25 @@ conky.config = {
   draw_shades = false,
   extra_newline = false,
   font = 'JetBrains Mono:size=10',
-  gap_x = 32,
-  gap_y = 40,
-  minimum_width = 380,
-  maximum_width = 380,
+  gap_x = 350,
+  gap_y = 34,
+  minimum_height = 240,
+  minimum_width = 1220,
+  maximum_width = 1220,
   no_buffers = true,
   own_window = true,
   own_window_argb_visual = true,
-  own_window_argb_value = 155,
+  own_window_argb_value = 0,
   own_window_class = 'Conky',
   own_window_hints = 'undecorated,below,sticky,skip_taskbar,skip_pager',
-  own_window_transparent = false,
+  own_window_transparent = true,
   own_window_type = 'desktop',
   update_interval = 60,
   use_xft = true,
+  lua_load = '/home/kian/personal_media/Obsidian/summer_2026/conky/linear-cards.lua',
+  lua_draw_hook_post = 'draw_linear_cards',
 }
 
 conky.text = [[
-${execpi 180 /home/kian/personal_media/Obsidian/summer_2026/scripts/fetch_linear_tasks.py}
+${execi 180 /home/kian/personal_media/Obsidian/summer_2026/scripts/fetch_linear_tasks.py >/dev/null}
 ]]
