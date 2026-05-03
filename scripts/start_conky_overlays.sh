@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="/home/kian/personal_media/Obsidian/summer_2026"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 BASE_CONFIG="$ROOT/conky/linear-overlay.conkyrc"
 GENERATED_DIR="$ROOT/conky/generated"
 CARD_WIDTH=1220
@@ -42,6 +43,12 @@ while IFS= read -r line; do
         ;;
       "  gap_y = "*)
         printf "  gap_y = %s,\n" "$GAP_Y"
+        ;;
+      "  lua_load = "*)
+        printf "  lua_load = '%s/conky/linear-cards.lua',\n" "$ROOT"
+        ;;
+      *"fetch_linear_tasks.py"*)
+        printf '${execi 180 %s/scripts/fetch_linear_tasks.py >/dev/null}\n' "$ROOT"
         ;;
       *)
         printf "%s\n" "$config_line"

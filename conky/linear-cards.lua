@@ -1,7 +1,9 @@
 local cairo = require('cairo')
 pcall(require, 'cairo_xlib')
 
-local cards_path = '/home/kian/personal_media/Obsidian/summer_2026/linear-cards.json'
+local script_path = debug.getinfo(1, 'S').source:gsub('^@', '')
+local repo_root = script_path:match('^(.*)/conky/linear%-cards%.lua$') or '.'
+local cards_path = repo_root .. '/linear-cards.json'
 
 local card_width = 220
 local card_height = 86
