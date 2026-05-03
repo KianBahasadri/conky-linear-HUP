@@ -1,0 +1,4 @@
+.env
+linear-tasks.txt
+__pycache__/
+*.pyc

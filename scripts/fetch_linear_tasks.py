@@ -1,0 +1,202 @@
+#!/usr/bin/env python3
+import json
+import os
+import sys
+import textwrap
+import urllib.error
+import urllib.request
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+ENV_PATH = ROOT / ".env"
+OUTPUT_PATH = ROOT / "linear-tasks.txt"
+API_URL = "https://api.linear.app/graphql"
+
+
+QUERY = """
+query IssuesByWorkflowState($first: Int!) {
+  workflowStates {
+    nodes {
+      name
+      type
+      issues(first: $first, orderBy: updatedAt) {
+        nodes {
+          identifier
+          title
+          completedAt
+          priorityLabel
+          url
+          state {
+            name
+            type
+          }
+        }
+      }
+    }
+  }
+}
+"""
+
+
+def load_env(path):
+    if not path.exists():
+        return
+
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+
+        key, value = line.split("=", 1)
+        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+
+
+def linear_request(api_key, limit):
+    payload = json.dumps({"query": QUERY, "variables": {"first": limit}}).encode("utf-8")
+    request = urllib.request.Request(
+        API_URL,
+        data=payload,
+        headers={
+            "Authorization": api_key,
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+
+    with urllib.request.urlopen(request, timeout=20) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def parse_linear_datetime(value):
+    if not value:
+        return None
+
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def is_recently_done(task, now, lookback_hours):
+    completed_at = parse_linear_datetime(task.get("completedAt"))
+    if not completed_at:
+        return False
+
+    return completed_at >= now - timedelta(hours=lookback_hours)
+
+
+def render(tasks, state_names, lookback_hours):
+    timestamp = datetime.now().strftime("%a %H:%M")
+    now = datetime.now(timezone.utc)
+    active = [task for task in tasks if task.get("state", {}).get("name") in state_names]
+    recently_done = [task for task in tasks if is_recently_done(task, now, lookback_hours)]
+    visible = active + recently_done
+
+    lines = [
+        "${font JetBrains Mono:bold:size=13}${color f8fafc}Linear Focus${font}",
+        f"${{color 94a3b8}}Updated {timestamp}  |  {len(active)} open  |  {len(recently_done)} done${{color}}",
+        "${color 334155}------------------------------------------${color}",
+    ]
+
+    if not visible:
+        lines.append("${color 94a3b8}No active or recently done tasks.${color}")
+        return "\n".join(lines) + "\n"
+
+    for task in visible:
+        state = task.get("state", {}).get("name", "Unknown")
+        identifier = task.get("identifier", "")
+        title = task.get("title", "Untitled")
+        priority = task.get("priorityLabel") or "No priority"
+        done = task in recently_done
+        state_label = "Done" if done else state
+        state_color = "22c55e" if done else "facc15" if state == "In Progress" else "38bdf8"
+        priority_color = {
+            "Urgent": "f87171",
+            "High": "fb923c",
+            "Medium": "facc15",
+            "Low": "94a3b8",
+        }.get(priority, "64748b")
+        wrapped_title = textwrap.wrap(title, width=40) or [title]
+
+        lines.append(f"${{color {state_color}}}{state_label}${{color}}  ${{color 94a3b8}}{identifier}${{color}}")
+        lines.append(f"  ${{color f8fafc}}{wrapped_title[0]}${{color}}")
+        for continuation in wrapped_title[1:]:
+            lines.append(f"  ${{color f8fafc}}{continuation}${{color}}")
+        if done:
+            completed_at = parse_linear_datetime(task.get("completedAt"))
+            completed_time = completed_at.astimezone().strftime("%H:%M") if completed_at else "recently"
+            lines.append(f"  ${{color 86efac}}Completed {completed_time}${{color}}")
+        else:
+            lines.append(f"  ${{color {priority_color}}}{priority}${{color}}")
+        lines.append("${color 1e293b}------------------------------------------${color}")
+
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def collect_tasks(response, state_names):
+    tasks_by_identifier = {}
+    states = response["data"]["workflowStates"]["nodes"]
+
+    for state in states:
+        if state.get("name") not in state_names and state.get("type") != "completed":
+            continue
+
+        for task in state["issues"]["nodes"]:
+            tasks_by_identifier[task["identifier"]] = task
+
+    return sorted(
+        tasks_by_identifier.values(),
+        key=lambda task: (task.get("state", {}).get("name", ""), task.get("identifier", "")),
+    )
+
+
+def write_error(message):
+    OUTPUT_PATH.write_text(f"Linear\n{message}\n", encoding="utf-8")
+
+
+def main():
+    load_env(ENV_PATH)
+
+    api_key = os.environ.get("LINEAR_API_KEY", "").strip()
+    if not api_key:
+        write_error("Missing LINEAR_API_KEY in .env")
+        return 1
+
+    state_names = {
+        item.strip()
+        for item in os.environ.get("LINEAR_TASK_STATES", "Todo,In Progress").split(",")
+        if item.strip()
+    }
+
+    try:
+        limit = int(os.environ.get("LINEAR_TASK_LIMIT", "20"))
+    except ValueError:
+        limit = 20
+
+    try:
+        lookback_hours = int(os.environ.get("LINEAR_DONE_LOOKBACK_HOURS", "24"))
+    except ValueError:
+        lookback_hours = 24
+
+    try:
+        response = linear_request(api_key, limit)
+    except urllib.error.HTTPError as error:
+        write_error(f"Linear API error: HTTP {error.code}")
+        return 1
+    except Exception as error:
+        write_error(f"Linear fetch failed: {error}")
+        return 1
+
+    if response.get("errors"):
+        write_error("Linear API returned GraphQL errors")
+        print(json.dumps(response["errors"], indent=2), file=sys.stderr)
+        return 1
+
+    tasks = collect_tasks(response, state_names)
+    output = render(tasks, state_names, lookback_hours)
+    OUTPUT_PATH.write_text(output, encoding="utf-8")
+    print(output, end="")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
