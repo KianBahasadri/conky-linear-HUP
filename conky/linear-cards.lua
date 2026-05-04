@@ -5,15 +5,15 @@ local script_path = debug.getinfo(1, 'S').source:gsub('^@', '')
 local repo_root = script_path:match('^(.*)/conky/linear%-cards%.lua$') or '.'
 local cards_path = repo_root .. '/linear-cards.json'
 
-local card_width = 290
-local card_height = 118
-local card_gap = 22
-local row_gap = 18
+local card_width = 318
+local card_height = 130
+local card_gap = 24
+local row_gap = 20
 local top_padding = 30
-local radius = 16
+local radius = 18
 local font = 'JetBrains Mono'
-local font_size = 15
-local line_height = 21
+local font_size = 16
+local line_height = 22
 
 local function read_file(path)
   local file = io.open(path, 'r')
@@ -146,23 +146,57 @@ local function wrap_title(cr, title, max_width)
 end
 
 local function draw_card(cr, card, x, y)
-  local fill = card.done and '166534' or card.due_today and '991b1b' or 'a16207'
-  local stroke = card.done and '22c55e' or card.due_today and 'ef4444' or 'facc15'
+  local accent = card.done and '39ff88' or card.due_today and 'ff1a1a' or '00e5ff'
+  local accent_secondary = card.done and '00f5d4' or card.due_today and 'ff4d00' or '8b5cf6'
 
-  rounded_rect(cr, x + 3, y + 5, card_width, card_height, radius)
-  set_hex(cr, '020617', 0.34)
+  rounded_rect(cr, x + 4, y + 7, card_width, card_height, radius)
+  set_hex(cr, accent, 0.12)
   cairo_fill(cr)
 
+  rounded_rect(cr, x + 2, y + 3, card_width, card_height, radius)
+  set_hex(cr, accent, 0.16)
+  cairo_set_line_width(cr, 8)
+  cairo_stroke(cr)
+
+  rounded_rect(cr, x + 1, y + 2, card_width, card_height, radius)
+  set_hex(cr, accent, 0.26)
+  cairo_set_line_width(cr, 4)
+  cairo_stroke(cr)
+
   rounded_rect(cr, x, y, card_width, card_height, radius)
-  set_hex(cr, fill, 0.96)
+  set_hex(cr, '020617', 0.78)
   cairo_fill_preserve(cr)
-  set_hex(cr, stroke, 0.95)
+  set_hex(cr, accent, 0.95)
   cairo_set_line_width(cr, 2)
   cairo_stroke(cr)
 
+  rounded_rect(cr, x + 7, y + 7, card_width - 14, card_height - 14, radius - 6)
+  set_hex(cr, accent_secondary, 0.22)
+  cairo_set_line_width(cr, 1)
+  cairo_stroke(cr)
+
+  set_hex(cr, accent, 0.22)
+  cairo_set_line_width(cr, 1)
+  cairo_move_to(cr, x + 22, y + 18)
+  cairo_line_to(cr, x + 48, y + 18)
+  cairo_line_to(cr, x + 58, y + 28)
+  cairo_stroke(cr)
+
+  set_hex(cr, accent_secondary, 0.18)
+  cairo_move_to(cr, x + card_width - 22, y + card_height - 18)
+  cairo_line_to(cr, x + card_width - 48, y + card_height - 18)
+  cairo_line_to(cr, x + card_width - 58, y + card_height - 28)
+  cairo_stroke(cr)
+
+  set_hex(cr, accent, 0.34)
+  cairo_arc(cr, x + 58, y + 28, 2, 0, math.pi * 2)
+  cairo_fill(cr)
+  set_hex(cr, accent_secondary, 0.28)
+  cairo_arc(cr, x + card_width - 58, y + card_height - 28, 2, 0, math.pi * 2)
+  cairo_fill(cr)
+
   cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
   cairo_set_font_size(cr, font_size)
-  set_hex(cr, 'f8fafc', 1)
 
   local lines = wrap_title(cr, card.title, card_width - 36)
   local extents = cairo_text_extents_t:create()
@@ -174,6 +208,13 @@ local function draw_card(cr, card, x, y)
     local text_x = x + (card_width - extents.width) / 2 - extents.x_bearing
     local text_y = first_baseline + (index - 1) * line_height
 
+    set_hex(cr, accent, 0.24)
+    cairo_move_to(cr, text_x - 1, text_y)
+    cairo_show_text(cr, line)
+    cairo_move_to(cr, text_x + 1, text_y)
+    cairo_show_text(cr, line)
+
+    set_hex(cr, 'f8fafc', 1)
     cairo_move_to(cr, text_x, text_y)
     cairo_show_text(cr, line)
   end

@@ -213,9 +213,9 @@ def main():
         limit = 20
 
     try:
-        lookback_hours = int(os.environ.get("LINEAR_DONE_LOOKBACK_HOURS", "24"))
+        lookback_hours = int(os.environ.get("LINEAR_DONE_LOOKBACK_HOURS", "18"))
     except ValueError:
-        lookback_hours = 24
+        lookback_hours = 18
 
     state_list = ",".join(sorted(state_names)) or "none"
     log_event(
