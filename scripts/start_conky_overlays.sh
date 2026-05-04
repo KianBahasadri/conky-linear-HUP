@@ -6,7 +6,7 @@ ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 BASE_CONFIG="$ROOT/conky/linear-overlay.conkyrc"
 GENERATED_DIR="$ROOT/conky/generated"
 LOG_PATH="$ROOT/conky-linear.log"
-CARD_WIDTH=1220
+CARD_WIDTH=1540
 GAP_Y=34
 GENERATE_ONLY=0
 

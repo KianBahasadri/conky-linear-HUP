@@ -5,15 +5,15 @@ local script_path = debug.getinfo(1, 'S').source:gsub('^@', '')
 local repo_root = script_path:match('^(.*)/conky/linear%-cards%.lua$') or '.'
 local cards_path = repo_root .. '/linear-cards.json'
 
-local card_width = 220
-local card_height = 86
-local card_gap = 16
-local row_gap = 14
-local top_padding = 28
-local radius = 12
+local card_width = 290
+local card_height = 118
+local card_gap = 22
+local row_gap = 18
+local top_padding = 30
+local radius = 16
 local font = 'JetBrains Mono'
-local font_size = 12
-local line_height = 16
+local font_size = 15
+local line_height = 21
 
 local function read_file(path)
   local file = io.open(path, 'r')
@@ -149,18 +149,22 @@ local function draw_card(cr, card, x, y)
   local fill = card.done and '166534' or card.due_today and '991b1b' or 'a16207'
   local stroke = card.done and '22c55e' or card.due_today and 'ef4444' or 'facc15'
 
+  rounded_rect(cr, x + 3, y + 5, card_width, card_height, radius)
+  set_hex(cr, '020617', 0.34)
+  cairo_fill(cr)
+
   rounded_rect(cr, x, y, card_width, card_height, radius)
-  set_hex(cr, fill, 0.92)
+  set_hex(cr, fill, 0.96)
   cairo_fill_preserve(cr)
-  set_hex(cr, stroke, 0.85)
-  cairo_set_line_width(cr, 1.2)
+  set_hex(cr, stroke, 0.95)
+  cairo_set_line_width(cr, 2)
   cairo_stroke(cr)
 
   cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
   cairo_set_font_size(cr, font_size)
   set_hex(cr, 'f8fafc', 1)
 
-  local lines = wrap_title(cr, card.title, card_width - 28)
+  local lines = wrap_title(cr, card.title, card_width - 36)
   local extents = cairo_text_extents_t:create()
   local total_text_height = #lines * line_height
   local first_baseline = y + (card_height - total_text_height) / 2 + font_size
