@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 ENV_PATH = ROOT / ".env"
 OUTPUT_PATH = ROOT / "linear-tasks.txt"
 CARDS_PATH = ROOT / "linear-cards.json"
+LOG_PATH = ROOT / "conky-linear.log"
 API_URL = "https://api.linear.app/graphql"
 
 
@@ -53,6 +54,12 @@ def load_env(path):
 
         key, value = line.split("=", 1)
         os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+
+
+def log_event(message):
+    timestamp = datetime.now().astimezone().isoformat(timespec="seconds")
+    with LOG_PATH.open("a", encoding="utf-8") as log_file:
+        log_file.write(f"[{timestamp}] fetch_linear_tasks: {message}\n")
 
 
 def linear_request(api_key, limit):
@@ -182,10 +189,12 @@ def collect_tasks(response, state_names):
 
 def write_error(message):
     OUTPUT_PATH.write_text(f"Linear\n{message}\n", encoding="utf-8")
+    log_event(f"error: {message}")
 
 
 def main():
     load_env(ENV_PATH)
+    log_event("starting Linear fetch")
 
     api_key = os.environ.get("LINEAR_API_KEY", "").strip()
     if not api_key:
@@ -208,6 +217,12 @@ def main():
     except ValueError:
         lookback_hours = 24
 
+    state_list = ",".join(sorted(state_names)) or "none"
+    log_event(
+        f"querying {API_URL} operation=IssuesByWorkflowState first={limit} "
+        f"active_states={state_list} done_lookback_hours={lookback_hours}"
+    )
+
     try:
         response = linear_request(api_key, limit)
     except urllib.error.HTTPError as error:
@@ -223,9 +238,19 @@ def main():
         return 1
 
     tasks = collect_tasks(response, state_names)
+    now = datetime.now(timezone.utc)
+    active_count = sum(1 for task in tasks if task.get("state", {}).get("name") in state_names)
+    done_count = sum(1 for task in tasks if is_recently_done(task, now, lookback_hours))
+    due_today_count = sum(1 for task in tasks if is_due_today(task))
+    workflow_state_count = len(response.get("data", {}).get("workflowStates", {}).get("nodes", []))
     output = render(tasks, state_names, lookback_hours)
     OUTPUT_PATH.write_text(output, encoding="utf-8")
     CARDS_PATH.write_text(json.dumps(render_cards(tasks, state_names, lookback_hours), indent=2), encoding="utf-8")
+    log_event(
+        f"completed fetch workflow_states={workflow_state_count} collected_tasks={len(tasks)} "
+        f"active={active_count} recently_done={done_count} due_today={due_today_count} "
+        f"wrote={OUTPUT_PATH.name},{CARDS_PATH.name}"
+    )
     print(output, end="")
     return 0
 
