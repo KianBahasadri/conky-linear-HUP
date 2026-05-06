@@ -77,23 +77,11 @@ return function(shared, repo_root)
   end
 
   local function format_reset_at(window)
-    local value = window.resets_at or ''
-    local year, month, day, hour, minute = value:match('^(%d%d%d%d)%-(%d%d)%-(%d%d)T(%d%d):(%d%d)')
-
-    if not year then
+    if window.reset_after_seconds <= 0 then
       return format_reset(window.reset_after_seconds)
     end
 
-    local reset_time = os.time({
-      year = tonumber(year),
-      month = tonumber(month),
-      day = tonumber(day),
-      hour = tonumber(hour),
-      min = tonumber(minute),
-      sec = 0,
-      isdst = false,
-    })
-
+    local reset_time = os.time() + window.reset_after_seconds
     local local_time = os.date('*t', reset_time)
     local label = string.lower(window.label or '')
     local hour = local_time.hour % 12
