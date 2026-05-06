@@ -6,6 +6,8 @@ return function(shared, repo_root)
   local codex_radius = 18
   local codex_bar_width = 388
   local codex_bar_height = 24
+  local weekly_window_seconds = 604800
+  local pace_threshold = 10
 
   local function read_codex_usage()
     local content = shared.read_file(codex_usage_path)
@@ -109,6 +111,65 @@ return function(shared, repo_root)
     return string.format('%s    %s', countdown, reset_at)
   end
 
+  local function find_weekly_window(account)
+    for _, window in ipairs(account.windows or {}) do
+      if string.lower(window.label or '') == 'weekly' then
+        return window
+      end
+    end
+    return nil
+  end
+
+  local function calculate_weekly_pace(accounts)
+    local expected_total = 0
+    local actual_total = 0
+    local weekly_count = 0
+
+    for _, account in ipairs(accounts or {}) do
+      local weekly = find_weekly_window(account)
+      if weekly then
+        local elapsed_seconds = weekly_window_seconds - weekly.reset_after_seconds
+        local elapsed_percent = shared.clamp((elapsed_seconds / weekly_window_seconds) * 100, 0, 100)
+
+        expected_total = expected_total + elapsed_percent
+        actual_total = actual_total + shared.clamp(weekly.used_percent, 0, 100)
+        weekly_count = weekly_count + 1
+      end
+    end
+
+    if weekly_count == 0 then
+      return nil
+    end
+
+    local expected = expected_total / weekly_count
+    local actual = actual_total / weekly_count
+    local delta = actual - expected
+    local state = 'neutral'
+
+    if delta >= pace_threshold then
+      state = 'over'
+    elseif expected >= pace_threshold and delta <= -pace_threshold then
+      state = 'under'
+    end
+
+    return {
+      expected = expected,
+      actual = actual,
+      delta = delta,
+      state = state,
+    }
+  end
+
+  local function pace_color(pace)
+    if pace and pace.state == 'over' then
+      return 'f87171'
+    end
+    if pace and pace.state == 'under' then
+      return 'ff9f1c'
+    end
+    return '94a3b8'
+  end
+
   local function draw_codex_frame(cr, x, y)
     shared.rounded_rect(cr, x + 4, y + 7, codex_width, codex_height, codex_radius)
     shared.set_hex(cr, '00e5ff', 0.10)
@@ -150,10 +211,38 @@ return function(shared, repo_root)
     cairo_stroke(cr)
   end
 
-  local function draw_codex_bar(cr, window, x, y, accent, accent_secondary)
+  local function draw_pace_marker(cr, pace, x, bar_y)
+    if not pace then
+      return
+    end
+
+    local marker_x = x + codex_bar_width * (shared.clamp(pace.expected, 0, 100) / 100)
+    local color = pace_color(pace)
+
+    shared.set_hex(cr, color, 0.18)
+    cairo_set_line_width(cr, 7)
+    cairo_move_to(cr, marker_x, bar_y + 2)
+    cairo_line_to(cr, marker_x, bar_y + codex_bar_height - 2)
+    cairo_stroke(cr)
+
+    shared.set_hex(cr, color, pace.state == 'neutral' and 0.70 or 0.96)
+    cairo_set_line_width(cr, 2)
+    cairo_move_to(cr, marker_x, bar_y + 1)
+    cairo_line_to(cr, marker_x, bar_y + codex_bar_height - 1)
+    cairo_stroke(cr)
+
+    shared.set_hex(cr, color, pace.state == 'neutral' and 0.50 or 0.90)
+    cairo_set_line_width(cr, 1)
+    cairo_move_to(cr, marker_x - 5, bar_y - 2)
+    cairo_line_to(cr, marker_x + 5, bar_y - 2)
+    cairo_stroke(cr)
+  end
+
+  local function draw_codex_bar(cr, window, x, y, accent, accent_secondary, pace)
     local used = shared.clamp(window.used_percent, 0, 100)
     local fill_width = codex_bar_width * (used / 100)
     local label = string.upper(window.label)
+    local is_weekly = string.lower(window.label or '') == 'weekly'
     local percent_label = string.format('%.0f%% used', used)
     local reset_label = format_reset_label(window)
 
@@ -206,6 +295,10 @@ return function(shared, repo_root)
     cairo_move_to(cr, x + 8, bar_y + 8)
     cairo_line_to(cr, x + codex_bar_width - 8, bar_y + 8)
     cairo_stroke(cr)
+
+    if is_weekly then
+      draw_pace_marker(cr, pace, x, bar_y)
+    end
   end
 
   local function draw_codex_error(cr, usage, x, y)
@@ -222,7 +315,7 @@ return function(shared, repo_root)
     cairo_show_text(cr, shared.truncate_title(cr, usage and usage.error or 'No usage cache found.', codex_width - 68))
   end
 
-  local function draw_codex_account_row(cr, account, x, y)
+  local function draw_codex_account_row(cr, account, x, y, pace)
     local name = string.upper(account.label)
     local first = account.windows[1]
     local second = account.windows[2] or account.windows[1]
@@ -255,11 +348,46 @@ return function(shared, repo_root)
     cairo_show_text(cr, shared.truncate_title(cr, name, 120))
 
     if first then
-      draw_codex_bar(cr, first, x + 156, y + 18, '00e5ff', '8b5cf6')
+      draw_codex_bar(cr, first, x + 156, y + 18, '00e5ff', '8b5cf6', pace)
     end
     if second then
-      draw_codex_bar(cr, second, x + 156 + codex_bar_width + 42, y + 18, '39ff88', '00f5d4')
+      draw_codex_bar(cr, second, x + 156 + codex_bar_width + 42, y + 18, '39ff88', '00f5d4', pace)
     end
+  end
+
+  local function draw_pace_chip(cr, pace, x, y)
+    if not pace or pace.state == 'neutral' then
+      return
+    end
+
+    local color = pace_color(pace)
+    local label
+    if pace.state == 'under' then
+      label = string.format('FAST MODE AVAILABLE - %.0f%% UNDER PACE', math.abs(pace.delta))
+    else
+      label = string.format('OVER PACE - %.0f%% HOT', math.abs(pace.delta))
+    end
+
+    cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
+    cairo_set_font_size(cr, 12)
+
+    local extents = cairo_text_extents_t:create()
+    cairo_text_extents(cr, label, extents)
+    local chip_width = extents.width + 30
+    local chip_height = 22
+    local chip_x = x + (codex_width - chip_width) / 2
+    local chip_y = y + 17
+
+    shared.rounded_rect(cr, chip_x, chip_y, chip_width, chip_height, 8)
+    shared.set_hex(cr, color, 0.12)
+    cairo_fill_preserve(cr)
+    shared.set_hex(cr, color, 0.86)
+    cairo_set_line_width(cr, 1.4)
+    cairo_stroke(cr)
+
+    shared.set_hex(cr, color, 1)
+    cairo_move_to(cr, chip_x + 15, chip_y + 15)
+    cairo_show_text(cr, label)
   end
 
   local function draw_codex_panel(cr, usage, x, y)
@@ -284,8 +412,11 @@ return function(shared, repo_root)
       return
     end
 
+    local pace = calculate_weekly_pace(usage.accounts)
+    draw_pace_chip(cr, pace, x, y)
+
     for index, account in ipairs(usage.accounts) do
-      draw_codex_account_row(cr, account, x + 56, y + 38 + (index - 1) * 58)
+      draw_codex_account_row(cr, account, x + 56, y + 38 + (index - 1) * 58, pace)
     end
   end
 

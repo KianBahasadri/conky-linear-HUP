@@ -1,5 +1,47 @@
-So essentially, I'm just doing this to give myself some kind of structure. I hope that by creating goals each day that I like and want to achieve, I will spend my days working towards those goals.
+# Conky Linear + Codex Overlay
 
-For now I've set this up as recurring tasks in linear, however I have created a conky setup to display linear Todo and In Progress tasks over my desktop wallpaper as a widget/constant reminder.
+Desktop Conky widgets for keeping Linear work and Codex quota pressure visible across all monitors.
 
-This repo contains a Conky-based desktop overlay for Linear tasks: a Python script fetches active Linear issues and recently completed issues from the Linear GraphQL API, writes a local card cache, and a Lua/Cairo Conky renderer displays those tasks as horizontal pills across the top of each monitor. Unfinished tasks are colored based on whether they are due today, recently completed tasks are shown in green, and helper scripts start or stop matching overlay instances across all detected monitors.
+## Run
+
+```bash
+./scripts/start_conky_overlays.sh
+./scripts/stop_conky_overlays.sh
+```
+
+`start_conky_overlays.sh` kills prior matching overlays, starts fetch loops, generates one Linear and one Codex config per detected monitor, and logs to `cache/conky-linear.log`.
+
+## Caches
+
+- `cache/linear-cards.json`: Linear cards consumed by the Cairo renderer.
+- `cache/codex-usage.json`: Codex account/window usage consumed by the Cairo renderer.
+- Fetch loops refresh Linear every `180s` and Codex every `300s`.
+
+## Linear Rules
+
+- Card colors are stateful: green is recently completed, red is due today, cyan is normal active work.
+- If any unfinished card is due today, non-due unfinished cards are hidden so urgent work dominates the overlay.
+- Recently completed cards remain visible for `LINEAR_DONE_LOOKBACK_HOURS`.
+
+## Codex Rules
+
+- The orange chevron marks the currently selected Codex auth file, meaning the auth file whose path resolves to `~/.codex/auth.json`.
+- Multiple Codex accounts are discovered from `~/.codex/auth.json.*`; `CODEX_AUTH_PATH` forces a single auth file.
+- The weekly pace marker is global, not per account: it averages weekly elapsed time across accounts and draws the same marker on every weekly bar.
+- Combined usage is the average weekly `usedPercent` across accounts.
+- Under pace by at least `10%` shows an amber fast-mode chip, except during the first `10%` of the weekly cycle.
+- Over pace by at least `10%` shows a red warning chip, including early in the cycle.
+- The pace chip is centered across the whole Codex box; the marker color follows the global pace state.
+
+## Config
+
+Create `.env` from `.env.example` for Linear:
+
+```bash
+LINEAR_API_KEY=lin_api_your_key_here
+LINEAR_TASK_STATES=Todo,In Progress
+LINEAR_TASK_LIMIT=20
+LINEAR_DONE_LOOKBACK_HOURS=18
+```
+
+Codex reads local Codex auth files and refreshes expired tokens in place.
