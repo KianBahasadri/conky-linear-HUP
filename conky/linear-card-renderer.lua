@@ -149,6 +149,24 @@ return function(shared, repo_root)
     local state = read_cards()
     local cards = state.cards
 
+    local has_red_cards = false
+    for _, card in ipairs(cards) do
+      if card.due_today and not card.done then
+        has_red_cards = true
+        break
+      end
+    end
+
+    if has_red_cards then
+      local filtered_cards = {}
+      for _, card in ipairs(cards) do
+        if card.done or card.due_today then
+          table.insert(filtered_cards, card)
+        end
+      end
+      cards = filtered_cards
+    end
+
     if #cards == 0 then
       if state.error ~= '' then
         draw_error(cr, state.error)
