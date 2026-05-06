@@ -1,0 +1,36 @@
+conky.config = {
+  alignment = 'bottom_left',
+  background = true,
+  border_width = 0,
+  default_color = '000000',
+  default_outline_color = '111827',
+  default_shade_color = '111827',
+  double_buffer = true,
+  draw_borders = false,
+  draw_graph_borders = false,
+  draw_outline = false,
+  draw_shades = false,
+  extra_newline = false,
+  font = 'JetBrains Mono:size=10',
+  gap_x = 350,
+  gap_y = 34,
+  minimum_height = 320,
+  minimum_width = 1540,
+  maximum_width = 1540,
+  no_buffers = true,
+  own_window = true,
+  own_window_argb_visual = true,
+  own_window_argb_value = 0,
+  own_window_class = 'Conky',
+  own_window_hints = 'undecorated,below,sticky,skip_taskbar,skip_pager',
+  own_window_transparent = true,
+  own_window_type = 'desktop',
+  update_interval = 60,
+  use_xft = true,
+  lua_load = './conky/linear-cards.lua',
+  lua_draw_hook_post = 'draw_codex_usage',
+}
+
+conky.text = [[
+${execi 300 ./scripts/fetch_codex_usage.py >/dev/null}
+]]

@@ -1,6 +1,7 @@
 .env
 linear-tasks.txt
 linear-cards.json
+codex-usage.json
 conky-linear.log
 conky/generated/
 __pycache__/

@@ -12,5 +12,7 @@ log() {
 log "stopping matching Conky processes"
 
 pkill -f "$ROOT/conky/generated/linear-overlay-" 2>/dev/null || true
+pkill -f "$ROOT/conky/generated/codex-overlay-" 2>/dev/null || true
 pkill -f "$ROOT/conky/linear-overlay.conkyrc" 2>/dev/null || true
+pkill -f "$ROOT/conky/codex-overlay.conkyrc" 2>/dev/null || true
 log "stop command completed"
