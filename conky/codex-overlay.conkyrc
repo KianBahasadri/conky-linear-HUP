@@ -32,5 +32,4 @@ conky.config = {
 }
 
 conky.text = [[
-${execi 300 ./scripts/fetch_codex_usage.py >/dev/null}
 ]]

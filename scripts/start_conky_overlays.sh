@@ -8,12 +8,53 @@ CODEX_CONFIG="$ROOT/conky/codex-overlay.conkyrc"
 GENERATED_DIR="$ROOT/conky/generated"
 CACHE_DIR="$ROOT/cache"
 LOG_PATH="$CACHE_DIR/conky-linear.log"
+LINEAR_FETCH_PID="$CACHE_DIR/linear-fetch-loop.pid"
+CODEX_FETCH_PID="$CACHE_DIR/codex-fetch-loop.pid"
 OVERLAY_WIDTH=1540
 GAP_Y=34
 GENERATE_ONLY=0
 
 log() {
   printf '[%s] start_conky_overlays: %s\n' "$(date --iso-8601=seconds)" "$*" >> "$LOG_PATH"
+}
+
+stop_fetch_loop() {
+  local pid_file="$1"
+  local label="$2"
+
+  if [[ ! -f "$pid_file" ]]; then
+    return
+  fi
+
+  local pid
+  pid="$(<"$pid_file")"
+  if [[ "$pid" =~ ^[0-9]+$ ]] && kill -0 "$pid" 2>/dev/null; then
+    kill -- -"$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true
+    log "stopped existing $label fetch loop pid=$pid"
+  fi
+  rm -f "$pid_file"
+}
+
+start_fetch_loop() {
+  local label="$1"
+  local interval_seconds="$2"
+  local script_path="$3"
+  local pid_file="$4"
+
+  stop_fetch_loop "$pid_file" "$label"
+
+  setsid bash -c '
+    script_path="$1"
+    log_path="$2"
+    interval_seconds="$3"
+
+    while true; do
+      "$script_path" >/dev/null 2>>"$log_path" || true
+      sleep "$interval_seconds"
+    done
+  ' bash "$script_path" "$LOG_PATH" "$interval_seconds" </dev/null >/dev/null 2>&1 &
+  printf '%s\n' "$!" > "$pid_file"
+  log "started $label fetch loop interval=${interval_seconds}s pid=$!"
 }
 
 if [[ "${1:-}" == "--generate-only" ]]; then
@@ -29,7 +70,14 @@ pkill -f "$GENERATED_DIR/linear-overlay-" 2>/dev/null || true
 pkill -f "$GENERATED_DIR/codex-overlay-" 2>/dev/null || true
 pkill -f "$BASE_CONFIG" 2>/dev/null || true
 pkill -f "$CODEX_CONFIG" 2>/dev/null || true
+stop_fetch_loop "$LINEAR_FETCH_PID" "Linear"
+stop_fetch_loop "$CODEX_FETCH_PID" "Codex"
 log "stopped existing matching Conky processes"
+
+if [[ "$GENERATE_ONLY" -eq 0 ]]; then
+  start_fetch_loop "Linear" 180 "$ROOT/scripts/fetch_linear_tasks.py" "$LINEAR_FETCH_PID"
+  start_fetch_loop "Codex" 300 "$ROOT/scripts/fetch_codex_usage.py" "$CODEX_FETCH_PID"
+fi
 
 generate_config() {
   local source_config="$1"
@@ -52,12 +100,8 @@ generate_config() {
       "  lua_load = "*)
         printf "  lua_load = '%s/conky/linear-cards.lua',\n" "$ROOT"
         ;;
-      *"fetch_linear_tasks.py"*)
-        printf '${execi 180 %s/scripts/fetch_linear_tasks.py >/dev/null 2>>%s}\n' "$ROOT" "$LOG_PATH"
-        ;;
-      *"fetch_codex_usage.py"*)
-        printf '${execi 300 %s/scripts/fetch_codex_usage.py >/dev/null 2>>%s}\n' "$ROOT" "$LOG_PATH"
-        ;;
+      *"fetch_linear_tasks.py"*) ;;
+      *"fetch_codex_usage.py"*) ;;
       *)
         printf "%s\n" "$config_line"
         ;;
@@ -84,9 +128,9 @@ while IFS= read -r line; do
   generate_config "$CODEX_CONFIG" "$codex_config" "$index" "$monitor_gap_x"
 
   if [[ "$GENERATE_ONLY" -eq 0 ]]; then
-    conky -c "$linear_config" >> "$LOG_PATH" 2>&1 &
+    setsid conky -c "$linear_config" >> "$LOG_PATH" 2>&1 < /dev/null &
     log "launched monitor_index=$index width=$width gap_x=$monitor_gap_x config=$linear_config pid=$!"
-    conky -c "$codex_config" >> "$LOG_PATH" 2>&1 &
+    setsid conky -c "$codex_config" >> "$LOG_PATH" 2>&1 < /dev/null &
     log "launched monitor_index=$index width=$width gap_x=$monitor_gap_x config=$codex_config pid=$!"
   else
     log "generated monitor_index=$index width=$width gap_x=$monitor_gap_x config=$linear_config"
@@ -98,9 +142,9 @@ done < <(xrandr --listmonitors 2>> "$LOG_PATH")
 if [[ "$index" -eq 0 ]]; then
   log "no monitors detected from xrandr; using base config"
   if [[ "$GENERATE_ONLY" -eq 0 ]]; then
-    conky -c "$BASE_CONFIG" >> "$LOG_PATH" 2>&1 &
+    setsid conky -c "$BASE_CONFIG" >> "$LOG_PATH" 2>&1 < /dev/null &
     log "launched fallback config=$BASE_CONFIG pid=$!"
-    conky -c "$CODEX_CONFIG" >> "$LOG_PATH" 2>&1 &
+    setsid conky -c "$CODEX_CONFIG" >> "$LOG_PATH" 2>&1 < /dev/null &
     log "launched fallback config=$CODEX_CONFIG pid=$!"
   fi
 fi

@@ -32,5 +32,4 @@ conky.config = {
 }
 
 conky.text = [[
-${execi 180 ./scripts/fetch_linear_tasks.py >/dev/null}
 ]]
