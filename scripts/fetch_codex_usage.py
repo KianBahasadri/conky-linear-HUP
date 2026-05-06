@@ -29,13 +29,20 @@ def discover_auth_files():
     configured_path = os.environ.get("CODEX_AUTH_PATH", "").strip()
     if configured_path:
         path = Path(configured_path).expanduser()
-        return [(auth_label(path), path)]
+        return [(auth_label(path), path, is_selected_auth(path))]
 
     suffixed_paths = sorted(DEFAULT_AUTH_PATH.parent.glob("auth.json.*"))
     if suffixed_paths:
-        return [(auth_label(path), path) for path in suffixed_paths if path.is_file()]
+        return [(auth_label(path), path, is_selected_auth(path)) for path in suffixed_paths if path.is_file()]
 
-    return [("default", DEFAULT_AUTH_PATH)]
+    return [("default", DEFAULT_AUTH_PATH, is_selected_auth(DEFAULT_AUTH_PATH))]
+
+
+def is_selected_auth(path):
+    try:
+        return DEFAULT_AUTH_PATH.resolve() == path.resolve()
+    except OSError:
+        return False
 
 
 def auth_label(path):
@@ -185,7 +192,7 @@ def normalize_window(label, window):
     }
 
 
-def normalize_usage(auth, usage):
+def normalize_usage(auth, usage, is_selected):
     rate_limit = usage.get("rate_limit") or {}
     windows = []
 
@@ -200,15 +207,17 @@ def normalize_usage(auth, usage):
         "email": auth["email"],
         "accountId": auth["account_id"],
         "planType": usage.get("plan_type", ""),
+        "isSelected": is_selected,
         "windows": windows,
     }
 
 
-def normalize_error(label, message):
+def normalize_error(label, message, is_selected=False):
     return {
         "ok": False,
         "label": label,
         "error": message,
+        "isSelected": is_selected,
         "windows": [],
     }
 
@@ -221,6 +230,7 @@ def flatten_bars(accounts):
                 {
                     "account": account.get("label", ""),
                     "planType": account.get("planType", ""),
+                    "isSelected": account.get("isSelected", False),
                     "window": window.get("label", ""),
                     "usedPercent": window.get("usedPercent", 0),
                     "remainingPercent": window.get("remainingPercent", 0),
@@ -245,7 +255,7 @@ def write_error(message):
     log_event(f"error: {message}")
 
 
-def fetch_account(label, path):
+def fetch_account(label, path, is_selected):
     try:
         auth = read_auth(label, path)
         status, usage = codex_request(auth)
@@ -257,25 +267,25 @@ def fetch_account(label, path):
 
         if status != 200:
             print(json.dumps({label: usage}, indent=2), file=sys.stderr)
-            return normalize_error(label, f"Codex usage API error: HTTP {status}")
+            return normalize_error(label, f"Codex usage API error: HTTP {status}", is_selected)
 
-        account = normalize_usage(auth, usage)
+        account = normalize_usage(auth, usage, is_selected)
         log_event(
             f"account={label} completed plan={account['planType'] or 'unknown'} "
             f"windows={len(account['windows'])}"
         )
         return account
     except Exception as error:
-        return normalize_error(label, str(error))
+        return normalize_error(label, str(error), is_selected)
 
 
 def main():
     auth_files = discover_auth_files()
-    labels = ",".join(label for label, _ in auth_files)
+    labels = ",".join(label for label, _, _ in auth_files)
     log_event(f"starting Codex usage fetch accounts={labels or 'none'}")
 
     try:
-        accounts = [fetch_account(label, path) for label, path in auth_files]
+        accounts = [fetch_account(label, path, is_selected) for label, path, is_selected in auth_files]
         ok_count = sum(1 for account in accounts if account.get("ok"))
         output = {
             "updatedAt": datetime.now(timezone.utc).isoformat(),

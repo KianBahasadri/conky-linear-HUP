@@ -78,6 +78,7 @@ local function read_codex_usage()
   for object in content:gmatch('{%s-"account".-}') do
     local account = object:match('"account"%s*:%s*"(.-)"')
     local plan_type = object:match('"planType"%s*:%s*"(.-)"') or ''
+    local is_selected = object:match('"isSelected"%s*:%s*true') ~= nil
     local window = object:match('"window"%s*:%s*"(.-)"')
     local used_percent = tonumber(object:match('"usedPercent"%s*:%s*([%d%.]+)')) or 0
     local remaining_percent = tonumber(object:match('"remainingPercent"%s*:%s*([%d%.]+)')) or math.max(0, 100 - used_percent)
@@ -89,9 +90,12 @@ local function read_codex_usage()
         account_index[account] = {
           label = unescape_json_string(account),
           plan_type = unescape_json_string(plan_type),
+          is_selected = is_selected,
           windows = {},
         }
         table.insert(accounts, account_index[account])
+      elseif is_selected then
+        account_index[account].is_selected = true
       end
 
       table.insert(account_index[account].windows, {
@@ -461,21 +465,35 @@ end
 
 local function draw_codex_account_row(cr, account, x, y)
   local name = string.upper(account.label)
-  local plan = account.plan_type ~= '' and string.upper(account.plan_type) or 'PLAN UNKNOWN'
   local first = account.windows[1]
   local second = account.windows[2] or account.windows[1]
+  local label_x = x + 22
+
+  if account.is_selected then
+    set_hex(cr, 'ff9f1c', 0.20)
+    cairo_set_line_width(cr, 5)
+    cairo_move_to(cr, label_x - 20, y + 29)
+    cairo_line_to(cr, label_x - 12, y + 36)
+    cairo_line_to(cr, label_x - 20, y + 43)
+    cairo_stroke(cr)
+
+    set_hex(cr, 'ff9f1c', 0.94)
+    cairo_set_line_width(cr, 2)
+    cairo_move_to(cr, label_x - 20, y + 29)
+    cairo_line_to(cr, label_x - 12, y + 36)
+    cairo_line_to(cr, label_x - 20, y + 43)
+    cairo_stroke(cr)
+  end
 
   cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
   cairo_set_font_size(cr, 14)
-  set_hex(cr, 'f8fafc', 1)
-  cairo_move_to(cr, x, y + 22)
+  if account.is_selected then
+    set_hex(cr, 'ffffff', 1)
+  else
+    set_hex(cr, 'f8fafc', 0.90)
+  end
+  cairo_move_to(cr, label_x, y + 42)
   cairo_show_text(cr, truncate_title(cr, name, 120))
-
-  cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL)
-  cairo_set_font_size(cr, 11)
-  set_hex(cr, '94a3b8', 1)
-  cairo_move_to(cr, x, y + 42)
-  cairo_show_text(cr, truncate_title(cr, plan, 120))
 
   if first then
     draw_codex_bar(cr, first, x + 156, y + 18, '00e5ff', '8b5cf6')
@@ -490,8 +508,16 @@ local function draw_codex_panel(cr, usage, x, y)
 
   cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
   cairo_set_font_size(cr, 15)
+
+  rounded_rect(cr, x + 48, y - 9, 74, 20, 6)
+  set_hex(cr, '020617', 0.94)
+  cairo_fill_preserve(cr)
+  set_hex(cr, '00e5ff', 0.82)
+  cairo_set_line_width(cr, 1.5)
+  cairo_stroke(cr)
+
   set_hex(cr, '00e5ff', 1)
-  cairo_move_to(cr, x + 34, y + 38)
+  cairo_move_to(cr, x + 60, y + 6)
   cairo_show_text(cr, 'CODEX')
 
   if not usage.ok or #usage.accounts == 0 then
@@ -499,14 +525,8 @@ local function draw_codex_panel(cr, usage, x, y)
     return
   end
 
-  cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL)
-  cairo_set_font_size(cr, 12)
-  set_hex(cr, '94a3b8', 1)
-  cairo_move_to(cr, x + 104, y + 38)
-  cairo_show_text(cr, string.format('%d ACCOUNTS', #usage.accounts))
-
   for index, account in ipairs(usage.accounts) do
-    draw_codex_account_row(cr, account, x + 34, y + 58 + (index - 1) * 58)
+    draw_codex_account_row(cr, account, x + 56, y + 38 + (index - 1) * 58)
   end
 end
 
