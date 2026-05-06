@@ -11,9 +11,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 ENV_PATH = ROOT / ".env"
-OUTPUT_PATH = ROOT / "linear-tasks.txt"
-CARDS_PATH = ROOT / "linear-cards.json"
-LOG_PATH = ROOT / "conky-linear.log"
+CACHE_DIR = ROOT / "cache"
+OUTPUT_PATH = CACHE_DIR / "linear-tasks.txt"
+CARDS_PATH = CACHE_DIR / "linear-cards.json"
+LOG_PATH = CACHE_DIR / "conky-linear.log"
 API_URL = "https://api.linear.app/graphql"
 
 
@@ -57,6 +58,7 @@ def load_env(path):
 
 
 def log_event(message):
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().astimezone().isoformat(timespec="seconds")
     with LOG_PATH.open("a", encoding="utf-8") as log_file:
         log_file.write(f"[{timestamp}] fetch_linear_tasks: {message}\n")
@@ -188,11 +190,13 @@ def collect_tasks(response, state_names):
 
 
 def write_error(message):
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
     OUTPUT_PATH.write_text(f"Linear\n{message}\n", encoding="utf-8")
     log_event(f"error: {message}")
 
 
 def main():
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
     load_env(ENV_PATH)
     log_event("starting Linear fetch")
 

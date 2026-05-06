@@ -3,7 +3,10 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
-LOG_PATH="$ROOT/conky-linear.log"
+CACHE_DIR="$ROOT/cache"
+LOG_PATH="$CACHE_DIR/conky-linear.log"
+
+mkdir -p "$CACHE_DIR"
 
 log() {
   printf '[%s] stop_conky_overlays: %s\n' "$(date --iso-8601=seconds)" "$*" >> "$LOG_PATH"

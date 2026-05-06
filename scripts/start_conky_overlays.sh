@@ -6,7 +6,8 @@ ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 BASE_CONFIG="$ROOT/conky/linear-overlay.conkyrc"
 CODEX_CONFIG="$ROOT/conky/codex-overlay.conkyrc"
 GENERATED_DIR="$ROOT/conky/generated"
-LOG_PATH="$ROOT/conky-linear.log"
+CACHE_DIR="$ROOT/cache"
+LOG_PATH="$CACHE_DIR/conky-linear.log"
 OVERLAY_WIDTH=1540
 GAP_Y=34
 GENERATE_ONLY=0
@@ -20,6 +21,7 @@ if [[ "${1:-}" == "--generate-only" ]]; then
 fi
 
 mkdir -p "$GENERATED_DIR"
+mkdir -p "$CACHE_DIR"
 
 log "starting; root=$ROOT generate_only=$GENERATE_ONLY"
 

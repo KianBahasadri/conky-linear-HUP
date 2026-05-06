@@ -1,4 +1,5 @@
 .env
+cache/
 linear-tasks.txt
 linear-cards.json
 codex-usage.json

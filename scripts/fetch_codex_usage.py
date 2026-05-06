@@ -11,8 +11,9 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-OUTPUT_PATH = ROOT / "codex-usage.json"
-LOG_PATH = ROOT / "conky-linear.log"
+CACHE_DIR = ROOT / "cache"
+OUTPUT_PATH = CACHE_DIR / "codex-usage.json"
+LOG_PATH = CACHE_DIR / "conky-linear.log"
 DEFAULT_AUTH_PATH = Path.home() / ".codex" / "auth.json"
 USAGE_URL = "https://chatgpt.com/backend-api/wham/usage"
 TOKEN_URL = "https://auth.openai.com/oauth/token"
@@ -20,6 +21,7 @@ CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
 
 
 def log_event(message):
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().astimezone().isoformat(timespec="seconds")
     with LOG_PATH.open("a", encoding="utf-8") as log_file:
         log_file.write(f"[{timestamp}] fetch_codex_usage: {message}\n")
@@ -243,6 +245,7 @@ def flatten_bars(accounts):
 
 
 def write_error(message):
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
     output = {
         "updatedAt": datetime.now(timezone.utc).isoformat(),
         "provider": "Codex",
@@ -280,6 +283,7 @@ def fetch_account(label, path, is_selected):
 
 
 def main():
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
     auth_files = discover_auth_files()
     labels = ",".join(label for label, _, _ in auth_files)
     log_event(f"starting Codex usage fetch accounts={labels or 'none'}")
