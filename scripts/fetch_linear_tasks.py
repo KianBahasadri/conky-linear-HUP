@@ -64,6 +64,16 @@ def log_event(message):
         log_file.write(f"[{timestamp}] fetch_linear_tasks: {message}\n")
 
 
+def atomic_write_text(path, content):
+    tmp_path = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    tmp_path.write_text(content, encoding="utf-8")
+    os.replace(tmp_path, path)
+
+
+def atomic_write_json(path, data):
+    atomic_write_text(path, json.dumps(data, indent=2))
+
+
 def linear_request(api_key, limit):
     payload = json.dumps({"query": QUERY, "variables": {"first": limit}}).encode("utf-8")
     request = urllib.request.Request(
@@ -191,7 +201,15 @@ def collect_tasks(response, state_names):
 
 def write_error(message):
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    OUTPUT_PATH.write_text(f"Linear\n{message}\n", encoding="utf-8")
+    atomic_write_text(OUTPUT_PATH, f"Linear\n{message}\n")
+    atomic_write_json(
+        CARDS_PATH,
+        {
+            "updatedAt": datetime.now(timezone.utc).isoformat(),
+            "error": message,
+            "cards": [],
+        },
+    )
     log_event(f"error: {message}")
 
 
@@ -248,8 +266,8 @@ def main():
     due_today_count = sum(1 for task in tasks if is_due_today(task))
     workflow_state_count = len(response.get("data", {}).get("workflowStates", {}).get("nodes", []))
     output = render(tasks, state_names, lookback_hours)
-    OUTPUT_PATH.write_text(output, encoding="utf-8")
-    CARDS_PATH.write_text(json.dumps(render_cards(tasks, state_names, lookback_hours), indent=2), encoding="utf-8")
+    atomic_write_text(OUTPUT_PATH, output)
+    atomic_write_json(CARDS_PATH, render_cards(tasks, state_names, lookback_hours))
     log_event(
         f"completed fetch workflow_states={workflow_state_count} collected_tasks={len(tasks)} "
         f"active={active_count} recently_done={done_count} due_today={due_today_count} "

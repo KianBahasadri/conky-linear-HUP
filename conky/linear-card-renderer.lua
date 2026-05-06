@@ -13,9 +13,10 @@ return function(shared, repo_root)
   local function read_cards()
     local content = shared.read_file(cards_path)
     if not content then
-      return {}
+      return { cards = {}, error = '' }
     end
 
+    local error_message = content:match('"error"%s*:%s*"(.-)"')
     local cards = {}
     for object in content:gmatch('{%s-"title".-}') do
       local title = object:match('"title"%s*:%s*"(.-)"')
@@ -31,7 +32,36 @@ return function(shared, repo_root)
       end
     end
 
-    return cards
+    return {
+      cards = cards,
+      error = error_message and shared.unescape_json_string(error_message) or '',
+    }
+  end
+
+  local function draw_error(cr, message)
+    local width = math.min(620, conky_window.width - 40)
+    local height = 86
+    local x = (conky_window.width - width) / 2
+    local y = top_padding
+
+    shared.rounded_rect(cr, x, y, width, height, radius)
+    shared.set_hex(cr, '020617', 0.82)
+    cairo_fill_preserve(cr)
+    shared.set_hex(cr, 'f87171', 0.92)
+    cairo_set_line_width(cr, 2)
+    cairo_stroke(cr)
+
+    cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
+    cairo_set_font_size(cr, 15)
+    shared.set_hex(cr, 'f87171', 1)
+    cairo_move_to(cr, x + 24, y + 34)
+    cairo_show_text(cr, 'LINEAR SIGNAL LOST')
+
+    cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL)
+    cairo_set_font_size(cr, 12)
+    shared.set_hex(cr, 'f8fafc', 0.88)
+    cairo_move_to(cr, x + 24, y + 58)
+    cairo_show_text(cr, shared.truncate_title(cr, message, width - 48))
   end
 
   local function draw_card(cr, card, x, y)
@@ -116,9 +146,13 @@ return function(shared, repo_root)
     end
 
     local cr = cairo_create(surface)
-    local cards = read_cards()
+    local state = read_cards()
+    local cards = state.cards
 
     if #cards == 0 then
+      if state.error ~= '' then
+        draw_error(cr, state.error)
+      end
       cairo_destroy(cr)
       if should_destroy_surface and cairo_surface_destroy then
         cairo_surface_destroy(surface)

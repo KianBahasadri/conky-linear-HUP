@@ -27,6 +27,16 @@ def log_event(message):
         log_file.write(f"[{timestamp}] fetch_codex_usage: {message}\n")
 
 
+def atomic_write_text(path, content):
+    tmp_path = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    tmp_path.write_text(content, encoding="utf-8")
+    os.replace(tmp_path, path)
+
+
+def atomic_write_json(path, data):
+    atomic_write_text(path, json.dumps(data, indent=2))
+
+
 def discover_auth_files():
     configured_path = os.environ.get("CODEX_AUTH_PATH", "").strip()
     if configured_path:
@@ -254,7 +264,7 @@ def write_error(message):
         "accounts": [],
         "bars": [],
     }
-    OUTPUT_PATH.write_text(json.dumps(output, indent=2), encoding="utf-8")
+    atomic_write_json(OUTPUT_PATH, output)
     log_event(f"error: {message}")
 
 
@@ -298,7 +308,7 @@ def main():
             "accounts": accounts,
             "bars": flatten_bars(accounts),
         }
-        OUTPUT_PATH.write_text(json.dumps(output, indent=2), encoding="utf-8")
+        atomic_write_json(OUTPUT_PATH, output)
         log_event(f"completed fetch accounts={len(accounts)} ok={ok_count} wrote={OUTPUT_PATH.name}")
         print(json.dumps(output, indent=2))
         return 0 if ok_count > 0 else 1
