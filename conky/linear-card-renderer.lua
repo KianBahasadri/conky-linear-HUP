@@ -4,7 +4,7 @@ return function(shared, repo_root)
   local card_height = 130
   local card_gap = 24
   local row_gap = 20
-  local top_padding = 30
+  local top_padding = 12
   local radius = 18
   local font = 'JetBrains Mono'
   local font_size = 16

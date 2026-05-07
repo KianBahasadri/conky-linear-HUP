@@ -6,6 +6,7 @@ return function(shared, repo_root)
   local codex_radius = 18
   local codex_bar_width = 388
   local codex_bar_height = 24
+  local bottom_padding = 4
   local weekly_window_seconds = 604800
   local pace_threshold = 10
 
@@ -441,7 +442,7 @@ return function(shared, repo_root)
     local dynamic_height = math.max(132, 72 + account_count * 58)
     local panel_width = math.min(codex_width, conky_window.width - 40)
     local x = (conky_window.width - panel_width) / 2
-    local y = math.max(18, conky_window.height - dynamic_height - 18)
+    local y = math.max(bottom_padding, conky_window.height - dynamic_height - bottom_padding)
     local previous_width = codex_width
     local previous_height = codex_height
 
