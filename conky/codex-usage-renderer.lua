@@ -1,10 +1,10 @@
 return function(shared, repo_root)
   local codex_usage_path = repo_root .. '/cache/codex-usage.json'
   local font = 'JetBrains Mono'
-  local codex_width = 1120
+  local codex_width = 1000
   local codex_height = 132
   local codex_radius = 18
-  local codex_bar_width = 220
+  local codex_bar_width = 200
   local codex_bar_height = 8
   local codex_bar_text_gap = 14
   local codex_bar_countdown_width = 54
@@ -375,16 +375,16 @@ return function(shared, repo_root)
     if account.is_selected then
       shared.set_hex(cr, 'ff9f1c', 0.20)
       cairo_set_line_width(cr, 5)
-      cairo_move_to(cr, label_x - 20, y + 14)
-      cairo_line_to(cr, label_x - 12, y + 21)
-      cairo_line_to(cr, label_x - 20, y + 28)
+      cairo_move_to(cr, label_x - 20, y + 11)
+      cairo_line_to(cr, label_x - 12, y + 18)
+      cairo_line_to(cr, label_x - 20, y + 25)
       cairo_stroke(cr)
 
       shared.set_hex(cr, 'ff9f1c', 0.94)
       cairo_set_line_width(cr, 2)
-      cairo_move_to(cr, label_x - 20, y + 14)
-      cairo_line_to(cr, label_x - 12, y + 21)
-      cairo_line_to(cr, label_x - 20, y + 28)
+      cairo_move_to(cr, label_x - 20, y + 11)
+      cairo_line_to(cr, label_x - 12, y + 18)
+      cairo_line_to(cr, label_x - 20, y + 25)
       cairo_stroke(cr)
     end
 
@@ -395,14 +395,14 @@ return function(shared, repo_root)
     else
       shared.set_hex(cr, 'f8fafc', 0.90)
     end
-    cairo_move_to(cr, label_x, y + 26)
+    cairo_move_to(cr, label_x, y + 23)
     cairo_show_text(cr, shared.truncate_title(cr, name, 120))
 
     if first then
-      draw_codex_bar(cr, first, x + 156, y + 18, '00e5ff', '8b5cf6', pace)
+      draw_codex_bar(cr, first, x + 138, y + 15, '00e5ff', '8b5cf6', pace)
     end
     if second then
-      draw_codex_bar(cr, second, x + 156 + codex_bar_width + codex_bar_countdown_width + codex_bar_reset_width + 78, y + 18, '39ff88', '00f5d4', pace)
+      draw_codex_bar(cr, second, x + 138 + codex_bar_width + codex_bar_countdown_width + codex_bar_reset_width + 52, y + 15, '39ff88', '00f5d4', pace)
     end
   end
 
@@ -469,7 +469,7 @@ return function(shared, repo_root)
     draw_pace_chip(cr, pace, x, y)
 
     for index, account in ipairs(usage.accounts) do
-      draw_codex_account_row(cr, account, x + 56, y + 38 + (index - 1) * 36, pace)
+      draw_codex_account_row(cr, account, x + 34, y + 34 + (index - 1) * 30, pace)
     end
   end
 
@@ -491,7 +491,7 @@ return function(shared, repo_root)
     end
 
     local account_count = math.max(1, #(usage.accounts or {}))
-    local dynamic_height = math.max(132, 70 + account_count * 36)
+    local dynamic_height = math.max(132, 58 + account_count * 30)
     local panel_width = math.min(codex_width, conky_window.width - 40)
     local x = (conky_window.width - panel_width) / 2
     local y = math.max(bottom_padding, conky_window.height - dynamic_height - bottom_padding)

@@ -1,7 +1,7 @@
 return function(shared, repo_root)
   local cards_path = repo_root .. '/cache/linear-cards.json'
   local card_width = 318
-  local card_height = 130
+  local card_height = 110
   local card_gap = 24
   local row_gap = 20
   local top_padding = 12
