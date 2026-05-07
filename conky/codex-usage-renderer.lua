@@ -5,8 +5,9 @@ return function(shared, repo_root)
   local codex_height = 132
   local codex_radius = 18
   local codex_bar_width = 388
-  local codex_bar_height = 24
+  local codex_bar_height = 8
   local bottom_padding = 4
+  local five_hour_window_seconds = 18000
   local weekly_window_seconds = 604800
   local pace_threshold = 10
 
@@ -121,6 +122,31 @@ return function(shared, repo_root)
     return nil
   end
 
+  local function calculate_window_pace(window, window_seconds)
+    if not window or window_seconds <= 0 then
+      return nil
+    end
+
+    local elapsed_seconds = window_seconds - window.reset_after_seconds
+    local expected = shared.clamp((elapsed_seconds / window_seconds) * 100, 0, 100)
+    local actual = shared.clamp(window.used_percent, 0, 100)
+    local delta = actual - expected
+    local state = 'neutral'
+
+    if delta >= pace_threshold then
+      state = 'over'
+    elseif expected >= pace_threshold and delta <= -pace_threshold then
+      state = 'under'
+    end
+
+    return {
+      expected = expected,
+      actual = actual,
+      delta = delta,
+      state = state,
+    }
+  end
+
   local function calculate_weekly_pace(accounts)
     local expected_total = 0
     local actual_total = 0
@@ -129,12 +155,13 @@ return function(shared, repo_root)
     for _, account in ipairs(accounts or {}) do
       local weekly = find_weekly_window(account)
       if weekly then
-        local elapsed_seconds = weekly_window_seconds - weekly.reset_after_seconds
-        local elapsed_percent = shared.clamp((elapsed_seconds / weekly_window_seconds) * 100, 0, 100)
+        local weekly_pace = calculate_window_pace(weekly, weekly_window_seconds)
 
-        expected_total = expected_total + elapsed_percent
-        actual_total = actual_total + shared.clamp(weekly.used_percent, 0, 100)
-        weekly_count = weekly_count + 1
+        if weekly_pace then
+          expected_total = expected_total + weekly_pace.expected
+          actual_total = actual_total + weekly_pace.actual
+          weekly_count = weekly_count + 1
+        end
       end
     end
 
@@ -168,7 +195,7 @@ return function(shared, repo_root)
     if pace and pace.state == 'under' then
       return 'ff9f1c'
     end
-    return '94a3b8'
+    return 'ff9f1c'
   end
 
   local function draw_codex_frame(cr, x, y)
@@ -220,30 +247,27 @@ return function(shared, repo_root)
     local marker_x = x + codex_bar_width * (shared.clamp(pace.expected, 0, 100) / 100)
     local color = pace_color(pace)
 
-    shared.set_hex(cr, color, 0.18)
-    cairo_set_line_width(cr, 7)
-    cairo_move_to(cr, marker_x, bar_y + 2)
-    cairo_line_to(cr, marker_x, bar_y + codex_bar_height - 2)
+    shared.set_hex(cr, color, pace.state == 'neutral' and 0.30 or 0.18)
+    cairo_set_line_width(cr, pace.state == 'neutral' and 6 or 5)
+    cairo_move_to(cr, marker_x, bar_y)
+    cairo_line_to(cr, marker_x, bar_y + codex_bar_height)
     cairo_stroke(cr)
 
-    shared.set_hex(cr, color, pace.state == 'neutral' and 0.70 or 0.96)
-    cairo_set_line_width(cr, 2)
+    shared.set_hex(cr, color, pace.state == 'neutral' and 1.0 or 0.96)
+    cairo_set_line_width(cr, pace.state == 'neutral' and 2.5 or 2)
     cairo_move_to(cr, marker_x, bar_y + 1)
     cairo_line_to(cr, marker_x, bar_y + codex_bar_height - 1)
     cairo_stroke(cr)
 
-    shared.set_hex(cr, color, pace.state == 'neutral' and 0.50 or 0.90)
-    cairo_set_line_width(cr, 1)
-    cairo_move_to(cr, marker_x - 5, bar_y - 2)
-    cairo_line_to(cr, marker_x + 5, bar_y - 2)
-    cairo_stroke(cr)
   end
 
   local function draw_codex_bar(cr, window, x, y, accent, accent_secondary, pace)
     local used = shared.clamp(window.used_percent, 0, 100)
     local fill_width = codex_bar_width * (used / 100)
     local label = string.upper(window.label)
-    local is_weekly = string.lower(window.label or '') == 'weekly'
+    local window_label = string.lower(window.label or '')
+    local is_weekly = window_label == 'weekly'
+    local is_five_hour = window_label == '5h'
     local percent_label = string.format('%.0f%% used', used)
     local reset_label = format_reset_label(window)
 
@@ -268,37 +292,51 @@ return function(shared, repo_root)
     cairo_move_to(cr, x + codex_bar_width - extents.width - extents.x_bearing, y)
     cairo_show_text(cr, reset_label)
 
-    local bar_y = y + 14
-    shared.rounded_rect(cr, x, bar_y, codex_bar_width, codex_bar_height, 8)
-    shared.set_hex(cr, '020617', 0.92)
+    local bar_y = y + 17
+    shared.rounded_rect(cr, x, bar_y, codex_bar_width, codex_bar_height, 4)
+    shared.set_hex(cr, '020617', 0.68)
     cairo_fill_preserve(cr)
-    shared.set_hex(cr, accent, 0.72)
-    cairo_set_line_width(cr, 1.5)
+    shared.set_hex(cr, accent, 0.52)
+    cairo_set_line_width(cr, 1)
     cairo_stroke(cr)
 
     if fill_width > 0 then
-      shared.rounded_rect(cr, x + 3, bar_y + 3, math.max(8, fill_width - 6), codex_bar_height - 6, 6)
-      shared.set_hex(cr, accent, 0.68)
+      local active_width = math.max(6, fill_width)
+
+      shared.rounded_rect(cr, x - 1, bar_y - 2, active_width + 2, codex_bar_height + 4, 5)
+      shared.set_hex(cr, accent, 0.22)
       cairo_fill(cr)
+
+      shared.rounded_rect(cr, x + 1, bar_y + 1, math.max(4, active_width - 2), codex_bar_height - 2, 3)
+      shared.set_hex(cr, accent, 0.92)
+      cairo_fill(cr)
+
+      shared.set_hex(cr, 'f8fafc', 0.20)
+      cairo_set_line_width(cr, 1)
+      cairo_move_to(cr, x + 4, bar_y + 2)
+      cairo_line_to(cr, x + active_width - 4, bar_y + 2)
+      cairo_stroke(cr)
     end
 
-    shared.set_hex(cr, accent_secondary, 0.26)
+    shared.set_hex(cr, accent_secondary, 0.34)
     cairo_set_line_width(cr, 1)
     local tick_gap = codex_bar_width / 10
     for tick = 1, 9 do
       local tick_x = x + tick * tick_gap
-      cairo_move_to(cr, tick_x, bar_y + 4)
-      cairo_line_to(cr, tick_x, bar_y + codex_bar_height - 4)
+      cairo_move_to(cr, tick_x, bar_y + 1)
+      cairo_line_to(cr, tick_x, bar_y + codex_bar_height - 1)
     end
     cairo_stroke(cr)
 
-    shared.set_hex(cr, 'f8fafc', 0.22)
-    cairo_move_to(cr, x + 8, bar_y + 8)
-    cairo_line_to(cr, x + codex_bar_width - 8, bar_y + 8)
+    shared.set_hex(cr, 'f8fafc', 0.18)
+    cairo_move_to(cr, x + 8, bar_y + 4)
+    cairo_line_to(cr, x + codex_bar_width - 8, bar_y + 4)
     cairo_stroke(cr)
 
     if is_weekly then
       draw_pace_marker(cr, pace, x, bar_y)
+    elseif is_five_hour then
+      draw_pace_marker(cr, calculate_window_pace(window, five_hour_window_seconds), x, bar_y)
     end
   end
 
