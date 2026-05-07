@@ -171,6 +171,7 @@ def render_cards(tasks, state_names, lookback_hours):
         cards.append(
             {
                 "identifier": task.get("identifier", ""),
+                "state": task.get("state", {}).get("name", ""),
                 "title": task.get("title", "Untitled"),
                 "done": task in recently_done,
                 "dueToday": is_due_now(task),

@@ -20,6 +20,7 @@ return function(shared, repo_root)
     local cards = {}
     for object in content:gmatch('{%s-"identifier".-}') do
       local identifier = object:match('"identifier"%s*:%s*"(.-)"')
+      local state = object:match('"state"%s*:%s*"(.-)"')
       local title = object:match('"title"%s*:%s*"(.-)"')
       local done = object:match('"done"%s*:%s*(true)') ~= nil
       local due_today = object:match('"dueToday"%s*:%s*(true)') ~= nil
@@ -27,6 +28,7 @@ return function(shared, repo_root)
       if title then
         table.insert(cards, {
           identifier = identifier and shared.unescape_json_string(identifier) or '',
+          state = state and shared.unescape_json_string(state) or '',
           title = shared.unescape_json_string(title),
           done = done,
           due_today = due_today,
@@ -90,6 +92,13 @@ return function(shared, repo_root)
     shared.set_hex(cr, accent, 0.95)
     cairo_set_line_width(cr, 2)
     cairo_stroke(cr)
+
+    if card.state == 'In Progress' and not card.done then
+      shared.rounded_rect(cr, x - 5, y - 5, card_width + 10, card_height + 10, radius + 5)
+      shared.set_hex(cr, 'facc15', 0.92)
+      cairo_set_line_width(cr, 3)
+      cairo_stroke(cr)
+    end
 
     shared.rounded_rect(cr, x + 7, y + 7, card_width - 14, card_height - 14, radius - 6)
     shared.set_hex(cr, accent_secondary, 0.22)
