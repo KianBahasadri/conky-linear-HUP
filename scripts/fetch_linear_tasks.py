@@ -105,12 +105,12 @@ def is_recently_done(task, now, lookback_hours):
     return completed_at >= now - timedelta(hours=lookback_hours)
 
 
-def is_due_today(task):
+def is_due_now(task):
     due_date = task.get("dueDate")
     if not due_date:
         return False
 
-    return due_date == datetime.now().date().isoformat()
+    return due_date <= datetime.now().date().isoformat()
 
 
 def render(tasks, state_names, lookback_hours):
@@ -170,9 +170,10 @@ def render_cards(tasks, state_names, lookback_hours):
     for task in active + recently_done:
         cards.append(
             {
+                "identifier": task.get("identifier", ""),
                 "title": task.get("title", "Untitled"),
                 "done": task in recently_done,
-                "dueToday": is_due_today(task),
+                "dueToday": is_due_now(task),
             }
         )
 
@@ -263,14 +264,14 @@ def main():
     now = datetime.now(timezone.utc)
     active_count = sum(1 for task in tasks if task.get("state", {}).get("name") in state_names)
     done_count = sum(1 for task in tasks if is_recently_done(task, now, lookback_hours))
-    due_today_count = sum(1 for task in tasks if is_due_today(task))
+    due_now_count = sum(1 for task in tasks if is_due_now(task))
     workflow_state_count = len(response.get("data", {}).get("workflowStates", {}).get("nodes", []))
     output = render(tasks, state_names, lookback_hours)
     atomic_write_text(OUTPUT_PATH, output)
     atomic_write_json(CARDS_PATH, render_cards(tasks, state_names, lookback_hours))
     log_event(
         f"completed fetch workflow_states={workflow_state_count} collected_tasks={len(tasks)} "
-        f"active={active_count} recently_done={done_count} due_today={due_today_count} "
+        f"active={active_count} recently_done={done_count} due_now={due_now_count} "
         f"wrote={OUTPUT_PATH.name},{CARDS_PATH.name}"
     )
     print(output, end="")

@@ -18,13 +18,15 @@ return function(shared, repo_root)
 
     local error_message = content:match('"error"%s*:%s*"(.-)"')
     local cards = {}
-    for object in content:gmatch('{%s-"title".-}') do
+    for object in content:gmatch('{%s-"identifier".-}') do
+      local identifier = object:match('"identifier"%s*:%s*"(.-)"')
       local title = object:match('"title"%s*:%s*"(.-)"')
       local done = object:match('"done"%s*:%s*(true)') ~= nil
       local due_today = object:match('"dueToday"%s*:%s*(true)') ~= nil
 
       if title then
         table.insert(cards, {
+          identifier = identifier and shared.unescape_json_string(identifier) or '',
           title = shared.unescape_json_string(title),
           done = done,
           due_today = due_today,
@@ -115,6 +117,11 @@ return function(shared, repo_root)
     cairo_fill(cr)
 
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
+    cairo_set_font_size(cr, 11)
+    shared.set_hex(cr, accent, 0.88)
+    cairo_move_to(cr, x + 22, y + 31)
+    cairo_show_text(cr, card.identifier)
+
     cairo_set_font_size(cr, font_size)
 
     local lines = shared.wrap_title(cr, card.title, card_width - 36)
