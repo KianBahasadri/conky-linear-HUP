@@ -4,8 +4,11 @@ return function(shared, repo_root)
   local codex_width = 1120
   local codex_height = 132
   local codex_radius = 18
-  local codex_bar_width = 388
+  local codex_bar_width = 220
   local codex_bar_height = 8
+  local codex_bar_text_gap = 14
+  local codex_bar_countdown_width = 54
+  local codex_bar_reset_width = 96
   local bottom_padding = 4
   local five_hour_window_seconds = 18000
   local weekly_window_seconds = 604800
@@ -264,35 +267,13 @@ return function(shared, repo_root)
   local function draw_codex_bar(cr, window, x, y, accent, accent_secondary, pace)
     local used = shared.clamp(window.used_percent, 0, 100)
     local fill_width = codex_bar_width * (used / 100)
-    local label = string.upper(window.label)
     local window_label = string.lower(window.label or '')
     local is_weekly = window_label == 'weekly'
     local is_five_hour = window_label == '5h'
-    local percent_label = string.format('%.0f%% used', used)
-    local reset_label = format_reset_label(window)
+    local countdown_label = format_reset(window.reset_after_seconds)
+    local reset_at_label = format_reset_at(window)
 
-    cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
-    cairo_set_font_size(cr, 13)
-    shared.set_hex(cr, 'f8fafc', 1)
-    cairo_move_to(cr, x, y)
-    cairo_show_text(cr, label)
-
-    cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL)
-    cairo_set_font_size(cr, 12)
-    shared.set_hex(cr, '94a3b8', 1)
-    cairo_move_to(cr, x + 94, y)
-    cairo_show_text(cr, percent_label)
-
-    local extents = cairo_text_extents_t:create()
-    local reset_max_width = codex_bar_width - 162
-    reset_label = shared.truncate_title(cr, reset_label, reset_max_width)
-    cairo_text_extents(cr, reset_label, extents)
-
-    shared.set_hex(cr, accent, 0.84)
-    cairo_move_to(cr, x + codex_bar_width - extents.width - extents.x_bearing, y)
-    cairo_show_text(cr, reset_label)
-
-    local bar_y = y + 17
+    local bar_y = y
     shared.rounded_rect(cr, x, bar_y, codex_bar_width, codex_bar_height, 4)
     shared.set_hex(cr, '020617', 0.68)
     cairo_fill_preserve(cr)
@@ -313,15 +294,17 @@ return function(shared, repo_root)
 
       shared.set_hex(cr, 'f8fafc', 0.20)
       cairo_set_line_width(cr, 1)
-      cairo_move_to(cr, x + 4, bar_y + 2)
-      cairo_line_to(cr, x + active_width - 4, bar_y + 2)
-      cairo_stroke(cr)
+      if active_width > 10 then
+        cairo_move_to(cr, x + 4, bar_y + 2)
+        cairo_line_to(cr, x + active_width - 4, bar_y + 2)
+        cairo_stroke(cr)
+      end
     end
 
     shared.set_hex(cr, accent_secondary, 0.34)
     cairo_set_line_width(cr, 1)
-    local tick_gap = codex_bar_width / 10
-    for tick = 1, 9 do
+    local tick_gap = codex_bar_width / 4
+    for tick = 1, 3 do
       local tick_x = x + tick * tick_gap
       cairo_move_to(cr, tick_x, bar_y + 1)
       cairo_line_to(cr, tick_x, bar_y + codex_bar_height - 1)
@@ -338,6 +321,25 @@ return function(shared, repo_root)
     elseif is_five_hour then
       draw_pace_marker(cr, calculate_window_pace(window, five_hour_window_seconds), x, bar_y)
     end
+
+    cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL)
+    cairo_set_font_size(cr, 11)
+    local text_x = x + codex_bar_width + codex_bar_text_gap
+    local reset_x = text_x + codex_bar_countdown_width + 10
+    countdown_label = shared.truncate_title(cr, countdown_label, codex_bar_countdown_width)
+    reset_at_label = shared.truncate_title(cr, reset_at_label, codex_bar_reset_width)
+
+    cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
+    cairo_set_font_size(cr, 10)
+    shared.set_hex(cr, accent, 0.95)
+    cairo_move_to(cr, text_x, y + 8)
+    cairo_show_text(cr, countdown_label)
+
+    cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL)
+    cairo_set_font_size(cr, 10)
+    shared.set_hex(cr, accent, 0.82)
+    cairo_move_to(cr, reset_x, y + 8)
+    cairo_show_text(cr, reset_at_label)
   end
 
   local function draw_codex_error(cr, usage, x, y)
@@ -363,16 +365,16 @@ return function(shared, repo_root)
     if account.is_selected then
       shared.set_hex(cr, 'ff9f1c', 0.20)
       cairo_set_line_width(cr, 5)
-      cairo_move_to(cr, label_x - 20, y + 29)
-      cairo_line_to(cr, label_x - 12, y + 36)
-      cairo_line_to(cr, label_x - 20, y + 43)
+      cairo_move_to(cr, label_x - 20, y + 14)
+      cairo_line_to(cr, label_x - 12, y + 21)
+      cairo_line_to(cr, label_x - 20, y + 28)
       cairo_stroke(cr)
 
       shared.set_hex(cr, 'ff9f1c', 0.94)
       cairo_set_line_width(cr, 2)
-      cairo_move_to(cr, label_x - 20, y + 29)
-      cairo_line_to(cr, label_x - 12, y + 36)
-      cairo_line_to(cr, label_x - 20, y + 43)
+      cairo_move_to(cr, label_x - 20, y + 14)
+      cairo_line_to(cr, label_x - 12, y + 21)
+      cairo_line_to(cr, label_x - 20, y + 28)
       cairo_stroke(cr)
     end
 
@@ -383,14 +385,14 @@ return function(shared, repo_root)
     else
       shared.set_hex(cr, 'f8fafc', 0.90)
     end
-    cairo_move_to(cr, label_x, y + 42)
+    cairo_move_to(cr, label_x, y + 26)
     cairo_show_text(cr, shared.truncate_title(cr, name, 120))
 
     if first then
       draw_codex_bar(cr, first, x + 156, y + 18, '00e5ff', '8b5cf6', pace)
     end
     if second then
-      draw_codex_bar(cr, second, x + 156 + codex_bar_width + 42, y + 18, '39ff88', '00f5d4', pace)
+      draw_codex_bar(cr, second, x + 156 + codex_bar_width + codex_bar_countdown_width + codex_bar_reset_width + 78, y + 18, '39ff88', '00f5d4', pace)
     end
   end
 
@@ -455,7 +457,7 @@ return function(shared, repo_root)
     draw_pace_chip(cr, pace, x, y)
 
     for index, account in ipairs(usage.accounts) do
-      draw_codex_account_row(cr, account, x + 56, y + 38 + (index - 1) * 58, pace)
+      draw_codex_account_row(cr, account, x + 56, y + 38 + (index - 1) * 36, pace)
     end
   end
 
@@ -477,7 +479,7 @@ return function(shared, repo_root)
     end
 
     local account_count = math.max(1, #(usage.accounts or {}))
-    local dynamic_height = math.max(132, 72 + account_count * 58)
+    local dynamic_height = math.max(132, 70 + account_count * 36)
     local panel_width = math.min(codex_width, conky_window.width - 40)
     local x = (conky_window.width - panel_width) / 2
     local y = math.max(bottom_padding, conky_window.height - dynamic_height - bottom_padding)
