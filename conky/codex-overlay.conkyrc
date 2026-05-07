@@ -13,7 +13,7 @@ conky.config = {
   extra_newline = false,
   font = 'JetBrains Mono:size=10',
   gap_x = 350,
-  gap_y = 34,
+  gap_y = 24,
   minimum_height = 320,
   minimum_width = 1540,
   maximum_width = 1540,

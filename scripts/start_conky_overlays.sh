@@ -11,7 +11,8 @@ LOG_PATH="$CACHE_DIR/conky-linear.log"
 LINEAR_FETCH_PID="$CACHE_DIR/linear-fetch-loop.pid"
 CODEX_FETCH_PID="$CACHE_DIR/codex-fetch-loop.pid"
 OVERLAY_WIDTH=1540
-GAP_Y=34
+LINEAR_GAP_Y=34
+CODEX_GAP_Y=24
 GENERATE_ONLY=0
 
 log() {
@@ -84,6 +85,7 @@ generate_config() {
   local output_config="$2"
   local monitor_index="$3"
   local monitor_gap_x="$4"
+  local monitor_gap_y="$5"
 
   while IFS= read -r config_line; do
     case "$config_line" in
@@ -95,7 +97,7 @@ generate_config() {
         printf "  gap_x = %s,\n" "$monitor_gap_x"
         ;;
       "  gap_y = "*)
-        printf "  gap_y = %s,\n" "$GAP_Y"
+        printf "  gap_y = %s,\n" "$monitor_gap_y"
         ;;
       "  lua_load = "*)
         printf "  lua_load = '%s/conky/linear-cards.lua',\n" "$ROOT"
@@ -124,8 +126,8 @@ while IFS= read -r line; do
   linear_config="$GENERATED_DIR/linear-overlay-$index.conkyrc"
   codex_config="$GENERATED_DIR/codex-overlay-$index.conkyrc"
 
-  generate_config "$BASE_CONFIG" "$linear_config" "$index" "$monitor_gap_x"
-  generate_config "$CODEX_CONFIG" "$codex_config" "$index" "$monitor_gap_x"
+  generate_config "$BASE_CONFIG" "$linear_config" "$index" "$monitor_gap_x" "$LINEAR_GAP_Y"
+  generate_config "$CODEX_CONFIG" "$codex_config" "$index" "$monitor_gap_x" "$CODEX_GAP_Y"
 
   if [[ "$GENERATE_ONLY" -eq 0 ]]; then
     setsid conky -c "$linear_config" >> "$LOG_PATH" 2>&1 < /dev/null &

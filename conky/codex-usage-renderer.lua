@@ -201,6 +201,16 @@ return function(shared, repo_root)
     return 'ff9f1c'
   end
 
+  local function pace_chip_color(pace)
+    if pace and pace.state == 'over' then
+      return 'f87171'
+    end
+    if pace and pace.state == 'under' then
+      return '39ff88'
+    end
+    return '00e5ff'
+  end
+
   local function draw_codex_frame(cr, x, y)
     shared.rounded_rect(cr, x + 4, y + 7, codex_width, codex_height, codex_radius)
     shared.set_hex(cr, '00e5ff', 0.10)
@@ -397,37 +407,39 @@ return function(shared, repo_root)
   end
 
   local function draw_pace_chip(cr, pace, x, y)
-    if not pace or pace.state == 'neutral' then
+    if not pace then
       return
     end
 
-    local color = pace_color(pace)
+    local color = pace_chip_color(pace)
     local label
     if pace.state == 'under' then
-      label = string.format('FAST MODE AVAILABLE - %.0f%% UNDER PACE', math.abs(pace.delta))
+      label = string.format('%.0f%% UNDER PACE - ENABLE FAST MODE', math.abs(pace.delta))
+    elseif pace.state == 'over' then
+      label = string.format('%.0f%% OVER PACE - REDUCE USAGE', math.abs(pace.delta))
     else
-      label = string.format('OVER PACE - %.0f%% HOT', math.abs(pace.delta))
+      label = 'ON PACE'
     end
 
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
-    cairo_set_font_size(cr, 12)
+    cairo_set_font_size(cr, 15)
 
     local extents = cairo_text_extents_t:create()
     cairo_text_extents(cr, label, extents)
-    local chip_width = extents.width + 30
-    local chip_height = 22
+    local chip_width = extents.width + 24
+    local chip_height = 20
     local chip_x = x + (codex_width - chip_width) / 2
-    local chip_y = y + 17
+    local chip_y = y - 9
 
-    shared.rounded_rect(cr, chip_x, chip_y, chip_width, chip_height, 8)
-    shared.set_hex(cr, color, 0.12)
+    shared.rounded_rect(cr, chip_x, chip_y, chip_width, chip_height, 6)
+    shared.set_hex(cr, '020617', 0.94)
     cairo_fill_preserve(cr)
-    shared.set_hex(cr, color, 0.86)
-    cairo_set_line_width(cr, 1.4)
+    shared.set_hex(cr, color, 0.82)
+    cairo_set_line_width(cr, 1.5)
     cairo_stroke(cr)
 
     shared.set_hex(cr, color, 1)
-    cairo_move_to(cr, chip_x + 15, chip_y + 15)
+    cairo_move_to(cr, chip_x + 12, chip_y + 15)
     cairo_show_text(cr, label)
   end
 
