@@ -11,7 +11,8 @@ LOG_PATH="$CACHE_DIR/conky-linear.log"
 LINEAR_FETCH_PID="$CACHE_DIR/linear-fetch-loop.pid"
 CODEX_FETCH_PID="$CACHE_DIR/codex-fetch-loop.pid"
 OVERLAY_WIDTH=1540
-LINEAR_GAP_Y=34
+LINEAR_GAP_Y=4
+LINEAR_PRIMARY_GAP_Y=34
 CODEX_GAP_Y=12
 GENERATE_ONLY=0
 
@@ -123,19 +124,23 @@ while IFS= read -r line; do
 
   width="${BASH_REMATCH[1]}"
   monitor_gap_x=$(((width - OVERLAY_WIDTH) / 2))
+  linear_gap_y="$LINEAR_GAP_Y"
+  if [[ "$line" =~ ^[[:space:]]*[0-9]+:[[:space:]]*[^[:space:]]*\* ]]; then
+    linear_gap_y="$LINEAR_PRIMARY_GAP_Y"
+  fi
   linear_config="$GENERATED_DIR/linear-overlay-$index.conkyrc"
   codex_config="$GENERATED_DIR/codex-overlay-$index.conkyrc"
 
-  generate_config "$BASE_CONFIG" "$linear_config" "$index" "$monitor_gap_x" "$LINEAR_GAP_Y"
+  generate_config "$BASE_CONFIG" "$linear_config" "$index" "$monitor_gap_x" "$linear_gap_y"
   generate_config "$CODEX_CONFIG" "$codex_config" "$index" "$monitor_gap_x" "$CODEX_GAP_Y"
 
   if [[ "$GENERATE_ONLY" -eq 0 ]]; then
     setsid conky -c "$linear_config" >> "$LOG_PATH" 2>&1 < /dev/null &
-    log "launched monitor_index=$index width=$width gap_x=$monitor_gap_x config=$linear_config pid=$!"
+    log "launched monitor_index=$index width=$width gap_x=$monitor_gap_x gap_y=$linear_gap_y config=$linear_config pid=$!"
     setsid conky -c "$codex_config" >> "$LOG_PATH" 2>&1 < /dev/null &
     log "launched monitor_index=$index width=$width gap_x=$monitor_gap_x config=$codex_config pid=$!"
   else
-    log "generated monitor_index=$index width=$width gap_x=$monitor_gap_x config=$linear_config"
+    log "generated monitor_index=$index width=$width gap_x=$monitor_gap_x gap_y=$linear_gap_y config=$linear_config"
     log "generated monitor_index=$index width=$width gap_x=$monitor_gap_x config=$codex_config"
   fi
   index=$((index + 1))
