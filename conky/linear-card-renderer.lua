@@ -94,9 +94,14 @@ return function(shared, repo_root)
     cairo_stroke(cr)
 
     if card.state == 'In Progress' and not card.done then
+      shared.rounded_rect(cr, x - 6, y - 6, card_width + 12, card_height + 12, radius + 6)
+      shared.set_hex(cr, 'facc15', 0.18)
+      cairo_set_line_width(cr, 4)
+      cairo_stroke(cr)
+
       shared.rounded_rect(cr, x - 5, y - 5, card_width + 10, card_height + 10, radius + 5)
-      shared.set_hex(cr, 'facc15', 0.92)
-      cairo_set_line_width(cr, 3)
+      shared.set_hex(cr, 'facc15', 0.84)
+      cairo_set_line_width(cr, 2)
       cairo_stroke(cr)
     end
 
