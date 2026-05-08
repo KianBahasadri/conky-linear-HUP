@@ -13,8 +13,11 @@ CODEX_FETCH_PID="$CACHE_DIR/codex-fetch-loop.pid"
 OVERLAY_WIDTH=1540
 LINEAR_GAP_Y=4
 LINEAR_PRIMARY_GAP_Y=34
+LINEAR_PRIMARY_MONITOR_INDEX="${LINEAR_PRIMARY_MONITOR_INDEX:-0}"
+PRIMARY_WAIT_SECONDS="${PRIMARY_WAIT_SECONDS:-20}"
 CODEX_GAP_Y=12
 GENERATE_ONLY=0
+MONITOR_HAS_PRIMARY=0
 
 log() {
   printf '[%s] start_conky_overlays: %s\n' "$(date --iso-8601=seconds)" "$*" >> "$LOG_PATH"
@@ -66,6 +69,16 @@ fi
 mkdir -p "$GENERATED_DIR"
 mkdir -p "$CACHE_DIR"
 
+if [[ ! "$LINEAR_PRIMARY_MONITOR_INDEX" =~ ^[0-9]+$ ]]; then
+  log "invalid LINEAR_PRIMARY_MONITOR_INDEX=$LINEAR_PRIMARY_MONITOR_INDEX; using 0"
+  LINEAR_PRIMARY_MONITOR_INDEX=0
+fi
+
+if [[ ! "$PRIMARY_WAIT_SECONDS" =~ ^[0-9]+$ ]]; then
+  log "invalid PRIMARY_WAIT_SECONDS=$PRIMARY_WAIT_SECONDS; using 20"
+  PRIMARY_WAIT_SECONDS=20
+fi
+
 log "starting; root=$ROOT generate_only=$GENERATE_ONLY"
 
 pkill -f "$GENERATED_DIR/linear-overlay-" 2>/dev/null || true
@@ -112,12 +125,52 @@ generate_config() {
   done < "$source_config" > "$output_config"
 }
 
-index=0
-while IFS= read -r line; do
-  if [[ ! "$line" =~ ^[[:space:]]*[0-9]+: ]]; then
-    continue
-  fi
+read_monitor_lines() {
+  local -n output_lines="$1"
+  local deadline
+  local now
+  local line
+  local has_primary=0
 
+  output_lines=()
+  MONITOR_HAS_PRIMARY=0
+  deadline=$((SECONDS + PRIMARY_WAIT_SECONDS))
+
+  while true; do
+    output_lines=()
+    has_primary=0
+
+    while IFS= read -r line; do
+      if [[ ! "$line" =~ ^[[:space:]]*[0-9]+: ]]; then
+        continue
+      fi
+
+      output_lines+=("$line")
+      if [[ "$line" =~ ^[[:space:]]*[0-9]+:[[:space:]]*[^[:space:]]*\* ]]; then
+        has_primary=1
+      fi
+    done < <(xrandr --listmonitors 2>> "$LOG_PATH" || true)
+
+    if [[ "${#output_lines[@]}" -eq 0 || "$has_primary" -eq 1 ]]; then
+      MONITOR_HAS_PRIMARY="$has_primary"
+      break
+    fi
+
+    now="$SECONDS"
+    if (( now >= deadline )); then
+      log "xrandr reported monitors but no primary marker; using fallback primary index=$LINEAR_PRIMARY_MONITOR_INDEX"
+      break
+    fi
+
+    sleep 1
+  done
+}
+
+monitor_lines=()
+read_monitor_lines monitor_lines
+
+index=0
+for line in "${monitor_lines[@]}"; do
   if [[ ! "$line" =~ ([0-9]+)\/[0-9]+x([0-9]+)\/[0-9]+\+(-?[0-9]+)\+(-?[0-9]+) ]]; then
     continue
   fi
@@ -125,7 +178,7 @@ while IFS= read -r line; do
   width="${BASH_REMATCH[1]}"
   monitor_gap_x=$(((width - OVERLAY_WIDTH) / 2))
   linear_gap_y="$LINEAR_GAP_Y"
-  if [[ "$line" =~ ^[[:space:]]*[0-9]+:[[:space:]]*[^[:space:]]*\* ]]; then
+  if [[ "$line" =~ ^[[:space:]]*[0-9]+:[[:space:]]*[^[:space:]]*\* ]] || { [[ "$MONITOR_HAS_PRIMARY" -eq 0 ]] && [[ "$index" -eq "$LINEAR_PRIMARY_MONITOR_INDEX" ]]; }; then
     linear_gap_y="$LINEAR_PRIMARY_GAP_Y"
   fi
   linear_config="$GENERATED_DIR/linear-overlay-$index.conkyrc"
@@ -144,7 +197,7 @@ while IFS= read -r line; do
     log "generated monitor_index=$index width=$width gap_x=$monitor_gap_x config=$codex_config"
   fi
   index=$((index + 1))
-done < <(xrandr --listmonitors 2>> "$LOG_PATH")
+done
 
 if [[ "$index" -eq 0 ]]; then
   log "no monitors detected from xrandr; using base config"

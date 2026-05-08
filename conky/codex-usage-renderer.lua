@@ -2,8 +2,13 @@ return function(shared, repo_root)
   local codex_usage_path = repo_root .. '/cache/codex-usage.json'
   local font = 'JetBrains Mono'
   local codex_width = 1000
-  local codex_height = 132
+  local codex_height = 120
+  local codex_auto_height = false
   local codex_radius = 18
+  local codex_account_row_x = 34
+  local codex_account_row_y = 14
+  local codex_account_row_gap = 20
+  local codex_dynamic_height_padding = 58
   local codex_bar_width = 200
   local codex_bar_height = 8
   local codex_bar_text_gap = 14
@@ -238,18 +243,6 @@ return function(shared, repo_root)
     cairo_set_line_width(cr, 1)
     cairo_stroke(cr)
 
-    shared.set_hex(cr, '00e5ff', 0.24)
-    cairo_set_line_width(cr, 1)
-    cairo_move_to(cr, x + 26, y + 20)
-    cairo_line_to(cr, x + 62, y + 20)
-    cairo_line_to(cr, x + 75, y + 33)
-    cairo_stroke(cr)
-
-    shared.set_hex(cr, '8b5cf6', 0.20)
-    cairo_move_to(cr, x + codex_width - 26, y + codex_height - 20)
-    cairo_line_to(cr, x + codex_width - 62, y + codex_height - 20)
-    cairo_line_to(cr, x + codex_width - 75, y + codex_height - 33)
-    cairo_stroke(cr)
   end
 
   local function draw_pace_marker(cr, pace, x, bar_y)
@@ -469,7 +462,7 @@ return function(shared, repo_root)
     draw_pace_chip(cr, pace, x, y)
 
     for index, account in ipairs(usage.accounts) do
-      draw_codex_account_row(cr, account, x + 34, y + 34 + (index - 1) * 30, pace)
+      draw_codex_account_row(cr, account, x + codex_account_row_x, y + codex_account_row_y + (index - 1) * codex_account_row_gap, pace)
     end
   end
 
@@ -491,7 +484,10 @@ return function(shared, repo_root)
     end
 
     local account_count = math.max(1, #(usage.accounts or {}))
-    local dynamic_height = math.max(132, 58 + account_count * 30)
+    local dynamic_height = codex_height
+    if codex_auto_height then
+      dynamic_height = math.max(codex_height, codex_dynamic_height_padding + account_count * codex_account_row_gap)
+    end
     local panel_width = math.min(codex_width, conky_window.width - 40)
     local x = (conky_window.width - panel_width) / 2
     local y = math.max(bottom_padding, conky_window.height - dynamic_height - bottom_padding)
