@@ -2,18 +2,22 @@ return function(shared, repo_root)
   local codex_usage_path = repo_root .. '/cache/codex-usage.json'
   local font = 'JetBrains Mono'
   local codex_width = 1000
-  local codex_height = 120
+  local codex_height = 110
   local codex_auto_height = false
   local codex_radius = 18
   local codex_account_row_x = 34
-  local codex_account_row_y = 14
-  local codex_account_row_gap = 20
-  local codex_dynamic_height_padding = 58
-  local codex_bar_width = 200
+  local codex_account_row_y = 8
+  local codex_account_row_gap = 19
+  local codex_dynamic_height_padding = 46
+  local codex_first_bar_x = 113
+  -- Width of each Codex usage progress bar.
+  local codex_bar_width = 230
   local codex_bar_height = 8
   local codex_bar_text_gap = 14
   local codex_bar_countdown_width = 54
+  local codex_bar_reset_gap = 0
   local codex_bar_reset_width = 96
+  local codex_bar_pair_gap = 0
   local bottom_padding = 4
   local five_hour_window_seconds = 18000
   local weekly_window_seconds = 604800
@@ -328,7 +332,7 @@ return function(shared, repo_root)
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL)
     cairo_set_font_size(cr, 11)
     local text_x = x + codex_bar_width + codex_bar_text_gap
-    local reset_x = text_x + codex_bar_countdown_width + 10
+    local reset_x = text_x + codex_bar_countdown_width + codex_bar_reset_gap
     countdown_label = shared.truncate_title(cr, countdown_label, codex_bar_countdown_width)
     reset_at_label = shared.truncate_title(cr, reset_at_label, codex_bar_reset_width)
 
@@ -386,16 +390,16 @@ return function(shared, repo_root)
     if account.is_selected then
       shared.set_hex(cr, 'ffffff', 1)
     else
-      shared.set_hex(cr, 'f8fafc', 0.90)
+      shared.set_hex(cr, 'f8fafc', 0.72)
     end
     cairo_move_to(cr, label_x, y + 23)
     cairo_show_text(cr, shared.truncate_title(cr, name, 120))
 
     if first then
-      draw_codex_bar(cr, first, x + 138, y + 15, '00e5ff', '8b5cf6', pace)
+      draw_codex_bar(cr, first, x + codex_first_bar_x, y + 15, '00e5ff', '8b5cf6', pace)
     end
     if second then
-      draw_codex_bar(cr, second, x + 138 + codex_bar_width + codex_bar_countdown_width + codex_bar_reset_width + 52, y + 15, '39ff88', '00f5d4', pace)
+      draw_codex_bar(cr, second, x + codex_first_bar_x + codex_bar_width + codex_bar_countdown_width + codex_bar_reset_width + codex_bar_pair_gap, y + 15, '39ff88', '00f5d4', pace)
     end
   end
 
@@ -405,14 +409,8 @@ return function(shared, repo_root)
     end
 
     local color = pace_chip_color(pace)
-    local label
-    if pace.state == 'under' then
-      label = string.format('%.0f%% UNDER PACE - ENABLE FAST MODE', math.abs(pace.delta))
-    elseif pace.state == 'over' then
-      label = string.format('%.0f%% OVER PACE - REDUCE USAGE', math.abs(pace.delta))
-    else
-      label = 'ON PACE'
-    end
+    local sign = pace.delta < 0 and '-' or '+'
+    local label = string.format('PACE: %s%.0f%%', sign, math.abs(pace.delta))
 
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
     cairo_set_font_size(cr, 15)
