@@ -271,7 +271,7 @@ return function(shared, repo_root)
 
   end
 
-  local function draw_codex_bar(cr, window, x, y, accent, accent_secondary, pace)
+  local function draw_codex_bar(cr, window, x, y, accent, accent_secondary)
     local used = shared.clamp(window.used_percent, 0, 100)
     local fill_width = codex_bar_width * (used / 100)
     local window_label = string.lower(window.label or '')
@@ -324,7 +324,7 @@ return function(shared, repo_root)
     cairo_stroke(cr)
 
     if is_weekly then
-      draw_pace_marker(cr, pace, x, bar_y)
+      draw_pace_marker(cr, calculate_window_pace(window, weekly_window_seconds), x, bar_y)
     elseif is_five_hour then
       draw_pace_marker(cr, calculate_window_pace(window, five_hour_window_seconds), x, bar_y)
     end
@@ -363,7 +363,7 @@ return function(shared, repo_root)
     cairo_show_text(cr, shared.truncate_title(cr, usage and usage.error or 'No usage cache found.', codex_width - 68))
   end
 
-  local function draw_codex_account_row(cr, account, x, y, pace)
+  local function draw_codex_account_row(cr, account, x, y)
     local name = string.upper(account.label)
     local first = account.windows[1]
     local second = account.windows[2] or account.windows[1]
@@ -396,10 +396,10 @@ return function(shared, repo_root)
     cairo_show_text(cr, shared.truncate_title(cr, name, 120))
 
     if first then
-      draw_codex_bar(cr, first, x + codex_first_bar_x, y + 15, '00e5ff', '8b5cf6', pace)
+      draw_codex_bar(cr, first, x + codex_first_bar_x, y + 15, '00e5ff', '8b5cf6')
     end
     if second then
-      draw_codex_bar(cr, second, x + codex_first_bar_x + codex_bar_width + codex_bar_countdown_width + codex_bar_reset_width + codex_bar_pair_gap, y + 15, '39ff88', '00f5d4', pace)
+      draw_codex_bar(cr, second, x + codex_first_bar_x + codex_bar_width + codex_bar_countdown_width + codex_bar_reset_width + codex_bar_pair_gap, y + 15, '39ff88', '00f5d4')
     end
   end
 
@@ -460,7 +460,7 @@ return function(shared, repo_root)
     draw_pace_chip(cr, pace, x, y)
 
     for index, account in ipairs(usage.accounts) do
-      draw_codex_account_row(cr, account, x + codex_account_row_x, y + codex_account_row_y + (index - 1) * codex_account_row_gap, pace)
+      draw_codex_account_row(cr, account, x + codex_account_row_x, y + codex_account_row_y + (index - 1) * codex_account_row_gap)
     end
   end
 

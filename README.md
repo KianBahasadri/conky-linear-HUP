@@ -27,11 +27,11 @@ Desktop Conky widgets for keeping Linear work and Codex quota pressure visible a
 
 - The orange chevron marks the currently selected Codex auth file, meaning the auth file whose path resolves to `~/.codex/auth.json`.
 - Multiple Codex accounts are discovered from `~/.codex/auth.json.*`; `CODEX_AUTH_PATH` forces a single auth file.
-- The weekly pace marker is global, not per account: it averages weekly elapsed time across accounts and draws the same marker on every weekly bar.
+- Weekly and 5h pace markers are per account: each bar uses that window's own reset time.
 - Combined usage is the average weekly `usedPercent` across accounts.
 - Under pace by at least `10%` shows an amber fast-mode chip, except during the first `10%` of the weekly cycle.
 - Over pace by at least `10%` shows a red warning chip, including early in the cycle.
-- The pace chip is centered across the whole Codex box; the marker color follows the global pace state.
+- The pace chip is centered across the whole Codex box and uses the combined weekly pace state.
 
 ## Config
 
