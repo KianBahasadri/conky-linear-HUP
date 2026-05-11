@@ -9,6 +9,7 @@ return function(shared, repo_root)
   local font = 'JetBrains Mono'
   local font_size = 16
   local line_height = 22
+  local title_offset_y = 7
 
   local function read_cards()
     local content = shared.read_file(cards_path)
@@ -134,14 +135,14 @@ return function(shared, repo_root)
     cairo_set_font_size(cr, 11)
     shared.set_hex(cr, accent, 0.88)
     cairo_move_to(cr, x + 22, y + 31)
-    cairo_show_text(cr, card.identifier)
+    cairo_show_text(cr, shared.truncate_title(cr, card.identifier, card_width - 44))
 
     cairo_set_font_size(cr, font_size)
 
     local lines = shared.wrap_title(cr, card.title, card_width - 36)
     local extents = cairo_text_extents_t:create()
     local total_text_height = #lines * line_height
-    local first_baseline = y + (card_height - total_text_height) / 2 + font_size
+    local first_baseline = y + (card_height - total_text_height) / 2 + font_size + title_offset_y
 
     for index, line in ipairs(lines) do
       cairo_text_extents(cr, line, extents)

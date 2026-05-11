@@ -166,17 +166,37 @@ def render_cards(tasks, state_names, lookback_hours):
     active = [task for task in tasks if task.get("state", {}).get("name") in state_names]
     recently_done = [task for task in tasks if is_recently_done(task, now, lookback_hours)]
     cards = []
+    cards_by_title = {}
 
     for task in active + recently_done:
-        cards.append(
-            {
-                "identifier": task.get("identifier", ""),
+        title = task.get("title", "Untitled")
+        identifier = task.get("identifier", "")
+        task_done = task in recently_done
+        card = cards_by_title.get(title)
+
+        if not card:
+            card = {
+                "identifier": identifier,
+                "identifiers": [],
                 "state": task.get("state", {}).get("name", ""),
-                "title": task.get("title", "Untitled"),
-                "done": task in recently_done,
+                "title": title,
+                "done": task_done,
                 "dueToday": is_due_now(task),
             }
-        )
+            cards_by_title[title] = card
+            cards.append(card)
+
+        if identifier and identifier not in card["identifiers"]:
+            card["identifiers"].append(identifier)
+
+        if len(card["identifiers"]) > 1:
+            card["identifier"] = ", ".join(card["identifiers"])
+
+        card["done"] = card["done"] and task_done
+        card["dueToday"] = card["dueToday"] or is_due_now(task)
+
+        if task.get("state", {}).get("name") == "In Progress" and not task_done:
+            card["state"] = "In Progress"
 
     return {
         "updatedAt": datetime.now(timezone.utc).isoformat(),
