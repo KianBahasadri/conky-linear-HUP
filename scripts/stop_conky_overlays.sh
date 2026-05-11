@@ -4,14 +4,19 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 CACHE_DIR="$ROOT/cache"
-LOG_PATH="$CACHE_DIR/conky-linear.log"
+LINEAR_LOG_PATH="$CACHE_DIR/conky-linear.log"
+CODEX_LOG_PATH="$CACHE_DIR/conky-codex.log"
 LINEAR_FETCH_PID="$CACHE_DIR/linear-fetch-loop.pid"
 CODEX_FETCH_PID="$CACHE_DIR/codex-fetch-loop.pid"
 
 mkdir -p "$CACHE_DIR"
 
 log() {
-  printf '[%s] stop_conky_overlays: %s\n' "$(date --iso-8601=seconds)" "$*" >> "$LOG_PATH"
+  printf '[%s] stop_conky_overlays: %s\n' "$(date --iso-8601=seconds)" "$*" >> "$LINEAR_LOG_PATH"
+}
+
+log_codex() {
+  printf '[%s] stop_conky_overlays: %s\n' "$(date --iso-8601=seconds)" "$*" >> "$CODEX_LOG_PATH"
 }
 
 stop_fetch_loop() {
@@ -26,7 +31,11 @@ stop_fetch_loop() {
   pid="$(<"$pid_file")"
   if [[ "$pid" =~ ^[0-9]+$ ]] && kill -0 "$pid" 2>/dev/null; then
     kill -- -"$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true
-    log "stopped $label fetch loop pid=$pid"
+    if [[ "$label" == "Codex" ]]; then
+      log_codex "stopped $label fetch loop pid=$pid"
+    else
+      log "stopped $label fetch loop pid=$pid"
+    fi
   fi
   rm -f "$pid_file"
 }

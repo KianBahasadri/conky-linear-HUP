@@ -7,7 +7,8 @@ BASE_CONFIG="$ROOT/conky/linear-overlay.conkyrc"
 CODEX_CONFIG="$ROOT/conky/codex-overlay.conkyrc"
 GENERATED_DIR="$ROOT/conky/generated"
 CACHE_DIR="$ROOT/cache"
-LOG_PATH="$CACHE_DIR/conky-linear.log"
+LINEAR_LOG_PATH="$CACHE_DIR/conky-linear.log"
+CODEX_LOG_PATH="$CACHE_DIR/conky-codex.log"
 LINEAR_FETCH_PID="$CACHE_DIR/linear-fetch-loop.pid"
 CODEX_FETCH_PID="$CACHE_DIR/codex-fetch-loop.pid"
 OVERLAY_WIDTH=1540
@@ -20,7 +21,11 @@ GENERATE_ONLY=0
 MONITOR_HAS_PRIMARY=0
 
 log() {
-  printf '[%s] start_conky_overlays: %s\n' "$(date --iso-8601=seconds)" "$*" >> "$LOG_PATH"
+  printf '[%s] start_conky_overlays: %s\n' "$(date --iso-8601=seconds)" "$*" >> "$LINEAR_LOG_PATH"
+}
+
+log_codex() {
+  printf '[%s] start_conky_overlays: %s\n' "$(date --iso-8601=seconds)" "$*" >> "$CODEX_LOG_PATH"
 }
 
 stop_fetch_loop() {
@@ -35,7 +40,11 @@ stop_fetch_loop() {
   pid="$(<"$pid_file")"
   if [[ "$pid" =~ ^[0-9]+$ ]] && kill -0 "$pid" 2>/dev/null; then
     kill -- -"$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true
-    log "stopped existing $label fetch loop pid=$pid"
+    if [[ "$label" == "Codex" ]]; then
+      log_codex "stopped existing $label fetch loop pid=$pid"
+    else
+      log "stopped existing $label fetch loop pid=$pid"
+    fi
   fi
   rm -f "$pid_file"
 }
@@ -45,6 +54,7 @@ start_fetch_loop() {
   local interval_seconds="$2"
   local script_path="$3"
   local pid_file="$4"
+  local log_path="$5"
 
   stop_fetch_loop "$pid_file" "$label"
 
@@ -57,9 +67,13 @@ start_fetch_loop() {
       "$script_path" >/dev/null 2>>"$log_path" || true
       sleep "$interval_seconds"
     done
-  ' bash "$script_path" "$LOG_PATH" "$interval_seconds" </dev/null >/dev/null 2>&1 &
+  ' bash "$script_path" "$log_path" "$interval_seconds" </dev/null >/dev/null 2>&1 &
   printf '%s\n' "$!" > "$pid_file"
-  log "started $label fetch loop interval=${interval_seconds}s pid=$!"
+  if [[ "$label" == "Codex" ]]; then
+    log_codex "started $label fetch loop interval=${interval_seconds}s pid=$!"
+  else
+    log "started $label fetch loop interval=${interval_seconds}s pid=$!"
+  fi
 }
 
 if [[ "${1:-}" == "--generate-only" ]]; then
@@ -90,8 +104,8 @@ stop_fetch_loop "$CODEX_FETCH_PID" "Codex"
 log "stopped existing matching Conky processes"
 
 if [[ "$GENERATE_ONLY" -eq 0 ]]; then
-  start_fetch_loop "Linear" 180 "$ROOT/scripts/fetch_linear_tasks.py" "$LINEAR_FETCH_PID"
-  start_fetch_loop "Codex" 300 "$ROOT/scripts/fetch_codex_usage.py" "$CODEX_FETCH_PID"
+  start_fetch_loop "Linear" 180 "$ROOT/scripts/fetch_linear_tasks.py" "$LINEAR_FETCH_PID" "$LINEAR_LOG_PATH"
+  start_fetch_loop "Codex" 300 "$ROOT/scripts/fetch_codex_usage.py" "$CODEX_FETCH_PID" "$CODEX_LOG_PATH"
 fi
 
 generate_config() {
@@ -149,7 +163,7 @@ read_monitor_lines() {
       if [[ "$line" =~ ^[[:space:]]*[0-9]+:[[:space:]]*[^[:space:]]*\* ]]; then
         has_primary=1
       fi
-    done < <(xrandr --listmonitors 2>> "$LOG_PATH" || true)
+    done < <(xrandr --listmonitors 2>> "$LINEAR_LOG_PATH" || true)
 
     if [[ "${#output_lines[@]}" -eq 0 || "$has_primary" -eq 1 ]]; then
       MONITOR_HAS_PRIMARY="$has_primary"
@@ -188,13 +202,13 @@ for line in "${monitor_lines[@]}"; do
   generate_config "$CODEX_CONFIG" "$codex_config" "$index" "$monitor_gap_x" "$CODEX_GAP_Y"
 
   if [[ "$GENERATE_ONLY" -eq 0 ]]; then
-    setsid conky -c "$linear_config" >> "$LOG_PATH" 2>&1 < /dev/null &
+    setsid conky -c "$linear_config" >> "$LINEAR_LOG_PATH" 2>&1 < /dev/null &
     log "launched monitor_index=$index width=$width gap_x=$monitor_gap_x gap_y=$linear_gap_y config=$linear_config pid=$!"
-    setsid conky -c "$codex_config" >> "$LOG_PATH" 2>&1 < /dev/null &
-    log "launched monitor_index=$index width=$width gap_x=$monitor_gap_x config=$codex_config pid=$!"
+    setsid conky -c "$codex_config" >> "$CODEX_LOG_PATH" 2>&1 < /dev/null &
+    log_codex "launched monitor_index=$index width=$width gap_x=$monitor_gap_x config=$codex_config pid=$!"
   else
     log "generated monitor_index=$index width=$width gap_x=$monitor_gap_x gap_y=$linear_gap_y config=$linear_config"
-    log "generated monitor_index=$index width=$width gap_x=$monitor_gap_x config=$codex_config"
+    log_codex "generated monitor_index=$index width=$width gap_x=$monitor_gap_x config=$codex_config"
   fi
   index=$((index + 1))
 done
@@ -202,10 +216,10 @@ done
 if [[ "$index" -eq 0 ]]; then
   log "no monitors detected from xrandr; using base config"
   if [[ "$GENERATE_ONLY" -eq 0 ]]; then
-    setsid conky -c "$BASE_CONFIG" >> "$LOG_PATH" 2>&1 < /dev/null &
+    setsid conky -c "$BASE_CONFIG" >> "$LINEAR_LOG_PATH" 2>&1 < /dev/null &
     log "launched fallback config=$BASE_CONFIG pid=$!"
-    setsid conky -c "$CODEX_CONFIG" >> "$LOG_PATH" 2>&1 < /dev/null &
-    log "launched fallback config=$CODEX_CONFIG pid=$!"
+    setsid conky -c "$CODEX_CONFIG" >> "$CODEX_LOG_PATH" 2>&1 < /dev/null &
+    log_codex "launched fallback config=$CODEX_CONFIG pid=$!"
   fi
 fi
 

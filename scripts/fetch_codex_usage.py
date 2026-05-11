@@ -13,7 +13,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 CACHE_DIR = ROOT / "cache"
 OUTPUT_PATH = CACHE_DIR / "codex-usage.json"
-LOG_PATH = CACHE_DIR / "conky-linear.log"
+LOG_PATH = CACHE_DIR / "conky-codex.log"
 DEFAULT_AUTH_PATH = Path.home() / ".codex" / "auth.json"
 USAGE_URL = "https://chatgpt.com/backend-api/wham/usage"
 TOKEN_URL = "https://auth.openai.com/oauth/token"

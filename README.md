@@ -9,12 +9,14 @@ Desktop Conky widgets for keeping Linear work and Codex quota pressure visible a
 ./scripts/stop_conky_overlays.sh
 ```
 
-`start_conky_overlays.sh` kills prior matching overlays, starts fetch loops, generates one Linear and one Codex config per detected monitor, and logs to `cache/conky-linear.log`.
+`start_conky_overlays.sh` kills prior matching overlays, starts fetch loops, and generates one Linear and one Codex config per detected monitor.
 
 ## Caches
 
 - `cache/linear-cards.json`: Linear cards consumed by the Cairo renderer.
 - `cache/codex-usage.json`: Codex account/window usage consumed by the Cairo renderer.
+- `cache/conky-linear.log`: Linear fetch, launcher, and Linear Conky output.
+- `cache/conky-codex.log`: Codex fetch and Codex Conky output.
 - Fetch loops refresh Linear every `180s` and Codex every `300s`.
 
 ## Linear Rules
