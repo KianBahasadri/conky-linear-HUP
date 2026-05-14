@@ -5,6 +5,8 @@ return function(shared, repo_root)
   local panel_height = 110
   local radius = 18
   local bottom_padding = 4
+  local info_x = 168
+  local divider_x = 148
 
   local function parse_string_array(content, key)
     local body = content:match('"' .. key .. '"%s*:%s*%[(.-)%]')
@@ -34,6 +36,26 @@ return function(shared, repo_root)
     return string.format('%.0f MB', value_mb)
   end
 
+  local function usage_color(percent)
+    if percent >= 85 then
+      return 'f87171'
+    end
+    if percent >= 65 then
+      return 'facc15'
+    end
+    return '39ff88'
+  end
+
+  local function ping_color(latency_ms)
+    if latency_ms >= 180 then
+      return 'f87171'
+    end
+    if latency_ms >= 100 then
+      return 'facc15'
+    end
+    return '39ff88'
+  end
+
   local function draw_info_row(cr, label, value, x, y, color)
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
     cairo_set_font_size(cr, 10)
@@ -58,8 +80,11 @@ return function(shared, repo_root)
 
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
     cairo_set_font_size(cr, 12)
+    local extents = cairo_text_extents_t:create()
+    cairo_text_extents(cr, label, extents)
+    local text_x = x + (width - extents.width) / 2 - extents.x_bearing
     shared.set_hex(cr, color, 1)
-    cairo_move_to(cr, x + 11, y + 15)
+    cairo_move_to(cr, text_x, y + 15)
     cairo_show_text(cr, label)
   end
 
@@ -158,16 +183,16 @@ return function(shared, repo_root)
       return
     end
 
-    cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL)
+    cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
     cairo_set_font_size(cr, 10)
     shared.set_hex(cr, accent, 0.72)
-    cairo_move_to(cr, x + 26, y + 32)
-    cairo_show_text(cr, 'PLAYERS')
+    cairo_move_to(cr, x + 26, y + 42)
+    cairo_show_text(cr, 'ONLINE')
 
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
-    cairo_set_font_size(cr, 31)
-    shared.set_hex(cr, 'ffffff', 1)
-    cairo_move_to(cr, x + 25, y + 62)
+    cairo_set_font_size(cr, 10)
+    shared.set_hex(cr, accent, 0.72)
+    cairo_move_to(cr, x + 78, y + 42)
     cairo_show_text(cr, string.format('%d', status.online))
 
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL)
@@ -175,34 +200,32 @@ return function(shared, repo_root)
     if #status.player_names > 0 then
       for index = 1, math.min(3, #status.player_names) do
         shared.set_hex(cr, 'f8fafc', index == 1 and 0.86 or 0.62)
-        cairo_move_to(cr, x + 26, y + 72 + (index - 1) * 13)
-        cairo_show_text(cr, shared.truncate_title(cr, status.player_names[index], 132))
+        cairo_move_to(cr, x + 26, y + 62 + (index - 1) * 15)
+        cairo_show_text(cr, shared.truncate_title(cr, status.player_names[index], 112))
       end
     else
       shared.set_hex(cr, 'f8fafc', 0.52)
-      cairo_move_to(cr, x + 26, y + 84)
+      cairo_move_to(cr, x + 26, y + 70)
       cairo_show_text(cr, status.online > 0 and 'Names unavailable' or 'No players online')
     end
 
-    cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
-    cairo_set_font_size(cr, 10)
-    shared.set_hex(cr, 'f8fafc', 0.58)
-    cairo_move_to(cr, x + 198, y + 32)
-    cairo_show_text(cr, 'SERVER INFO')
-
-    draw_info_row(cr, 'PING', string.format('%d ms', status.latency_ms), x + 198, y + 52, secondary)
+    draw_info_row(cr, 'PING', string.format('%d ms', status.latency_ms), x + info_x, y + 42, ping_color(status.latency_ms))
     if status.server_info_ok then
-      draw_info_row(cr, 'CPU', string.format('%.1f%%', status.cpu_percent), x + 198, y + 71, accent)
-      draw_info_row(cr, 'RAM', format_memory(status.memory_mb, status.memory_limit_mb), x + 198, y + 90, accent)
+      local memory_percent = 0
+      if status.memory_limit_mb > 0 then
+        memory_percent = (status.memory_mb / status.memory_limit_mb) * 100
+      end
+      draw_info_row(cr, 'CPU', string.format('%.1f%%', status.cpu_percent), x + info_x, y + 64, usage_color(status.cpu_percent))
+      draw_info_row(cr, 'RAM', format_memory(status.memory_mb, status.memory_limit_mb), x + info_x, y + 86, usage_color(memory_percent))
     else
-      draw_info_row(cr, 'CPU', '--', x + 198, y + 71, 'f8fafc')
-      draw_info_row(cr, 'RAM', '--', x + 198, y + 90, 'f8fafc')
+      draw_info_row(cr, 'CPU', '--', x + info_x, y + 64, 'f8fafc')
+      draw_info_row(cr, 'RAM', '--', x + info_x, y + 86, 'f8fafc')
     end
 
     shared.set_hex(cr, secondary, 0.42)
     cairo_set_line_width(cr, 1)
-    cairo_move_to(cr, x + 178, y + 31)
-    cairo_line_to(cr, x + 178, y + 96)
+    cairo_move_to(cr, x + divider_x, y + 32)
+    cairo_line_to(cr, x + divider_x, y + 96)
     cairo_stroke(cr)
   end
 
