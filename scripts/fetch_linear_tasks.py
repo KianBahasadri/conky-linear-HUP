@@ -166,13 +166,14 @@ def render_cards(tasks, state_names, lookback_hours):
     active = [task for task in tasks if task.get("state", {}).get("name") in state_names]
     recently_done = [task for task in tasks if is_recently_done(task, now, lookback_hours)]
     cards = []
-    cards_by_title = {}
+    cards_by_title_and_done = {}
 
     for task in active + recently_done:
         title = task.get("title", "Untitled")
         identifier = task.get("identifier", "")
         task_done = task in recently_done
-        card = cards_by_title.get(title)
+        group_key = (title, task_done)
+        card = cards_by_title_and_done.get(group_key)
 
         if not card:
             card = {
@@ -183,14 +184,14 @@ def render_cards(tasks, state_names, lookback_hours):
                 "done": task_done,
                 "dueToday": is_due_now(task),
             }
-            cards_by_title[title] = card
+            cards_by_title_and_done[group_key] = card
             cards.append(card)
 
         if identifier and identifier not in card["identifiers"]:
             card["identifiers"].append(identifier)
 
         if len(card["identifiers"]) > 1:
-            card["identifier"] = ", ".join(card["identifiers"])
+            card["identifier"] = "   ".join(card["identifiers"])
 
         card["done"] = card["done"] and task_done
         card["dueToday"] = card["dueToday"] or is_due_now(task)
