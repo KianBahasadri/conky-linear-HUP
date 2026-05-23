@@ -25,6 +25,8 @@ Desktop Conky widgets for keeping Linear work, Codex quota pressure, and Minecra
 
 - Card colors are stateful: green is recently completed, red is due today, cyan is normal active work.
 - If any unfinished card is due today, non-due unfinished cards are hidden so urgent work dominates the overlay.
+- Unfinished issues in the `Competitions` project due in the next 3 days are always shown, with their due date beside the issue id.
+- Cancelled and duplicate issues are never shown.
 - Recently completed cards remain visible for `LINEAR_DONE_LOOKBACK_HOURS`.
 
 ## Codex Rules
@@ -53,6 +55,7 @@ Create `.env` from `.env.example` for Linear:
 LINEAR_API_KEY=lin_api_your_key_here
 LINEAR_TASK_STATES=Todo,In Progress
 LINEAR_TASK_LIMIT=20
+LINEAR_COMPETITION_TASK_LIMIT=50
 LINEAR_DONE_LOOKBACK_HOURS=18
 
 MINECRAFT_SERVER=51.79.35.117:25600

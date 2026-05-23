@@ -25,6 +25,8 @@ return function(shared, repo_root)
       local title = object:match('"title"%s*:%s*"(.-)"')
       local done = object:match('"done"%s*:%s*(true)') ~= nil
       local due_today = object:match('"dueToday"%s*:%s*(true)') ~= nil
+      local competition_upcoming = object:match('"competitionUpcoming"%s*:%s*(true)') ~= nil
+      local competition_due_date = object:match('"competitionDueDate"%s*:%s*"(.-)"')
 
       if title then
         table.insert(cards, {
@@ -33,6 +35,8 @@ return function(shared, repo_root)
           title = shared.unescape_json_string(title),
           done = done,
           due_today = due_today,
+          competition_upcoming = competition_upcoming,
+          competition_due_date = competition_due_date and shared.unescape_json_string(competition_due_date) or '',
         })
       end
     end
@@ -134,8 +138,20 @@ return function(shared, repo_root)
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
     cairo_set_font_size(cr, 11)
     shared.set_hex(cr, accent, 0.88)
+
+    local identifier_max_width = card_width - 44
+    if card.competition_upcoming and card.competition_due_date ~= '' then
+      local due_extents = cairo_text_extents_t:create()
+      cairo_text_extents(cr, card.competition_due_date, due_extents)
+      shared.set_hex(cr, accent, 0.88)
+      cairo_move_to(cr, x + card_width - 22 - due_extents.width - due_extents.x_bearing, y + 31)
+      cairo_show_text(cr, card.competition_due_date)
+      identifier_max_width = math.max(40, card_width - 62 - due_extents.width)
+    end
+
+    shared.set_hex(cr, accent, 0.88)
     cairo_move_to(cr, x + 22, y + 31)
-    cairo_show_text(cr, shared.truncate_title(cr, card.identifier, card_width - 44))
+    cairo_show_text(cr, shared.truncate_title(cr, card.identifier, identifier_max_width))
 
     cairo_set_font_size(cr, font_size)
 
@@ -182,7 +198,7 @@ return function(shared, repo_root)
     if has_red_cards then
       local filtered_cards = {}
       for _, card in ipairs(cards) do
-        if card.done or card.due_today then
+        if card.done or card.due_today or card.competition_upcoming then
           table.insert(filtered_cards, card)
         end
       end
