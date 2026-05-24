@@ -45,6 +45,7 @@ Desktop Conky widgets for keeping Linear work, Codex quota pressure, and Minecra
 - If `PEBBLEHOST_API_KEY` is present, the fetcher also reads PebbleHost resource stats and player names.
 - PebbleHost server lookup is automatic from `MINECRAFT_SERVER`; `PEBBLEHOST_SERVER_ID` can force a specific server identifier.
 - The panel is launched in the bottom-left corner by default.
+- Set `MINECRAFT_OVERLAY_ENABLED=0` to disable the Minecraft overlay and its refresh loop.
 - `MINECRAFT_REFRESH_SECONDS`, `MINECRAFT_GAP_X`, and `MINECRAFT_GAP_Y` can tune refresh cadence and placement.
 
 ## Config
@@ -60,6 +61,7 @@ LINEAR_DONE_LOOKBACK_HOURS=18
 
 MINECRAFT_SERVER=51.79.35.117:25600
 MINECRAFT_SERVER_LABEL=Minecraft
+MINECRAFT_OVERLAY_ENABLED=1
 MINECRAFT_STATUS_TIMEOUT_SECONDS=5
 
 PEBBLEHOST_API_KEY=ptlc_your_key_here
