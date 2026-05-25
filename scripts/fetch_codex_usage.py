@@ -13,11 +13,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 CACHE_DIR = ROOT / "cache"
 OUTPUT_PATH = CACHE_DIR / "codex-usage.json"
+RENDER_PATH = CACHE_DIR / "codex-usage-render.tsv"
 LOG_PATH = CACHE_DIR / "conky-codex.log"
 DEFAULT_AUTH_PATH = Path.home() / ".codex" / "auth.json"
 USAGE_URL = "https://chatgpt.com/backend-api/wham/usage"
 TOKEN_URL = "https://auth.openai.com/oauth/token"
 CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
+FIVE_HOUR_WINDOW_SECONDS = 5 * 60 * 60
+WEEKLY_WINDOW_SECONDS = 7 * 24 * 60 * 60
+LONG_WINDOW_THRESHOLD_SECONDS = 24 * 60 * 60
 
 
 def log_event(message):
@@ -35,6 +39,66 @@ def atomic_write_text(path, content):
 
 def atomic_write_json(path, data):
     atomic_write_text(path, json.dumps(data, indent=2))
+
+
+def escape_tsv(value):
+    return str(value).replace("\\", "\\\\").replace("\t", "\\t").replace("\n", "\\n")
+
+
+def render_tsv(output):
+    lines = [
+        "\t".join(
+            [
+                "meta",
+                "ok",
+                "1" if output.get("ok") else "0",
+                "updatedAt",
+                escape_tsv(output.get("updatedAt", "")),
+                "error",
+                escape_tsv(output.get("error", "")),
+            ]
+        )
+    ]
+
+    for account in output.get("accounts", []):
+        lines.append(
+            "\t".join(
+                [
+                    "account",
+                    escape_tsv(account.get("label", "")),
+                    escape_tsv(account.get("planType", "")),
+                    "1" if account.get("isSelected") else "0",
+                    "1" if account.get("ok") else "0",
+                    escape_tsv(account.get("error", "")),
+                ]
+            )
+        )
+
+    for bar in output.get("bars", []):
+        lines.append(
+            "\t".join(
+                [
+                    "bar",
+                    escape_tsv(bar.get("account", "")),
+                    escape_tsv(bar.get("planType", "")),
+                    "1" if bar.get("isSelected") else "0",
+                    escape_tsv(bar.get("window", "")),
+                    str(bar.get("usedPercent", 0)),
+                    str(bar.get("remainingPercent", 0)),
+                    escape_tsv(bar.get("resetsAt") or ""),
+                    str(bar.get("resetAtEpoch", 0)),
+                    str(bar.get("resetAfterSeconds", 0)),
+                    str(bar.get("windowSeconds", 0)),
+                ]
+            )
+        )
+
+    return "\n".join(lines) + "\n"
+
+
+def write_outputs(output):
+    atomic_write_json(OUTPUT_PATH, output)
+    atomic_write_text(RENDER_PATH, render_tsv(output))
 
 
 def discover_auth_files():
@@ -179,46 +243,80 @@ def refresh_token(auth):
 
     auth["access_token"] = access_token
     auth["refresh_token"] = tokens.get("refresh_token", auth["refresh_token"])
-    auth["path"].write_text(json.dumps(auth["raw"], indent=2), encoding="utf-8")
+    atomic_write_json(auth["path"], auth["raw"])
     os.chmod(auth["path"], 0o600)
 
 
-def normalize_window(label, window):
+def as_float(value, default=0.0):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def as_int(value, default=0):
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return default
+
+
+def normalize_window(label, window, fetched_at):
     if not isinstance(window, dict):
         return None
 
-    used_percent = float(window.get("used_percent") or 0)
-    reset_at = window.get("reset_at") or 0
-    reset_after_seconds = window.get("reset_after_seconds") or 0
+    used_percent = max(0.0, min(100.0, as_float(window.get("used_percent"))))
+    reset_at = as_float(window.get("reset_at"))
+    reset_after_seconds = as_int(window.get("reset_after_seconds"))
     resets_at_iso = None
 
     if reset_at:
-        resets_at_iso = datetime.fromtimestamp(float(reset_at), tz=timezone.utc).isoformat()
+        resets_at_iso = datetime.fromtimestamp(reset_at, tz=timezone.utc).isoformat()
+        if reset_after_seconds <= 0:
+            reset_after_seconds = max(0, int(reset_at - fetched_at.timestamp()))
+    elif reset_after_seconds > 0:
+        reset_at = fetched_at.timestamp() + reset_after_seconds
+        resets_at_iso = datetime.fromtimestamp(reset_at, tz=timezone.utc).isoformat()
+
+    normalized_label = label
+    if label == "5h" and reset_after_seconds > LONG_WINDOW_THRESHOLD_SECONDS:
+        normalized_label = "weekly"
+    window_seconds = WEEKLY_WINDOW_SECONDS if normalized_label == "weekly" else FIVE_HOUR_WINDOW_SECONDS
 
     return {
-        "label": label,
+        "label": normalized_label,
         "usedPercent": round(used_percent, 1),
         "remainingPercent": max(0, round(100 - used_percent, 1)),
         "resetsAt": resets_at_iso,
-        "resetAfterSeconds": int(reset_after_seconds or 0),
+        "resetAtEpoch": int(reset_at) if reset_at else 0,
+        "resetAfterSeconds": max(0, reset_after_seconds),
+        "windowSeconds": window_seconds,
     }
 
 
 def normalize_usage(auth, usage, is_selected):
     rate_limit = usage.get("rate_limit") or {}
+    plan_type = usage.get("plan_type", "")
+    fetched_at = datetime.now(timezone.utc)
     windows = []
+    labels_seen = set()
 
     for label, key in (("5h", "primary_window"), ("weekly", "secondary_window")):
-        normalized = normalize_window(label, rate_limit.get(key))
-        if normalized and (normalized["usedPercent"] > 0 or normalized["resetsAt"]):
-            windows.append(normalized)
+        normalized = normalize_window(label, rate_limit.get(key), fetched_at)
+        if not normalized or not (normalized["usedPercent"] > 0 or normalized["resetsAt"]):
+            continue
+        if normalized["label"] in labels_seen:
+            log_event(f"account={auth['label']} skipped duplicate {normalized['label']} window from {key}")
+            continue
+        labels_seen.add(normalized["label"])
+        windows.append(normalized)
 
     return {
         "ok": True,
         "label": auth["label"],
         "email": auth["email"],
         "accountId": auth["account_id"],
-        "planType": usage.get("plan_type", ""),
+        "planType": plan_type,
         "isSelected": is_selected,
         "windows": windows,
     }
@@ -234,6 +332,19 @@ def normalize_error(label, message, is_selected=False):
     }
 
 
+def plan_sort_rank(account):
+    plan_type = str(account.get("planType", "")).lower()
+    if plan_type == "free":
+        return 0
+    if plan_type == "plus":
+        return 2
+    return 1
+
+
+def sort_accounts(accounts):
+    return sorted(accounts, key=plan_sort_rank)
+
+
 def flatten_bars(accounts):
     bars = []
     for account in accounts:
@@ -247,7 +358,9 @@ def flatten_bars(accounts):
                     "usedPercent": window.get("usedPercent", 0),
                     "remainingPercent": window.get("remainingPercent", 0),
                     "resetsAt": window.get("resetsAt"),
+                    "resetAtEpoch": window.get("resetAtEpoch", 0),
                     "resetAfterSeconds": window.get("resetAfterSeconds", 0),
+                    "windowSeconds": window.get("windowSeconds", 0),
                     "ok": account.get("ok", False),
                 }
             )
@@ -264,7 +377,7 @@ def write_error(message):
         "accounts": [],
         "bars": [],
     }
-    atomic_write_json(OUTPUT_PATH, output)
+    write_outputs(output)
     log_event(f"error: {message}")
 
 
@@ -300,6 +413,7 @@ def main():
 
     try:
         accounts = [fetch_account(label, path, is_selected) for label, path, is_selected in auth_files]
+        accounts = sort_accounts(accounts)
         ok_count = sum(1 for account in accounts if account.get("ok"))
         output = {
             "updatedAt": datetime.now(timezone.utc).isoformat(),
@@ -308,7 +422,7 @@ def main():
             "accounts": accounts,
             "bars": flatten_bars(accounts),
         }
-        atomic_write_json(OUTPUT_PATH, output)
+        write_outputs(output)
         log_event(f"completed fetch accounts={len(accounts)} ok={ok_count} wrote={OUTPUT_PATH.name}")
         print(json.dumps(output, indent=2))
         return 0 if ok_count > 0 else 1

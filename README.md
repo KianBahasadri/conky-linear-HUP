@@ -14,7 +14,8 @@ Desktop Conky widgets for keeping Linear work, Codex quota pressure, and Minecra
 ## Caches
 
 - `cache/linear-cards.json`: Linear cards consumed by the Cairo renderer.
-- `cache/codex-usage.json`: Codex account/window usage consumed by the Cairo renderer.
+- `cache/codex-usage.json`: full Codex account/window usage for inspection.
+- `cache/codex-usage-render.tsv`: renderer-friendly Codex usage consumed by the Cairo renderer.
 - `cache/minecraft-status.json`: Minecraft Java server status consumed by the Cairo renderer.
 - `cache/conky-linear.log`: Linear fetch, launcher, and Linear Conky output.
 - `cache/conky-codex.log`: Codex fetch and Codex Conky output.

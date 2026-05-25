@@ -1,9 +1,10 @@
 return function(shared, repo_root)
   local codex_usage_path = repo_root .. '/cache/codex-usage.json'
+  local codex_usage_tsv_path = repo_root .. '/cache/codex-usage-render.tsv'
   local font = 'JetBrains Mono'
   local codex_width = 1000
   local codex_height = 110
-  local codex_auto_height = false
+  local codex_auto_height = true
   local codex_radius = 18
   local codex_account_row_x = 34
   local codex_account_row_y = 8
@@ -23,7 +24,142 @@ return function(shared, repo_root)
   local weekly_window_seconds = 604800
   local pace_threshold = 10
 
-  local function read_codex_usage()
+  local function seconds_until_reset(window)
+    if window.reset_at_epoch and window.reset_at_epoch > 0 then
+      return math.max(0, window.reset_at_epoch - os.time())
+    end
+    return math.max(0, window.reset_after_seconds or 0)
+  end
+
+  local function normalized_window_label(window)
+    local label = string.lower(window.label or '')
+    if label == '5h' and seconds_until_reset(window) > 86400 then
+      return 'weekly'
+    end
+    return label
+  end
+
+  local function window_duration(window)
+    if window.window_seconds and window.window_seconds > 0 then
+      return window.window_seconds
+    end
+    if normalized_window_label(window) == 'weekly' then
+      return weekly_window_seconds
+    end
+    return five_hour_window_seconds
+  end
+
+  local function unescape_tsv(value)
+    local output = {}
+    local index = 1
+
+    while index <= #value do
+      local character = value:sub(index, index)
+      if character == '\\' and index < #value then
+        local next_character = value:sub(index + 1, index + 1)
+        if next_character == 't' then
+          table.insert(output, '\t')
+        elseif next_character == 'n' then
+          table.insert(output, ' ')
+        elseif next_character == '\\' then
+          table.insert(output, '\\')
+        else
+          table.insert(output, next_character)
+        end
+        index = index + 2
+      else
+        table.insert(output, character)
+        index = index + 1
+      end
+    end
+
+    return table.concat(output)
+  end
+
+  local function split_tsv(line)
+    local fields = {}
+    for field in (line .. '\t'):gmatch('(.-)\t') do
+      table.insert(fields, unescape_tsv(field))
+    end
+    return fields
+  end
+
+  local function read_codex_usage_tsv()
+    local content = shared.read_file(codex_usage_tsv_path)
+    if not content then
+      return nil
+    end
+
+    local usage = {
+      ok = false,
+      error = '',
+      accounts = {},
+    }
+    local account_index = {}
+
+    for line in content:gmatch('[^\r\n]+') do
+      local fields = split_tsv(line)
+      local row_type = fields[1]
+
+      if row_type == 'meta' then
+        for index = 2, #fields, 2 do
+          local key = fields[index]
+          local value = fields[index + 1] or ''
+          if key == 'ok' then
+            usage.ok = value == '1'
+          elseif key == 'error' then
+            usage.error = value
+          end
+        end
+      elseif row_type == 'account' then
+        local label = fields[2] or ''
+        if label ~= '' and not account_index[label] then
+          account_index[label] = {
+            label = label,
+            plan_type = fields[3] or '',
+            is_selected = fields[4] == '1',
+            ok = fields[5] == '1',
+            error = fields[6] or '',
+            windows = {},
+          }
+          table.insert(usage.accounts, account_index[label])
+        end
+      elseif row_type == 'bar' then
+        local label = fields[2] or ''
+        if label ~= '' then
+          if not account_index[label] then
+            account_index[label] = {
+              label = label,
+              plan_type = fields[3] or '',
+              is_selected = fields[4] == '1',
+              ok = true,
+              error = '',
+              windows = {},
+            }
+            table.insert(usage.accounts, account_index[label])
+          end
+
+          table.insert(account_index[label].windows, {
+            label = normalized_window_label({
+              label = fields[5] or '',
+              reset_at_epoch = tonumber(fields[9]) or 0,
+              reset_after_seconds = tonumber(fields[10]) or 0,
+            }),
+            used_percent = tonumber(fields[6]) or 0,
+            remaining_percent = tonumber(fields[7]) or 0,
+            resets_at = fields[8] or '',
+            reset_at_epoch = tonumber(fields[9]) or 0,
+            reset_after_seconds = tonumber(fields[10]) or 0,
+            window_seconds = tonumber(fields[11]) or 0,
+          })
+        end
+      end
+    end
+
+    return usage
+  end
+
+  local function read_codex_usage_json()
     local content = shared.read_file(codex_usage_path)
     if not content then
       return nil
@@ -42,7 +178,9 @@ return function(shared, repo_root)
       local used_percent = tonumber(object:match('"usedPercent"%s*:%s*([%d%.]+)')) or 0
       local remaining_percent = tonumber(object:match('"remainingPercent"%s*:%s*([%d%.]+)')) or math.max(0, 100 - used_percent)
       local resets_at = object:match('"resetsAt"%s*:%s*"(.-)"') or ''
+      local reset_at_epoch = tonumber(object:match('"resetAtEpoch"%s*:%s*(%d+)')) or 0
       local reset_after_seconds = tonumber(object:match('"resetAfterSeconds"%s*:%s*(%d+)')) or 0
+      local window_seconds = tonumber(object:match('"windowSeconds"%s*:%s*(%d+)')) or 0
 
       if account and window then
         if not account_index[account] then
@@ -58,11 +196,17 @@ return function(shared, repo_root)
         end
 
         table.insert(account_index[account].windows, {
-          label = window,
+          label = normalized_window_label({
+            label = window,
+            reset_at_epoch = reset_at_epoch,
+            reset_after_seconds = reset_after_seconds,
+          }),
           used_percent = used_percent,
           remaining_percent = remaining_percent,
           resets_at = resets_at,
+          reset_at_epoch = reset_at_epoch,
           reset_after_seconds = reset_after_seconds,
+          window_seconds = window_seconds,
         })
       end
     end
@@ -72,6 +216,39 @@ return function(shared, repo_root)
       error = error_message and shared.unescape_json_string(error_message) or '',
       accounts = accounts,
     }
+  end
+
+  local function plan_sort_rank(account)
+    local plan_type = string.lower(account.plan_type or '')
+    if plan_type == 'free' then
+      return 0
+    elseif plan_type == 'plus' then
+      return 2
+    end
+    return 1
+  end
+
+  local function sort_accounts(accounts)
+    for index, account in ipairs(accounts or {}) do
+      account.original_index = index
+    end
+
+    table.sort(accounts, function(left, right)
+      local left_rank = plan_sort_rank(left)
+      local right_rank = plan_sort_rank(right)
+      if left_rank == right_rank then
+        return (left.original_index or 0) < (right.original_index or 0)
+      end
+      return left_rank < right_rank
+    end)
+  end
+
+  local function read_codex_usage()
+    local usage = read_codex_usage_tsv() or read_codex_usage_json()
+    if usage then
+      sort_accounts(usage.accounts)
+    end
+    return usage
   end
 
   local function format_reset(seconds)
@@ -93,13 +270,19 @@ return function(shared, repo_root)
   end
 
   local function format_reset_at(window)
-    if window.reset_after_seconds <= 0 then
-      return format_reset(window.reset_after_seconds)
+    local reset_time = 0
+    if window.reset_at_epoch and window.reset_at_epoch > 0 then
+      reset_time = window.reset_at_epoch
+    elseif window.reset_after_seconds and window.reset_after_seconds > 0 then
+      reset_time = os.time() + window.reset_after_seconds
     end
 
-    local reset_time = os.time() + window.reset_after_seconds
+    if reset_time <= 0 then
+      return format_reset(seconds_until_reset(window))
+    end
+
     local local_time = os.date('*t', reset_time)
-    local label = string.lower(window.label or '')
+    local label = normalized_window_label(window)
     local hour = local_time.hour % 12
     if hour == 0 then
       hour = 12
@@ -114,20 +297,9 @@ return function(shared, repo_root)
     return time_label
   end
 
-  local function format_reset_label(window)
-    local countdown = format_reset(window.reset_after_seconds)
-    local reset_at = format_reset_at(window)
-
-    if reset_at == countdown then
-      return countdown
-    end
-
-    return string.format('%s    %s', countdown, reset_at)
-  end
-
   local function find_weekly_window(account)
     for _, window in ipairs(account.windows or {}) do
-      if string.lower(window.label or '') == 'weekly' then
+      if normalized_window_label(window) == 'weekly' then
         return window
       end
     end
@@ -139,7 +311,7 @@ return function(shared, repo_root)
       return nil
     end
 
-    local elapsed_seconds = window_seconds - window.reset_after_seconds
+    local elapsed_seconds = window_seconds - seconds_until_reset(window)
     local expected = shared.clamp((elapsed_seconds / window_seconds) * 100, 0, 100)
     local actual = shared.clamp(window.used_percent, 0, 100)
     local delta = actual - expected
@@ -167,7 +339,7 @@ return function(shared, repo_root)
     for _, account in ipairs(accounts or {}) do
       local weekly = find_weekly_window(account)
       if weekly then
-        local weekly_pace = calculate_window_pace(weekly, weekly_window_seconds)
+        local weekly_pace = calculate_window_pace(weekly, window_duration(weekly))
 
         if weekly_pace then
           expected_total = expected_total + weekly_pace.expected
@@ -274,10 +446,10 @@ return function(shared, repo_root)
   local function draw_codex_bar(cr, window, x, y, accent, accent_secondary)
     local used = shared.clamp(window.used_percent, 0, 100)
     local fill_width = codex_bar_width * (used / 100)
-    local window_label = string.lower(window.label or '')
+    local window_label = normalized_window_label(window)
     local is_weekly = window_label == 'weekly'
     local is_five_hour = window_label == '5h'
-    local countdown_label = format_reset(window.reset_after_seconds)
+    local countdown_label = format_reset(seconds_until_reset(window))
     local reset_at_label = format_reset_at(window)
 
     local bar_y = y
@@ -324,9 +496,9 @@ return function(shared, repo_root)
     cairo_stroke(cr)
 
     if is_weekly then
-      draw_pace_marker(cr, calculate_window_pace(window, weekly_window_seconds), x, bar_y)
+      draw_pace_marker(cr, calculate_window_pace(window, window_duration(window)), x, bar_y)
     elseif is_five_hour then
-      draw_pace_marker(cr, calculate_window_pace(window, five_hour_window_seconds), x, bar_y)
+      draw_pace_marker(cr, calculate_window_pace(window, window_duration(window)), x, bar_y)
     end
 
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL)
@@ -365,9 +537,18 @@ return function(shared, repo_root)
 
   local function draw_codex_account_row(cr, account, x, y)
     local name = string.upper(account.label)
-    local first = account.windows[1]
-    local second = account.windows[2] or account.windows[1]
+    local first = nil
+    local second = nil
     local label_x = x + 22
+
+    for _, window in ipairs(account.windows or {}) do
+      local window_label = normalized_window_label(window)
+      if window_label == 'weekly' then
+        second = window
+      elseif not first then
+        first = window
+      end
+    end
 
     if account.is_selected then
       shared.set_hex(cr, 'ff9f1c', 0.20)
