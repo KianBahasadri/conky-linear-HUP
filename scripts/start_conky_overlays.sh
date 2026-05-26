@@ -45,9 +45,11 @@ OVERLAY_WIDTH=1540
 LINEAR_GAP_Y=4
 LINEAR_PRIMARY_GAP_Y=34
 LINEAR_PRIMARY_MONITOR_INDEX="${LINEAR_PRIMARY_MONITOR_INDEX:-0}"
+LINEAR_OVERLAY_ENABLED="${LINEAR_OVERLAY_ENABLED:-1}"
 PRIMARY_WAIT_SECONDS="${PRIMARY_WAIT_SECONDS:-20}"
 CODEX_GAP_Y=12
-MINECRAFT_GAP_X="${MINECRAFT_GAP_X:-24}"
+CODEX_OVERLAY_ENABLED="${CODEX_OVERLAY_ENABLED:-1}"
+MINECRAFT_GAP_X="${MINECRAFT_GAP_X:-4}"
 MINECRAFT_GAP_Y="${MINECRAFT_GAP_Y:-12}"
 MINECRAFT_REFRESH_SECONDS="${MINECRAFT_REFRESH_SECONDS:-60}"
 MINECRAFT_OVERLAY_ENABLED="${MINECRAFT_OVERLAY_ENABLED:-1}"
@@ -155,6 +157,12 @@ if [[ ! "$PRIMARY_WAIT_SECONDS" =~ ^[0-9]+$ ]]; then
 fi
 
 log "starting; root=$ROOT generate_only=$GENERATE_ONLY"
+if env_flag_disabled "$LINEAR_OVERLAY_ENABLED"; then
+  log "linear overlay disabled by LINEAR_OVERLAY_ENABLED=$LINEAR_OVERLAY_ENABLED"
+fi
+if env_flag_disabled "$CODEX_OVERLAY_ENABLED"; then
+  log_codex "codex overlay disabled by CODEX_OVERLAY_ENABLED=$CODEX_OVERLAY_ENABLED"
+fi
 if env_flag_disabled "$MINECRAFT_OVERLAY_ENABLED"; then
   log_minecraft "minecraft overlay disabled by MINECRAFT_OVERLAY_ENABLED=$MINECRAFT_OVERLAY_ENABLED"
 fi
@@ -179,8 +187,12 @@ pkill -f "$ROOT/scripts/fetch_github_contributions.py" 2>/dev/null || true
 log "stopped existing matching Conky processes"
 
 if [[ "$GENERATE_ONLY" -eq 0 ]]; then
-  start_fetch_loop "Linear" 180 "$ROOT/scripts/fetch_linear_tasks.py" "$LINEAR_FETCH_PID" "$LINEAR_LOG_PATH"
-  start_fetch_loop "Codex" 300 "$ROOT/scripts/fetch_codex_usage.py" "$CODEX_FETCH_PID" "$CODEX_LOG_PATH"
+  if ! env_flag_disabled "$LINEAR_OVERLAY_ENABLED"; then
+    start_fetch_loop "Linear" 180 "$ROOT/scripts/fetch_linear_tasks.py" "$LINEAR_FETCH_PID" "$LINEAR_LOG_PATH"
+  fi
+  if ! env_flag_disabled "$CODEX_OVERLAY_ENABLED"; then
+    start_fetch_loop "Codex" 300 "$ROOT/scripts/fetch_codex_usage.py" "$CODEX_FETCH_PID" "$CODEX_LOG_PATH"
+  fi
   if ! env_flag_disabled "$MINECRAFT_OVERLAY_ENABLED"; then
     start_fetch_loop "Minecraft" "$MINECRAFT_REFRESH_SECONDS" "$ROOT/scripts/fetch_minecraft_status.py" "$MINECRAFT_FETCH_PID" "$MINECRAFT_LOG_PATH"
   fi
@@ -281,8 +293,12 @@ for line in "${monitor_lines[@]}"; do
   minecraft_config="$GENERATED_DIR/minecraft-overlay-$index.conkyrc"
   github_config="$GENERATED_DIR/github-overlay-$index.conkyrc"
 
-  generate_config "$BASE_CONFIG" "$linear_config" "$index" "$monitor_gap_x" "$linear_gap_y"
-  generate_config "$CODEX_CONFIG" "$codex_config" "$index" "$monitor_gap_x" "$CODEX_GAP_Y"
+  if ! env_flag_disabled "$LINEAR_OVERLAY_ENABLED"; then
+    generate_config "$BASE_CONFIG" "$linear_config" "$index" "$monitor_gap_x" "$linear_gap_y"
+  fi
+  if ! env_flag_disabled "$CODEX_OVERLAY_ENABLED"; then
+    generate_config "$CODEX_CONFIG" "$codex_config" "$index" "$monitor_gap_x" "$CODEX_GAP_Y"
+  fi
   if ! env_flag_disabled "$MINECRAFT_OVERLAY_ENABLED"; then
     generate_config "$MINECRAFT_CONFIG" "$minecraft_config" "$index" "$MINECRAFT_GAP_X" "$MINECRAFT_GAP_Y"
   fi
@@ -291,10 +307,14 @@ for line in "${monitor_lines[@]}"; do
   fi
 
   if [[ "$GENERATE_ONLY" -eq 0 ]]; then
-    setsid conky -c "$linear_config" >> "$LINEAR_LOG_PATH" 2>&1 < /dev/null &
-    log "launched monitor_index=$index width=$width gap_x=$monitor_gap_x gap_y=$linear_gap_y config=$linear_config pid=$!"
-    setsid conky -c "$codex_config" >> "$CODEX_LOG_PATH" 2>&1 < /dev/null &
-    log_codex "launched monitor_index=$index width=$width gap_x=$monitor_gap_x config=$codex_config pid=$!"
+    if ! env_flag_disabled "$LINEAR_OVERLAY_ENABLED"; then
+      setsid conky -c "$linear_config" >> "$LINEAR_LOG_PATH" 2>&1 < /dev/null &
+      log "launched monitor_index=$index width=$width gap_x=$monitor_gap_x gap_y=$linear_gap_y config=$linear_config pid=$!"
+    fi
+    if ! env_flag_disabled "$CODEX_OVERLAY_ENABLED"; then
+      setsid conky -c "$codex_config" >> "$CODEX_LOG_PATH" 2>&1 < /dev/null &
+      log_codex "launched monitor_index=$index width=$width gap_x=$monitor_gap_x config=$codex_config pid=$!"
+    fi
     if ! env_flag_disabled "$MINECRAFT_OVERLAY_ENABLED"; then
       setsid conky -c "$minecraft_config" >> "$MINECRAFT_LOG_PATH" 2>&1 < /dev/null &
       log_minecraft "launched monitor_index=$index width=$width gap_x=$MINECRAFT_GAP_X gap_y=$MINECRAFT_GAP_Y config=$minecraft_config pid=$!"
@@ -304,8 +324,12 @@ for line in "${monitor_lines[@]}"; do
       log_github "launched monitor_index=$index width=$width gap_x=$GITHUB_GAP_X gap_y=$GITHUB_GAP_Y config=$github_config pid=$!"
     fi
   else
-    log "generated monitor_index=$index width=$width gap_x=$monitor_gap_x gap_y=$linear_gap_y config=$linear_config"
-    log_codex "generated monitor_index=$index width=$width gap_x=$monitor_gap_x config=$codex_config"
+    if ! env_flag_disabled "$LINEAR_OVERLAY_ENABLED"; then
+      log "generated monitor_index=$index width=$width gap_x=$monitor_gap_x gap_y=$linear_gap_y config=$linear_config"
+    fi
+    if ! env_flag_disabled "$CODEX_OVERLAY_ENABLED"; then
+      log_codex "generated monitor_index=$index width=$width gap_x=$monitor_gap_x config=$codex_config"
+    fi
     if ! env_flag_disabled "$MINECRAFT_OVERLAY_ENABLED"; then
       log_minecraft "generated monitor_index=$index width=$width gap_x=$MINECRAFT_GAP_X gap_y=$MINECRAFT_GAP_Y config=$minecraft_config"
     fi
@@ -319,10 +343,14 @@ done
 if [[ "$index" -eq 0 ]]; then
   log "no monitors detected from xrandr; using base config"
   if [[ "$GENERATE_ONLY" -eq 0 ]]; then
-    setsid conky -c "$BASE_CONFIG" >> "$LINEAR_LOG_PATH" 2>&1 < /dev/null &
-    log "launched fallback config=$BASE_CONFIG pid=$!"
-    setsid conky -c "$CODEX_CONFIG" >> "$CODEX_LOG_PATH" 2>&1 < /dev/null &
-    log_codex "launched fallback config=$CODEX_CONFIG pid=$!"
+    if ! env_flag_disabled "$LINEAR_OVERLAY_ENABLED"; then
+      setsid conky -c "$BASE_CONFIG" >> "$LINEAR_LOG_PATH" 2>&1 < /dev/null &
+      log "launched fallback config=$BASE_CONFIG pid=$!"
+    fi
+    if ! env_flag_disabled "$CODEX_OVERLAY_ENABLED"; then
+      setsid conky -c "$CODEX_CONFIG" >> "$CODEX_LOG_PATH" 2>&1 < /dev/null &
+      log_codex "launched fallback config=$CODEX_CONFIG pid=$!"
+    fi
     if ! env_flag_disabled "$MINECRAFT_OVERLAY_ENABLED"; then
       setsid conky -c "$MINECRAFT_CONFIG" >> "$MINECRAFT_LOG_PATH" 2>&1 < /dev/null &
       log_minecraft "launched fallback config=$MINECRAFT_CONFIG pid=$!"

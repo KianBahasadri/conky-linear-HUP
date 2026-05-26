@@ -10,6 +10,7 @@ Desktop Conky widgets for keeping Linear work, Codex quota pressure, Minecraft s
 ```
 
 `start_conky_overlays.sh` kills prior matching overlays, starts fetch loops, and generates one Linear, Codex, Minecraft, and GitHub config per detected monitor.
+Each overlay can be disabled with its `*_OVERLAY_ENABLED=0` variable in `.env`.
 
 ## Caches
 
@@ -31,6 +32,7 @@ Desktop Conky widgets for keeping Linear work, Codex quota pressure, Minecraft s
 - Unfinished issues in the `Competitions` project due in the next 3 days are always shown, with their due date beside the issue id.
 - Cancelled and duplicate issues are never shown.
 - Recently completed cards remain visible for `LINEAR_DONE_LOOKBACK_HOURS`.
+- Set `LINEAR_OVERLAY_ENABLED=0` to disable the Linear overlay and its refresh loop.
 
 ## Codex Rules
 
@@ -41,6 +43,7 @@ Desktop Conky widgets for keeping Linear work, Codex quota pressure, Minecraft s
 - Under pace by at least `10%` shows an amber fast-mode chip, except during the first `10%` of the weekly cycle.
 - Over pace by at least `10%` shows a red warning chip, including early in the cycle.
 - The pace chip is centered across the whole Codex box and uses the combined weekly pace state.
+- Set `CODEX_OVERLAY_ENABLED=0` to disable the Codex overlay and its refresh loop.
 
 ## Minecraft Rules
 
@@ -65,10 +68,13 @@ Create `.env` from `.env.example` for Linear:
 
 ```bash
 LINEAR_API_KEY=lin_api_your_key_here
+LINEAR_OVERLAY_ENABLED=1
 LINEAR_TASK_STATES=Todo,In Progress
 LINEAR_TASK_LIMIT=20
 LINEAR_COMPETITION_TASK_LIMIT=50
 LINEAR_DONE_LOOKBACK_HOURS=18
+
+CODEX_OVERLAY_ENABLED=1
 
 MINECRAFT_SERVER=51.79.35.117:25600
 MINECRAFT_SERVER_LABEL=Minecraft

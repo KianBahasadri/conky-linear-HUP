@@ -237,9 +237,9 @@ return function(shared, repo_root)
 
     local cr = cairo_create(surface)
     local status = read_status()
-    panel_width = math.min(panel_width, conky_window.width - 40)
+    panel_width = math.min(panel_width, conky_window.width - 24)
     local y = math.max(bottom_padding, conky_window.height - panel_height - bottom_padding)
-    draw_status(cr, status, 20, y)
+    draw_status(cr, status, 8, y)
 
     cairo_destroy(cr)
     if should_destroy_surface and cairo_surface_destroy then
