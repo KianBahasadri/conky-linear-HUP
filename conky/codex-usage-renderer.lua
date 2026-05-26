@@ -253,7 +253,7 @@ return function(shared, repo_root)
 
   local function format_reset(seconds)
     if seconds <= 0 then
-      return 'reset pending'
+      return 'wait'
     end
 
     local days = math.floor(seconds / 86400)
