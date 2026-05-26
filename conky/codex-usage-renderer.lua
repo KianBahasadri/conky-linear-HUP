@@ -9,7 +9,7 @@ return function(shared, repo_root)
   local codex_account_row_x = 34
   local codex_account_row_y = 8
   local codex_account_row_gap = 19
-  local codex_dynamic_height_padding = 46
+  local codex_dynamic_height_padding = 30
   local codex_first_bar_x = 113
   -- Width of each Codex usage progress bar.
   local codex_bar_width = 230
