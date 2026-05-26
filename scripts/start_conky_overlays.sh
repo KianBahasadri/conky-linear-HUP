@@ -209,7 +209,7 @@ generate_config() {
         printf "  gap_y = %s,\n" "$monitor_gap_y"
         ;;
       "  lua_load = "*)
-        printf "  lua_load = '%s/conky/linear-cards.lua',\n" "$ROOT"
+        printf "  lua_load = '%s/conky/overlay-entrypoint.lua',\n" "$ROOT"
         ;;
       *"fetch_linear_tasks.py"*) ;;
       *"fetch_codex_usage.py"*) ;;

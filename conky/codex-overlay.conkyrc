@@ -27,7 +27,7 @@ conky.config = {
   own_window_type = 'desktop',
   update_interval = 60,
   use_xft = true,
-  lua_load = './conky/linear-cards.lua',
+  lua_load = './conky/overlay-entrypoint.lua',
   lua_draw_hook_post = 'draw_codex_usage',
 }
 
