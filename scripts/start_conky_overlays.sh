@@ -30,14 +30,17 @@ fi
 BASE_CONFIG="$ROOT/conky/linear-overlay.conkyrc"
 CODEX_CONFIG="$ROOT/conky/codex-overlay.conkyrc"
 MINECRAFT_CONFIG="$ROOT/conky/minecraft-overlay.conkyrc"
+GITHUB_CONFIG="$ROOT/conky/github-overlay.conkyrc"
 GENERATED_DIR="$ROOT/conky/generated"
 CACHE_DIR="$ROOT/cache"
 LINEAR_LOG_PATH="$CACHE_DIR/conky-linear.log"
 CODEX_LOG_PATH="$CACHE_DIR/conky-codex.log"
 MINECRAFT_LOG_PATH="$CACHE_DIR/conky-minecraft.log"
+GITHUB_LOG_PATH="$CACHE_DIR/conky-github.log"
 LINEAR_FETCH_PID="$CACHE_DIR/linear-fetch-loop.pid"
 CODEX_FETCH_PID="$CACHE_DIR/codex-fetch-loop.pid"
 MINECRAFT_FETCH_PID="$CACHE_DIR/minecraft-fetch-loop.pid"
+GITHUB_FETCH_PID="$CACHE_DIR/github-fetch-loop.pid"
 OVERLAY_WIDTH=1540
 LINEAR_GAP_Y=4
 LINEAR_PRIMARY_GAP_Y=34
@@ -48,6 +51,10 @@ MINECRAFT_GAP_X="${MINECRAFT_GAP_X:-24}"
 MINECRAFT_GAP_Y="${MINECRAFT_GAP_Y:-12}"
 MINECRAFT_REFRESH_SECONDS="${MINECRAFT_REFRESH_SECONDS:-60}"
 MINECRAFT_OVERLAY_ENABLED="${MINECRAFT_OVERLAY_ENABLED:-1}"
+GITHUB_GAP_X="${GITHUB_GAP_X:-18}"
+GITHUB_GAP_Y="${GITHUB_GAP_Y:-0}"
+GITHUB_REFRESH_SECONDS="${GITHUB_REFRESH_SECONDS:-1800}"
+GITHUB_OVERLAY_ENABLED="${GITHUB_OVERLAY_ENABLED:-1}"
 GENERATE_ONLY=0
 MONITOR_HAS_PRIMARY=0
 
@@ -70,6 +77,10 @@ log_minecraft() {
   printf '[%s] start_conky_overlays: %s\n' "$(date --iso-8601=seconds)" "$*" >> "$MINECRAFT_LOG_PATH"
 }
 
+log_github() {
+  printf '[%s] start_conky_overlays: %s\n' "$(date --iso-8601=seconds)" "$*" >> "$GITHUB_LOG_PATH"
+}
+
 stop_fetch_loop() {
   local pid_file="$1"
   local label="$2"
@@ -86,6 +97,8 @@ stop_fetch_loop() {
       log_codex "stopped existing $label fetch loop pid=$pid"
     elif [[ "$label" == "Minecraft" ]]; then
       log_minecraft "stopped existing $label fetch loop pid=$pid"
+    elif [[ "$label" == "GitHub" ]]; then
+      log_github "stopped existing $label fetch loop pid=$pid"
     else
       log "stopped existing $label fetch loop pid=$pid"
     fi
@@ -117,6 +130,8 @@ start_fetch_loop() {
     log_codex "started $label fetch loop interval=${interval_seconds}s pid=$!"
   elif [[ "$label" == "Minecraft" ]]; then
     log_minecraft "started $label fetch loop interval=${interval_seconds}s pid=$!"
+  elif [[ "$label" == "GitHub" ]]; then
+    log_github "started $label fetch loop interval=${interval_seconds}s pid=$!"
   else
     log "started $label fetch loop interval=${interval_seconds}s pid=$!"
   fi
@@ -143,17 +158,24 @@ log "starting; root=$ROOT generate_only=$GENERATE_ONLY"
 if env_flag_disabled "$MINECRAFT_OVERLAY_ENABLED"; then
   log_minecraft "minecraft overlay disabled by MINECRAFT_OVERLAY_ENABLED=$MINECRAFT_OVERLAY_ENABLED"
 fi
+if env_flag_disabled "$GITHUB_OVERLAY_ENABLED"; then
+  log_github "github overlay disabled by GITHUB_OVERLAY_ENABLED=$GITHUB_OVERLAY_ENABLED"
+fi
 
 pkill -f "$GENERATED_DIR/linear-overlay-" 2>/dev/null || true
 pkill -f "$GENERATED_DIR/codex-overlay-" 2>/dev/null || true
 pkill -f "$GENERATED_DIR/minecraft-overlay-" 2>/dev/null || true
+pkill -f "$GENERATED_DIR/github-overlay-" 2>/dev/null || true
 pkill -f "$BASE_CONFIG" 2>/dev/null || true
 pkill -f "$CODEX_CONFIG" 2>/dev/null || true
 pkill -f "$MINECRAFT_CONFIG" 2>/dev/null || true
+pkill -f "$GITHUB_CONFIG" 2>/dev/null || true
 stop_fetch_loop "$LINEAR_FETCH_PID" "Linear"
 stop_fetch_loop "$CODEX_FETCH_PID" "Codex"
 stop_fetch_loop "$MINECRAFT_FETCH_PID" "Minecraft"
+stop_fetch_loop "$GITHUB_FETCH_PID" "GitHub"
 pkill -f "$ROOT/scripts/fetch_minecraft_status.py" 2>/dev/null || true
+pkill -f "$ROOT/scripts/fetch_github_contributions.py" 2>/dev/null || true
 log "stopped existing matching Conky processes"
 
 if [[ "$GENERATE_ONLY" -eq 0 ]]; then
@@ -161,6 +183,9 @@ if [[ "$GENERATE_ONLY" -eq 0 ]]; then
   start_fetch_loop "Codex" 300 "$ROOT/scripts/fetch_codex_usage.py" "$CODEX_FETCH_PID" "$CODEX_LOG_PATH"
   if ! env_flag_disabled "$MINECRAFT_OVERLAY_ENABLED"; then
     start_fetch_loop "Minecraft" "$MINECRAFT_REFRESH_SECONDS" "$ROOT/scripts/fetch_minecraft_status.py" "$MINECRAFT_FETCH_PID" "$MINECRAFT_LOG_PATH"
+  fi
+  if ! env_flag_disabled "$GITHUB_OVERLAY_ENABLED"; then
+    start_fetch_loop "GitHub" "$GITHUB_REFRESH_SECONDS" "$ROOT/scripts/fetch_github_contributions.py" "$GITHUB_FETCH_PID" "$GITHUB_LOG_PATH"
   fi
 fi
 
@@ -254,11 +279,15 @@ for line in "${monitor_lines[@]}"; do
   linear_config="$GENERATED_DIR/linear-overlay-$index.conkyrc"
   codex_config="$GENERATED_DIR/codex-overlay-$index.conkyrc"
   minecraft_config="$GENERATED_DIR/minecraft-overlay-$index.conkyrc"
+  github_config="$GENERATED_DIR/github-overlay-$index.conkyrc"
 
   generate_config "$BASE_CONFIG" "$linear_config" "$index" "$monitor_gap_x" "$linear_gap_y"
   generate_config "$CODEX_CONFIG" "$codex_config" "$index" "$monitor_gap_x" "$CODEX_GAP_Y"
   if ! env_flag_disabled "$MINECRAFT_OVERLAY_ENABLED"; then
     generate_config "$MINECRAFT_CONFIG" "$minecraft_config" "$index" "$MINECRAFT_GAP_X" "$MINECRAFT_GAP_Y"
+  fi
+  if ! env_flag_disabled "$GITHUB_OVERLAY_ENABLED"; then
+    generate_config "$GITHUB_CONFIG" "$github_config" "$index" "$GITHUB_GAP_X" "$GITHUB_GAP_Y"
   fi
 
   if [[ "$GENERATE_ONLY" -eq 0 ]]; then
@@ -270,11 +299,18 @@ for line in "${monitor_lines[@]}"; do
       setsid conky -c "$minecraft_config" >> "$MINECRAFT_LOG_PATH" 2>&1 < /dev/null &
       log_minecraft "launched monitor_index=$index width=$width gap_x=$MINECRAFT_GAP_X gap_y=$MINECRAFT_GAP_Y config=$minecraft_config pid=$!"
     fi
+    if ! env_flag_disabled "$GITHUB_OVERLAY_ENABLED"; then
+      setsid conky -c "$github_config" >> "$GITHUB_LOG_PATH" 2>&1 < /dev/null &
+      log_github "launched monitor_index=$index width=$width gap_x=$GITHUB_GAP_X gap_y=$GITHUB_GAP_Y config=$github_config pid=$!"
+    fi
   else
     log "generated monitor_index=$index width=$width gap_x=$monitor_gap_x gap_y=$linear_gap_y config=$linear_config"
     log_codex "generated monitor_index=$index width=$width gap_x=$monitor_gap_x config=$codex_config"
     if ! env_flag_disabled "$MINECRAFT_OVERLAY_ENABLED"; then
       log_minecraft "generated monitor_index=$index width=$width gap_x=$MINECRAFT_GAP_X gap_y=$MINECRAFT_GAP_Y config=$minecraft_config"
+    fi
+    if ! env_flag_disabled "$GITHUB_OVERLAY_ENABLED"; then
+      log_github "generated monitor_index=$index width=$width gap_x=$GITHUB_GAP_X gap_y=$GITHUB_GAP_Y config=$github_config"
     fi
   fi
   index=$((index + 1))
@@ -290,6 +326,10 @@ if [[ "$index" -eq 0 ]]; then
     if ! env_flag_disabled "$MINECRAFT_OVERLAY_ENABLED"; then
       setsid conky -c "$MINECRAFT_CONFIG" >> "$MINECRAFT_LOG_PATH" 2>&1 < /dev/null &
       log_minecraft "launched fallback config=$MINECRAFT_CONFIG pid=$!"
+    fi
+    if ! env_flag_disabled "$GITHUB_OVERLAY_ENABLED"; then
+      setsid conky -c "$GITHUB_CONFIG" >> "$GITHUB_LOG_PATH" 2>&1 < /dev/null &
+      log_github "launched fallback config=$GITHUB_CONFIG pid=$!"
     fi
   fi
 fi

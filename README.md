@@ -1,6 +1,6 @@
 # Conky Linear + Codex Overlay
 
-Desktop Conky widgets for keeping Linear work, Codex quota pressure, and Minecraft server population visible across all monitors.
+Desktop Conky widgets for keeping Linear work, Codex quota pressure, Minecraft server population, and GitHub contributions visible across all monitors.
 
 ## Run
 
@@ -9,7 +9,7 @@ Desktop Conky widgets for keeping Linear work, Codex quota pressure, and Minecra
 ./scripts/stop_conky_overlays.sh
 ```
 
-`start_conky_overlays.sh` kills prior matching overlays, starts fetch loops, and generates one Linear, Codex, and Minecraft config per detected monitor.
+`start_conky_overlays.sh` kills prior matching overlays, starts fetch loops, and generates one Linear, Codex, Minecraft, and GitHub config per detected monitor.
 
 ## Caches
 
@@ -17,10 +17,12 @@ Desktop Conky widgets for keeping Linear work, Codex quota pressure, and Minecra
 - `cache/codex-usage.json`: full Codex account/window usage for inspection.
 - `cache/codex-usage-render.tsv`: renderer-friendly Codex usage consumed by the Cairo renderer.
 - `cache/minecraft-status.json`: Minecraft Java server status consumed by the Cairo renderer.
+- `cache/github-contributions.json`: GitHub contribution squares consumed by the Cairo renderer.
 - `cache/conky-linear.log`: Linear fetch, launcher, and Linear Conky output.
 - `cache/conky-codex.log`: Codex fetch and Codex Conky output.
 - `cache/conky-minecraft.log`: Minecraft fetch, launcher, and Minecraft Conky output.
-- Fetch loops refresh Linear every `180s`, Codex every `300s`, and Minecraft every `60s`.
+- `cache/conky-github.log`: GitHub fetch, launcher, and GitHub Conky output.
+- Fetch loops refresh Linear every `180s`, Codex every `300s`, Minecraft every `60s`, and GitHub every `1800s`.
 
 ## Linear Rules
 
@@ -49,6 +51,14 @@ Desktop Conky widgets for keeping Linear work, Codex quota pressure, and Minecra
 - Set `MINECRAFT_OVERLAY_ENABLED=0` to disable the Minecraft overlay and its refresh loop.
 - `MINECRAFT_REFRESH_SECONDS`, `MINECRAFT_GAP_X`, and `MINECRAFT_GAP_Y` can tune refresh cadence and placement.
 
+## GitHub Rules
+
+- The GitHub tracker is a transparent left-side rail with only contribution squares.
+- `GITHUB_USERNAME` controls the rendered account. If it is missing, the fetcher tries `git config github.user` and then the GitHub remote owner.
+- `GITHUB_TOKEN` is optional and only used for authenticated requests to the public contributions endpoint.
+- Set `GITHUB_OVERLAY_ENABLED=0` to disable the GitHub overlay and its refresh loop.
+- `GITHUB_REFRESH_SECONDS`, `GITHUB_GAP_X`, and `GITHUB_GAP_Y` can tune refresh cadence and placement.
+
 ## Config
 
 Create `.env` from `.env.example` for Linear:
@@ -68,6 +78,10 @@ MINECRAFT_STATUS_TIMEOUT_SECONDS=5
 PEBBLEHOST_API_KEY=ptlc_your_key_here
 PEBBLEHOST_SERVER_ID=
 PEBBLEHOST_API_TIMEOUT_SECONDS=10
+
+GITHUB_USERNAME=your-github-username
+GITHUB_OVERLAY_ENABLED=1
+GITHUB_REFRESH_SECONDS=1800
 ```
 
 Codex reads local Codex auth files and refreshes expired tokens in place.
