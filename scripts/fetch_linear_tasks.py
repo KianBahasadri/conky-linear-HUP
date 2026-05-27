@@ -285,6 +285,8 @@ def render_cards(tasks, state_names, lookback_hours):
                 "title": title,
                 "done": task_done,
                 "dueToday": is_due_now(task),
+                "dueIso": task.get("dueDate") or "",
+                "dueDate": format_due_date(task.get("dueDate"), today),
                 "competitionUpcoming": competition_upcoming,
                 "competitionDueIso": task.get("dueDate") if competition_upcoming else "",
                 "competitionDueDate": format_due_date(task.get("dueDate"), today)
@@ -302,10 +304,15 @@ def render_cards(tasks, state_names, lookback_hours):
 
         card["done"] = card["done"] and task_done
         card["dueToday"] = card["dueToday"] or is_due_now(task)
+        current_due_date = parse_linear_date(card["dueIso"])
+        task_due_date = parse_linear_date(task.get("dueDate"))
+        if not current_due_date or (task_due_date and task_due_date < current_due_date):
+            card["dueIso"] = task.get("dueDate") or ""
+            card["dueDate"] = format_due_date(task.get("dueDate"), today)
+
         card["competitionUpcoming"] = card["competitionUpcoming"] or competition_upcoming
         if competition_upcoming:
             current_due_date = parse_linear_date(card["competitionDueIso"])
-            task_due_date = parse_linear_date(task.get("dueDate"))
             if not current_due_date or (task_due_date and task_due_date < current_due_date):
                 card["competitionDueIso"] = task.get("dueDate")
                 card["competitionDueDate"] = format_due_date(task.get("dueDate"), today)
