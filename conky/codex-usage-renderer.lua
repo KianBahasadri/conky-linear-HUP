@@ -228,6 +228,10 @@ return function(shared, repo_root)
     return 1
   end
 
+  local function is_free_account(account)
+    return string.lower(account.plan_type or '') == 'free'
+  end
+
   local function sort_accounts(accounts)
     for index, account in ipairs(accounts or {}) do
       account.original_index = index
@@ -337,14 +341,16 @@ return function(shared, repo_root)
     local weekly_count = 0
 
     for _, account in ipairs(accounts or {}) do
-      local weekly = find_weekly_window(account)
-      if weekly then
-        local weekly_pace = calculate_window_pace(weekly, window_duration(weekly))
+      if not is_free_account(account) then
+        local weekly = find_weekly_window(account)
+        if weekly then
+          local weekly_pace = calculate_window_pace(weekly, window_duration(weekly))
 
-        if weekly_pace then
-          expected_total = expected_total + weekly_pace.expected
-          actual_total = actual_total + weekly_pace.actual
-          weekly_count = weekly_count + 1
+          if weekly_pace then
+            expected_total = expected_total + weekly_pace.expected
+            actual_total = actual_total + weekly_pace.actual
+            weekly_count = weekly_count + 1
+          end
         end
       end
     end
@@ -443,7 +449,11 @@ return function(shared, repo_root)
 
   end
 
-  local function draw_codex_bar(cr, window, x, y, accent, accent_secondary)
+  local function draw_codex_bar(cr, window, x, y, accent, accent_secondary, show_pace)
+    if show_pace == nil then
+      show_pace = true
+    end
+
     local used = shared.clamp(window.used_percent, 0, 100)
     local fill_width = codex_bar_width * (used / 100)
     local window_label = normalized_window_label(window)
@@ -495,9 +505,9 @@ return function(shared, repo_root)
     cairo_line_to(cr, x + codex_bar_width - 8, bar_y + 4)
     cairo_stroke(cr)
 
-    if is_weekly then
+    if show_pace and is_weekly then
       draw_pace_marker(cr, calculate_window_pace(window, window_duration(window)), x, bar_y)
-    elseif is_five_hour then
+    elseif show_pace and is_five_hour then
       draw_pace_marker(cr, calculate_window_pace(window, window_duration(window)), x, bar_y)
     end
 
@@ -540,6 +550,11 @@ return function(shared, repo_root)
     local first = nil
     local second = nil
     local label_x = x + 22
+    local is_free = is_free_account(account)
+    local first_accent = is_free and '94a3b8' or '00e5ff'
+    local first_accent_secondary = is_free and '64748b' or '8b5cf6'
+    local second_accent = is_free and '94a3b8' or '39ff88'
+    local second_accent_secondary = is_free and '64748b' or '00f5d4'
 
     for _, window in ipairs(account.windows or {}) do
       local window_label = normalized_window_label(window)
@@ -577,10 +592,10 @@ return function(shared, repo_root)
     cairo_show_text(cr, shared.truncate_title(cr, name, 120))
 
     if first then
-      draw_codex_bar(cr, first, x + codex_first_bar_x, y + 15, '00e5ff', '8b5cf6')
+      draw_codex_bar(cr, first, x + codex_first_bar_x, y + 15, first_accent, first_accent_secondary, not is_free)
     end
     if second then
-      draw_codex_bar(cr, second, x + codex_first_bar_x + codex_bar_width + codex_bar_countdown_width + codex_bar_reset_width + codex_bar_pair_gap, y + 15, '39ff88', '00f5d4')
+      draw_codex_bar(cr, second, x + codex_first_bar_x + codex_bar_width + codex_bar_countdown_width + codex_bar_reset_width + codex_bar_pair_gap, y + 15, second_accent, second_accent_secondary, not is_free)
     end
   end
 

@@ -39,8 +39,8 @@ Each overlay can be disabled with its `*_OVERLAY_ENABLED=0` variable in `.env`.
 
 - The orange chevron marks the currently selected Codex auth file, meaning the auth file whose path resolves to `~/.codex/auth.json`.
 - Multiple Codex accounts are discovered from `~/.codex/auth.json.*`; `CODEX_AUTH_PATH` forces a single auth file.
-- Weekly and 5h pace markers are per account: each bar uses that window's own reset time.
-- Combined usage is the average weekly `usedPercent` across accounts.
+- Weekly and 5h pace markers are per paid account: each bar uses that window's own reset time.
+- Combined usage is the average weekly `usedPercent` across paid accounts; free accounts are muted and excluded.
 - Under pace by at least `10%` shows an amber fast-mode chip, except during the first `10%` of the weekly cycle.
 - Over pace by at least `10%` shows a red warning chip, including early in the cycle.
 - The pace chip is centered across the whole Codex box and uses the combined weekly pace state.
