@@ -8,9 +8,10 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import fetch_common as common
+
 
 ROOT = Path(__file__).resolve().parents[1]
-ENV_PATH = ROOT / ".env"
 CACHE_DIR = ROOT / "cache"
 OUTPUT_PATH = CACHE_DIR / "linear-tasks.txt"
 CARDS_PATH = CACHE_DIR / "linear-cards.json"
@@ -63,34 +64,9 @@ fragment IssueFields on Issue {
 """
 
 
-def load_env(path):
-    if not path.exists():
-        return
-
-    for raw_line in path.read_text(encoding="utf-8").splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-
-        key, value = line.split("=", 1)
-        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
-
-
-def log_event(message):
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now().astimezone().isoformat(timespec="seconds")
-    with LOG_PATH.open("a", encoding="utf-8") as log_file:
-        log_file.write(f"[{timestamp}] fetch_linear_tasks: {message}\n")
-
-
-def atomic_write_text(path, content):
-    tmp_path = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-    tmp_path.write_text(content, encoding="utf-8")
-    os.replace(tmp_path, path)
-
-
-def atomic_write_json(path, data):
-    atomic_write_text(path, json.dumps(data, indent=2))
+log_event = common.make_logger(LOG_PATH, "fetch_linear_tasks")
+atomic_write_text = common.atomic_write_text
+atomic_write_json = common.atomic_write_json
 
 
 def linear_request(api_key, limit, competition_limit):
@@ -367,7 +343,7 @@ def write_error(message):
 
 def main():
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    load_env(ENV_PATH)
+    common.load_env()
     log_event("starting Linear fetch")
 
     api_key = os.environ.get("LINEAR_API_KEY", "").strip()

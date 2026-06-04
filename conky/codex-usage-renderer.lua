@@ -1,6 +1,7 @@
 return function(shared, repo_root)
   local codex_usage_path = repo_root .. '/cache/codex-usage.json'
   local codex_usage_tsv_path = repo_root .. '/cache/codex-usage-render.tsv'
+  local claude_usage_tsv_path = repo_root .. '/cache/claude-usage-render.tsv'
   local font = 'JetBrains Mono'
   local codex_width = 1000
   local codex_height = 110
@@ -84,8 +85,8 @@ return function(shared, repo_root)
     return fields
   end
 
-  local function read_codex_usage_tsv()
-    local content = shared.read_file(codex_usage_tsv_path)
+  local function read_usage_tsv(path, provider)
+    local content = shared.read_file(path)
     if not content then
       return nil
     end
@@ -116,6 +117,7 @@ return function(shared, repo_root)
         if label ~= '' and not account_index[label] then
           account_index[label] = {
             label = label,
+            provider = provider,
             plan_type = fields[3] or '',
             is_selected = fields[4] == '1',
             ok = fields[5] == '1',
@@ -130,6 +132,7 @@ return function(shared, repo_root)
           if not account_index[label] then
             account_index[label] = {
               label = label,
+              provider = provider,
               plan_type = fields[3] or '',
               is_selected = fields[4] == '1',
               ok = true,
@@ -159,6 +162,14 @@ return function(shared, repo_root)
     return usage
   end
 
+  local function read_codex_usage_tsv()
+    return read_usage_tsv(codex_usage_tsv_path, 'Codex')
+  end
+
+  local function read_claude_usage_tsv()
+    return read_usage_tsv(claude_usage_tsv_path, 'Claude')
+  end
+
   local function read_codex_usage_json()
     local content = shared.read_file(codex_usage_path)
     if not content then
@@ -186,6 +197,7 @@ return function(shared, repo_root)
         if not account_index[account] then
           account_index[account] = {
             label = shared.unescape_json_string(account),
+            provider = 'Codex',
             plan_type = shared.unescape_json_string(plan_type),
             is_selected = is_selected,
             windows = {},
@@ -219,6 +231,17 @@ return function(shared, repo_root)
   end
 
   local function plan_sort_rank(account)
+    local provider = string.lower(account.provider or '')
+    if provider == 'codex' then
+      return 0
+    elseif provider == 'claude' then
+      return 10
+    end
+
+    return 20
+  end
+
+  local function plan_type_sort_rank(account)
     local plan_type = string.lower(account.plan_type or '')
     if plan_type == 'free' then
       return 0
@@ -241,14 +264,46 @@ return function(shared, repo_root)
       local left_rank = plan_sort_rank(left)
       local right_rank = plan_sort_rank(right)
       if left_rank == right_rank then
+        local left_plan_rank = plan_type_sort_rank(left)
+        local right_plan_rank = plan_type_sort_rank(right)
+        if left_plan_rank ~= right_plan_rank then
+          return left_plan_rank < right_plan_rank
+        end
         return (left.original_index or 0) < (right.original_index or 0)
       end
       return left_rank < right_rank
     end)
   end
 
-  local function read_codex_usage()
-    local usage = read_codex_usage_tsv() or read_codex_usage_json()
+  local function read_ai_usage()
+    local codex_usage = read_codex_usage_tsv() or read_codex_usage_json()
+    local claude_usage = read_claude_usage_tsv()
+    local usage = {
+      ok = false,
+      error = '',
+      accounts = {},
+    }
+
+    if codex_usage then
+      usage.ok = usage.ok or codex_usage.ok
+      usage.error = codex_usage.error or ''
+      for _, account in ipairs(codex_usage.accounts or {}) do
+        account.provider = account.provider or 'Codex'
+        table.insert(usage.accounts, account)
+      end
+    end
+
+    if claude_usage then
+      usage.ok = usage.ok or claude_usage.ok
+      if usage.error == '' then
+        usage.error = claude_usage.error or ''
+      end
+      for _, account in ipairs(claude_usage.accounts or {}) do
+        account.provider = account.provider or 'Claude'
+        table.insert(usage.accounts, account)
+      end
+    end
+
     if usage then
       sort_accounts(usage.accounts)
     end
@@ -273,7 +328,19 @@ return function(shared, repo_root)
     return string.format('%dm', minutes)
   end
 
+  local function format_window_countdown(window)
+    local seconds = seconds_until_reset(window)
+    if seconds <= 0 and (window.used_percent or 0) <= 0 then
+      return 'ready'
+    end
+    return format_reset(seconds)
+  end
+
   local function format_reset_at(window)
+    if seconds_until_reset(window) <= 0 and (window.used_percent or 0) <= 0 then
+      return ''
+    end
+
     local reset_time = 0
     if window.reset_at_epoch and window.reset_at_epoch > 0 then
       reset_time = window.reset_at_epoch
@@ -282,7 +349,7 @@ return function(shared, repo_root)
     end
 
     if reset_time <= 0 then
-      return format_reset(seconds_until_reset(window))
+      return format_window_countdown(window)
     end
 
     local local_time = os.date('*t', reset_time)
@@ -459,7 +526,7 @@ return function(shared, repo_root)
     local window_label = normalized_window_label(window)
     local is_weekly = window_label == 'weekly'
     local is_five_hour = window_label == '5h'
-    local countdown_label = format_reset(seconds_until_reset(window))
+    local countdown_label = format_window_countdown(window)
     local reset_at_label = format_reset_at(window)
 
     local bar_y = y
@@ -536,7 +603,7 @@ return function(shared, repo_root)
     cairo_set_font_size(cr, 15)
     shared.set_hex(cr, 'f87171', 1)
     cairo_move_to(cr, x + 34, y + 58)
-    cairo_show_text(cr, 'CODEX SIGNAL LOST')
+    cairo_show_text(cr, 'AI QUOTA SIGNAL LOST')
 
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL)
     cairo_set_font_size(cr, 12)
@@ -545,16 +612,30 @@ return function(shared, repo_root)
     cairo_show_text(cr, shared.truncate_title(cr, usage and usage.error or 'No usage cache found.', codex_width - 68))
   end
 
+  local function provider_name(account)
+    return string.lower(account.provider or 'codex')
+  end
+
+  local function provider_accents(account, is_free)
+    if is_free then
+      return '94a3b8', '64748b', '94a3b8', '64748b'
+    end
+
+    if provider_name(account) == 'claude' then
+      return 'ff7a59', 'ffd166', 'ffb703', 'ff7a59'
+    end
+
+    return '00e5ff', '8b5cf6', '39ff88', '00f5d4'
+  end
+
   local function draw_codex_account_row(cr, account, x, y)
     local name = string.upper(account.label)
     local first = nil
     local second = nil
     local label_x = x + 22
     local is_free = is_free_account(account)
-    local first_accent = is_free and '94a3b8' or '00e5ff'
-    local first_accent_secondary = is_free and '64748b' or '8b5cf6'
-    local second_accent = is_free and '94a3b8' or '39ff88'
-    local second_accent_secondary = is_free and '64748b' or '00f5d4'
+    local first_accent, first_accent_secondary, second_accent, second_accent_secondary = provider_accents(account, is_free)
+    local is_active = account.is_selected or provider_name(account) == 'claude'
 
     for _, window in ipairs(account.windows or {}) do
       local window_label = normalized_window_label(window)
@@ -565,7 +646,7 @@ return function(shared, repo_root)
       end
     end
 
-    if account.is_selected then
+    if account.is_selected and provider_name(account) == 'codex' then
       shared.set_hex(cr, 'ff9f1c', 0.20)
       cairo_set_line_width(cr, 5)
       cairo_move_to(cr, label_x - 20, y + 11)
@@ -583,7 +664,7 @@ return function(shared, repo_root)
 
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
     cairo_set_font_size(cr, 14)
-    if account.is_selected then
+    if is_active then
       shared.set_hex(cr, 'ffffff', 1)
     else
       shared.set_hex(cr, 'f8fafc', 0.72)
@@ -597,6 +678,28 @@ return function(shared, repo_root)
     if second then
       draw_codex_bar(cr, second, x + codex_first_bar_x + codex_bar_width + codex_bar_countdown_width + codex_bar_reset_width + codex_bar_pair_gap, y + 15, second_accent, second_accent_secondary, not is_free)
     end
+  end
+
+  local function draw_title_chip(cr, label, color, x, y)
+    cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
+    cairo_set_font_size(cr, 15)
+
+    local extents = cairo_text_extents_t:create()
+    cairo_text_extents(cr, label, extents)
+    local chip_width = extents.width + 24
+
+    shared.rounded_rect(cr, x, y - 9, chip_width, 20, 6)
+    shared.set_hex(cr, '020617', 0.94)
+    cairo_fill_preserve(cr)
+    shared.set_hex(cr, color, 0.82)
+    cairo_set_line_width(cr, 1.5)
+    cairo_stroke(cr)
+
+    shared.set_hex(cr, color, 1)
+    cairo_move_to(cr, x + 12, y + 6)
+    cairo_show_text(cr, label)
+
+    return chip_width
   end
 
   local function draw_pace_chip(cr, pace, x, y)
@@ -633,19 +736,9 @@ return function(shared, repo_root)
   local function draw_codex_panel(cr, usage, x, y)
     draw_codex_frame(cr, x, y)
 
-    cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
-    cairo_set_font_size(cr, 15)
-
-    shared.rounded_rect(cr, x + 48, y - 9, 74, 20, 6)
-    shared.set_hex(cr, '020617', 0.94)
-    cairo_fill_preserve(cr)
-    shared.set_hex(cr, '00e5ff', 0.82)
-    cairo_set_line_width(cr, 1.5)
-    cairo_stroke(cr)
-
-    shared.set_hex(cr, '00e5ff', 1)
-    cairo_move_to(cr, x + 60, y + 6)
-    cairo_show_text(cr, 'CODEX')
+    local chip_x = x + 48
+    local codex_chip_width = draw_title_chip(cr, 'CODEX', '00e5ff', chip_x, y)
+    draw_title_chip(cr, 'CLAUDE', 'ff7a59', chip_x + codex_chip_width + 8, y)
 
     if not usage.ok or #usage.accounts == 0 then
       draw_codex_error(cr, usage, x, y)
@@ -667,12 +760,12 @@ return function(shared, repo_root)
     end
 
     local cr = cairo_create(surface)
-    local usage = read_codex_usage()
+    local usage = read_ai_usage()
 
     if not usage then
       usage = {
         ok = false,
-        error = 'No codex-usage.json cache found.',
+        error = 'No AI usage cache found.',
         accounts = {},
       }
     end

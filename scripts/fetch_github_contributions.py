@@ -10,37 +10,17 @@ from datetime import datetime, timezone
 from html import unescape
 from pathlib import Path
 
+import fetch_common as common
+
 
 ROOT = Path(__file__).resolve().parents[1]
-ENV_PATH = ROOT / ".env"
 CACHE_DIR = ROOT / "cache"
 CONTRIBUTIONS_PATH = CACHE_DIR / "github-contributions.json"
 LOG_PATH = CACHE_DIR / "conky-github.log"
 
 
-def load_env(path):
-    if not path.exists():
-        return
-
-    for raw_line in path.read_text(encoding="utf-8").splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
-
-
-def log_event(message):
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now().astimezone().isoformat(timespec="seconds")
-    with LOG_PATH.open("a", encoding="utf-8") as log_file:
-        log_file.write(f"[{timestamp}] fetch_github_contributions: {message}\n")
-
-
-def atomic_write_json(path, data):
-    tmp_path = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-    tmp_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
-    os.replace(tmp_path, path)
+log_event = common.make_logger(LOG_PATH, "fetch_github_contributions")
+atomic_write_json = common.atomic_write_json
 
 
 def git_config_value(key):
@@ -115,7 +95,7 @@ def parse_contributions(html):
 
 
 def main():
-    load_env(ENV_PATH)
+    common.load_env()
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
     try:

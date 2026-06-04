@@ -2,12 +2,16 @@
 import base64
 import json
 import os
+import sqlite3
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
+
+import fetch_common as common
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -16,89 +20,35 @@ OUTPUT_PATH = CACHE_DIR / "codex-usage.json"
 RENDER_PATH = CACHE_DIR / "codex-usage-render.tsv"
 LOG_PATH = CACHE_DIR / "conky-codex.log"
 DEFAULT_AUTH_PATH = Path.home() / ".codex" / "auth.json"
+CODEX_HOME = Path.home() / ".codex"
+CODEX_SQLITE_HOME = CODEX_HOME
 USAGE_URL = "https://chatgpt.com/backend-api/wham/usage"
 TOKEN_URL = "https://auth.openai.com/oauth/token"
 CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
-FIVE_HOUR_WINDOW_SECONDS = 5 * 60 * 60
-WEEKLY_WINDOW_SECONDS = 7 * 24 * 60 * 60
+FIVE_HOUR_WINDOW_SECONDS = common.FIVE_HOUR_WINDOW_SECONDS
+WEEKLY_WINDOW_SECONDS = common.WEEKLY_WINDOW_SECONDS
 LONG_WINDOW_THRESHOLD_SECONDS = 24 * 60 * 60
+DEGENERATE_RETRIES = 4
+LOCAL_RATE_LIMIT_MAX_AGE_SECONDS = 21600
 
 
-def log_event(message):
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now().astimezone().isoformat(timespec="seconds")
-    with LOG_PATH.open("a", encoding="utf-8") as log_file:
-        log_file.write(f"[{timestamp}] fetch_codex_usage: {message}\n")
+log_event = common.make_logger(LOG_PATH, "fetch_codex_usage")
+atomic_write_json = common.atomic_write_json
+as_float = common.as_float
+as_int = common.as_int
+parse_iso_epoch = common.parse_iso_epoch
 
 
-def atomic_write_text(path, content):
-    tmp_path = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-    tmp_path.write_text(content, encoding="utf-8")
-    os.replace(tmp_path, path)
+def configure_from_env():
+    global CODEX_HOME
+    global CODEX_SQLITE_HOME
+    global DEGENERATE_RETRIES
+    global LOCAL_RATE_LIMIT_MAX_AGE_SECONDS
 
-
-def atomic_write_json(path, data):
-    atomic_write_text(path, json.dumps(data, indent=2))
-
-
-def escape_tsv(value):
-    return str(value).replace("\\", "\\\\").replace("\t", "\\t").replace("\n", "\\n")
-
-
-def render_tsv(output):
-    lines = [
-        "\t".join(
-            [
-                "meta",
-                "ok",
-                "1" if output.get("ok") else "0",
-                "updatedAt",
-                escape_tsv(output.get("updatedAt", "")),
-                "error",
-                escape_tsv(output.get("error", "")),
-            ]
-        )
-    ]
-
-    for account in output.get("accounts", []):
-        lines.append(
-            "\t".join(
-                [
-                    "account",
-                    escape_tsv(account.get("label", "")),
-                    escape_tsv(account.get("planType", "")),
-                    "1" if account.get("isSelected") else "0",
-                    "1" if account.get("ok") else "0",
-                    escape_tsv(account.get("error", "")),
-                ]
-            )
-        )
-
-    for bar in output.get("bars", []):
-        lines.append(
-            "\t".join(
-                [
-                    "bar",
-                    escape_tsv(bar.get("account", "")),
-                    escape_tsv(bar.get("planType", "")),
-                    "1" if bar.get("isSelected") else "0",
-                    escape_tsv(bar.get("window", "")),
-                    str(bar.get("usedPercent", 0)),
-                    str(bar.get("remainingPercent", 0)),
-                    escape_tsv(bar.get("resetsAt") or ""),
-                    str(bar.get("resetAtEpoch", 0)),
-                    str(bar.get("resetAfterSeconds", 0)),
-                    str(bar.get("windowSeconds", 0)),
-                ]
-            )
-        )
-
-    return "\n".join(lines) + "\n"
-
-
-def write_outputs(output):
-    atomic_write_json(OUTPUT_PATH, output)
-    atomic_write_text(RENDER_PATH, render_tsv(output))
+    CODEX_HOME = Path(os.environ.get("CODEX_HOME", Path.home() / ".codex")).expanduser()
+    CODEX_SQLITE_HOME = Path(os.environ.get("CODEX_SQLITE_HOME", CODEX_HOME)).expanduser()
+    DEGENERATE_RETRIES = int(os.environ.get("CODEX_USAGE_DEGENERATE_RETRIES", "4"))
+    LOCAL_RATE_LIMIT_MAX_AGE_SECONDS = int(os.environ.get("CODEX_LOCAL_RATE_LIMIT_MAX_AGE_SECONDS", "21600"))
 
 
 def discover_auth_files():
@@ -247,24 +197,215 @@ def refresh_token(auth):
     os.chmod(auth["path"], 0o600)
 
 
-def as_float(value, default=0.0):
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return default
+def latest_rollout_paths(limit=20):
+    db_path = CODEX_SQLITE_HOME / "state_5.sqlite"
+    if db_path.is_file():
+        try:
+            connection = sqlite3.connect(db_path)
+            try:
+                rows = connection.execute(
+                    "select rollout_path from threads where archived = 0 order by updated_at desc limit ?",
+                    (limit,),
+                ).fetchall()
+            finally:
+                connection.close()
+            paths = [Path(row[0]).expanduser() for row in rows if row and row[0]]
+            if paths:
+                return paths
+        except sqlite3.Error as error:
+            log_event(f"could not read Codex state sqlite for local rate limits: {error}")
+
+    return sorted(CODEX_HOME.glob("sessions/**/*.jsonl"), key=lambda path: path.stat().st_mtime, reverse=True)[:limit]
 
 
-def as_int(value, default=0):
+def read_latest_local_rate_limits():
+    now = int(datetime.now(timezone.utc).timestamp())
+    best = None
+
+    for path in latest_rollout_paths():
+        if not path.is_file():
+            continue
+        try:
+            with path.open("r", encoding="utf-8") as rollout:
+                for line in rollout:
+                    try:
+                        row = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    payload = row.get("payload") or {}
+                    if not isinstance(payload, dict) or not isinstance(payload.get("rate_limits"), dict):
+                        continue
+                    event_epoch = parse_iso_epoch(row.get("timestamp"))
+                    if not event_epoch:
+                        continue
+                    rate_limits = payload["rate_limits"]
+                    if not local_rate_limits_have_future_window(rate_limits, now):
+                        continue
+                    if now - event_epoch > LOCAL_RATE_LIMIT_MAX_AGE_SECONDS:
+                        continue
+                    if not best or event_epoch > best["eventEpoch"]:
+                        best = {
+                            "eventEpoch": event_epoch,
+                            "path": path,
+                            "rateLimits": rate_limits,
+                        }
+        except OSError as error:
+            log_event(f"could not read Codex rollout for local rate limits path={path}: {error}")
+
+    return best
+
+
+def local_rate_limits_have_future_window(rate_limits, now):
+    for key in ("primary", "secondary"):
+        window = rate_limits.get(key)
+        if isinstance(window, dict) and as_int(window.get("window_minutes")) > 0 and as_int(window.get("resets_at")) > now:
+            return True
+    return False
+
+
+def local_rate_limit_windows(local_rate_limits):
+    if not local_rate_limits:
+        return []
+
+    rate_limits = local_rate_limits["rateLimits"]
+    now = int(datetime.now(timezone.utc).timestamp())
+    windows = []
+    primary = normalize_local_rate_limit_window("5h", rate_limits.get("primary"), now)
+    secondary = normalize_local_rate_limit_window("weekly", rate_limits.get("secondary"), now)
+    if primary:
+        windows.append(primary)
+    if secondary:
+        windows.append(secondary)
+    return windows
+
+
+def normalize_local_rate_limit_window(label, window, now):
+    if not isinstance(window, dict):
+        return None
+
+    reset_at = as_int(window.get("resets_at"))
+    window_seconds = as_int(window.get("window_minutes")) * 60
+    used_percent = max(0.0, min(100.0, as_float(window.get("used_percent"))))
+    if reset_at <= now or window_seconds <= 0:
+        return None
+
+    return {
+        "label": label,
+        "usedPercent": round(used_percent, 1),
+        "remainingPercent": max(0, round(100 - used_percent, 1)),
+        "resetsAt": datetime.fromtimestamp(reset_at, tz=timezone.utc).isoformat(),
+        "resetAtEpoch": reset_at,
+        "resetAfterSeconds": max(0, reset_at - now),
+        "windowSeconds": window_seconds,
+    }
+
+
+def meaningful_window_count(usage):
+    rate_limit = usage.get("rate_limit") if isinstance(usage, dict) else None
+    if not isinstance(rate_limit, dict):
+        return 0
+
+    count = 0
+    now = int(datetime.now(timezone.utc).timestamp())
+    for key in ("primary_window", "secondary_window"):
+        window = rate_limit.get(key)
+        if not isinstance(window, dict):
+            continue
+        if as_int(window.get("limit_window_seconds")) > 0 and as_int(window.get("reset_at")) > now:
+            count += 1
+    return count
+
+
+def should_retry_degenerate_usage(usage):
+    if not isinstance(usage, dict):
+        return False
+    plan_type = str(usage.get("plan_type", "")).lower()
+    if plan_type not in ("plus", "pro", "team", "enterprise"):
+        return False
+    return meaningful_window_count(usage) == 0
+
+
+def is_paid_plan(plan_type):
+    return str(plan_type or "").lower() in ("plus", "pro", "team", "enterprise")
+
+
+def retry_degenerate_usage(auth, label, usage):
+    best_usage = usage
+    best_score = meaningful_window_count(usage)
+
+    if not should_retry_degenerate_usage(usage):
+        return usage
+
+    for attempt in range(1, DEGENERATE_RETRIES + 1):
+        time.sleep(1)
+        status, retry_usage = codex_request(auth)
+        if status != 200:
+            log_event(f"account={label} degenerate retry={attempt} returned HTTP {status}")
+            continue
+
+        score = meaningful_window_count(retry_usage)
+        log_event(f"account={label} degenerate retry={attempt} meaningful_windows={score}")
+        if score > best_score:
+            best_usage = retry_usage
+            best_score = score
+        if score >= 2:
+            break
+
+    return best_usage
+
+
+def load_previous_accounts():
     try:
-        return int(float(value))
-    except (TypeError, ValueError):
-        return default
+        previous = json.loads(OUTPUT_PATH.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+    accounts = {}
+    for account in previous.get("accounts", []):
+        label = account.get("label", "")
+        if label:
+            accounts[label] = account
+    return accounts
+
+
+def future_windows(account):
+    now = int(datetime.now(timezone.utc).timestamp())
+    windows = []
+    for window in account.get("windows", []):
+        reset_at = as_int(window.get("resetAtEpoch"))
+        if reset_at > now:
+            windows.append(window)
+    return windows
+
+
+def carry_forward_previous_windows(account, previous_accounts):
+    previous = previous_accounts.get(account.get("label", ""))
+    if not previous:
+        return account
+
+    previous_windows = future_windows(previous)
+    if not previous_windows:
+        return account
+
+    current_has_future_window = any(as_int(window.get("resetAtEpoch")) > 0 for window in account.get("windows", []))
+    if current_has_future_window:
+        return account
+
+    plan_type = str(account.get("planType") or previous.get("planType") or "").lower()
+    if plan_type not in ("plus", "pro", "team", "enterprise"):
+        return account
+
+    account["windows"] = previous_windows
+    account["carriedForward"] = True
+    account["error"] = account.get("error", "")
+    return account
 
 
 def normalize_window(label, window, fetched_at):
     if not isinstance(window, dict):
         return None
 
+    limit_window_seconds = as_int(window.get("limit_window_seconds"))
     used_percent = max(0.0, min(100.0, as_float(window.get("used_percent"))))
     reset_at = as_float(window.get("reset_at"))
     reset_after_seconds = as_int(window.get("reset_after_seconds"))
@@ -278,10 +419,14 @@ def normalize_window(label, window, fetched_at):
         reset_at = fetched_at.timestamp() + reset_after_seconds
         resets_at_iso = datetime.fromtimestamp(reset_at, tz=timezone.utc).isoformat()
 
+    if used_percent <= 0 and reset_after_seconds <= 0:
+        reset_at = 0
+        resets_at_iso = None
+
     normalized_label = label
     if label == "5h" and reset_after_seconds > LONG_WINDOW_THRESHOLD_SECONDS:
         normalized_label = "weekly"
-    window_seconds = WEEKLY_WINDOW_SECONDS if normalized_label == "weekly" else FIVE_HOUR_WINDOW_SECONDS
+    window_seconds = limit_window_seconds if limit_window_seconds > 0 else WEEKLY_WINDOW_SECONDS if normalized_label == "weekly" else FIVE_HOUR_WINDOW_SECONDS
 
     return {
         "label": normalized_label,
@@ -301,9 +446,21 @@ def normalize_usage(auth, usage, is_selected):
     windows = []
     labels_seen = set()
 
+    if is_paid_plan(plan_type) and meaningful_window_count(usage) == 0:
+        return {
+            "ok": True,
+            "label": auth["label"],
+            "email": auth["email"],
+            "accountId": auth["account_id"],
+            "planType": plan_type,
+            "isSelected": is_selected,
+            "windows": [],
+            "error": "Codex usage API returned a degenerate paid-account quota response.",
+        }
+
     for label, key in (("5h", "primary_window"), ("weekly", "secondary_window")):
         normalized = normalize_window(label, rate_limit.get(key), fetched_at)
-        if not normalized or not (normalized["usedPercent"] > 0 or normalized["resetsAt"]):
+        if not normalized:
             continue
         if normalized["label"] in labels_seen:
             log_event(f"account={auth['label']} skipped duplicate {normalized['label']} window from {key}")
@@ -329,6 +486,30 @@ def normalize_error(label, message, is_selected=False):
         "error": message,
         "isSelected": is_selected,
         "windows": [],
+    }
+
+
+def account_from_local_rate_limits(label, path, local_rate_limits):
+    windows = local_rate_limit_windows(local_rate_limits)
+    if not windows:
+        return None
+
+    try:
+        auth = read_auth(label, path)
+    except Exception:
+        auth = {"label": label, "email": "", "account_id": ""}
+
+    rate_limits = local_rate_limits["rateLimits"]
+    return {
+        "ok": True,
+        "label": label,
+        "email": auth.get("email", ""),
+        "accountId": auth.get("account_id", ""),
+        "planType": rate_limits.get("plan_type", ""),
+        "isSelected": True,
+        "windows": windows,
+        "localRateLimits": True,
+        "localRateLimitsUpdatedAt": datetime.fromtimestamp(local_rate_limits["eventEpoch"], tz=timezone.utc).isoformat(),
     }
 
 
@@ -377,11 +558,20 @@ def write_error(message):
         "accounts": [],
         "bars": [],
     }
-    write_outputs(output)
+    common.write_usage_outputs(OUTPUT_PATH, RENDER_PATH, output)
     log_event(f"error: {message}")
 
 
-def fetch_account(label, path, is_selected):
+def fetch_account(label, path, is_selected, local_rate_limits=None):
+    if is_selected and local_rate_limits:
+        account = account_from_local_rate_limits(label, path, local_rate_limits)
+        if account:
+            log_event(
+                f"account={label} using local Codex session rate_limits "
+                f"windows={len(account['windows'])} path={local_rate_limits['path'].name}"
+            )
+            return account
+
     try:
         auth = read_auth(label, path)
         status, usage = codex_request(auth)
@@ -395,6 +585,7 @@ def fetch_account(label, path, is_selected):
             print(json.dumps({label: usage}, indent=2), file=sys.stderr)
             return normalize_error(label, f"Codex usage API error: HTTP {status}", is_selected)
 
+        usage = retry_degenerate_usage(auth, label, usage)
         account = normalize_usage(auth, usage, is_selected)
         log_event(
             f"account={label} completed plan={account['planType'] or 'unknown'} "
@@ -407,12 +598,17 @@ def fetch_account(label, path, is_selected):
 
 def main():
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    common.load_env()
+    configure_from_env()
     auth_files = discover_auth_files()
+    previous_accounts = load_previous_accounts()
+    local_rate_limits = read_latest_local_rate_limits()
     labels = ",".join(label for label, _, _ in auth_files)
     log_event(f"starting Codex usage fetch accounts={labels or 'none'}")
 
     try:
-        accounts = [fetch_account(label, path, is_selected) for label, path, is_selected in auth_files]
+        accounts = [fetch_account(label, path, is_selected, local_rate_limits) for label, path, is_selected in auth_files]
+        accounts = [carry_forward_previous_windows(account, previous_accounts) for account in accounts]
         accounts = sort_accounts(accounts)
         ok_count = sum(1 for account in accounts if account.get("ok"))
         output = {
@@ -422,7 +618,7 @@ def main():
             "accounts": accounts,
             "bars": flatten_bars(accounts),
         }
-        write_outputs(output)
+        common.write_usage_outputs(OUTPUT_PATH, RENDER_PATH, output)
         log_event(f"completed fetch accounts={len(accounts)} ok={ok_count} wrote={OUTPUT_PATH.name}")
         print(json.dumps(output, indent=2))
         return 0 if ok_count > 0 else 1

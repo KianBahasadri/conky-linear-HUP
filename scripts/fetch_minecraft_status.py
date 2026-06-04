@@ -10,39 +10,18 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
+import fetch_common as common
+
 
 ROOT = Path(__file__).resolve().parents[1]
-ENV_PATH = ROOT / ".env"
 CACHE_DIR = ROOT / "cache"
 STATUS_PATH = CACHE_DIR / "minecraft-status.json"
 LOG_PATH = CACHE_DIR / "conky-minecraft.log"
 PEBBLEHOST_API_URL = "https://panel.pebblehost.com/api/client"
 
 
-def load_env(path):
-    if not path.exists():
-        return
-
-    for raw_line in path.read_text(encoding="utf-8").splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-
-        key, value = line.split("=", 1)
-        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
-
-
-def log_event(message):
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now().astimezone().isoformat(timespec="seconds")
-    with LOG_PATH.open("a", encoding="utf-8") as log_file:
-        log_file.write(f"[{timestamp}] fetch_minecraft_status: {message}\n")
-
-
-def atomic_write_json(path, data):
-    tmp_path = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-    tmp_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
-    os.replace(tmp_path, path)
+log_event = common.make_logger(LOG_PATH, "fetch_minecraft_status")
+atomic_write_json = common.atomic_write_json
 
 
 def encode_varint(value):
@@ -315,7 +294,7 @@ def write_error(message):
 
 def main():
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    load_env(ENV_PATH)
+    common.load_env()
 
     try:
         host, port = parse_server()
