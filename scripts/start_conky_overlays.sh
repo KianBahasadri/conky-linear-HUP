@@ -64,12 +64,6 @@ MONITOR_HAS_PRIMARY=0
 overlay_keys=(linear codex minecraft github)
 fetch_keys=(linear codex claude minecraft github)
 
-declare -A overlay_label=(
-  [linear]="Linear"
-  [codex]="Codex"
-  [minecraft]="Minecraft"
-  [github]="GitHub"
-)
 declare -A overlay_disabled_name=(
   [linear]="linear"
   [codex]="codex"
@@ -186,6 +180,9 @@ start_fetch_loop() {
 
   stop_fetch_loop "$fetch_key"
 
+  # The loop body runs in the child shell with paths passed as positional args,
+  # so it must stay single-quoted (no expansion in this parent shell).
+  # shellcheck disable=SC2016
   setsid bash -c '
     script_path="$1"
     log_path="$2"
