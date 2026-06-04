@@ -57,6 +57,11 @@ Each overlay can be disabled with its `*_OVERLAY_ENABLED=0` variable in `.env`.
 ```
 
 - Claude `rate_limits` appear after the first Claude Code API response in a session. Until then, the panel can show the `CLAUDE` chip without bars.
+- If you use a custom statusLine command instead of pointing it at this script, that command must still pipe the stdin payload to `fetch_claude_usage.py`, or the panel's cache goes stale and the bars disappear. For example, after capturing `input=$(cat)`:
+
+```bash
+printf '%s' "$input" | /path/to/conky-linear-HUP/scripts/fetch_claude_usage.py >/dev/null 2>&1 &
+```
 - Weekly and 5h pace markers are per paid account: each bar uses that window's own reset time.
 - Combined usage is the average weekly `usedPercent` across paid accounts; free accounts are muted and excluded.
 - Under pace by at least `10%` shows an amber fast-mode chip, except during the first `10%` of the weekly cycle.
