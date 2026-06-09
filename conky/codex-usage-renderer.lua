@@ -359,7 +359,7 @@ return function(shared, repo_root)
       hour = 12
     end
     local meridiem = local_time.hour >= 12 and 'PM' or 'AM'
-    local time_label = string.format('%d:%02d %s', hour, local_time.min, meridiem)
+    local time_label = string.format('%2d:%02d %s', hour, local_time.min, meridiem)
 
     if label == 'weekly' then
       return string.format('%s %02d %s', os.date('%b', reset_time), local_time.day, time_label)
@@ -583,7 +583,6 @@ return function(shared, repo_root)
     local text_x = x + codex_bar_width + codex_bar_text_gap
     local reset_x = text_x + codex_bar_countdown_width + codex_bar_reset_gap
     countdown_label = shared.truncate_title(cr, countdown_label, codex_bar_countdown_width)
-    reset_at_label = shared.truncate_title(cr, reset_at_label, codex_bar_reset_width)
 
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
     cairo_set_font_size(cr, 10)
@@ -635,7 +634,7 @@ return function(shared, repo_root)
     local label_x = x + 22
     local is_free = is_free_account(account)
     local first_accent, first_accent_secondary, second_accent, second_accent_secondary = provider_accents(account, is_free)
-    local is_active = account.is_selected or provider_name(account) == 'claude'
+    local is_active = account.is_selected
 
     for _, window in ipairs(account.windows or {}) do
       local window_label = normalized_window_label(window)
@@ -646,15 +645,17 @@ return function(shared, repo_root)
       end
     end
 
-    if account.is_selected and provider_name(account) == 'codex' then
-      shared.set_hex(cr, 'ff9f1c', 0.20)
+    if account.is_selected then
+      local selection_color = provider_name(account) == 'codex' and '00e5ff' or 'ff9f1c'
+
+      shared.set_hex(cr, selection_color, 0.20)
       cairo_set_line_width(cr, 5)
       cairo_move_to(cr, label_x - 20, y + 11)
       cairo_line_to(cr, label_x - 12, y + 18)
       cairo_line_to(cr, label_x - 20, y + 25)
       cairo_stroke(cr)
 
-      shared.set_hex(cr, 'ff9f1c', 0.94)
+      shared.set_hex(cr, selection_color, 0.94)
       cairo_set_line_width(cr, 2)
       cairo_move_to(cr, label_x - 20, y + 11)
       cairo_line_to(cr, label_x - 12, y + 18)

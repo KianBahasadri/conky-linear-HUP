@@ -17,16 +17,16 @@ Each overlay can be disabled with its `*_OVERLAY_ENABLED=0` variable in `.env`.
 - `cache/linear-cards.json`: Linear cards consumed by the Cairo renderer.
 - `cache/codex-usage.json`: full Codex account/window usage for inspection.
 - `cache/codex-usage-render.tsv`: renderer-friendly Codex usage consumed by the Cairo renderer.
-- `cache/claude-statusline.json`: last Claude Code statusline payload used for rate-limit rendering.
 - `cache/claude-usage.json`: normalized Claude Code account/window usage for inspection.
 - `cache/claude-usage-render.tsv`: renderer-friendly Claude Code usage consumed by the Cairo renderer.
+- `cache/claude-usage-cache-*.json`: per-account Claude API quota-check cache.
 - `cache/minecraft-status.json`: Minecraft Java server status consumed by the Cairo renderer.
 - `cache/github-contributions.json`: GitHub contribution squares consumed by the Cairo renderer.
 - `cache/conky-linear.log`: Linear fetch, launcher, and Linear Conky output.
 - `cache/conky-codex.log`: Codex fetch and Codex Conky output.
 - `cache/conky-minecraft.log`: Minecraft fetch, launcher, and Minecraft Conky output.
 - `cache/conky-github.log`: GitHub fetch, launcher, and GitHub Conky output.
-- Fetch loops refresh Linear every `180s`, Codex every `300s`, Claude from the last statusline cache every `60s`, Minecraft every `60s`, and GitHub every `1800s`.
+- Fetch loops refresh Linear every `180s`, Codex every `300s`, Claude every `60s` with a per-account API cache, Minecraft every `60s`, and GitHub every `1800s`.
 
 ## Linear Rules
 
@@ -41,27 +41,12 @@ Each overlay can be disabled with its `*_OVERLAY_ENABLED=0` variable in `.env`.
 ## Codex Rules
 
 - The quota panel shows separate `CODEX` and `CLAUDE` chips. Codex rows use cyan/green bars; Claude rows use coral/gold bars.
-- The orange chevron marks the currently selected Codex auth file, meaning the auth file whose path resolves to `~/.codex/auth.json`.
+- The selection chevron marks selected auth files: Codex rows whose path resolves to `~/.codex/auth.json`, and Claude rows whose path resolves to `~/.claude/.credentials.json`. Codex uses a blue chevron; Claude uses orange.
 - Multiple Codex accounts are discovered from `~/.codex/auth.json.*`; `CODEX_AUTH_PATH` forces a single auth file.
 - `CODEX_HOME`, `CODEX_SQLITE_HOME`, `CODEX_USAGE_DEGENERATE_RETRIES`, and `CODEX_LOCAL_RATE_LIMIT_MAX_AGE_SECONDS` are advanced overrides for local Codex state discovery and retry behavior.
-- Claude usage comes from Claude Code's statusline `rate_limits` payload. Configure Claude Code with:
-
-```json
-{
-  "statusLine": {
-    "type": "command",
-    "command": "/home/kian/live-wallpaper/conky-linear-HUP/scripts/fetch_claude_usage.py",
-    "refreshInterval": 60
-  }
-}
-```
-
-- Claude `rate_limits` appear after the first Claude Code API response in a session. Until then, the panel can show the `CLAUDE` chip without bars.
-- If you use a custom statusLine command instead of pointing it at this script, that command must still pipe the stdin payload to `fetch_claude_usage.py`, or the panel's cache goes stale and the bars disappear. For example, after capturing `input=$(cat)`:
-
-```bash
-printf '%s' "$input" | /path/to/conky-linear-HUP/scripts/fetch_claude_usage.py >/dev/null 2>&1 &
-```
+- Multiple Claude accounts are discovered from `~/.claude/.credentials.json.*`; `CLAUDE_CREDENTIALS_PATH` or `CLAUDE_AUTH_PATH` forces a single credentials file.
+- Claude account names and selected-account chevrons use the same bright/dim and marker rules as Codex.
+- Claude usage is fetched with a direct Anthropic quota-check request and cached per account. `CLAUDE_HOME`, `CLAUDE_USAGE_TTL`, `CLAUDE_PLAN_TYPE`, and `ANTHROPIC_DEFAULT_HAIKU_MODEL` are advanced overrides.
 - Weekly and 5h pace markers are per paid account: each bar uses that window's own reset time.
 - Combined usage is the average weekly `usedPercent` across paid accounts; free accounts are muted and excluded.
 - Under pace by at least `10%` shows an amber fast-mode chip, except during the first `10%` of the weekly cycle.
@@ -104,7 +89,9 @@ PRIMARY_WAIT_SECONDS=20
 # Codex + Claude quota overlay
 CODEX_OVERLAY_ENABLED=1
 CLAUDE_PLAN_TYPE=pro
-CLAUDE_USAGE_LABEL=claude
+# CLAUDE_CREDENTIALS_PATH=/home/you/.claude/.credentials.json
+# CLAUDE_HOME=/home/you/.claude
+# CLAUDE_USAGE_TTL=300
 # CODEX_AUTH_PATH=/home/you/.codex/auth.json
 # CODEX_HOME=/home/you/.codex
 # CODEX_SQLITE_HOME=/home/you/.codex
@@ -140,4 +127,4 @@ GITHUB_REFRESH_SECONDS=1800
 GITHUB_TIMEOUT_SECONDS=10
 ```
 
-Codex reads local Codex auth files and refreshes expired tokens in place. Claude reads only Claude Code statusline rate-limit payloads and `claude auth status`.
+Codex reads local Codex auth files and refreshes expired tokens in place. Claude reads local Claude credentials files and uses the Anthropic response headers from a minimal quota-check request; inactive Claude credentials may need to be refreshed by Claude Code if their access tokens expire.
