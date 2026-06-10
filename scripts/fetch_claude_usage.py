@@ -19,10 +19,19 @@ LOG_PATH = CACHE_DIR / "conky-codex.log"
 DEFAULT_CREDENTIALS_NAME = ".credentials.json"
 CREDENTIALS_PREFIX = ".credentials.json."
 USAGE_URL = "https://api.anthropic.com/v1/messages"
+TOKEN_URL = "https://console.anthropic.com/v1/oauth/token"
+PROFILE_URL = "https://api.anthropic.com/api/oauth/profile"
+OAUTH_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
+TOKEN_REFRESH_MARGIN_SECONDS = 300
+DEFAULT_TOKEN_LIFETIME_SECONDS = 8 * 60 * 60
 DEFAULT_MODEL = "claude-haiku-4-5-20251001"
 SYSTEM_PROMPT = "You are Claude Code, Anthropic's official CLI for Claude."
 FIVE_HOUR_WINDOW_SECONDS = common.FIVE_HOUR_WINDOW_SECONDS
 WEEKLY_WINDOW_SECONDS = common.WEEKLY_WINDOW_SECONDS
+
+
+class QuotaAuthError(RuntimeError):
+    """The usage probe was rejected because the access token is expired or revoked."""
 
 
 log_event = common.make_logger(LOG_PATH, "fetch_claude_usage")
@@ -102,11 +111,137 @@ def read_credentials(label, path):
         "label": label,
         "path": path,
         "access_token": access_token,
+        "refresh_token": oauth.get("refreshToken", ""),
+        "expires_at": epoch_seconds(oauth.get("expiresAt")),
         "plan_type": os.environ.get("CLAUDE_PLAN_TYPE", "").strip()
         or oauth.get("subscriptionType", "")
         or oauth.get("rateLimitTier", ""),
         "email": "",
     }
+
+
+def epoch_seconds(value):
+    """Claude Code stores expiresAt in milliseconds; accept seconds too."""
+    epoch = as_int(value)
+    return epoch // 1000 if epoch > 10**11 else epoch
+
+
+def token_needs_refresh(auth):
+    if not auth.get("refresh_token") or not auth.get("expires_at"):
+        return False
+    now = int(datetime.now(timezone.utc).timestamp())
+    return auth["expires_at"] - now < TOKEN_REFRESH_MARGIN_SECONDS
+
+
+def persist_credentials(auth):
+    path = auth["path"]
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        raw = {}
+    oauth = raw.get("claudeAiOauth")
+    if not isinstance(oauth, dict):
+        oauth = {}
+        raw["claudeAiOauth"] = oauth
+    oauth["accessToken"] = auth["access_token"]
+    oauth["refreshToken"] = auth["refresh_token"]
+    oauth["expiresAt"] = auth["expires_at"] * 1000
+
+    tmp_path = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    fd = os.open(tmp_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as tmp_file:
+        tmp_file.write(json.dumps(raw, indent=2))
+    os.replace(tmp_path, path)
+
+
+def refresh_credentials(auth):
+    if not auth.get("refresh_token"):
+        raise RuntimeError(f"credentials file has no claudeAiOauth.refreshToken: {auth['path']}")
+
+    body = json.dumps(
+        {
+            "grant_type": "refresh_token",
+            "refresh_token": auth["refresh_token"],
+            "client_id": OAUTH_CLIENT_ID,
+        }
+    ).encode("utf-8")
+    request = urllib.request.Request(TOKEN_URL, data=body, method="POST")
+    request.add_header("content-type", "application/json")
+    request.add_header("user-agent", "claude-cli/2.1.162 (external, cli)")
+
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as error:
+        detail = error.read().decode("utf-8", errors="replace")[:300]
+        raise RuntimeError(f"Claude OAuth token refresh failed: HTTP {error.code}: {detail}") from error
+    except (urllib.error.URLError, json.JSONDecodeError) as error:
+        raise RuntimeError(f"Claude OAuth token refresh failed: {error}") from error
+
+    access_token = payload.get("access_token", "")
+    if not access_token:
+        raise RuntimeError("Claude OAuth token refresh returned no access_token")
+
+    lifetime_seconds = as_int(payload.get("expires_in"), DEFAULT_TOKEN_LIFETIME_SECONDS)
+    auth["access_token"] = access_token
+    auth["refresh_token"] = payload.get("refresh_token") or auth["refresh_token"]
+    auth["expires_at"] = int(datetime.now(timezone.utc).timestamp()) + lifetime_seconds
+    persist_credentials(auth)
+    log_event(f"account={auth['label']} refreshed Claude OAuth token lifetime={lifetime_seconds}s")
+    return auth
+
+
+def fetch_profile_email(access_token):
+    request = urllib.request.Request(PROFILE_URL)
+    request.add_header("authorization", f"Bearer {access_token}")
+    request.add_header("anthropic-beta", "oauth-2025-04-20")
+    request.add_header("user-agent", "claude-cli/2.1.162 (external, cli)")
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except (urllib.error.HTTPError, urllib.error.URLError, json.JSONDecodeError) as error:
+        raise RuntimeError(f"Claude profile request failed: {error}") from error
+    return (payload.get("account") or {}).get("email", "") or ""
+
+
+def discover_account_email(auth):
+    try:
+        return fetch_profile_email(auth["access_token"])
+    except RuntimeError as error:
+        log_event(f"account={auth['label']} profile lookup failed: {error}")
+        return ""
+
+
+def is_invalid_grant(error):
+    return "invalid_grant" in str(error)
+
+
+def adopt_default_credentials(auth, expected_email, error):
+    """Claude Code rotates the refresh token of the logged-in account, which kills any
+    copied credentials file for that account. When that happens, take the credentials
+    from the live default file, but only after the profile email confirms it is the
+    same account."""
+    if not is_invalid_grant(error) or not expected_email:
+        return False
+
+    default_path = default_credentials_path()
+    try:
+        if default_path.resolve() == auth["path"].resolve():
+            return False
+        default_auth = read_credentials(auth["label"], default_path)
+        if token_needs_refresh(default_auth):
+            refresh_credentials(default_auth)
+        if fetch_profile_email(default_auth["access_token"]) != expected_email:
+            return False
+    except (OSError, RuntimeError):
+        return False
+
+    auth["access_token"] = default_auth["access_token"]
+    auth["refresh_token"] = default_auth["refresh_token"]
+    auth["expires_at"] = default_auth["expires_at"]
+    persist_credentials(auth)
+    log_event(f"account={auth['label']} adopted credentials from {default_path.name} after refresh token rotation")
+    return True
 
 
 def optional_float(value):
@@ -171,7 +306,32 @@ def fetch_quota_usage(auth):
         return usage, status
 
     detail = f": {body_text}" if body_text else ""
-    raise RuntimeError(f"Claude usage API returned no rate-limit headers: HTTP {status}{detail}")
+    message = f"Claude usage API returned no rate-limit headers: HTTP {status}{detail}"
+    if status == 401:
+        raise QuotaAuthError(message)
+    raise RuntimeError(message)
+
+
+def refresh_or_adopt(auth, expected_email):
+    try:
+        refresh_credentials(auth)
+    except RuntimeError as error:
+        if not adopt_default_credentials(auth, expected_email, error):
+            raise
+
+
+def fetch_fresh_usage(auth, expected_email=""):
+    refreshed = False
+    if token_needs_refresh(auth):
+        refresh_or_adopt(auth, expected_email)
+        refreshed = True
+    try:
+        return fetch_quota_usage(auth)
+    except QuotaAuthError:
+        if refreshed:
+            raise
+        refresh_or_adopt(auth, expected_email)
+        return fetch_quota_usage(auth)
 
 
 def safe_cache_label(label):
@@ -190,12 +350,14 @@ def read_account_cache(label):
         return None
 
 
-def write_account_cache(label, usage, status):
+def write_account_cache(label, usage, status, email=""):
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     payload = dict(usage)
     payload["fetched_at"] = int(datetime.now(timezone.utc).timestamp())
     payload["source"] = "api"
     payload["status"] = status
+    if email:
+        payload["email"] = email
     atomic_write_json(account_cache_path(label), payload)
 
 
@@ -271,14 +433,18 @@ def fetch_account(label, path, is_selected):
     try:
         auth = read_credentials(label, path)
         cached = read_account_cache(label)
+        if isinstance(cached, dict):
+            auth["email"] = cached.get("email", "") or ""
         if cache_is_fresh(cached):
             account = account_from_usage(auth, cached, is_selected)
             log_event(f"account={label} using cached Claude usage windows={len(account['windows'])}")
             return account
 
         try:
-            usage, status = fetch_quota_usage(auth)
-            write_account_cache(label, usage, status)
+            usage, status = fetch_fresh_usage(auth, auth.get("email", ""))
+            if not auth.get("email"):
+                auth["email"] = discover_account_email(auth)
+            write_account_cache(label, usage, status, auth.get("email", ""))
             account = account_from_usage(auth, usage, is_selected)
             log_event(
                 f"account={label} completed plan={account['planType'] or 'unknown'} "

@@ -47,6 +47,9 @@ Each overlay can be disabled with its `*_OVERLAY_ENABLED=0` variable in `.env`.
 - Multiple Claude accounts are discovered from `~/.claude/.credentials.json.*`; `CLAUDE_CREDENTIALS_PATH` or `CLAUDE_AUTH_PATH` forces a single credentials file.
 - Claude account names and selected-account chevrons use the same bright/dim and marker rules as Codex.
 - Claude usage is fetched with a direct Anthropic quota-check request and cached per account. `CLAUDE_HOME`, `CLAUDE_USAGE_TTL`, `CLAUDE_PLAN_TYPE`, and `ANTHROPIC_DEFAULT_HAIKU_MODEL` are advanced overrides.
+- Expired Claude access tokens are refreshed automatically with the credentials file's stored refresh token, and the new tokens are written back to that file (mode 0600).
+- Claude Code rotates the refresh token of the logged-in account, which invalidates a copied credentials file for the same account. When a refresh fails with `invalid_grant`, the fetcher re-adopts credentials from `~/.claude/.credentials.json`, but only if the live file's profile email matches the email recorded for that account in `cache/claude-usage-cache-<label>.json`.
+- The account email is recorded automatically after the first successful fetch. A new `~/.claude/.credentials.json.<label>` copy therefore needs one successful fetch before rotation recovery works for it.
 - Weekly and 5h pace markers are per paid account: each bar uses that window's own reset time.
 - Combined usage is the average weekly `usedPercent` across paid accounts; free accounts are muted and excluded.
 - Under pace by at least `10%` shows an amber fast-mode chip, except during the first `10%` of the weekly cycle.
