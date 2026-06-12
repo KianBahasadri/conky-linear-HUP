@@ -750,7 +750,7 @@ return function(shared, repo_root)
     end
 
     if provider_name(account) == 'gemini' then
-      -- Bright spring green FLASH, pine PRO.
+      -- Bright spring green Gemini, pine Other.
       return '4ade80', '86efac', '318f6a', '1f6b52'
     end
 
@@ -785,9 +785,9 @@ return function(shared, repo_root)
         second = window
       elseif provider_name(account) == 'cursor' and window_label == 'auto' then
         first = window
-      elseif provider_name(account) == 'gemini' and window_label == 'pro' then
+      elseif provider_name(account) == 'gemini' and window_label == 'other' then
         second = window
-      elseif provider_name(account) == 'gemini' and window_label == 'flash' then
+      elseif provider_name(account) == 'gemini' and window_label == 'gemini' then
         first = window
       elseif window_label == 'weekly' then
         second = window
@@ -843,10 +843,10 @@ return function(shared, repo_root)
       end
     elseif provider_name(account) == 'gemini' then
       if first then
-        draw_bar_overlay_label(cr, 'FLASH', first_bar_x, bar_y, '000000')
+        draw_bar_overlay_label(cr, 'Gemini', first_bar_x, bar_y, '000000')
       end
       if second then
-        draw_bar_overlay_label(cr, 'PRO', second_bar_x, bar_y, '000000')
+        draw_bar_overlay_label(cr, 'Other', second_bar_x, bar_y, '000000')
       end
     end
   end

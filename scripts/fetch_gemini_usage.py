@@ -20,6 +20,7 @@ RENDER_PATH = CACHE_DIR / "gemini-usage-render.tsv"
 LOG_PATH = CACHE_DIR / "conky-codex.log"
 DEFAULT_STATE_DIR = Path.home() / ".gemini" / "antigravity-cli" / "rotate-auth"
 DEFAULT_ENDPOINT = "https://daily-cloudcode-pa.googleapis.com"
+DEFAULT_AUTH_REFRESH_TIMEOUT_SECONDS = 30
 API_VERSION = "v1internal"
 DAY_SECONDS = 24 * 60 * 60
 WEEK_SECONDS = 7 * DAY_SECONDS
@@ -31,6 +32,10 @@ as_float = common.as_float
 flatten_bars = common.flatten_bars
 
 
+class GeminiAuthError(RuntimeError):
+    pass
+
+
 def state_dir():
     configured = os.environ.get("GEMINI_ANTIGRAVITY_STATE_DIR", "").strip()
     return Path(configured).expanduser() if configured else DEFAULT_STATE_DIR
@@ -38,6 +43,11 @@ def state_dir():
 
 def endpoint():
     return os.environ.get("GEMINI_CODE_ASSIST_ENDPOINT", DEFAULT_ENDPOINT).rstrip("/")
+
+
+def auth_refresh_timeout_seconds():
+    configured = os.environ.get("GEMINI_AUTH_REFRESH_TIMEOUT_SECONDS", "")
+    return max(1, common.as_int(configured, DEFAULT_AUTH_REFRESH_TIMEOUT_SECONDS))
 
 
 def read_profiles(path):
@@ -101,6 +111,38 @@ def read_auth(label, is_selected):
     }
 
 
+def refresh_selected_auth(label):
+    current = read_current(state_dir() / "current")
+    if current and current != label:
+        raise RuntimeError(f"selected Gemini profile changed from {label} to {current}")
+
+    configured = os.environ.get("GEMINI_ANTIGRAVITY_CLI", "").strip()
+    executable = str(Path(configured).expanduser()) if configured else shutil.which("agy")
+    if not executable:
+        raise RuntimeError("agy is required to refresh the selected Gemini credentials")
+
+    timeout = auth_refresh_timeout_seconds()
+    log_event(f"account={label} refreshing Gemini credentials through agy")
+    try:
+        result = subprocess.run(
+            [executable, "models"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as error:
+        raise RuntimeError(f"agy credential refresh timed out after {timeout}s") from error
+    except OSError as error:
+        raise RuntimeError(f"agy credential refresh failed: {error}") from error
+
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip()
+        suffix = f": {detail[-500:]}" if detail else ""
+        raise RuntimeError(f"agy credential refresh failed with exit code {result.returncode}{suffix}")
+    log_event(f"account={label} refreshed Gemini credentials through agy")
+
+
 def request_json(access_token, method, body):
     request = urllib.request.Request(
         f"{endpoint()}/{API_VERSION}:{method}",
@@ -139,6 +181,8 @@ def load_code_assist(auth):
             }
         },
     )
+    if status in (401, 403):
+        raise GeminiAuthError(f"Gemini loadCodeAssist API error: HTTP {status}")
     if status != 200:
         raise RuntimeError(f"Gemini loadCodeAssist API error: HTTP {status}")
     project = payload.get("cloudaicompanionProject", "")
@@ -149,6 +193,8 @@ def load_code_assist(auth):
 
 def fetch_quota(auth, project):
     status, payload = request_json(auth["access_token"], "retrieveUserQuota", {"project": project})
+    if status in (401, 403):
+        raise GeminiAuthError(f"Gemini retrieveUserQuota API error: HTTP {status}")
     if status != 200:
         raise RuntimeError(f"Gemini retrieveUserQuota API error: HTTP {status}")
     return payload
@@ -156,11 +202,9 @@ def fetch_quota(auth, project):
 
 def classify_model(model_id):
     model_id = str(model_id or "").lower()
-    if "pro" in model_id:
-        return "pro"
-    if "flash" in model_id:
-        return "flash"
-    return model_id or "requests"
+    if "pro" in model_id or "flash" in model_id:
+        return "gemini"
+    return "other"
 
 
 def quota_window_seconds(reset_after_seconds):
@@ -180,8 +224,8 @@ def normalize_windows(payload, fetched_at=None):
         token_type = str(bucket.get("tokenType", "")).upper()
         if token_type and token_type not in {"REQUESTS", "WTUS"}:
             continue
-        model_id = str(bucket.get("modelId", ""))
-        if not model_id.lower().startswith("gemini"):
+        model_id = str(bucket.get("modelId", "")).strip()
+        if not model_id:
             continue
         reset_at = common.parse_iso_epoch(bucket.get("resetTime"))
         remaining_fraction = max(0.0, min(1.0, as_float(bucket.get("remainingFraction"))))
@@ -201,10 +245,10 @@ def normalize_windows(payload, fetched_at=None):
         group["resets"].append(reset_at)
         group["models"].append(model_id)
 
-    order = {"flash": 0, "pro": 1}
+    order = {"gemini": 0, "other": 1}
     windows = []
     for label, group in sorted(groups.items(), key=lambda item: (order.get(item[0], 2), item[0]))[:2]:
-        remaining_fraction = min(group["remaining"])
+        remaining_fraction = sum(group["remaining"]) / len(group["remaining"])
         reset_at = min(group["resets"])
         reset_after_seconds = max(0, reset_at - now)
         used_percent = round((1 - remaining_fraction) * 100, 1)
@@ -266,27 +310,37 @@ def normalize_error(label, message, is_selected=False):
     }
 
 
+def fetch_fresh_account(label, is_selected):
+    auth = read_auth(label, is_selected)
+    project, load_payload = load_code_assist(auth)
+    quota_payload = fetch_quota(auth, project)
+    windows = normalize_windows(quota_payload)
+    if not windows:
+        raise RuntimeError("Gemini quota API returned no active request buckets")
+    account = {
+        "ok": True,
+        "label": label,
+        "planType": plan_type(load_payload),
+        "isSelected": is_selected,
+        "windows": windows,
+    }
+    write_account_cache(account)
+    log_event(
+        f"account={label} completed plan={account['planType'] or 'unknown'} "
+        f"windows={len(windows)} selected={is_selected}"
+    )
+    return account
+
+
 def fetch_account(label, is_selected):
     try:
-        auth = read_auth(label, is_selected)
-        project, load_payload = load_code_assist(auth)
-        quota_payload = fetch_quota(auth, project)
-        windows = normalize_windows(quota_payload)
-        if not windows:
-            raise RuntimeError("Gemini quota API returned no active request buckets")
-        account = {
-            "ok": True,
-            "label": label,
-            "planType": plan_type(load_payload),
-            "isSelected": is_selected,
-            "windows": windows,
-        }
-        write_account_cache(account)
-        log_event(
-            f"account={label} completed plan={account['planType'] or 'unknown'} "
-            f"windows={len(windows)} selected={is_selected}"
-        )
-        return account
+        try:
+            return fetch_fresh_account(label, is_selected)
+        except GeminiAuthError:
+            if not is_selected:
+                raise
+            refresh_selected_auth(label)
+            return fetch_fresh_account(label, is_selected)
     except Exception as error:
         cached = read_account_cache(label)
         if isinstance(cached, dict) and cached.get("windows"):

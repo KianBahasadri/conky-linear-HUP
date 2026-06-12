@@ -47,6 +47,7 @@ Each overlay can be disabled with its `*_OVERLAY_ENABLED=0` variable in `.env`.
 
 - The quota panel shows separate `CODEX`, `CLAUDE`, `CURSOR`, and `GEMINI` chips. Codex rows use cyan/navy bars; Claude rows use coral/gold bars; Cursor rows use grey bars; Gemini rows use Google blue/green and yellow/red bars.
 - The selection chevron marks selected auth profiles: Codex rows whose path resolves to `~/.codex/auth.json`, Cursor rows whose path resolves to `~/.config/cursor/auth.json`, Claude rows whose path resolves to `~/.claude/.credentials.json` or whose access token equals the one in that file, and Gemini rows matching Antigravity's `current` profile. Codex uses a blue chevron, Claude uses orange, Cursor uses grey, and Gemini uses Google blue. Token comparison is required for Claude because Claude Code replaces `~/.claude/.credentials.json` with a new regular file on login and on every OAuth refresh, so a symlink there does not survive.
+- All account-rotation tooling is stored in `~/.config/clusterfork`.
 - Multiple Codex accounts are discovered from `~/.codex/auth.json.*`; `CODEX_AUTH_PATH` forces a single auth file.
 - `CODEX_HOME`, `CODEX_SQLITE_HOME`, `CODEX_USAGE_DEGENERATE_RETRIES`, and `CODEX_LOCAL_RATE_LIMIT_MAX_AGE_SECONDS` are advanced overrides for local Codex state discovery and retry behavior.
 - Multiple Claude accounts are discovered from `~/.claude/.credentials.json.*`; `CLAUDE_CREDENTIALS_PATH` or `CLAUDE_AUTH_PATH` forces a single credentials file.
@@ -55,9 +56,9 @@ Each overlay can be disabled with its `*_OVERLAY_ENABLED=0` variable in `.env`.
 - Multiple Cursor accounts are discovered from `~/.config/cursor/auth.json.*`; `CURSOR_AUTH_PATH` forces a single auth file and `CURSOR_HOME` overrides the config directory.
 - Cursor usage is fetched from Cursor's DashboardService. It renders Cursor's monthly `Auto + Composer` and `API` usage pools as the two bars for each account.
 - Gemini accounts are discovered from Antigravity's rotation state in `~/.gemini/antigravity-cli/rotate-auth`. The selected profile reads the live GNOME Keyring item `service=gemini username=antigravity`; inactive profiles read `service=rotate-antigravity username=<profile>`.
-- Gemini usage is fetched from Antigravity's Code Assist API. Active request buckets are grouped into `FLASH` and `PRO` bars using the most constrained remaining fraction in each model family.
-- The Gemini fetcher never writes or refreshes Keyring credentials. If an inactive profile's one-hour access token expires, its last successful quota remains visible from cache until Antigravity refreshes that profile after it is selected.
-- `GEMINI_ANTIGRAVITY_STATE_DIR` overrides the rotation state directory and `GEMINI_CODE_ASSIST_ENDPOINT` overrides the Antigravity API endpoint.
+- Gemini usage is fetched from Antigravity's Code Assist API. Bar 1 averages all active Flash and Pro request quotas, while bar 2 averages every other active model quota. The existing `gemini` and `other` cache labels identify those two groups.
+- The Gemini fetcher never edits Keyring credentials directly. If the selected profile returns HTTP 401 or 403, it runs `agy models`, re-reads the CLI-refreshed Keyring item, and retries once. Inactive profiles continue serving their last successful quota until selected because refreshing them would require switching the active account.
+- `GEMINI_ANTIGRAVITY_STATE_DIR` overrides the rotation state directory, `GEMINI_CODE_ASSIST_ENDPOINT` overrides the Antigravity API endpoint, `GEMINI_ANTIGRAVITY_CLI` overrides the `agy` executable, and `GEMINI_AUTH_REFRESH_TIMEOUT_SECONDS` controls the refresh timeout.
 - Expired Claude access tokens are refreshed automatically with the credentials file's stored refresh token, and the new tokens are written back to that file (mode 0600).
 - The fetcher never writes `~/.claude/.credentials.json` and never refreshes a grant whose refresh token equals the one in that file: Claude Code owns that file and that grant, and a competing refresh would revoke the token Claude Code holds and force a re-login. While waiting for Claude Code to rotate an expired shared grant, the panel serves the stale cache.
 - Claude Code rotates the refresh token of the logged-in account, which invalidates a copied credentials file for the same account. The fetcher recovers in two ways, both gated on the live file's profile email matching the email recorded for that account in `cache/claude-usage-cache-<label>.json`: it detects a changed default-file token (fingerprint in `cache/claude-default-token.fingerprint`) and copies the rotated tokens into the matching suffixed file within one loop iteration, and as a backstop it re-adopts from `~/.claude/.credentials.json` when a refresh fails with `invalid_grant`.
@@ -116,6 +117,8 @@ CLAUDE_PLAN_TYPE=pro
 # CURSOR_HOME=/home/you/.config/cursor
 # GEMINI_ANTIGRAVITY_STATE_DIR=/home/you/.gemini/antigravity-cli/rotate-auth
 # GEMINI_CODE_ASSIST_ENDPOINT=https://daily-cloudcode-pa.googleapis.com
+# GEMINI_ANTIGRAVITY_CLI=/usr/bin/agy
+# GEMINI_AUTH_REFRESH_TIMEOUT_SECONDS=30
 
 # Minecraft overlay
 MINECRAFT_SERVER=mc.example.com:25565
