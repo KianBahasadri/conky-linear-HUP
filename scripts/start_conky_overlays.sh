@@ -28,13 +28,13 @@ if [[ -f "$ENV_PATH" ]]; then
 fi
 
 BASE_CONFIG="$ROOT/conky/linear-overlay.conkyrc"
-CODEX_CONFIG="$ROOT/conky/codex-overlay.conkyrc"
+RATE_LIMIT_PANEL_CONFIG="$ROOT/conky/rate-limit-panel-overlay.conkyrc"
 MINECRAFT_CONFIG="$ROOT/conky/minecraft-overlay.conkyrc"
 GITHUB_CONFIG="$ROOT/conky/github-overlay.conkyrc"
 GENERATED_DIR="$ROOT/conky/generated"
 CACHE_DIR="$ROOT/cache"
 LINEAR_LOG_PATH="$CACHE_DIR/conky-linear.log"
-CODEX_LOG_PATH="$CACHE_DIR/conky-codex.log"
+RATE_LIMIT_PANEL_LOG_PATH="$CACHE_DIR/conky-rate-limit-panel.log"
 MINECRAFT_LOG_PATH="$CACHE_DIR/conky-minecraft.log"
 GITHUB_LOG_PATH="$CACHE_DIR/conky-github.log"
 LINEAR_FETCH_PID="$CACHE_DIR/linear-fetch-loop.pid"
@@ -50,8 +50,8 @@ LINEAR_PRIMARY_GAP_Y=34
 LINEAR_PRIMARY_MONITOR_INDEX="${LINEAR_PRIMARY_MONITOR_INDEX:-0}"
 LINEAR_OVERLAY_ENABLED="${LINEAR_OVERLAY_ENABLED:-1}"
 PRIMARY_WAIT_SECONDS="${PRIMARY_WAIT_SECONDS:-20}"
-CODEX_GAP_Y=12
-CODEX_OVERLAY_ENABLED="${CODEX_OVERLAY_ENABLED:-1}"
+RATE_LIMIT_PANEL_GAP_Y=12
+RATE_LIMIT_PANEL_ENABLED="${RATE_LIMIT_PANEL_ENABLED:-1}"
 MINECRAFT_GAP_X="${MINECRAFT_GAP_X:-4}"
 MINECRAFT_GAP_Y="${MINECRAFT_GAP_Y:-12}"
 MINECRAFT_REFRESH_SECONDS="${MINECRAFT_REFRESH_SECONDS:-60}"
@@ -63,30 +63,30 @@ GITHUB_OVERLAY_ENABLED="${GITHUB_OVERLAY_ENABLED:-1}"
 GENERATE_ONLY=0
 MONITOR_HAS_PRIMARY=0
 
-overlay_keys=(linear codex minecraft github)
+overlay_keys=(linear rate-limit-panel minecraft github)
 fetch_keys=(linear codex claude cursor gemini minecraft github)
 
 declare -A overlay_disabled_name=(
   [linear]="linear"
-  [codex]="codex"
+  [rate-limit-panel]="rate limit panel"
   [minecraft]="minecraft"
   [github]="github"
 )
 declare -A overlay_config=(
   [linear]="$BASE_CONFIG"
-  [codex]="$CODEX_CONFIG"
+  [rate-limit-panel]="$RATE_LIMIT_PANEL_CONFIG"
   [minecraft]="$MINECRAFT_CONFIG"
   [github]="$GITHUB_CONFIG"
 )
 declare -A overlay_log_path=(
   [linear]="$LINEAR_LOG_PATH"
-  [codex]="$CODEX_LOG_PATH"
+  [rate-limit-panel]="$RATE_LIMIT_PANEL_LOG_PATH"
   [minecraft]="$MINECRAFT_LOG_PATH"
   [github]="$GITHUB_LOG_PATH"
 )
 declare -A overlay_enabled_var=(
   [linear]="LINEAR_OVERLAY_ENABLED"
-  [codex]="CODEX_OVERLAY_ENABLED"
+  [rate-limit-panel]="RATE_LIMIT_PANEL_ENABLED"
   [minecraft]="MINECRAFT_OVERLAY_ENABLED"
   [github]="GITHUB_OVERLAY_ENABLED"
 )
@@ -102,10 +102,10 @@ declare -A fetch_label=(
 )
 declare -A fetch_overlay_key=(
   [linear]="linear"
-  [codex]="codex"
-  [claude]="codex"
-  [cursor]="codex"
-  [gemini]="codex"
+  [codex]="rate-limit-panel"
+  [claude]="rate-limit-panel"
+  [cursor]="rate-limit-panel"
+  [gemini]="rate-limit-panel"
   [minecraft]="minecraft"
   [github]="github"
 )
@@ -237,9 +237,11 @@ done
 for key in "${overlay_keys[@]}"; do
   pkill -f "$GENERATED_DIR/$key-overlay-" 2>/dev/null || true
 done
+pkill -f "$GENERATED_DIR/codex-overlay-" 2>/dev/null || true
 for key in "${overlay_keys[@]}"; do
   pkill -f "${overlay_config[$key]}" 2>/dev/null || true
 done
+pkill -f "$ROOT/conky/codex-overlay.conkyrc" 2>/dev/null || true
 for fetch_key in "${fetch_keys[@]}"; do
   stop_fetch_loop "$fetch_key"
 done
@@ -335,7 +337,7 @@ overlay_gap_x() {
   local monitor_gap_x="$2"
 
   case "$key" in
-    linear|codex) printf "%s\n" "$monitor_gap_x" ;;
+    linear|rate-limit-panel) printf "%s\n" "$monitor_gap_x" ;;
     minecraft) printf "%s\n" "$MINECRAFT_GAP_X" ;;
     github) printf "%s\n" "$GITHUB_GAP_X" ;;
   esac
@@ -347,7 +349,7 @@ overlay_gap_y() {
 
   case "$key" in
     linear) printf "%s\n" "$linear_gap_y" ;;
-    codex) printf "%s\n" "$CODEX_GAP_Y" ;;
+    rate-limit-panel) printf "%s\n" "$RATE_LIMIT_PANEL_GAP_Y" ;;
     minecraft) printf "%s\n" "$MINECRAFT_GAP_Y" ;;
     github) printf "%s\n" "$GITHUB_GAP_Y" ;;
   esac
@@ -365,8 +367,8 @@ log_generated_overlay() {
     linear)
       log_overlay linear "generated monitor_index=$monitor_index width=$width gap_x=$monitor_gap_x gap_y=$linear_gap_y config=$config_path"
       ;;
-    codex)
-      log_overlay codex "generated monitor_index=$monitor_index width=$width gap_x=$monitor_gap_x config=$config_path"
+    rate-limit-panel)
+      log_overlay rate-limit-panel "generated monitor_index=$monitor_index width=$width gap_x=$monitor_gap_x config=$config_path"
       ;;
     minecraft)
       log_overlay minecraft "generated monitor_index=$monitor_index width=$width gap_x=$MINECRAFT_GAP_X gap_y=$MINECRAFT_GAP_Y config=$config_path"
@@ -391,8 +393,8 @@ launch_overlay() {
     linear)
       log_overlay linear "launched monitor_index=$monitor_index width=$width gap_x=$monitor_gap_x gap_y=$linear_gap_y config=$config_path pid=$!"
       ;;
-    codex)
-      log_overlay codex "launched monitor_index=$monitor_index width=$width gap_x=$monitor_gap_x config=$config_path pid=$!"
+    rate-limit-panel)
+      log_overlay rate-limit-panel "launched monitor_index=$monitor_index width=$width gap_x=$monitor_gap_x config=$config_path pid=$!"
       ;;
     minecraft)
       log_overlay minecraft "launched monitor_index=$monitor_index width=$width gap_x=$MINECRAFT_GAP_X gap_y=$MINECRAFT_GAP_Y config=$config_path pid=$!"

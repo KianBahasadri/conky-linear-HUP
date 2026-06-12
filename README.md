@@ -9,7 +9,7 @@ Desktop Conky widgets for keeping Linear work, Codex, Claude, Cursor, and Gemini
 ./scripts/stop_conky_overlays.sh
 ```
 
-`start_conky_overlays.sh` kills prior matching overlays, starts fetch loops, and generates one Linear, Codex, Minecraft, and GitHub config per detected monitor.
+`start_conky_overlays.sh` kills prior matching overlays, starts fetch loops, and generates one Linear, rate limit panel, Minecraft, and GitHub config per detected monitor.
 Each overlay can be disabled with its `*_OVERLAY_ENABLED=0` variable in `.env`.
 
 ## Caches
@@ -28,7 +28,7 @@ Each overlay can be disabled with its `*_OVERLAY_ENABLED=0` variable in `.env`.
 - `cache/minecraft-status.json`: Minecraft Java server status consumed by the Cairo renderer.
 - `cache/github-contributions.json`: GitHub contribution squares consumed by the Cairo renderer.
 - `cache/conky-linear.log`: Linear fetch, launcher, and Linear Conky output.
-- `cache/conky-codex.log`: Codex fetch and Codex Conky output.
+- `cache/conky-rate-limit-panel.log`: rate limit panel fetch loops and Conky output.
 - `cache/conky-minecraft.log`: Minecraft fetch, launcher, and Minecraft Conky output.
 - `cache/conky-github.log`: GitHub fetch, launcher, and GitHub Conky output.
 - Fetch loops refresh Linear every `180s`, Codex every `300s`, Claude every `60s` with a per-account API cache, Cursor and Gemini every `300s`, Minecraft every `60s`, and GitHub every `1800s`.
@@ -43,7 +43,7 @@ Each overlay can be disabled with its `*_OVERLAY_ENABLED=0` variable in `.env`.
 - Recently completed cards remain visible for `LINEAR_DONE_LOOKBACK_HOURS`.
 - Set `LINEAR_OVERLAY_ENABLED=0` to disable the Linear overlay and its refresh loop.
 
-## Codex Rules
+## Rate Limit Panel Rules
 
 - The quota panel shows separate `CODEX`, `CLAUDE`, `CURSOR`, and `GEMINI` chips. Codex rows use cyan/navy bars; Claude rows use coral/gold bars; Cursor rows use grey bars; Gemini rows use Google blue/green and yellow/red bars.
 - The selection chevron marks selected auth profiles: Codex rows whose path resolves to `~/.codex/auth.json`, Cursor rows whose path resolves to `~/.config/cursor/auth.json`, Claude rows whose path resolves to `~/.claude/.credentials.json` or whose access token equals the one in that file, and Gemini rows matching Antigravity's `current` profile. Codex uses a blue chevron, Claude uses orange, Cursor uses grey, and Gemini uses Google blue. Token comparison is required for Claude because Claude Code replaces `~/.claude/.credentials.json` with a new regular file on login and on every OAuth refresh, so a symlink there does not survive.
@@ -67,8 +67,8 @@ Each overlay can be disabled with its `*_OVERLAY_ENABLED=0` variable in `.env`.
 - Combined usage is the average weekly `usedPercent` across paid accounts; free accounts are muted and excluded.
 - Under pace by at least `10%` shows an amber fast-mode chip, except during the first `10%` of the weekly cycle.
 - Over pace by at least `10%` shows a red warning chip, including early in the cycle.
-- The pace chip is centered across the whole Codex box and uses the combined weekly pace state.
-- Set `CODEX_OVERLAY_ENABLED=0` to disable the Codex overlay and its refresh loop.
+- The pace chip is centered across the whole rate limit panel and uses the combined weekly pace state.
+- Set `RATE_LIMIT_PANEL_ENABLED=0` to disable the rate limit panel and its refresh loops.
 
 ## Minecraft Rules
 
@@ -102,8 +102,8 @@ LINEAR_DONE_LOOKBACK_HOURS=18
 LINEAR_PRIMARY_MONITOR_INDEX=0
 PRIMARY_WAIT_SECONDS=20
 
-# Codex + Claude + Cursor + Gemini quota overlay
-CODEX_OVERLAY_ENABLED=1
+# Rate limit panel (Codex + Claude + Cursor + Gemini)
+RATE_LIMIT_PANEL_ENABLED=1
 CLAUDE_PLAN_TYPE=pro
 # CLAUDE_CREDENTIALS_PATH=/home/you/.claude/.credentials.json
 # CLAUDE_HOME=/home/you/.claude

@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CACHE_DIR = ROOT / "cache"
 OUTPUT_PATH = CACHE_DIR / "codex-usage.json"
 RENDER_PATH = CACHE_DIR / "codex-usage-render.tsv"
-LOG_PATH = CACHE_DIR / "conky-codex.log"
+LOG_PATH = CACHE_DIR / "conky-rate-limit-panel.log"
 DEFAULT_AUTH_PATH = Path.home() / ".codex" / "auth.json"
 CODEX_HOME = Path.home() / ".codex"
 CODEX_SQLITE_HOME = CODEX_HOME
@@ -141,7 +141,7 @@ def codex_request(auth):
         headers={
             "Authorization": f"Bearer {auth['access_token']}",
             "Accept": "application/json",
-            "User-Agent": "conky-codex-usage",
+            "User-Agent": "conky-rate-limit-panel",
         },
         method="GET",
     )

@@ -14,11 +14,11 @@ function conky_draw_linear_cards()
   linear_cards.draw()
 end
 
--- Codex
-local codex_usage = dofile(conky_dir .. '/codex-usage-renderer.lua')(shared, repo_root)
+-- Rate limit panel
+local rate_limit_panel = dofile(conky_dir .. '/rate-limit-panel-renderer.lua')(shared, repo_root)
 
-function conky_draw_codex_usage()
-  codex_usage.draw()
+function conky_draw_rate_limit_panel()
+  rate_limit_panel.draw()
 end
 
 -- Minecraft

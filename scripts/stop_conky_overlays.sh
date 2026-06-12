@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 CACHE_DIR="$ROOT/cache"
 LINEAR_LOG_PATH="$CACHE_DIR/conky-linear.log"
-CODEX_LOG_PATH="$CACHE_DIR/conky-codex.log"
+RATE_LIMIT_PANEL_LOG_PATH="$CACHE_DIR/conky-rate-limit-panel.log"
 MINECRAFT_LOG_PATH="$CACHE_DIR/conky-minecraft.log"
 GITHUB_LOG_PATH="$CACHE_DIR/conky-github.log"
 LINEAR_FETCH_PID="$CACHE_DIR/linear-fetch-loop.pid"
@@ -18,18 +18,18 @@ GITHUB_FETCH_PID="$CACHE_DIR/github-fetch-loop.pid"
 
 mkdir -p "$CACHE_DIR"
 
-overlay_keys=(linear codex minecraft github)
+overlay_keys=(linear rate-limit-panel minecraft github)
 fetch_keys=(linear codex claude cursor gemini minecraft github)
 
 declare -A overlay_config=(
   [linear]="$ROOT/conky/linear-overlay.conkyrc"
-  [codex]="$ROOT/conky/codex-overlay.conkyrc"
+  [rate-limit-panel]="$ROOT/conky/rate-limit-panel-overlay.conkyrc"
   [minecraft]="$ROOT/conky/minecraft-overlay.conkyrc"
   [github]="$ROOT/conky/github-overlay.conkyrc"
 )
 declare -A overlay_log_path=(
   [linear]="$LINEAR_LOG_PATH"
-  [codex]="$CODEX_LOG_PATH"
+  [rate-limit-panel]="$RATE_LIMIT_PANEL_LOG_PATH"
   [minecraft]="$MINECRAFT_LOG_PATH"
   [github]="$GITHUB_LOG_PATH"
 )
@@ -44,10 +44,10 @@ declare -A fetch_label=(
 )
 declare -A fetch_overlay_key=(
   [linear]="linear"
-  [codex]="codex"
-  [claude]="codex"
-  [cursor]="codex"
-  [gemini]="codex"
+  [codex]="rate-limit-panel"
+  [claude]="rate-limit-panel"
+  [cursor]="rate-limit-panel"
+  [gemini]="rate-limit-panel"
   [minecraft]="minecraft"
   [github]="github"
 )
@@ -97,9 +97,11 @@ log_overlay linear "stopping matching Conky processes"
 for key in "${overlay_keys[@]}"; do
   pkill -f "$ROOT/conky/generated/$key-overlay-" 2>/dev/null || true
 done
+pkill -f "$ROOT/conky/generated/codex-overlay-" 2>/dev/null || true
 for key in "${overlay_keys[@]}"; do
   pkill -f "${overlay_config[$key]}" 2>/dev/null || true
 done
+pkill -f "$ROOT/conky/codex-overlay.conkyrc" 2>/dev/null || true
 for fetch_key in "${fetch_keys[@]}"; do
   stop_fetch_loop "$fetch_key"
 done
