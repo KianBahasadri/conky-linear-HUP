@@ -20,6 +20,7 @@ return function(shared, repo_root)
   local codex_bar_countdown_width = 54
   local codex_bar_reset_gap = 0
   local codex_bar_reset_width = 116
+  local codex_bar_reset_date_width = 48
   local codex_bar_pair_gap = 0
   local bottom_padding = 4
   local five_hour_window_seconds = 18000
@@ -357,7 +358,7 @@ return function(shared, repo_root)
 
   local function format_reset_at(window)
     if seconds_until_reset(window) <= 0 and (window.used_percent or 0) <= 0 then
-      return ''
+      return '', ''
     end
 
     local reset_time = 0
@@ -368,7 +369,7 @@ return function(shared, repo_root)
     end
 
     if reset_time <= 0 then
-      return format_window_countdown(window)
+      return '', format_window_countdown(window)
     end
 
     local local_time = os.date('*t', reset_time)
@@ -378,13 +379,13 @@ return function(shared, repo_root)
       hour = 12
     end
     local meridiem = local_time.hour >= 12 and 'PM' or 'AM'
-    local time_label = string.format('%2d:%02d %s', hour, local_time.min, meridiem)
+    local time_label = string.format('%d:%02d %s', hour, local_time.min, meridiem)
 
     if label == 'weekly' or seconds_until_reset(window) > 86400 then
-      return string.format('%s %02d %s', os.date('%b', reset_time), local_time.day, time_label)
+      return string.format('%s %02d', os.date('%b', reset_time), local_time.day), time_label
     end
 
-    return time_label
+    return '', time_label
   end
 
   local function find_weekly_window(account)
@@ -419,6 +420,83 @@ return function(shared, repo_root)
       delta = delta,
       state = state,
     }
+  end
+
+  local function find_selected_account(accounts, provider)
+    for _, account in ipairs(accounts or {}) do
+      if string.lower(account.provider or '') == string.lower(provider) and account.is_selected then
+        return account
+      end
+    end
+    for _, account in ipairs(accounts or {}) do
+      if string.lower(account.provider or '') == string.lower(provider) then
+        return account
+      end
+    end
+    return nil
+  end
+
+  local function get_primary_pace_window(account)
+    if not account then return nil end
+    for _, window in ipairs(account.windows or {}) do
+      if normalized_window_label(window) == 'weekly' then
+        return window
+      end
+    end
+    for _, window in ipairs(account.windows or {}) do
+      if normalized_window_label(window) == 'auto' then
+        return window
+      end
+    end
+    if account.windows and #account.windows > 0 then
+      return account.windows[1]
+    end
+    return nil
+  end
+
+  local function calculate_provider_average_pace(accounts, provider)
+    local provider_lower = string.lower(provider)
+    local delta_total = 0
+    local delta_count = 0
+
+    for _, account in ipairs(accounts or {}) do
+      if string.lower(account.provider or '') == provider_lower then
+        if not (provider_lower == 'codex' and is_free_account(account)) then
+          if provider_lower == 'cursor' then
+            for _, window in ipairs(account.windows or {}) do
+              local pace = calculate_window_pace(window, window_duration(window))
+              if pace then
+                delta_total = delta_total + pace.delta
+                delta_count = delta_count + 1
+              end
+            end
+          else
+            local weekly = find_weekly_window(account)
+            if weekly then
+              local pace = calculate_window_pace(weekly, window_duration(weekly))
+              if pace then
+                delta_total = delta_total + pace.delta
+                delta_count = delta_count + 1
+              end
+            end
+          end
+        end
+      end
+    end
+
+    if delta_count == 0 then
+      return nil
+    end
+
+    return delta_total / delta_count
+  end
+
+  local function get_provider_label_from_delta(provider_name, avg_delta)
+    if not avg_delta then
+      return string.upper(provider_name)
+    end
+    local sign = avg_delta < 0 and '-' or '+'
+    return string.format('%s: %s%.0f%%', string.upper(provider_name), sign, math.abs(avg_delta))
   end
 
   local function calculate_weekly_pace(accounts)
@@ -546,7 +624,7 @@ return function(shared, repo_root)
     local is_weekly = window_label == 'weekly'
     local is_five_hour = window_label == '5h'
     local countdown_label = format_window_countdown(window)
-    local reset_at_label = format_reset_at(window)
+    local reset_date_label, reset_time_label = format_reset_at(window)
 
     local bar_y = y
     shared.rounded_rect(cr, x, bar_y, codex_bar_width, codex_bar_height, 4)
@@ -591,9 +669,7 @@ return function(shared, repo_root)
     cairo_line_to(cr, x + codex_bar_width - 8, bar_y + 4)
     cairo_stroke(cr)
 
-    if show_pace and is_weekly then
-      draw_pace_marker(cr, calculate_window_pace(window, window_duration(window)), x, bar_y)
-    elseif show_pace and is_five_hour then
+    if show_pace then
       draw_pace_marker(cr, calculate_window_pace(window, window_duration(window)), x, bar_y)
     end
 
@@ -612,8 +688,15 @@ return function(shared, repo_root)
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL)
     cairo_set_font_size(cr, 10)
     shared.set_hex(cr, accent, 0.82)
-    cairo_move_to(cr, reset_x, y + 8)
-    cairo_show_text(cr, reset_at_label)
+    if reset_date_label and reset_date_label ~= '' then
+      cairo_move_to(cr, reset_x, y + 8)
+      cairo_show_text(cr, reset_date_label)
+      cairo_move_to(cr, reset_x + codex_bar_reset_date_width, y + 8)
+      cairo_show_text(cr, reset_time_label or '')
+    else
+      cairo_move_to(cr, reset_x, y + 8)
+      cairo_show_text(cr, reset_time_label or '')
+    end
   end
 
   local function draw_codex_error(cr, usage, x, y)
@@ -704,11 +787,12 @@ return function(shared, repo_root)
     cairo_move_to(cr, label_x, y + 23)
     cairo_show_text(cr, shared.truncate_title(cr, name, 120))
 
+    local show_bar_pace = not (provider_name(account) == 'codex' and is_free)
     if first then
-      draw_codex_bar(cr, first, x + codex_first_bar_x, y + 15, first_accent, first_accent_secondary, not is_free)
+      draw_codex_bar(cr, first, x + codex_first_bar_x, y + 15, first_accent, first_accent_secondary, show_bar_pace)
     end
     if second then
-      draw_codex_bar(cr, second, x + codex_first_bar_x + codex_bar_width + codex_bar_countdown_width + codex_bar_reset_width + codex_bar_pair_gap, y + 15, second_accent, second_accent_secondary, not is_free)
+      draw_codex_bar(cr, second, x + codex_first_bar_x + codex_bar_width + codex_bar_countdown_width + codex_bar_reset_width + codex_bar_pair_gap, y + 15, second_accent, second_accent_secondary, show_bar_pace)
     end
   end
 
@@ -768,18 +852,33 @@ return function(shared, repo_root)
   local function draw_codex_panel(cr, usage, x, y)
     draw_codex_frame(cr, x, y)
 
+    local codex_label = 'CODEX'
+    local claude_label = 'CLAUDE'
+    local cursor_label = 'CURSOR'
+
+    local codex_color = '00e5ff'
+    local claude_color = 'ff7a59'
+    local cursor_color = '94a3b8'
+
+    if usage.ok and #usage.accounts > 0 then
+      local codex_avg_delta = calculate_provider_average_pace(usage.accounts, 'Codex')
+      local claude_avg_delta = calculate_provider_average_pace(usage.accounts, 'Claude')
+      local cursor_avg_delta = calculate_provider_average_pace(usage.accounts, 'Cursor')
+
+      codex_label = get_provider_label_from_delta('Codex', codex_avg_delta)
+      claude_label = get_provider_label_from_delta('Claude', claude_avg_delta)
+      cursor_label = get_provider_label_from_delta('Cursor', cursor_avg_delta)
+    end
+
     local chip_x = x + 48
-    local codex_chip_width = draw_title_chip(cr, 'CODEX', '00e5ff', chip_x, y)
-    local claude_chip_width = draw_title_chip(cr, 'CLAUDE', 'ff7a59', chip_x + codex_chip_width + 8, y)
-    draw_title_chip(cr, 'CURSOR', '94a3b8', chip_x + codex_chip_width + claude_chip_width + 16, y)
+    local codex_chip_width = draw_title_chip(cr, codex_label, codex_color, chip_x, y)
+    local claude_chip_width = draw_title_chip(cr, claude_label, claude_color, chip_x + codex_chip_width + 8, y)
+    draw_title_chip(cr, cursor_label, cursor_color, chip_x + codex_chip_width + claude_chip_width + 16, y)
 
     if not usage.ok or #usage.accounts == 0 then
       draw_codex_error(cr, usage, x, y)
       return
     end
-
-    local pace = calculate_weekly_pace(usage.accounts)
-    draw_pace_chip(cr, pace, x, y)
 
     for index, account in ipairs(usage.accounts) do
       draw_codex_account_row(cr, account, x + codex_account_row_x, y + codex_account_row_y + (index - 1) * codex_account_row_gap)
