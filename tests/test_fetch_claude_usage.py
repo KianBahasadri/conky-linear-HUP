@@ -28,9 +28,23 @@ def usage_headers(now):
 def test_discover_credentials_prefers_suffixed_files(monkeypatch, tmp_path):
     work = tmp_path / ".credentials.json.kian"
     personal = tmp_path / ".credentials.json.sepehr"
-    write_credentials(work)
-    write_credentials(personal)
+    write_credentials(work, token="kian-token")
+    write_credentials(personal, token="sepehr-token")
     (tmp_path / ".credentials.json").symlink_to(personal)
+    monkeypatch.setenv("CLAUDE_HOME", str(tmp_path))
+
+    discovered = claude.discover_credentials()
+
+    assert [(label, selected) for label, _, selected in discovered] == [
+        ("kian", False),
+        ("sepehr", True),
+    ]
+
+
+def test_discover_credentials_marks_selected_by_token_without_symlink(monkeypatch, tmp_path):
+    write_credentials(tmp_path / ".credentials.json.kian", token="kian-token")
+    write_credentials(tmp_path / ".credentials.json.sepehr", token="live-token")
+    write_credentials(tmp_path / ".credentials.json", token="live-token")
     monkeypatch.setenv("CLAUDE_HOME", str(tmp_path))
 
     discovered = claude.discover_credentials()
@@ -144,6 +158,27 @@ def test_refresh_credentials_persists_new_tokens(monkeypatch, tmp_path):
     assert saved["expiresAt"] >= now_ms + 28000 * 1000
     assert saved["subscriptionType"] == "pro"
     assert credentials_path.stat().st_mode & 0o777 == 0o600
+
+
+def test_persist_credentials_preserves_symlink(tmp_path):
+    target_path = tmp_path / ".credentials.json.sepehr"
+    symlink_path = tmp_path / ".credentials.json"
+    write_credentials(target_path, token="old", refresh_token="refresh-old", expires_at_ms=123000)
+    symlink_path.symlink_to(target_path)
+    auth = claude.read_credentials("sepehr", symlink_path)
+    auth["access_token"] = "new"
+    auth["refresh_token"] = "refresh-new"
+    auth["expires_at"] = 456
+
+    claude.persist_credentials(auth)
+
+    saved = json.loads(target_path.read_text(encoding="utf-8"))["claudeAiOauth"]
+    assert symlink_path.is_symlink()
+    assert symlink_path.resolve() == target_path
+    assert saved["accessToken"] == "new"
+    assert saved["refreshToken"] == "refresh-new"
+    assert saved["expiresAt"] == 456000
+    assert target_path.stat().st_mode & 0o777 == 0o600
 
 
 def test_fetch_account_refreshes_expired_token_before_request(monkeypatch, tmp_path):
@@ -278,6 +313,130 @@ def test_adopt_default_credentials_requires_known_email(monkeypatch, tmp_path):
 
     assert claude.adopt_default_credentials(auth, "", RuntimeError("HTTP 400: invalid_grant")) is False
     assert claude.adopt_default_credentials(auth, "sepehr@example.com", RuntimeError("HTTP 500")) is False
+
+
+def test_refresh_or_adopt_never_refreshes_grant_shared_with_login(monkeypatch, tmp_path):
+    now = int(datetime.now(timezone.utc).timestamp())
+    snapshot_path = tmp_path / ".credentials.json.sepehr"
+    write_credentials(snapshot_path, token="old", refresh_token="shared-refresh", expires_at_ms=(now - 60) * 1000)
+    write_credentials(
+        tmp_path / ".credentials.json",
+        token="old",
+        refresh_token="shared-refresh",
+        expires_at_ms=(now - 60) * 1000,
+    )
+    monkeypatch.setenv("CLAUDE_HOME", str(tmp_path))
+
+    def forbidden_refresh(auth):
+        raise AssertionError("must not refresh a grant shared with the live login")
+
+    monkeypatch.setattr(claude, "refresh_credentials", forbidden_refresh)
+    auth = claude.read_credentials("sepehr", snapshot_path)
+
+    try:
+        claude.refresh_or_adopt(auth, "sepehr@example.com")
+    except RuntimeError as error:
+        assert "shared with the live Claude Code login" in str(error)
+    else:
+        raise AssertionError("expected RuntimeError for shared grant")
+
+    assert json.loads(snapshot_path.read_text(encoding="utf-8"))["claudeAiOauth"]["accessToken"] == "old"
+
+
+def test_adopt_default_credentials_never_writes_stale_default(monkeypatch, tmp_path):
+    now = int(datetime.now(timezone.utc).timestamp())
+    snapshot_path = tmp_path / ".credentials.json.sepehr"
+    write_credentials(snapshot_path, token="dead", refresh_token="refresh-dead", expires_at_ms=(now - 60) * 1000)
+    write_credentials(
+        tmp_path / ".credentials.json",
+        token="stale-token",
+        refresh_token="stale-refresh",
+        expires_at_ms=(now + 60) * 1000,
+    )
+    monkeypatch.setenv("CLAUDE_HOME", str(tmp_path))
+
+    def forbidden_refresh(auth):
+        raise AssertionError("must not refresh (write) the default credentials file")
+
+    monkeypatch.setattr(claude, "refresh_credentials", forbidden_refresh)
+    monkeypatch.setattr(
+        claude, "fetch_profile_email", lambda token: (_ for _ in ()).throw(AssertionError("no profile call"))
+    )
+    auth = claude.read_credentials("sepehr", snapshot_path)
+
+    adopted = claude.adopt_default_credentials(auth, "sepehr@example.com", RuntimeError("HTTP 400: invalid_grant"))
+
+    assert adopted is False
+    saved = json.loads((tmp_path / ".credentials.json").read_text(encoding="utf-8"))["claudeAiOauth"]
+    assert saved["accessToken"] == "stale-token"
+    assert saved["refreshToken"] == "stale-refresh"
+
+
+def test_sync_copies_with_default_after_rotation(monkeypatch, tmp_path):
+    now = int(datetime.now(timezone.utc).timestamp())
+    snapshot_path = tmp_path / ".credentials.json.sepehr"
+    write_credentials(snapshot_path, token="old", refresh_token="refresh-old", expires_at_ms=(now - 60) * 1000)
+    write_credentials(
+        tmp_path / ".credentials.json",
+        token="rotated-token",
+        refresh_token="rotated-refresh",
+        expires_at_ms=(now + 7200) * 1000,
+    )
+    monkeypatch.setenv("CLAUDE_HOME", str(tmp_path))
+    monkeypatch.setattr(claude, "CACHE_DIR", tmp_path / "cache")
+    claude.write_account_cache(
+        "sepehr",
+        {"seven_day": {"used_percentage": 2, "resets_at": now + 86400}},
+        200,
+        email="sepehr@example.com",
+    )
+    monkeypatch.setattr(claude, "fetch_profile_email", lambda token: "sepehr@example.com")
+
+    claude.sync_copies_with_default(claude.discover_credentials())
+
+    saved = json.loads(snapshot_path.read_text(encoding="utf-8"))["claudeAiOauth"]
+    assert saved["accessToken"] == "rotated-token"
+    assert saved["refreshToken"] == "rotated-refresh"
+    assert snapshot_path.stat().st_mode & 0o777 == 0o600
+    default_saved = json.loads((tmp_path / ".credentials.json").read_text(encoding="utf-8"))["claudeAiOauth"]
+    assert default_saved["accessToken"] == "rotated-token"
+
+
+def test_sync_copies_with_default_skips_other_accounts(monkeypatch, tmp_path):
+    now = int(datetime.now(timezone.utc).timestamp())
+    snapshot_path = tmp_path / ".credentials.json.kian"
+    write_credentials(snapshot_path, token="kian-token", refresh_token="kian-refresh", expires_at_ms=(now + 7200) * 1000)
+    write_credentials(
+        tmp_path / ".credentials.json",
+        token="rotated-token",
+        refresh_token="rotated-refresh",
+        expires_at_ms=(now + 7200) * 1000,
+    )
+    monkeypatch.setenv("CLAUDE_HOME", str(tmp_path))
+    monkeypatch.setattr(claude, "CACHE_DIR", tmp_path / "cache")
+    claude.write_account_cache(
+        "kian",
+        {"seven_day": {"used_percentage": 2, "resets_at": now + 86400}},
+        200,
+        email="kian@example.com",
+    )
+    monkeypatch.setattr(claude, "fetch_profile_email", lambda token: "sepehr@example.com")
+
+    claude.sync_copies_with_default(claude.discover_credentials())
+
+    assert json.loads(snapshot_path.read_text(encoding="utf-8"))["claudeAiOauth"]["accessToken"] == "kian-token"
+
+
+def test_detect_default_rotation_fires_once_per_change(monkeypatch, tmp_path):
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    monkeypatch.setattr(claude, "CACHE_DIR", cache_dir)
+
+    assert claude.detect_default_rotation("") is False
+    assert claude.detect_default_rotation("token-a") is True
+    assert claude.detect_default_rotation("token-a") is False
+    assert claude.detect_default_rotation("token-b") is True
+    assert claude.detect_default_rotation("token-b") is False
 
 
 def test_fetch_account_falls_back_to_stale_cache_when_refresh_fails(monkeypatch, tmp_path):

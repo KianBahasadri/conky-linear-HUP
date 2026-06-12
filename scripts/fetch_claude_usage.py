@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import hashlib
 import json
 import os
 import re
@@ -60,16 +61,17 @@ def configured_credentials_path():
 
 
 def discover_credentials():
+    default_token = default_access_token()
     configured_path = configured_credentials_path()
     if configured_path:
-        return [(configured_label(configured_path), configured_path, is_selected_credentials(configured_path))]
+        return [(configured_label(configured_path), configured_path, is_selected_credentials(configured_path, default_token))]
 
     suffixed_paths = sorted(path for path in claude_home().glob(f"{DEFAULT_CREDENTIALS_NAME}.*") if path.is_file())
     if suffixed_paths:
-        return [(credentials_label(path), path, is_selected_credentials(path)) for path in suffixed_paths]
+        return [(credentials_label(path), path, is_selected_credentials(path, default_token)) for path in suffixed_paths]
 
     path = default_credentials_path()
-    return [(configured_label(path), path, is_selected_credentials(path))]
+    return [(configured_label(path), path, is_selected_credentials(path, default_token))]
 
 
 def configured_label(path):
@@ -87,11 +89,32 @@ def credentials_label(path):
     return path.stem.lstrip(".") or name
 
 
-def is_selected_credentials(path):
+def credentials_access_token(path):
     try:
-        return default_credentials_path().resolve() == path.resolve()
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ""
+    oauth = raw.get("claudeAiOauth")
+    return (oauth.get("accessToken", "") or "") if isinstance(oauth, dict) else ""
+
+
+def default_access_token():
+    return credentials_access_token(default_credentials_path())
+
+
+def is_selected_credentials(path, default_token=""):
+    """A credentials file marks the live login when it is the default file
+    itself or carries the same access token as the default file. Claude Code
+    replaces the default file on login and token refresh, so path identity
+    (symlinks) cannot be relied on."""
+    default_path = default_credentials_path()
+    try:
+        if default_path.resolve() == path.resolve():
+            return True
     except OSError:
-        return default_credentials_path() == path
+        if default_path == path:
+            return True
+    return bool(default_token) and credentials_access_token(path) == default_token
 
 
 def read_credentials(label, path):
@@ -135,6 +158,7 @@ def token_needs_refresh(auth):
 
 def persist_credentials(auth):
     path = auth["path"]
+    write_path = path.resolve() if path.is_symlink() else path
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
@@ -147,11 +171,11 @@ def persist_credentials(auth):
     oauth["refreshToken"] = auth["refresh_token"]
     oauth["expiresAt"] = auth["expires_at"] * 1000
 
-    tmp_path = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    tmp_path = write_path.with_name(f".{write_path.name}.{os.getpid()}.tmp")
     fd = os.open(tmp_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w", encoding="utf-8") as tmp_file:
         tmp_file.write(json.dumps(raw, indent=2))
-    os.replace(tmp_path, path)
+    os.replace(tmp_path, write_path)
 
 
 def refresh_credentials(auth):
@@ -230,7 +254,9 @@ def adopt_default_credentials(auth, expected_email, error):
             return False
         default_auth = read_credentials(auth["label"], default_path)
         if token_needs_refresh(default_auth):
-            refresh_credentials(default_auth)
+            # Claude Code owns the default file: never refresh (write) it here.
+            # Wait for Claude Code to rotate it and adopt on a later pass.
+            return False
         if fetch_profile_email(default_auth["access_token"]) != expected_email:
             return False
     except (OSError, RuntimeError):
@@ -242,6 +268,59 @@ def adopt_default_credentials(auth, expected_email, error):
     persist_credentials(auth)
     log_event(f"account={auth['label']} adopted credentials from {default_path.name} after refresh token rotation")
     return True
+
+
+def detect_default_rotation(default_token):
+    """True exactly once each time the default file's access token changes."""
+    if not default_token:
+        return False
+    marker_path = CACHE_DIR / "claude-default-token.fingerprint"
+    fingerprint = hashlib.sha256(default_token.encode("utf-8")).hexdigest()
+    try:
+        if marker_path.read_text(encoding="utf-8").strip() == fingerprint:
+            return False
+    except OSError:
+        pass
+    try:
+        marker_path.write_text(fingerprint, encoding="utf-8")
+    except OSError:
+        pass
+    return True
+
+
+def sync_copies_with_default(credentials):
+    """Claude Code rotated the login tokens and no copied file carries them yet.
+    Copy them into the suffixed file whose recorded email matches the live
+    account so that file's grant never goes stale. Never writes the default
+    file."""
+    try:
+        default_auth = read_credentials("default", default_credentials_path())
+    except RuntimeError:
+        return
+    if token_needs_refresh(default_auth):
+        return
+    try:
+        email = fetch_profile_email(default_auth["access_token"])
+    except RuntimeError as error:
+        log_event(f"default credentials profile lookup failed: {error}")
+        return
+    if not email:
+        return
+    for label, path, is_selected in credentials:
+        if is_selected:
+            continue
+        cached = read_account_cache(label)
+        if not isinstance(cached, dict) or (cached.get("email", "") or "") != email:
+            continue
+        auth = {
+            "label": label,
+            "path": path,
+            "access_token": default_auth["access_token"],
+            "refresh_token": default_auth["refresh_token"],
+            "expires_at": default_auth["expires_at"],
+        }
+        persist_credentials(auth)
+        log_event(f"account={label} synced credentials from {DEFAULT_CREDENTIALS_NAME} after token rotation")
 
 
 def optional_float(value):
@@ -312,7 +391,28 @@ def fetch_quota_usage(auth):
     raise RuntimeError(message)
 
 
+def shares_default_grant(auth):
+    """True when these credentials hold the same OAuth grant (refresh token) as
+    the live login file. Refreshing that grant here would rotate it and revoke
+    the refresh token Claude Code holds, forcing the user to log in again."""
+    if not auth.get("refresh_token"):
+        return False
+    try:
+        raw = json.loads(default_credentials_path().read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    oauth = raw.get("claudeAiOauth")
+    if not isinstance(oauth, dict):
+        return False
+    return oauth.get("refreshToken", "") == auth["refresh_token"]
+
+
 def refresh_or_adopt(auth, expected_email):
+    if shares_default_grant(auth):
+        raise RuntimeError(
+            "token expired but its grant is shared with the live Claude Code login; "
+            "waiting for Claude Code to rotate it"
+        )
     try:
         refresh_credentials(auth)
     except RuntimeError as error:
@@ -502,6 +602,10 @@ def main():
     credentials = discover_credentials()
     labels = ",".join(label for label, _, _ in credentials)
     log_event(f"starting Claude usage fetch accounts={labels or 'none'}")
+
+    if detect_default_rotation(default_access_token()) and not any(selected for _, _, selected in credentials):
+        sync_copies_with_default(credentials)
+        credentials = discover_credentials()
 
     try:
         accounts = [fetch_account(label, path, is_selected) for label, path, is_selected in credentials]
