@@ -11,13 +11,14 @@ GITHUB_LOG_PATH="$CACHE_DIR/conky-github.log"
 LINEAR_FETCH_PID="$CACHE_DIR/linear-fetch-loop.pid"
 CODEX_FETCH_PID="$CACHE_DIR/codex-fetch-loop.pid"
 CLAUDE_FETCH_PID="$CACHE_DIR/claude-fetch-loop.pid"
+CURSOR_FETCH_PID="$CACHE_DIR/cursor-fetch-loop.pid"
 MINECRAFT_FETCH_PID="$CACHE_DIR/minecraft-fetch-loop.pid"
 GITHUB_FETCH_PID="$CACHE_DIR/github-fetch-loop.pid"
 
 mkdir -p "$CACHE_DIR"
 
 overlay_keys=(linear codex minecraft github)
-fetch_keys=(linear codex claude minecraft github)
+fetch_keys=(linear codex claude cursor minecraft github)
 
 declare -A overlay_config=(
   [linear]="$ROOT/conky/linear-overlay.conkyrc"
@@ -35,6 +36,7 @@ declare -A fetch_label=(
   [linear]="Linear"
   [codex]="Codex"
   [claude]="Claude"
+  [cursor]="Cursor"
   [minecraft]="Minecraft"
   [github]="GitHub"
 )
@@ -42,6 +44,7 @@ declare -A fetch_overlay_key=(
   [linear]="linear"
   [codex]="codex"
   [claude]="codex"
+  [cursor]="codex"
   [minecraft]="minecraft"
   [github]="github"
 )
@@ -49,6 +52,7 @@ declare -A fetch_pid_file=(
   [linear]="$LINEAR_FETCH_PID"
   [codex]="$CODEX_FETCH_PID"
   [claude]="$CLAUDE_FETCH_PID"
+  [cursor]="$CURSOR_FETCH_PID"
   [minecraft]="$MINECRAFT_FETCH_PID"
   [github]="$GITHUB_FETCH_PID"
 )

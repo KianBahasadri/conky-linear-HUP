@@ -1,6 +1,6 @@
 # Conky Linear + AI Quota Overlay
 
-Desktop Conky widgets for keeping Linear work, Codex and Claude quota pressure, Minecraft server population, and GitHub contributions visible across all monitors.
+Desktop Conky widgets for keeping Linear work, Codex, Claude, and Cursor quota pressure, Minecraft server population, and GitHub contributions visible across all monitors.
 
 ## Run
 
@@ -20,13 +20,15 @@ Each overlay can be disabled with its `*_OVERLAY_ENABLED=0` variable in `.env`.
 - `cache/claude-usage.json`: normalized Claude Code account/window usage for inspection.
 - `cache/claude-usage-render.tsv`: renderer-friendly Claude Code usage consumed by the Cairo renderer.
 - `cache/claude-usage-cache-*.json`: per-account Claude API quota-check cache.
+- `cache/cursor-usage.json`: normalized Cursor account/monthly usage for inspection.
+- `cache/cursor-usage-render.tsv`: renderer-friendly Cursor usage consumed by the Cairo renderer.
 - `cache/minecraft-status.json`: Minecraft Java server status consumed by the Cairo renderer.
 - `cache/github-contributions.json`: GitHub contribution squares consumed by the Cairo renderer.
 - `cache/conky-linear.log`: Linear fetch, launcher, and Linear Conky output.
 - `cache/conky-codex.log`: Codex fetch and Codex Conky output.
 - `cache/conky-minecraft.log`: Minecraft fetch, launcher, and Minecraft Conky output.
 - `cache/conky-github.log`: GitHub fetch, launcher, and GitHub Conky output.
-- Fetch loops refresh Linear every `180s`, Codex every `300s`, Claude every `60s` with a per-account API cache, Minecraft every `60s`, and GitHub every `1800s`.
+- Fetch loops refresh Linear every `180s`, Codex every `300s`, Claude every `60s` with a per-account API cache, Cursor every `300s`, Minecraft every `60s`, and GitHub every `1800s`.
 
 ## Linear Rules
 
@@ -40,13 +42,15 @@ Each overlay can be disabled with its `*_OVERLAY_ENABLED=0` variable in `.env`.
 
 ## Codex Rules
 
-- The quota panel shows separate `CODEX` and `CLAUDE` chips. Codex rows use cyan/green bars; Claude rows use coral/gold bars.
-- The selection chevron marks selected auth files: Codex rows whose path resolves to `~/.codex/auth.json`, and Claude rows whose path resolves to `~/.claude/.credentials.json` or whose access token equals the one in that file. Codex uses a blue chevron; Claude uses orange. Token comparison is required for Claude because Claude Code replaces `~/.claude/.credentials.json` with a new regular file on login and on every OAuth refresh, so a symlink there does not survive.
+- The quota panel shows separate `CODEX`, `CLAUDE`, and `CURSOR` chips. Codex rows use cyan/navy bars; Claude rows use coral/gold bars; Cursor rows use grey bars.
+- The selection chevron marks selected auth files: Codex rows whose path resolves to `~/.codex/auth.json`, Cursor rows whose path resolves to `~/.config/cursor/auth.json`, and Claude rows whose path resolves to `~/.claude/.credentials.json` or whose access token equals the one in that file. Codex uses a blue chevron, Claude uses orange, and Cursor uses grey. Token comparison is required for Claude because Claude Code replaces `~/.claude/.credentials.json` with a new regular file on login and on every OAuth refresh, so a symlink there does not survive.
 - Multiple Codex accounts are discovered from `~/.codex/auth.json.*`; `CODEX_AUTH_PATH` forces a single auth file.
 - `CODEX_HOME`, `CODEX_SQLITE_HOME`, `CODEX_USAGE_DEGENERATE_RETRIES`, and `CODEX_LOCAL_RATE_LIMIT_MAX_AGE_SECONDS` are advanced overrides for local Codex state discovery and retry behavior.
 - Multiple Claude accounts are discovered from `~/.claude/.credentials.json.*`; `CLAUDE_CREDENTIALS_PATH` or `CLAUDE_AUTH_PATH` forces a single credentials file.
 - Claude account names and selected-account chevrons use the same bright/dim and marker rules as Codex.
 - Claude usage is fetched with a direct Anthropic quota-check request and cached per account. `CLAUDE_HOME`, `CLAUDE_USAGE_TTL`, `CLAUDE_PLAN_TYPE`, and `ANTHROPIC_DEFAULT_HAIKU_MODEL` are advanced overrides.
+- Multiple Cursor accounts are discovered from `~/.config/cursor/auth.json.*`; `CURSOR_AUTH_PATH` forces a single auth file and `CURSOR_HOME` overrides the config directory.
+- Cursor usage is fetched from Cursor's DashboardService. It renders Cursor's monthly `Auto + Composer` and `API` usage pools as the two bars for each account.
 - Expired Claude access tokens are refreshed automatically with the credentials file's stored refresh token, and the new tokens are written back to that file (mode 0600).
 - The fetcher never writes `~/.claude/.credentials.json` and never refreshes a grant whose refresh token equals the one in that file: Claude Code owns that file and that grant, and a competing refresh would revoke the token Claude Code holds and force a re-login. While waiting for Claude Code to rotate an expired shared grant, the panel serves the stale cache.
 - Claude Code rotates the refresh token of the logged-in account, which invalidates a copied credentials file for the same account. The fetcher recovers in two ways, both gated on the live file's profile email matching the email recorded for that account in `cache/claude-usage-cache-<label>.json`: it detects a changed default-file token (fingerprint in `cache/claude-default-token.fingerprint`) and copies the rotated tokens into the matching suffixed file within one loop iteration, and as a backstop it re-adopts from `~/.claude/.credentials.json` when a refresh fails with `invalid_grant`.
@@ -90,7 +94,7 @@ LINEAR_DONE_LOOKBACK_HOURS=18
 LINEAR_PRIMARY_MONITOR_INDEX=0
 PRIMARY_WAIT_SECONDS=20
 
-# Codex + Claude quota overlay
+# Codex + Claude + Cursor quota overlay
 CODEX_OVERLAY_ENABLED=1
 CLAUDE_PLAN_TYPE=pro
 # CLAUDE_CREDENTIALS_PATH=/home/you/.claude/.credentials.json
@@ -101,6 +105,8 @@ CLAUDE_PLAN_TYPE=pro
 # CODEX_SQLITE_HOME=/home/you/.codex
 # CODEX_USAGE_DEGENERATE_RETRIES=4
 # CODEX_LOCAL_RATE_LIMIT_MAX_AGE_SECONDS=21600
+# CURSOR_AUTH_PATH=/home/you/.config/cursor/auth.json
+# CURSOR_HOME=/home/you/.config/cursor
 
 # Minecraft overlay
 MINECRAFT_SERVER=mc.example.com:25565

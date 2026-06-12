@@ -2,6 +2,7 @@ return function(shared, repo_root)
   local codex_usage_path = repo_root .. '/cache/codex-usage.json'
   local codex_usage_tsv_path = repo_root .. '/cache/codex-usage-render.tsv'
   local claude_usage_tsv_path = repo_root .. '/cache/claude-usage-render.tsv'
+  local cursor_usage_tsv_path = repo_root .. '/cache/cursor-usage-render.tsv'
   local font = 'JetBrains Mono'
   local codex_width = 1000
   local codex_height = 110
@@ -170,6 +171,10 @@ return function(shared, repo_root)
     return read_usage_tsv(claude_usage_tsv_path, 'Claude')
   end
 
+  local function read_cursor_usage_tsv()
+    return read_usage_tsv(cursor_usage_tsv_path, 'Cursor')
+  end
+
   local function read_codex_usage_json()
     local content = shared.read_file(codex_usage_path)
     if not content then
@@ -236,16 +241,18 @@ return function(shared, repo_root)
       return 0
     elseif provider == 'claude' then
       return 10
+    elseif provider == 'cursor' then
+      return 20
     end
 
-    return 20
+    return 30
   end
 
   local function plan_type_sort_rank(account)
     local plan_type = string.lower(account.plan_type or '')
     if plan_type == 'free' then
       return 0
-    elseif plan_type == 'plus' then
+    elseif plan_type == 'plus' or plan_type == 'pro' then
       return 2
     end
     return 1
@@ -278,6 +285,7 @@ return function(shared, repo_root)
   local function read_ai_usage()
     local codex_usage = read_codex_usage_tsv() or read_codex_usage_json()
     local claude_usage = read_claude_usage_tsv()
+    local cursor_usage = read_cursor_usage_tsv()
     local usage = {
       ok = false,
       error = '',
@@ -300,6 +308,17 @@ return function(shared, repo_root)
       end
       for _, account in ipairs(claude_usage.accounts or {}) do
         account.provider = account.provider or 'Claude'
+        table.insert(usage.accounts, account)
+      end
+    end
+
+    if cursor_usage then
+      usage.ok = usage.ok or cursor_usage.ok
+      if usage.error == '' then
+        usage.error = cursor_usage.error or ''
+      end
+      for _, account in ipairs(cursor_usage.accounts or {}) do
+        account.provider = account.provider or 'Cursor'
         table.insert(usage.accounts, account)
       end
     end
@@ -361,7 +380,7 @@ return function(shared, repo_root)
     local meridiem = local_time.hour >= 12 and 'PM' or 'AM'
     local time_label = string.format('%2d:%02d %s', hour, local_time.min, meridiem)
 
-    if label == 'weekly' then
+    if label == 'weekly' or seconds_until_reset(window) > 86400 then
       return string.format('%s %02d %s', os.date('%b', reset_time), local_time.day, time_label)
     end
 
@@ -617,14 +636,22 @@ return function(shared, repo_root)
 
   local function provider_accents(account, is_free)
     if is_free then
+      if provider_name(account) == 'codex' then
+        return '2563eb', '1e3a8a', '2563eb', '1e3a8a'
+      end
       return '94a3b8', '64748b', '94a3b8', '64748b'
     end
 
     if provider_name(account) == 'claude' then
-      return 'ff7a59', 'ffd166', 'ffb703', 'ff7a59'
+      -- Light coral/gold 5h, deeper coral weekly.
+      return 'ff8f73', 'fcd34d', 'c85f49', '81392e'
+    end
+    if provider_name(account) == 'cursor' then
+      return '94a3b8', '64748b', '94a3b8', '64748b'
     end
 
-    return '00e5ff', '8b5cf6', '39ff88', '00f5d4'
+    -- Bright cyan 5h, rich navy weekly.
+    return '00e5ff', '8b5cf6', '2563eb', '1e3a8a'
   end
 
   local function draw_codex_account_row(cr, account, x, y)
@@ -638,7 +665,11 @@ return function(shared, repo_root)
 
     for _, window in ipairs(account.windows or {}) do
       local window_label = normalized_window_label(window)
-      if window_label == 'weekly' then
+      if provider_name(account) == 'cursor' and window_label == 'api' then
+        second = window
+      elseif provider_name(account) == 'cursor' and window_label == 'auto' then
+        first = window
+      elseif window_label == 'weekly' then
         second = window
       elseif not first then
         first = window
@@ -646,7 +677,7 @@ return function(shared, repo_root)
     end
 
     if account.is_selected then
-      local selection_color = provider_name(account) == 'codex' and '00e5ff' or 'ff9f1c'
+      local selection_color = provider_name(account) == 'codex' and '00e5ff' or provider_name(account) == 'cursor' and '94a3b8' or 'ff9f1c'
 
       shared.set_hex(cr, selection_color, 0.20)
       cairo_set_line_width(cr, 5)
@@ -739,7 +770,8 @@ return function(shared, repo_root)
 
     local chip_x = x + 48
     local codex_chip_width = draw_title_chip(cr, 'CODEX', '00e5ff', chip_x, y)
-    draw_title_chip(cr, 'CLAUDE', 'ff7a59', chip_x + codex_chip_width + 8, y)
+    local claude_chip_width = draw_title_chip(cr, 'CLAUDE', 'ff7a59', chip_x + codex_chip_width + 8, y)
+    draw_title_chip(cr, 'CURSOR', '94a3b8', chip_x + codex_chip_width + claude_chip_width + 16, y)
 
     if not usage.ok or #usage.accounts == 0 then
       draw_codex_error(cr, usage, x, y)

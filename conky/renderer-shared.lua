@@ -26,6 +26,18 @@ function shared.set_hex(cr, hex, alpha)
   cairo_set_source_rgba(cr, r, g, b, alpha or 1)
 end
 
+function shared.darken_hex(hex, factor)
+  local r = math.floor(tonumber(hex:sub(1, 2), 16) * factor + 0.5)
+  local g = math.floor(tonumber(hex:sub(3, 4), 16) * factor + 0.5)
+  local b = math.floor(tonumber(hex:sub(5, 6), 16) * factor + 0.5)
+  return string.format(
+    '%02x%02x%02x',
+    shared.clamp(r, 0, 255),
+    shared.clamp(g, 0, 255),
+    shared.clamp(b, 0, 255)
+  )
+end
+
 function shared.clamp(value, min_value, max_value)
   if value < min_value then
     return min_value
