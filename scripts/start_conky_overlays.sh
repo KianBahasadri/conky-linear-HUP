@@ -41,6 +41,7 @@ LINEAR_FETCH_PID="$CACHE_DIR/linear-fetch-loop.pid"
 CODEX_FETCH_PID="$CACHE_DIR/codex-fetch-loop.pid"
 CLAUDE_FETCH_PID="$CACHE_DIR/claude-fetch-loop.pid"
 CURSOR_FETCH_PID="$CACHE_DIR/cursor-fetch-loop.pid"
+GEMINI_FETCH_PID="$CACHE_DIR/gemini-fetch-loop.pid"
 MINECRAFT_FETCH_PID="$CACHE_DIR/minecraft-fetch-loop.pid"
 GITHUB_FETCH_PID="$CACHE_DIR/github-fetch-loop.pid"
 OVERLAY_WIDTH=1540
@@ -63,7 +64,7 @@ GENERATE_ONLY=0
 MONITOR_HAS_PRIMARY=0
 
 overlay_keys=(linear codex minecraft github)
-fetch_keys=(linear codex claude cursor minecraft github)
+fetch_keys=(linear codex claude cursor gemini minecraft github)
 
 declare -A overlay_disabled_name=(
   [linear]="linear"
@@ -95,6 +96,7 @@ declare -A fetch_label=(
   [codex]="Codex"
   [claude]="Claude"
   [cursor]="Cursor"
+  [gemini]="Gemini"
   [minecraft]="Minecraft"
   [github]="GitHub"
 )
@@ -103,6 +105,7 @@ declare -A fetch_overlay_key=(
   [codex]="codex"
   [claude]="codex"
   [cursor]="codex"
+  [gemini]="codex"
   [minecraft]="minecraft"
   [github]="github"
 )
@@ -111,6 +114,7 @@ declare -A fetch_interval=(
   [codex]="300"
   [claude]="60"
   [cursor]="300"
+  [gemini]="300"
   [minecraft]="$MINECRAFT_REFRESH_SECONDS"
   [github]="$GITHUB_REFRESH_SECONDS"
 )
@@ -119,6 +123,7 @@ declare -A fetch_script=(
   [codex]="$ROOT/scripts/fetch_codex_usage.py"
   [claude]="$ROOT/scripts/fetch_claude_usage.py"
   [cursor]="$ROOT/scripts/fetch_cursor_usage.py"
+  [gemini]="$ROOT/scripts/fetch_gemini_usage.py"
   [minecraft]="$ROOT/scripts/fetch_minecraft_status.py"
   [github]="$ROOT/scripts/fetch_github_contributions.py"
 )
@@ -127,6 +132,7 @@ declare -A fetch_pid_file=(
   [codex]="$CODEX_FETCH_PID"
   [claude]="$CLAUDE_FETCH_PID"
   [cursor]="$CURSOR_FETCH_PID"
+  [gemini]="$GEMINI_FETCH_PID"
   [minecraft]="$MINECRAFT_FETCH_PID"
   [github]="$GITHUB_FETCH_PID"
 )
@@ -275,6 +281,7 @@ generate_config() {
       *"fetch_codex_usage.py"*) ;;
       *"fetch_claude_usage.py"*) ;;
       *"fetch_cursor_usage.py"*) ;;
+      *"fetch_gemini_usage.py"*) ;;
       *)
         printf "%s\n" "$config_line"
         ;;

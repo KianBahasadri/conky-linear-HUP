@@ -3,6 +3,7 @@ return function(shared, repo_root)
   local codex_usage_tsv_path = repo_root .. '/cache/codex-usage-render.tsv'
   local claude_usage_tsv_path = repo_root .. '/cache/claude-usage-render.tsv'
   local cursor_usage_tsv_path = repo_root .. '/cache/cursor-usage-render.tsv'
+  local gemini_usage_tsv_path = repo_root .. '/cache/gemini-usage-render.tsv'
   local font = 'JetBrains Mono'
   local codex_width = 1000
   local codex_height = 110
@@ -176,6 +177,10 @@ return function(shared, repo_root)
     return read_usage_tsv(cursor_usage_tsv_path, 'Cursor')
   end
 
+  local function read_gemini_usage_tsv()
+    return read_usage_tsv(gemini_usage_tsv_path, 'Gemini')
+  end
+
   local function read_codex_usage_json()
     local content = shared.read_file(codex_usage_path)
     if not content then
@@ -244,9 +249,11 @@ return function(shared, repo_root)
       return 10
     elseif provider == 'cursor' then
       return 20
+    elseif provider == 'gemini' then
+      return 30
     end
 
-    return 30
+    return 40
   end
 
   local function plan_type_sort_rank(account)
@@ -287,6 +294,7 @@ return function(shared, repo_root)
     local codex_usage = read_codex_usage_tsv() or read_codex_usage_json()
     local claude_usage = read_claude_usage_tsv()
     local cursor_usage = read_cursor_usage_tsv()
+    local gemini_usage = read_gemini_usage_tsv()
     local usage = {
       ok = false,
       error = '',
@@ -320,6 +328,17 @@ return function(shared, repo_root)
       end
       for _, account in ipairs(cursor_usage.accounts or {}) do
         account.provider = account.provider or 'Cursor'
+        table.insert(usage.accounts, account)
+      end
+    end
+
+    if gemini_usage then
+      usage.ok = usage.ok or gemini_usage.ok
+      if usage.error == '' then
+        usage.error = gemini_usage.error or ''
+      end
+      for _, account in ipairs(gemini_usage.accounts or {}) do
+        account.provider = account.provider or 'Gemini'
         table.insert(usage.accounts, account)
       end
     end
@@ -462,7 +481,7 @@ return function(shared, repo_root)
     for _, account in ipairs(accounts or {}) do
       if string.lower(account.provider or '') == provider_lower then
         if not (provider_lower == 'codex' and is_free_account(account)) then
-          if provider_lower == 'cursor' then
+          if provider_lower == 'cursor' or provider_lower == 'gemini' then
             for _, window in ipairs(account.windows or {}) do
               local pace = calculate_window_pace(window, window_duration(window))
               if pace then
@@ -730,6 +749,11 @@ return function(shared, repo_root)
       return '94a3b8', '64748b', '475569', '334155'
     end
 
+    if provider_name(account) == 'gemini' then
+      -- Bright spring green FLASH, pine PRO.
+      return '4ade80', '86efac', '318f6a', '1f6b52'
+    end
+
     if is_free then
       if provider_name(account) == 'codex' then
         return '2563eb', '1e3a8a', '2563eb', '1e3a8a'
@@ -760,6 +784,10 @@ return function(shared, repo_root)
       if provider_name(account) == 'cursor' and window_label == 'api' then
         second = window
       elseif provider_name(account) == 'cursor' and window_label == 'auto' then
+        first = window
+      elseif provider_name(account) == 'gemini' and window_label == 'pro' then
+        second = window
+      elseif provider_name(account) == 'gemini' and window_label == 'flash' then
         first = window
       elseif window_label == 'weekly' then
         second = window
@@ -812,6 +840,13 @@ return function(shared, repo_root)
       end
       if second then
         draw_bar_overlay_label(cr, 'API', second_bar_x, bar_y)
+      end
+    elseif provider_name(account) == 'gemini' then
+      if first then
+        draw_bar_overlay_label(cr, 'FLASH', first_bar_x, bar_y, '000000')
+      end
+      if second then
+        draw_bar_overlay_label(cr, 'PRO', second_bar_x, bar_y, '000000')
       end
     end
   end
@@ -875,25 +910,36 @@ return function(shared, repo_root)
     local codex_label = 'CODEX'
     local claude_label = 'CLAUDE'
     local cursor_label = 'CURSOR'
+    local gemini_label = 'ANTIGRAVITY'
 
     local codex_color = '00e5ff'
     local claude_color = 'ff7a59'
     local cursor_color = '94a3b8'
+    local gemini_color = '4ade80'
 
     if usage.ok and #usage.accounts > 0 then
       local codex_avg_delta = calculate_provider_average_pace(usage.accounts, 'Codex')
       local claude_avg_delta = calculate_provider_average_pace(usage.accounts, 'Claude')
       local cursor_avg_delta = calculate_provider_average_pace(usage.accounts, 'Cursor')
+      local gemini_avg_delta = calculate_provider_average_pace(usage.accounts, 'Gemini')
 
       codex_label = get_provider_label_from_delta('Codex', codex_avg_delta)
       claude_label = get_provider_label_from_delta('Claude', claude_avg_delta)
       cursor_label = get_provider_label_from_delta('Cursor', cursor_avg_delta)
+      gemini_label = get_provider_label_from_delta('Antigravity', gemini_avg_delta)
     end
 
     local chip_x = x + 48
     local codex_chip_width = draw_title_chip(cr, codex_label, codex_color, chip_x, y)
     local claude_chip_width = draw_title_chip(cr, claude_label, claude_color, chip_x + codex_chip_width + 8, y)
-    draw_title_chip(cr, cursor_label, cursor_color, chip_x + codex_chip_width + claude_chip_width + 16, y)
+    local cursor_chip_width = draw_title_chip(cr, cursor_label, cursor_color, chip_x + codex_chip_width + claude_chip_width + 16, y)
+    draw_title_chip(
+      cr,
+      gemini_label,
+      gemini_color,
+      chip_x + codex_chip_width + claude_chip_width + cursor_chip_width + 24,
+      y
+    )
 
     if not usage.ok or #usage.accounts == 0 then
       draw_codex_error(cr, usage, x, y)
