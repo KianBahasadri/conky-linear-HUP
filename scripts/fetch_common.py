@@ -128,6 +128,28 @@ def usage_render_tsv(output):
     return "\n".join(lines) + "\n"
 
 
+def flatten_bars(accounts):
+    bars = []
+    for account in accounts:
+        for window in account.get("windows", []):
+            bars.append(
+                {
+                    "account": account.get("label", ""),
+                    "planType": account.get("planType", ""),
+                    "isSelected": account.get("isSelected", False),
+                    "window": window.get("label", ""),
+                    "usedPercent": window.get("usedPercent", 0),
+                    "remainingPercent": window.get("remainingPercent", 0),
+                    "resetsAt": window.get("resetsAt"),
+                    "resetAtEpoch": window.get("resetAtEpoch", 0),
+                    "resetAfterSeconds": window.get("resetAfterSeconds", 0),
+                    "windowSeconds": window.get("windowSeconds", 0),
+                    "ok": account.get("ok", False),
+                }
+            )
+    return bars
+
+
 def write_usage_outputs(output_path, render_path, output):
     atomic_write_json(output_path, output)
     atomic_write_text(render_path, usage_render_tsv(output))

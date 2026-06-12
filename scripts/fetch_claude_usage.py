@@ -39,6 +39,7 @@ log_event = common.make_logger(LOG_PATH, "fetch_claude_usage")
 atomic_write_json = common.atomic_write_json
 as_float = common.as_float
 as_int = common.as_int
+flatten_bars = common.flatten_bars
 
 
 def claude_home():
@@ -559,28 +560,6 @@ def fetch_account(label, path, is_selected):
             raise
     except Exception as error:
         return normalize_error(label, str(error), is_selected)
-
-
-def flatten_bars(accounts):
-    bars = []
-    for account in accounts:
-        for window in account.get("windows", []):
-            bars.append(
-                {
-                    "account": account.get("label", ""),
-                    "planType": account.get("planType", ""),
-                    "isSelected": account.get("isSelected", False),
-                    "window": window.get("label", ""),
-                    "usedPercent": window.get("usedPercent", 0),
-                    "remainingPercent": window.get("remainingPercent", 0),
-                    "resetsAt": window.get("resetsAt"),
-                    "resetAtEpoch": window.get("resetAtEpoch", 0),
-                    "resetAfterSeconds": window.get("resetAfterSeconds", 0),
-                    "windowSeconds": window.get("windowSeconds", 0),
-                    "ok": account.get("ok", False),
-                }
-            )
-    return bars
 
 
 def write_error(message):

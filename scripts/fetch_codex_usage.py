@@ -37,6 +37,7 @@ atomic_write_json = common.atomic_write_json
 as_float = common.as_float
 as_int = common.as_int
 parse_iso_epoch = common.parse_iso_epoch
+flatten_bars = common.flatten_bars
 
 
 def configure_from_env():
@@ -524,28 +525,6 @@ def plan_sort_rank(account):
 
 def sort_accounts(accounts):
     return sorted(accounts, key=plan_sort_rank)
-
-
-def flatten_bars(accounts):
-    bars = []
-    for account in accounts:
-        for window in account.get("windows", []):
-            bars.append(
-                {
-                    "account": account.get("label", ""),
-                    "planType": account.get("planType", ""),
-                    "isSelected": account.get("isSelected", False),
-                    "window": window.get("label", ""),
-                    "usedPercent": window.get("usedPercent", 0),
-                    "remainingPercent": window.get("remainingPercent", 0),
-                    "resetsAt": window.get("resetsAt"),
-                    "resetAtEpoch": window.get("resetAtEpoch", 0),
-                    "resetAfterSeconds": window.get("resetAfterSeconds", 0),
-                    "windowSeconds": window.get("windowSeconds", 0),
-                    "ok": account.get("ok", False),
-                }
-            )
-    return bars
 
 
 def write_error(message):
