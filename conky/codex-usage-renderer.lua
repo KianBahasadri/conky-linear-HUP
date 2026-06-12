@@ -613,6 +613,14 @@ return function(shared, repo_root)
 
   end
 
+  local function draw_bar_overlay_label(cr, label, x, bar_y, color)
+    cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
+    cairo_set_font_size(cr, 8)
+    shared.set_hex(cr, color or 'f8fafc', 0.95)
+    cairo_move_to(cr, x + 4, bar_y + 7)
+    cairo_show_text(cr, label)
+  end
+
   local function draw_codex_bar(cr, window, x, y, accent, accent_secondary, show_pace)
     if show_pace == nil then
       show_pace = true
@@ -718,6 +726,10 @@ return function(shared, repo_root)
   end
 
   local function provider_accents(account, is_free)
+    if provider_name(account) == 'cursor' then
+      return '94a3b8', '64748b', '475569', '334155'
+    end
+
     if is_free then
       if provider_name(account) == 'codex' then
         return '2563eb', '1e3a8a', '2563eb', '1e3a8a'
@@ -728,9 +740,6 @@ return function(shared, repo_root)
     if provider_name(account) == 'claude' then
       -- Light coral/gold 5h, deeper coral weekly.
       return 'ff8f73', 'fcd34d', 'c85f49', '81392e'
-    end
-    if provider_name(account) == 'cursor' then
-      return '94a3b8', '64748b', '94a3b8', '64748b'
     end
 
     -- Bright cyan 5h, rich navy weekly.
@@ -760,7 +769,7 @@ return function(shared, repo_root)
     end
 
     if account.is_selected then
-      local selection_color = provider_name(account) == 'codex' and '00e5ff' or provider_name(account) == 'cursor' and '94a3b8' or 'ff9f1c'
+      local selection_color = provider_name(account) == 'codex' and '00e5ff' or provider_name(account) == 'cursor' and '94a3b8' or first_accent
 
       shared.set_hex(cr, selection_color, 0.20)
       cairo_set_line_width(cr, 5)
@@ -788,11 +797,22 @@ return function(shared, repo_root)
     cairo_show_text(cr, shared.truncate_title(cr, name, 120))
 
     local show_bar_pace = not (provider_name(account) == 'codex' and is_free)
+    local bar_y = y + 15
+    local first_bar_x = x + codex_first_bar_x
+    local second_bar_x = x + codex_first_bar_x + codex_bar_width + codex_bar_countdown_width + codex_bar_reset_width + codex_bar_pair_gap
     if first then
-      draw_codex_bar(cr, first, x + codex_first_bar_x, y + 15, first_accent, first_accent_secondary, show_bar_pace)
+      draw_codex_bar(cr, first, first_bar_x, bar_y, first_accent, first_accent_secondary, show_bar_pace)
     end
     if second then
-      draw_codex_bar(cr, second, x + codex_first_bar_x + codex_bar_width + codex_bar_countdown_width + codex_bar_reset_width + codex_bar_pair_gap, y + 15, second_accent, second_accent_secondary, show_bar_pace)
+      draw_codex_bar(cr, second, second_bar_x, bar_y, second_accent, second_accent_secondary, show_bar_pace)
+    end
+    if provider_name(account) == 'cursor' then
+      if first then
+        draw_bar_overlay_label(cr, 'AUTO', first_bar_x, bar_y, '000000')
+      end
+      if second then
+        draw_bar_overlay_label(cr, 'API', second_bar_x, bar_y)
+      end
     end
   end
 
