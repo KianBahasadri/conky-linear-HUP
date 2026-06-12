@@ -12,14 +12,14 @@ return function(shared, repo_root)
   local codex_account_row_y = 8
   local codex_account_row_gap = 19
   local codex_dynamic_height_padding = 30
-  local codex_first_bar_x = 113
+  local codex_first_bar_x = 90
   -- Width of each Codex usage progress bar.
   local codex_bar_width = 230
   local codex_bar_height = 8
   local codex_bar_text_gap = 14
   local codex_bar_countdown_width = 54
   local codex_bar_reset_gap = 0
-  local codex_bar_reset_width = 96
+  local codex_bar_reset_width = 116
   local codex_bar_pair_gap = 0
   local bottom_padding = 4
   local five_hour_window_seconds = 18000
