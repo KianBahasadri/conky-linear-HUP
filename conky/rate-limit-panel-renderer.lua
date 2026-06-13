@@ -125,6 +125,7 @@ return function(shared, repo_root)
             is_selected = fields[4] == '1',
             ok = fields[5] == '1',
             error = fields[6] or '',
+            stale = fields[7] == '1',
             windows = {},
           }
           table.insert(usage.accounts, account_index[label])
@@ -140,6 +141,7 @@ return function(shared, repo_root)
               is_selected = fields[4] == '1',
               ok = true,
               error = '',
+              stale = false,
               windows = {},
             }
             table.insert(usage.accounts, account_index[label])
@@ -640,18 +642,28 @@ return function(shared, repo_root)
     cairo_show_text(cr, label)
   end
 
-  local function draw_usage_bar(cr, window, x, y, accent, accent_secondary, show_pace)
+  local function draw_usage_bar(cr, window, x, y, accent, accent_secondary, show_pace, refresh_mode)
     if show_pace == nil then
       show_pace = true
     end
 
     local used = shared.clamp(window.used_percent, 0, 100)
+    if refresh_mode then
+      used = 0
+    end
     local fill_width = bar_width * (used / 100)
     local window_label = normalized_window_label(window)
     local is_weekly = window_label == 'weekly'
     local is_five_hour = window_label == '5h'
     local countdown_label = format_window_countdown(window)
     local reset_date_label, reset_time_label = format_reset_at(window)
+    if refresh_mode then
+      -- The token is no longer fresh, so any cached number is stale: blank the
+      -- countdown/reset time and prompt a re-auth instead.
+      countdown_label = 'refresh'
+      reset_date_label = ''
+      reset_time_label = ''
+    end
 
     local bar_y = y
     shared.rounded_rect(cr, x, bar_y, bar_width, bar_height, 4)
@@ -696,7 +708,7 @@ return function(shared, repo_root)
     cairo_line_to(cr, x + bar_width - 8, bar_y + 4)
     cairo_stroke(cr)
 
-    if show_pace then
+    if show_pace and not refresh_mode then
       draw_pace_marker(cr, calculate_window_pace(window, window_duration(window)), x, bar_y)
     end
 
@@ -828,8 +840,24 @@ return function(shared, repo_root)
     local bar_y = y + 15
     local first_bar_x = x + panel_first_bar_x
     local second_bar_x = x + panel_first_bar_x + bar_width + bar_countdown_width + bar_reset_width + bar_pair_gap
+
+    -- A Claude account whose OAuth token is no longer fresh (fetcher serving
+    -- stale cache, or the fetch failed outright) has a meaningless 5h window --
+    -- it usually drops off entirely. Draw an empty 5h bar labeled "refresh" to
+    -- prompt a re-auth.
+    local claude_needs_refresh = provider_name(account) == 'claude' and (account.stale or not account.ok)
+    if claude_needs_refresh and not first then
+      first = {
+        used_percent = 0,
+        label = '5h',
+        reset_at_epoch = 0,
+        reset_after_seconds = 0,
+        window_seconds = five_hour_window_seconds,
+      }
+    end
+
     if first then
-      draw_usage_bar(cr, first, first_bar_x, bar_y, first_accent, first_accent_secondary, show_bar_pace)
+      draw_usage_bar(cr, first, first_bar_x, bar_y, first_accent, first_accent_secondary, show_bar_pace, claude_needs_refresh)
     end
     if second then
       draw_usage_bar(cr, second, second_bar_x, bar_y, second_accent, second_accent_secondary, show_bar_pace)

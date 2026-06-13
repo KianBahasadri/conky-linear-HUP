@@ -102,6 +102,7 @@ def usage_render_tsv(output):
                     "1" if account.get("isSelected") else "0",
                     "1" if account.get("ok") else "0",
                     escape_tsv(account.get("error", "")),
+                    "1" if account.get("staleCache") else "0",
                 ]
             )
         )

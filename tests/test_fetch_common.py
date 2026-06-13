@@ -53,7 +53,7 @@ def test_usage_render_tsv_golden_string():
 
     assert common.usage_render_tsv(output) == (
         "meta\tok\t1\tupdatedAt\t2026-06-03T12:00:00+00:00\terror\tnone\\nreally\n"
-        "account\tacct\\\\one\tpro\t1\t1\t\n"
+        "account\tacct\\\\one\tpro\t1\t1\t\t0\n"
         "bar\tacct\\\\one\tpro\t1\t5h\t12.3\t87.7\t2026-06-03T17:00:00+00:00\t1780506000\t18000\t18000\n"
     )
 
