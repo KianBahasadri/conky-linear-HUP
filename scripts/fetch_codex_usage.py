@@ -30,6 +30,7 @@ WEEKLY_WINDOW_SECONDS = common.WEEKLY_WINDOW_SECONDS
 LONG_WINDOW_THRESHOLD_SECONDS = 24 * 60 * 60
 DEGENERATE_RETRIES = 4
 LOCAL_RATE_LIMIT_MAX_AGE_SECONDS = 21600
+LOCAL_WINDOW_RESET_TOLERANCE_SECONDS = 5
 
 
 log_event = common.make_logger(LOG_PATH, "fetch_codex_usage")
@@ -490,28 +491,82 @@ def normalize_error(label, message, is_selected=False):
     }
 
 
-def account_from_local_rate_limits(label, path, local_rate_limits):
+def matching_local_window_count(account, local_windows):
+    account_windows = {
+        window.get("label"): window
+        for window in account.get("windows", [])
+        if window.get("label")
+    }
+    matched = 0
+
+    for local_window in local_windows:
+        account_window = account_windows.get(local_window.get("label"))
+        if not account_window:
+            continue
+
+        local_duration = as_int(local_window.get("windowSeconds"))
+        account_duration = as_int(account_window.get("windowSeconds"))
+        if local_duration > 0 and account_duration > 0 and local_duration != account_duration:
+            return 0
+
+        local_reset = as_int(local_window.get("resetAtEpoch"))
+        account_reset = as_int(account_window.get("resetAtEpoch"))
+        if local_reset <= 0 or account_reset <= 0:
+            continue
+        if abs(local_reset - account_reset) > LOCAL_WINDOW_RESET_TOLERANCE_SECONDS:
+            return 0
+        matched += 1
+
+    return matched
+
+
+def apply_local_rate_limits(accounts, local_rate_limits):
     windows = local_rate_limit_windows(local_rate_limits)
     if not windows:
-        return None
+        return accounts
 
-    try:
-        auth = read_auth(label, path)
-    except Exception:
-        auth = {"label": label, "email": "", "account_id": ""}
+    local_plan_type = str(local_rate_limits["rateLimits"].get("plan_type", "")).lower()
+    candidates = []
+    for account in accounts:
+        account_plan_type = str(account.get("planType", "")).lower()
+        if local_plan_type and account_plan_type and local_plan_type != account_plan_type:
+            continue
 
-    rate_limits = local_rate_limits["rateLimits"]
-    return {
-        "ok": True,
-        "label": label,
-        "email": auth.get("email", ""),
-        "accountId": auth.get("account_id", ""),
-        "planType": rate_limits.get("plan_type", ""),
-        "isSelected": True,
-        "windows": windows,
-        "localRateLimits": True,
-        "localRateLimitsUpdatedAt": datetime.fromtimestamp(local_rate_limits["eventEpoch"], tz=timezone.utc).isoformat(),
-    }
+        match_count = matching_local_window_count(account, windows)
+        if match_count <= 0:
+            continue
+
+        score = (match_count, 0 if account.get("carriedForward") else 1)
+        candidates.append((score, account))
+
+    if not candidates:
+        log_event(
+            "ignored local Codex session rate_limits because no account API windows "
+            f"matched path={local_rate_limits['path'].name}"
+        )
+        return accounts
+
+    candidates.sort(key=lambda candidate: candidate[0], reverse=True)
+    best_score, best_account = candidates[0]
+    if len(candidates) > 1 and candidates[1][0] == best_score:
+        labels = ",".join(candidate[1].get("label", "") for candidate in candidates if candidate[0] == best_score)
+        log_event(
+            "ignored local Codex session rate_limits because the account match was ambiguous "
+            f"accounts={labels} path={local_rate_limits['path'].name}"
+        )
+        return accounts
+
+    best_account["windows"] = windows
+    best_account["localRateLimits"] = True
+    best_account["localRateLimitsPath"] = str(local_rate_limits["path"])
+    best_account["localRateLimitsUpdatedAt"] = datetime.fromtimestamp(
+        local_rate_limits["eventEpoch"], tz=timezone.utc
+    ).isoformat()
+    log_event(
+        f"account={best_account.get('label', '')} matched local Codex session rate_limits "
+        f"windows={len(windows)} path={local_rate_limits['path'].name}"
+    )
+    return accounts
 
 
 def plan_sort_rank(account):
@@ -541,16 +596,7 @@ def write_error(message):
     log_event(f"error: {message}")
 
 
-def fetch_account(label, path, is_selected, local_rate_limits=None):
-    if is_selected and local_rate_limits:
-        account = account_from_local_rate_limits(label, path, local_rate_limits)
-        if account:
-            log_event(
-                f"account={label} using local Codex session rate_limits "
-                f"windows={len(account['windows'])} path={local_rate_limits['path'].name}"
-            )
-            return account
-
+def fetch_account(label, path, is_selected):
     try:
         auth = read_auth(label, path)
         status, usage = codex_request(auth)
@@ -586,8 +632,9 @@ def main():
     log_event(f"starting Codex usage fetch accounts={labels or 'none'}")
 
     try:
-        accounts = [fetch_account(label, path, is_selected, local_rate_limits) for label, path, is_selected in auth_files]
+        accounts = [fetch_account(label, path, is_selected) for label, path, is_selected in auth_files]
         accounts = [carry_forward_previous_windows(account, previous_accounts) for account in accounts]
+        accounts = apply_local_rate_limits(accounts, local_rate_limits)
         accounts = sort_accounts(accounts)
         ok_count = sum(1 for account in accounts if account.get("ok"))
         output = {
