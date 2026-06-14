@@ -27,6 +27,11 @@ return function(shared, repo_root)
   local five_hour_window_seconds = 18000
   local weekly_window_seconds = 604800
   local pace_threshold = 10
+  -- Pace marker appearance; does not affect bar fill.
+  local pace_marker_color = 'ff9f1c'
+  local pace_marker_width = 1
+  local pace_marker_opacity_neutral = 1.0
+  local pace_marker_opacity = 0.96
 
   local function seconds_until_reset(window)
     if window.reset_at_epoch and window.reset_at_epoch > 0 then
@@ -563,16 +568,6 @@ return function(shared, repo_root)
     }
   end
 
-  local function pace_color(pace)
-    if pace and pace.state == 'over' then
-      return 'f87171'
-    end
-    if pace and pace.state == 'under' then
-      return 'ff9f1c'
-    end
-    return 'ff9f1c'
-  end
-
   local function pace_chip_color(pace)
     if pace and pace.state == 'over' then
       return 'f87171'
@@ -617,20 +612,15 @@ return function(shared, repo_root)
       return
     end
 
-    local marker_x = x + bar_width * (shared.clamp(pace.expected, 0, 100) / 100)
-    local color = pace_color(pace)
+    local marker_x = math.floor(x + bar_width * (shared.clamp(pace.expected, 0, 100) / 100) + 0.5)
+    local marker_left = marker_x - math.floor(pace_marker_width / 2)
+    local is_neutral = pace.state == 'neutral'
 
-    shared.set_hex(cr, color, pace.state == 'neutral' and 0.30 or 0.18)
-    cairo_set_line_width(cr, pace.state == 'neutral' and 6 or 5)
-    cairo_move_to(cr, marker_x, bar_y)
-    cairo_line_to(cr, marker_x, bar_y + bar_height)
-    cairo_stroke(cr)
-
-    shared.set_hex(cr, color, pace.state == 'neutral' and 1.0 or 0.96)
-    cairo_set_line_width(cr, pace.state == 'neutral' and 2.5 or 2)
-    cairo_move_to(cr, marker_x, bar_y + 1)
-    cairo_line_to(cr, marker_x, bar_y + bar_height - 1)
-    cairo_stroke(cr)
+    cairo_set_antialias(cr, CAIRO_ANTIALIAS_NONE)
+    shared.set_hex(cr, pace_marker_color, is_neutral and pace_marker_opacity_neutral or pace_marker_opacity)
+    cairo_rectangle(cr, marker_left, bar_y, pace_marker_width, bar_height)
+    cairo_fill(cr)
+    cairo_set_antialias(cr, CAIRO_ANTIALIAS_DEFAULT)
 
   end
 
