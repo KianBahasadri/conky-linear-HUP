@@ -43,6 +43,13 @@ def configured_auth_path():
     return Path(configured).expanduser() if configured else None
 
 
+def auth_email(label, path):
+    try:
+        return read_auth(label, path).get("email", "")
+    except Exception:
+        return ""
+
+
 def discover_auth_files():
     configured = configured_auth_path()
     if configured:
@@ -54,6 +61,24 @@ def discover_auth_files():
         for path in default_path.parent.glob(f"{DEFAULT_AUTH_NAME}.*")
         if path.is_file() and not path.name.endswith(".lock")
     )
+
+    # Grok CLI refreshes auth.json in place. Suffixed copies can go stale when
+    # auth.json is a standalone file instead of a symlink to one of them.
+    if default_path.is_file() and not default_path.is_symlink():
+        accounts = [(auth_label(default_path), default_path, True)]
+        default_email = auth_email(accounts[0][0], default_path)
+        for path in suffixed_paths:
+            try:
+                if path.resolve() == default_path.resolve():
+                    continue
+            except OSError:
+                pass
+            label = auth_label(path)
+            if default_email and auth_email(label, path) == default_email:
+                continue
+            accounts.append((label, path, False))
+        return accounts
+
     if suffixed_paths:
         return [(auth_label(path), path, is_selected_auth(path)) for path in suffixed_paths]
 

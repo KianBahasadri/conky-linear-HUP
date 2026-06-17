@@ -32,6 +32,20 @@ def billing_payload(now):
     }
 
 
+def test_discover_auth_files_prefers_standalone_default_over_stale_suffixed_copy(monkeypatch, tmp_path):
+    default_auth = tmp_path / "auth.json"
+    stale_copy = tmp_path / "auth.json.kian"
+    write_auth(default_auth, token="fresh-token", email="grok@example.com")
+    write_auth(stale_copy, token="stale-token", email="grok@example.com")
+    monkeypatch.setenv("GROK_HOME", str(tmp_path))
+
+    discovered = grok.discover_auth_files()
+
+    assert [(label, path.name, selected) for label, path, selected in discovered] == [
+        ("default", "auth.json", True),
+    ]
+
+
 def test_discover_auth_files_prefers_suffixed_files_and_marks_selected(monkeypatch, tmp_path):
     work = tmp_path / "auth.json.ida"
     personal = tmp_path / "auth.json.kian"
