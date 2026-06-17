@@ -139,10 +139,15 @@ def read_auth(label, path):
     }
 
 
-def grok_request(auth, resource):
-    request = urllib.request.Request(f"{api_base_url()}/{resource}", method="GET")
+def grok_request(auth, resource, query=None):
+    url = f"{api_base_url()}/{resource}"
+    if query:
+        url = f"{url}?{query}"
+    request = urllib.request.Request(url, method="GET")
     request.add_header("Authorization", f"Bearer {auth['access_token']}")
     request.add_header("User-Agent", USER_AGENT)
+    request.add_header("X-XAI-Token-Auth", "xai-grok-cli")
+    request.add_header("Accept", "application/json")
 
     try:
         with urllib.request.urlopen(request, timeout=20) as response:
@@ -195,16 +200,38 @@ def normalize_grok_window(label, used_percent, cycle_start, cycle_end, fetched_a
     }
 
 
+def billing_usage_percent(config):
+    used = as_int(unwrap_val(config.get("used")))
+    monthly_limit = as_int(unwrap_val(config.get("monthlyLimit")))
+    if monthly_limit > 0:
+        return (used / monthly_limit) * 100, used, monthly_limit
+
+    credit_usage_percent = config.get("creditUsagePercent")
+    if credit_usage_percent is not None:
+        return float(credit_usage_percent), 0, 0
+
+    return 0.0, used, monthly_limit
+
+
+def billing_cycle_bounds(config):
+    cycle_start = common.parse_iso_epoch(config.get("billingPeriodStart"))
+    cycle_end = common.parse_iso_epoch(config.get("billingPeriodEnd"))
+    current_period = config.get("currentPeriod")
+    if isinstance(current_period, dict):
+        if cycle_start <= 0:
+            cycle_start = common.parse_iso_epoch(current_period.get("start"))
+        if cycle_end <= 0:
+            cycle_end = common.parse_iso_epoch(current_period.get("end"))
+    return cycle_start, cycle_end
+
+
 def normalize_usage(auth, billing, user, is_selected):
     fetched_at = datetime.now(timezone.utc)
     config = billing.get("config") if isinstance(billing, dict) else {}
     config = config if isinstance(config, dict) else {}
 
-    used = as_int(unwrap_val(config.get("used")))
-    monthly_limit = as_int(unwrap_val(config.get("monthlyLimit")))
-    used_percent = (used / monthly_limit) * 100 if monthly_limit > 0 else 0
-    cycle_start = common.parse_iso_epoch(config.get("billingPeriodStart"))
-    cycle_end = common.parse_iso_epoch(config.get("billingPeriodEnd"))
+    used_percent, used, monthly_limit = billing_usage_percent(config)
+    cycle_start, cycle_end = billing_cycle_bounds(config)
 
     windows = [
         normalize_grok_window(
@@ -242,21 +269,36 @@ def normalize_error(label, message, is_selected=False):
     }
 
 
+def fetch_billing(auth):
+    status, billing = grok_request(auth, "billing", "format=credits")
+    if status == 200:
+        return billing
+
+    log_event(f"account={auth['label']} billing?format=credits returned HTTP {status}, retrying /billing")
+    status, billing = grok_request(auth, "billing")
+    if status != 200:
+        detail = billing.get("error", "") if isinstance(billing, dict) else ""
+        suffix = f": {detail}" if detail else ""
+        raise RuntimeError(f"Grok billing API error: HTTP {status}{suffix}")
+    return billing
+
+
 def fetch_account(label, path, is_selected):
     try:
         auth = read_auth(label, path)
-        status, billing = grok_request(auth, "billing")
-        if status != 200:
-            detail = billing.get("error", "") if isinstance(billing, dict) else ""
-            suffix = f": {detail}" if detail else ""
-            return normalize_error(label, f"Grok billing API error: HTTP {status}{suffix}", is_selected)
+        billing = fetch_billing(auth)
 
         user = optional_metadata(auth, "user")
         account = normalize_usage(auth, billing, user, is_selected)
+        monthly = account["windows"][0] if account.get("windows") else {}
+        usage_summary = (
+            f"{account.get('usedCredits', 0)}/{account.get('monthlyLimitCredits', 0)}"
+            if account.get("monthlyLimitCredits", 0) > 0
+            else f"{monthly.get('usedPercent', 0)}%"
+        )
         log_event(
             f"account={label} completed plan={account['planType'] or 'unknown'} "
-            f"used={account.get('usedCredits', 0)}/{account.get('monthlyLimitCredits', 0)} "
-            f"windows={len(account['windows'])}"
+            f"used={usage_summary} windows={len(account['windows'])}"
         )
         return account
     except Exception as error:

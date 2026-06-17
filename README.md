@@ -60,7 +60,7 @@ Each overlay can be disabled with its `*_OVERLAY_ENABLED=0` variable in `.env`.
 - The Gemini fetcher never edits Keyring credentials directly. If the selected profile returns HTTP 401 or 403, it runs `agy models`, re-reads the CLI-refreshed Keyring item, and retries once. Inactive profiles continue serving their last successful quota until selected because refreshing them would require switching the active account.
 - `GEMINI_ANTIGRAVITY_STATE_DIR` overrides the rotation state directory, `GEMINI_CODE_ASSIST_ENDPOINT` overrides the Antigravity API endpoint, `GEMINI_ANTIGRAVITY_CLI` overrides the `agy` executable, and `GEMINI_AUTH_REFRESH_TIMEOUT_SECONDS` controls the refresh timeout.
 - Multiple Grok accounts are discovered from `~/.grok/auth.json.*`; `GROK_AUTH_PATH` forces a single auth file.
-- Grok usage is fetched from Grok Build's billing API at `cli-chat-proxy.grok.com/v1/billing`. It renders the monthly included-credit pool as one bar per account.
+- Grok usage is fetched from Grok Build's billing API at `cli-chat-proxy.grok.com/v1/billing?format=credits`. It renders the monthly included-credit pool as one bar per account.
 - Pioneer usage is fetched with `PIONEER_API_KEY` from `GET /billing/plan-info` for the daily credit pool and team overage settings for the billing-period monthly pool (`current_month_start`, `current_period_usage`).
 - `PIONEER_USAGE_LABEL` overrides the Pioneer account label and `PIONEER_MONTHLY_CREDIT_LIMIT` overrides the monthly credit cap when Pioneer does not expose one.
 - `GROK_HOME` overrides the Grok config directory and `GROK_CLI_CHAT_PROXY_BASE_URL` overrides the billing API base URL.
