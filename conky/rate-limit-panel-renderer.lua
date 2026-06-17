@@ -850,6 +850,8 @@ return function(shared, repo_root)
         first = window
       elseif provider_name(account) == 'pioneer' and window_label == 'monthly' then
         second = window
+      elseif provider_name(account) == 'grok' and window_label == 'monthly' then
+        second = window
       elseif window_label == 'weekly' then
         second = window
       elseif not first then
