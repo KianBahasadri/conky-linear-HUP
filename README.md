@@ -45,7 +45,7 @@ Each overlay can be disabled with its `*_OVERLAY_ENABLED=0` variable in `.env`.
 
 ## Rate Limit Panel Rules
 
-- The quota panel shows separate `CODEX`, `CLAUDE`, `CURSOR`, `GEMINI`, and `GROK` chips. Codex rows use cyan/navy bars; Claude rows use coral/gold bars; Cursor rows use grey bars; Gemini rows use Google blue/green and yellow/red bars; Grok rows use regal purple bars.
+- The quota panel shows separate `CODEX`, `CLAUDE`, `CURSOR`, `GEMINI`, `GROK`, and `PIONEER` chips. Codex rows use cyan/navy bars; Claude rows use coral/gold bars; Cursor rows use grey bars; Gemini rows use Google blue/green and yellow/red bars; Grok rows use regal purple bars; Pioneer rows use amber/gold daily and monthly bars.
 - The selection chevron marks selected auth profiles: Codex rows whose path resolves to `~/.codex/auth.json`, Cursor rows whose path resolves to `~/.config/cursor/auth.json`, Claude rows whose path resolves to `~/.claude/.credentials.json` or whose access token equals the one in that file, Gemini rows matching Antigravity's `current` profile, and Grok rows whose path resolves to `~/.grok/auth.json`. Codex uses a blue chevron, Claude uses orange, Cursor uses grey, Gemini uses Google blue, and Grok uses purple. Token comparison is required for Claude because Claude Code replaces `~/.claude/.credentials.json` with a new regular file on login and on every OAuth refresh, so a symlink there does not survive.
 - All account-rotation tooling is stored in `~/.config/clusterfork`.
 - Multiple Codex accounts are discovered from `~/.codex/auth.json.*`; `CODEX_AUTH_PATH` forces a single auth file.
@@ -61,6 +61,8 @@ Each overlay can be disabled with its `*_OVERLAY_ENABLED=0` variable in `.env`.
 - `GEMINI_ANTIGRAVITY_STATE_DIR` overrides the rotation state directory, `GEMINI_CODE_ASSIST_ENDPOINT` overrides the Antigravity API endpoint, `GEMINI_ANTIGRAVITY_CLI` overrides the `agy` executable, and `GEMINI_AUTH_REFRESH_TIMEOUT_SECONDS` controls the refresh timeout.
 - Multiple Grok accounts are discovered from `~/.grok/auth.json.*`; `GROK_AUTH_PATH` forces a single auth file.
 - Grok usage is fetched from Grok Build's billing API at `cli-chat-proxy.grok.com/v1/billing`. It renders the monthly included-credit pool as one bar per account.
+- Pioneer usage is fetched with `PIONEER_API_KEY` from `GET /billing/plan-info` for the daily credit pool and team overage settings for the billing-period monthly pool (`current_month_start`, `current_period_usage`).
+- `PIONEER_USAGE_LABEL` overrides the Pioneer account label and `PIONEER_MONTHLY_CREDIT_LIMIT` overrides the monthly credit cap when Pioneer does not expose one.
 - `GROK_HOME` overrides the Grok config directory and `GROK_CLI_CHAT_PROXY_BASE_URL` overrides the billing API base URL.
 - Expired Claude access tokens are refreshed automatically with the credentials file's stored refresh token, and the new tokens are written back to that file (mode 0600).
 - The fetcher never writes `~/.claude/.credentials.json` and never refreshes a grant whose refresh token equals the one in that file: Claude Code owns that file and that grant, and a competing refresh would revoke the token Claude Code holds and force a re-login. While waiting for Claude Code to rotate an expired shared grant, the panel serves the stale cache.
@@ -105,7 +107,7 @@ LINEAR_DONE_LOOKBACK_HOURS=18
 LINEAR_PRIMARY_MONITOR_INDEX=0
 PRIMARY_WAIT_SECONDS=20
 
-# Rate limit panel (Codex + Claude + Cursor + Gemini + Grok)
+# Rate limit panel (Codex + Claude + Cursor + Gemini + Grok + Pioneer)
 RATE_LIMIT_PANEL_ENABLED=1
 CLAUDE_PLAN_TYPE=pro
 # CLAUDE_CREDENTIALS_PATH=/home/you/.claude/.credentials.json

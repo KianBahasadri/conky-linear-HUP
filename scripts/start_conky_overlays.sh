@@ -43,6 +43,7 @@ CLAUDE_FETCH_PID="$CACHE_DIR/claude-fetch-loop.pid"
 CURSOR_FETCH_PID="$CACHE_DIR/cursor-fetch-loop.pid"
 GEMINI_FETCH_PID="$CACHE_DIR/gemini-fetch-loop.pid"
 GROK_FETCH_PID="$CACHE_DIR/grok-fetch-loop.pid"
+PIONEER_FETCH_PID="$CACHE_DIR/pioneer-fetch-loop.pid"
 MINECRAFT_FETCH_PID="$CACHE_DIR/minecraft-fetch-loop.pid"
 GITHUB_FETCH_PID="$CACHE_DIR/github-fetch-loop.pid"
 OVERLAY_WIDTH=1540
@@ -65,7 +66,7 @@ GENERATE_ONLY=0
 MONITOR_HAS_PRIMARY=0
 
 overlay_keys=(linear rate-limit-panel minecraft github)
-fetch_keys=(linear codex claude cursor gemini grok minecraft github)
+fetch_keys=(linear codex claude cursor gemini grok pioneer minecraft github)
 
 declare -A overlay_disabled_name=(
   [linear]="linear"
@@ -99,6 +100,7 @@ declare -A fetch_label=(
   [cursor]="Cursor"
   [gemini]="Gemini"
   [grok]="Grok"
+  [pioneer]="Pioneer"
   [minecraft]="Minecraft"
   [github]="GitHub"
 )
@@ -109,6 +111,7 @@ declare -A fetch_overlay_key=(
   [cursor]="rate-limit-panel"
   [gemini]="rate-limit-panel"
   [grok]="rate-limit-panel"
+  [pioneer]="rate-limit-panel"
   [minecraft]="minecraft"
   [github]="github"
 )
@@ -119,6 +122,7 @@ declare -A fetch_interval=(
   [cursor]="300"
   [gemini]="300"
   [grok]="300"
+  [pioneer]="300"
   [minecraft]="$MINECRAFT_REFRESH_SECONDS"
   [github]="$GITHUB_REFRESH_SECONDS"
 )
@@ -129,6 +133,7 @@ declare -A fetch_script=(
   [cursor]="$ROOT/scripts/fetch_cursor_usage.py"
   [gemini]="$ROOT/scripts/fetch_gemini_usage.py"
   [grok]="$ROOT/scripts/fetch_grok_usage.py"
+  [pioneer]="$ROOT/scripts/fetch_pioneer_usage.py"
   [minecraft]="$ROOT/scripts/fetch_minecraft_status.py"
   [github]="$ROOT/scripts/fetch_github_contributions.py"
 )
@@ -139,6 +144,7 @@ declare -A fetch_pid_file=(
   [cursor]="$CURSOR_FETCH_PID"
   [gemini]="$GEMINI_FETCH_PID"
   [grok]="$GROK_FETCH_PID"
+  [pioneer]="$PIONEER_FETCH_PID"
   [minecraft]="$MINECRAFT_FETCH_PID"
   [github]="$GITHUB_FETCH_PID"
 )
@@ -290,6 +296,8 @@ generate_config() {
       *"fetch_claude_usage.py"*) ;;
       *"fetch_cursor_usage.py"*) ;;
       *"fetch_gemini_usage.py"*) ;;
+      *"fetch_grok_usage.py"*) ;;
+      *"fetch_pioneer_usage.py"*) ;;
       *)
         printf "%s\n" "$config_line"
         ;;
