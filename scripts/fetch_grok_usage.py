@@ -98,7 +98,7 @@ def auth_label(path):
     if name.startswith(prefix) and len(name) > len(prefix):
         return name[len(prefix):]
     if name == DEFAULT_AUTH_NAME:
-        return "default"
+        return "grok"
     if name.endswith(".json"):
         return name[:-5].lstrip(".") or path.stem
     return path.stem.lstrip(".") or name

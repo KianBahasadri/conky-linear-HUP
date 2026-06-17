@@ -59,7 +59,7 @@ def test_discover_auth_files_prefers_standalone_default_over_stale_suffixed_copy
     discovered = grok.discover_auth_files()
 
     assert [(label, path.name, selected) for label, path, selected in discovered] == [
-        ("default", "auth.json", True),
+        ("grok", "auth.json", True),
     ]
 
 
@@ -103,7 +103,7 @@ def test_normalize_usage_creates_monthly_credit_window():
 def test_normalize_usage_accepts_credit_usage_percent_payload():
     now = int(datetime.now(timezone.utc).timestamp())
     account = grok.normalize_usage(
-        {"label": "default", "email": "grok@example.com", "tier": 0},
+        {"label": "grok", "email": "grok@example.com", "tier": 0},
         billing_credits_payload(now),
         {"email": "grok@example.com", "userId": "user-1", "hasGrokCodeAccess": True},
         True,
