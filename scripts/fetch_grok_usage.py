@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import json
 import os
+import re
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
@@ -269,6 +270,41 @@ def normalize_error(label, message, is_selected=False):
     }
 
 
+def safe_cache_label(label):
+    safe = re.sub(r"[^A-Za-z0-9_.-]+", "_", label).strip("._")
+    return safe or "default"
+
+
+def account_cache_path(label):
+    return CACHE_DIR / f"grok-usage-cache-{safe_cache_label(label)}.json"
+
+
+def read_account_cache(label):
+    try:
+        cached = json.loads(account_cache_path(label).read_text(encoding="utf-8"))
+        if isinstance(cached, dict) and cached.get("windows"):
+            return cached
+    except (FileNotFoundError, json.JSONDecodeError):
+        pass
+
+    try:
+        output = json.loads(OUTPUT_PATH.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError):
+        return None
+
+    if not isinstance(output, dict):
+        return None
+    for account in output.get("accounts", []):
+        if isinstance(account, dict) and account.get("label") == label and account.get("windows"):
+            return account
+    return None
+
+
+def write_account_cache(account):
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    common.atomic_write_json(account_cache_path(account["label"]), account)
+
+
 def fetch_billing(auth):
     status, billing = grok_request(auth, "billing", "format=credits")
     if status == 200:
@@ -296,12 +332,22 @@ def fetch_account(label, path, is_selected):
             if account.get("monthlyLimitCredits", 0) > 0
             else f"{monthly.get('usedPercent', 0)}%"
         )
+        write_account_cache(account)
         log_event(
             f"account={label} completed plan={account['planType'] or 'unknown'} "
             f"used={usage_summary} windows={len(account['windows'])}"
         )
         return account
     except Exception as error:
+        cached = read_account_cache(label)
+        if isinstance(cached, dict) and cached.get("windows"):
+            cached = dict(cached)
+            cached["isSelected"] = is_selected
+            cached["ok"] = True
+            cached["staleCache"] = True
+            cached["error"] = f"using stale cache after {error}"
+            log_event(f"account={label} using stale Grok cache after error: {error}")
+            return cached
         return normalize_error(label, str(error), is_selected)
 
 

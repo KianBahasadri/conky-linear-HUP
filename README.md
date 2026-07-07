@@ -1,6 +1,6 @@
 # Conky Linear + AI Quota Overlay
 
-Desktop Conky widgets for keeping Linear work, Codex, Claude, Cursor, and Gemini quota pressure, Minecraft server population, and GitHub contributions visible across all monitors.
+Desktop Conky widgets for keeping Linear work, Codex, Claude, Cursor, Gemini, Grok, and Pioneer quota pressure, Minecraft server population, and GitHub contributions visible across all monitors.
 
 ## Run
 
@@ -25,13 +25,18 @@ Each overlay can be disabled with its `*_OVERLAY_ENABLED=0` variable in `.env`.
 - `cache/gemini-usage.json`: normalized Gemini Antigravity account/model usage for inspection.
 - `cache/gemini-usage-render.tsv`: renderer-friendly Gemini usage consumed by the Cairo renderer.
 - `cache/gemini-usage-cache-*.json`: last successful Gemini usage per Antigravity profile.
+- `cache/grok-usage.json`: normalized Grok Build account/monthly usage for inspection.
+- `cache/grok-usage-render.tsv`: renderer-friendly Grok usage consumed by the Cairo renderer.
+- `cache/grok-usage-cache-*.json`: last successful Grok usage per account.
+- `cache/pioneer-usage.json`: normalized Pioneer account/daily and monthly usage for inspection.
+- `cache/pioneer-usage-render.tsv`: renderer-friendly Pioneer usage consumed by the Cairo renderer.
 - `cache/minecraft-status.json`: Minecraft Java server status consumed by the Cairo renderer.
 - `cache/github-contributions.json`: GitHub contribution squares consumed by the Cairo renderer.
 - `cache/conky-linear.log`: Linear fetch, launcher, and Linear Conky output.
 - `cache/conky-rate-limit-panel.log`: rate limit panel fetch loops and Conky output.
 - `cache/conky-minecraft.log`: Minecraft fetch, launcher, and Minecraft Conky output.
 - `cache/conky-github.log`: GitHub fetch, launcher, and GitHub Conky output.
-- Fetch loops refresh Linear every `180s`, Codex every `300s`, Claude every `60s` with a per-account API cache, Cursor and Gemini every `300s`, Minecraft every `60s`, and GitHub every `1800s`.
+- Fetch loops refresh Linear every `180s`, Codex every `300s`, Claude every `60s` with a per-account API cache, Cursor, Gemini, Grok, and Pioneer every `300s`, Minecraft every `60s`, and GitHub every `1800s`.
 
 ## Linear Rules
 
@@ -57,16 +62,28 @@ Each overlay can be disabled with its `*_OVERLAY_ENABLED=0` variable in `.env`.
 - Cursor usage is fetched from Cursor's DashboardService. It renders Cursor's monthly `Auto + Composer` and `API` usage pools as the two bars for each account.
 - Gemini accounts are discovered from Antigravity's rotation state in `~/.gemini/antigravity-cli/rotate-auth`. The selected profile reads the live GNOME Keyring item `service=gemini username=antigravity`; inactive profiles read `service=rotate-antigravity username=<profile>`.
 - Gemini usage is fetched from Antigravity's Code Assist API. Bar 1 averages all active Flash and Pro request quotas, while bar 2 averages every other active model quota. The existing `gemini` and `other` cache labels identify those two groups.
-- The Gemini fetcher never edits Keyring credentials directly. If the selected profile returns HTTP 401 or 403, it runs `agy models`, re-reads the CLI-refreshed Keyring item, and retries once. Inactive profiles continue serving their last successful quota until selected because refreshing them would require switching the active account.
 - `GEMINI_ANTIGRAVITY_STATE_DIR` overrides the rotation state directory, `GEMINI_CODE_ASSIST_ENDPOINT` overrides the Antigravity API endpoint, `GEMINI_ANTIGRAVITY_CLI` overrides the `agy` executable, and `GEMINI_AUTH_REFRESH_TIMEOUT_SECONDS` controls the refresh timeout.
 - Multiple Grok accounts are discovered from `~/.grok/auth.json.*`; `GROK_AUTH_PATH` forces a single auth file.
 - Grok usage is fetched from Grok Build's billing API at `cli-chat-proxy.grok.com/v1/billing?format=credits`. It renders the monthly included-credit pool as one bar per account.
+- `GROK_HOME` overrides the Grok config directory and `GROK_CLI_CHAT_PROXY_BASE_URL` overrides the billing API base URL.
 - Pioneer usage is fetched with `PIONEER_API_KEY` from `GET /billing/plan-info` for the daily credit pool and team overage settings for the billing-period monthly pool (`current_month_start`, `current_period_usage`).
 - `PIONEER_USAGE_LABEL` overrides the Pioneer account label and `PIONEER_MONTHLY_CREDIT_LIMIT` overrides the monthly credit cap when Pioneer does not expose one.
-- `GROK_HOME` overrides the Grok config directory and `GROK_CLI_CHAT_PROXY_BASE_URL` overrides the billing API base URL.
-- Expired Claude access tokens are refreshed automatically with the credentials file's stored refresh token, and the new tokens are written back to that file (mode 0600).
-- The fetcher never writes `~/.claude/.credentials.json` and never refreshes a grant whose refresh token equals the one in that file: Claude Code owns that file and that grant, and a competing refresh would revoke the token Claude Code holds and force a re-login. While waiting for Claude Code to rotate an expired shared grant, the panel serves the stale cache.
-- Claude Code rotates the refresh token of the logged-in account, which invalidates a copied credentials file for the same account. The fetcher recovers in two ways, both gated on the live file's profile email matching the email recorded for that account in `cache/claude-usage-cache-<label>.json`: it detects a changed default-file token (fingerprint in `cache/claude-default-token.fingerprint`) and copies the rotated tokens into the matching suffixed file within one loop iteration, and as a backstop it re-adopts from `~/.claude/.credentials.json` when a refresh fails with `invalid_grant`.
+
+### Expired credentials and stale cache
+
+Each provider fetcher handles expired or rejected credentials differently:
+
+- **Codex** reads `~/.codex/auth.json.*`. On HTTP `401` or `403`, it refreshes the OAuth access token with the auth file's `refresh_token`, writes the new tokens back to that file (mode `0600`), and retries the usage request once. It does not keep a separate stale-cache fallback for auth failures. For paid accounts whose API response is missing future reset windows, it can carry forward still-valid windows from the previous `codex-usage.json` write. It can also apply local session rate limits from Codex rollout logs when those windows uniquely match one account's API response.
+- **Claude** reads `~/.claude/.credentials.json.*`. It refreshes expired access tokens with the credentials file's `refresh_token` and writes the new tokens back to that suffixed file (mode `0600`). It never writes `~/.claude/.credentials.json` and never refreshes a grant whose refresh token equals the one in that file, because Claude Code owns that file and a competing refresh would revoke the token Claude Code holds. While waiting for Claude Code to rotate an expired shared grant, the panel serves the last successful quota from `cache/claude-usage-cache-<label>.json`. Between live API calls, fresh cache entries are reused for `CLAUDE_USAGE_TTL` seconds. When stale data is shown, the renderer draws an empty 5h bar labeled `refresh`.
+- **Cursor** reads `~/.config/cursor/auth.json.*`. It does not refresh tokens itself; it uses the access token stored in the auth file. On HTTP errors or missing usage buckets, the account row is written with empty bars and no stale-cache fallback. Cursor must refresh `auth.json` on its own.
+- **Gemini** reads Antigravity Keyring items discovered from `~/.gemini/antigravity-cli/rotate-auth`. The fetcher never edits Keyring credentials directly. For the selected profile only, HTTP `401` or `403` triggers `agy models`, a re-read of the CLI-refreshed Keyring item, and one retry. Inactive profiles are never refreshed because that would require switching the active account. On any remaining error, the panel serves the last successful quota from `cache/gemini-usage-cache-<label>.json`.
+- **Grok** reads `~/.grok/auth.json.*`. It does not refresh tokens itself; Grok CLI refreshes `auth.json` in place while you are actively using Grok. On any fetch error, including HTTP `401` expired credentials, the panel serves the last successful monthly usage from `cache/grok-usage-cache-<label>.json`, falling back to the last good account entry in `grok-usage.json` if no per-account cache exists yet. Usage is unlikely to change while Grok is idle, so stale data is intentional.
+- **Pioneer** uses the static `PIONEER_API_KEY` from `.env`, not OAuth tokens. Invalid or missing keys produce an error row with empty bars and no stale-cache fallback.
+
+Claude rotation recovery is separate from ordinary expiry handling. Claude Code rotates the refresh token of the logged-in account, which invalidates a copied credentials file for the same account. The fetcher recovers in two ways, both gated on the live file's profile email matching the email recorded for that account in `cache/claude-usage-cache-<label>.json`:
+
+- It detects a changed default-file token (fingerprint in `cache/claude-default-token.fingerprint`) and copies the rotated tokens into the matching suffixed file within one loop iteration.
+- As a backstop, it re-adopts from `~/.claude/.credentials.json` when a refresh fails with `invalid_grant`.
 - The account email is recorded automatically after the first successful fetch. A new `~/.claude/.credentials.json.<label>` copy therefore needs one successful fetch before rotation recovery works for it.
 - Weekly and 5h pace markers are per paid account: each bar uses that window's own reset time.
 - Combined usage is the average weekly `usedPercent` across paid accounts; free accounts are muted and excluded.
@@ -157,4 +174,4 @@ GITHUB_REFRESH_SECONDS=1800
 GITHUB_TIMEOUT_SECONDS=10
 ```
 
-Codex reads local Codex auth files and refreshes expired tokens in place. Claude reads local Claude credentials files and uses the Anthropic response headers from a minimal quota-check request; inactive Claude credentials may need to be refreshed by Claude Code if their access tokens expire.
+See **Expired credentials and stale cache** above for how each provider handles token expiry, refresh, and stale data. Codex and Claude refresh OAuth tokens in their own auth files when possible. Cursor and Grok depend on their host apps to refresh local auth files. Gemini refreshes only the selected Antigravity profile through `agy`. Pioneer uses a static API key.

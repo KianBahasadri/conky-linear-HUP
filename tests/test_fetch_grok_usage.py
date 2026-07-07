@@ -143,6 +143,31 @@ def test_fetch_account_reads_billing_and_optional_metadata(monkeypatch, tmp_path
     assert account["windows"][0]["usedPercent"] == 18.0
 
 
+def test_fetch_account_uses_stale_cache_after_auth_failure(monkeypatch, tmp_path):
+    monkeypatch.setattr(grok, "CACHE_DIR", tmp_path)
+    cached = {
+        "ok": True,
+        "label": "grok",
+        "planType": "build",
+        "isSelected": False,
+        "windows": [{"label": "monthly", "usedPercent": 3.0, "remainingPercent": 97.0}],
+    }
+    grok.write_account_cache(cached)
+    monkeypatch.setattr(
+        grok,
+        "read_auth",
+        lambda label, path: (_ for _ in ()).throw(RuntimeError("expired token")),
+    )
+
+    account = grok.fetch_account("grok", tmp_path / "auth.json", True)
+
+    assert account["ok"] is True
+    assert account["isSelected"] is True
+    assert account["staleCache"] is True
+    assert "expired token" in account["error"]
+    assert account["windows"][0]["usedPercent"] == 3.0
+
+
 def test_fetch_account_falls_back_to_legacy_billing_payload(monkeypatch, tmp_path):
     now = int(datetime.now(timezone.utc).timestamp())
     auth_path = tmp_path / "auth.json.ida"
