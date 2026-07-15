@@ -269,12 +269,17 @@ if [[ "$GENERATE_ONLY" -eq 0 ]]; then
   done
 fi
 
+linear_overlay_height() {
+  python3 "$ROOT/scripts/fetch_linear_tasks.py" --print-overlay-height
+}
+
 generate_config() {
   local source_config="$1"
   local output_config="$2"
   local monitor_index="$3"
   local monitor_gap_x="$4"
   local monitor_gap_y="$5"
+  local minimum_height="${6:-}"
 
   while IFS= read -r config_line; do
     case "$config_line" in
@@ -287,6 +292,13 @@ generate_config() {
         ;;
       "  gap_y = "*)
         printf "  gap_y = %s,\n" "$monitor_gap_y"
+        ;;
+      "  minimum_height = "*)
+        if [[ -n "$minimum_height" ]]; then
+          printf "  minimum_height = %s,\n" "$minimum_height"
+        else
+          printf "%s\n" "$config_line"
+        fi
         ;;
       "  lua_load = "*)
         printf "  lua_load = '%s/conky/overlay-entrypoint.lua',\n" "$ROOT"
@@ -430,6 +442,13 @@ launch_fallback_overlay() {
 monitor_lines=()
 read_monitor_lines monitor_lines
 
+LINEAR_MINIMUM_HEIGHT="$(linear_overlay_height 2>>"$LINEAR_LOG_PATH" || true)"
+if [[ ! "$LINEAR_MINIMUM_HEIGHT" =~ ^[0-9]+$ ]]; then
+  log_overlay linear "could not compute linear overlay height; using 528"
+  LINEAR_MINIMUM_HEIGHT=528
+fi
+log_overlay linear "linear overlay minimum_height=$LINEAR_MINIMUM_HEIGHT (from current cards)"
+
 index=0
 for line in "${monitor_lines[@]}"; do
   if [[ ! "$line" =~ ([0-9]+)\/[0-9]+x([0-9]+)\/[0-9]+\+(-?[0-9]+)\+(-?[0-9]+) ]]; then
@@ -446,7 +465,11 @@ for line in "${monitor_lines[@]}"; do
   for key in "${overlay_keys[@]}"; do
     if overlay_enabled "$key"; then
       config_path="$GENERATED_DIR/$key-overlay-$index.conkyrc"
-      generate_config "${overlay_config[$key]}" "$config_path" "$index" "$(overlay_gap_x "$key" "$monitor_gap_x")" "$(overlay_gap_y "$key" "$linear_gap_y")"
+      extra_height=""
+      if [[ "$key" == "linear" ]]; then
+        extra_height="$LINEAR_MINIMUM_HEIGHT"
+      fi
+      generate_config "${overlay_config[$key]}" "$config_path" "$index" "$(overlay_gap_x "$key" "$monitor_gap_x")" "$(overlay_gap_y "$key" "$linear_gap_y")" "$extra_height"
     fi
   done
 
@@ -469,7 +492,14 @@ if [[ "$index" -eq 0 ]]; then
   if [[ "$GENERATE_ONLY" -eq 0 ]]; then
     for key in "${overlay_keys[@]}"; do
       if overlay_enabled "$key"; then
-        launch_fallback_overlay "$key"
+        if [[ "$key" == "linear" ]]; then
+          config_path="$GENERATED_DIR/linear-overlay-fallback.conkyrc"
+          generate_config "${overlay_config[$key]}" "$config_path" 0 350 "$LINEAR_PRIMARY_GAP_Y" "$LINEAR_MINIMUM_HEIGHT"
+          setsid conky -c "$config_path" >> "${overlay_log_path[$key]}" 2>&1 < /dev/null &
+          log_overlay linear "launched fallback config=$config_path height=$LINEAR_MINIMUM_HEIGHT pid=$!"
+        else
+          launch_fallback_overlay "$key"
+        fi
       fi
     done
   fi

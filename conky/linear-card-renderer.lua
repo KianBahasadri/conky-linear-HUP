@@ -5,11 +5,15 @@ return function(shared, repo_root)
   local card_gap = 24
   local row_gap = 20
   local top_padding = 12
+  -- Extra space below the last row for soft glow / In Progress outline.
+  local bottom_padding = 16
+  local empty_height = 100
   local radius = 18
   local font = 'JetBrains Mono'
   local font_size = 16
   local line_height = 22
   local title_offset_y = 7
+  local default_window_width = 1540
 
   local function read_cards()
     local content = shared.read_file(cards_path)
@@ -47,6 +51,69 @@ return function(shared, repo_root)
       cards = cards,
       error = error_message and shared.unescape_json_string(error_message) or '',
     }
+  end
+
+  local function visible_cards(cards)
+    local has_red_cards = false
+    for _, card in ipairs(cards) do
+      if card.due_today and not card.done then
+        has_red_cards = true
+        break
+      end
+    end
+
+    if not has_red_cards then
+      return cards
+    end
+
+    local filtered_cards = {}
+    for _, card in ipairs(cards) do
+      if card.done or card.due_today or card.competition_upcoming then
+        table.insert(filtered_cards, card)
+      end
+    end
+    return filtered_cards
+  end
+
+  local function window_width()
+    if conky_window and conky_window.width and conky_window.width > 0 then
+      return conky_window.width
+    end
+    return default_window_width
+  end
+
+  local function cards_per_row_for(width)
+    return math.max(1, math.floor((width + card_gap) / (card_width + card_gap)))
+  end
+
+  local function row_count_for(card_count, width)
+    if card_count <= 0 then
+      return 0
+    end
+    local per_row = cards_per_row_for(width)
+    return math.ceil(card_count / per_row)
+  end
+
+  local function height_for_rows(rows)
+    if rows <= 0 then
+      return empty_height
+    end
+    return top_padding + rows * card_height + math.max(0, rows - 1) * row_gap + bottom_padding
+  end
+
+  local function needed_height()
+    local state = read_cards()
+    local cards = visible_cards(state.cards)
+    if #cards == 0 then
+      return empty_height
+    end
+    return height_for_rows(row_count_for(#cards, window_width()))
+  end
+
+  -- Expand the Conky window to fit the current card grid. Returned text is
+  -- re-parsed via ${lua_parse} so the voffset becomes real vertical space.
+  local function height_spacer()
+    return string.format('${voffset %d}', needed_height())
   end
 
   local function draw_error(cr, message)
@@ -192,25 +259,7 @@ return function(shared, repo_root)
 
     local cr = cairo_create(surface)
     local state = read_cards()
-    local cards = state.cards
-
-    local has_red_cards = false
-    for _, card in ipairs(cards) do
-      if card.due_today and not card.done then
-        has_red_cards = true
-        break
-      end
-    end
-
-    if has_red_cards then
-      local filtered_cards = {}
-      for _, card in ipairs(cards) do
-        if card.done or card.due_today or card.competition_upcoming then
-          table.insert(filtered_cards, card)
-        end
-      end
-      cards = filtered_cards
-    end
+    local cards = visible_cards(state.cards)
 
     if #cards == 0 then
       if state.error ~= '' then
@@ -223,12 +272,12 @@ return function(shared, repo_root)
       return
     end
 
-    local cards_per_row = math.max(1, math.floor((conky_window.width + card_gap) / (card_width + card_gap)))
+    local per_row = cards_per_row_for(conky_window.width)
 
     for index, card in ipairs(cards) do
-      local row = math.floor((index - 1) / cards_per_row)
-      local column = (index - 1) % cards_per_row
-      local items_in_row = math.min(cards_per_row, #cards - row * cards_per_row)
+      local row = math.floor((index - 1) / per_row)
+      local column = (index - 1) % per_row
+      local items_in_row = math.min(per_row, #cards - row * per_row)
       local row_width = items_in_row * card_width + (items_in_row - 1) * card_gap
       local start_x = (conky_window.width - row_width) / 2
       local x = start_x + column * (card_width + card_gap)
@@ -245,5 +294,6 @@ return function(shared, repo_root)
 
   return {
     draw = draw,
+    height_spacer = height_spacer,
   }
 end

@@ -14,7 +14,9 @@ conky.config = {
   font = 'JetBrains Mono:size=10',
   gap_x = 350,
   gap_y = 34,
-  minimum_height = 400,
+  -- Floor only; actual height is driven by ${lua_parse linear_height_spacer}
+  -- so the window grows/shrinks with the card grid (any number of rows).
+  minimum_height = 80,
   minimum_width = 1540,
   maximum_width = 1540,
   no_buffers = true,
@@ -25,11 +27,12 @@ conky.config = {
   own_window_hints = 'undecorated,below,sticky,skip_taskbar,skip_pager',
   own_window_transparent = true,
   own_window_type = 'desktop',
-  update_interval = 60,
+  update_interval = 15,
   use_xft = true,
   lua_load = './conky/overlay-entrypoint.lua',
   lua_draw_hook_post = 'draw_linear_cards',
 }
 
 conky.text = [[
+${lua_parse linear_height_spacer}
 ]]

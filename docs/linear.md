@@ -6,4 +6,5 @@
 - Unfinished issues in the `Competitions` project due in the next 3 days are always shown, with their due date beside the issue id.
 - Cancelled and duplicate issues are never shown.
 - Recently completed cards remain visible for `LINEAR_DONE_LOOKBACK_HOURS`.
+- Overlay window height is computed from the card grid (rows × card size + gaps) on each Linear fetch and when overlays start, so any number of rows fits without clipping.
 - Set `LINEAR_OVERLAY_ENABLED=0` to disable the Linear overlay and its refresh loop.

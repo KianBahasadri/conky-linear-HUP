@@ -14,6 +14,10 @@ function conky_draw_linear_cards()
   linear_cards.draw()
 end
 
+function conky_linear_height_spacer()
+  return linear_cards.height_spacer()
+end
+
 -- Rate limit panel
 local rate_limit_panel = dofile(conky_dir .. '/rate-limit-panel-renderer.lua')(shared, repo_root)
 
