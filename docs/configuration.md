@@ -40,9 +40,8 @@ Copy `.env.example` to `.env` and fill in the overlays you use.
 | `GROK_AUTH_PATH` | Force a single Grok auth file |
 | `GROK_HOME` | Override the Grok config directory |
 | `GROK_CLI_CHAT_PROXY_BASE_URL` | Override the Grok billing API base URL |
-| `PIONEER_API_KEY` | Pioneer API key |
-| `PIONEER_USAGE_LABEL` | Pioneer account label override |
-| `PIONEER_MONTHLY_CREDIT_LIMIT` | Monthly credit cap override when Pioneer does not expose one |
+
+Pioneer env vars (`PIONEER_API_KEY`, `PIONEER_USAGE_LABEL`, `PIONEER_MONTHLY_CREDIT_LIMIT`) were removed with the Pioneer rate-limit panel integration.
 
 ## Minecraft overlay
 

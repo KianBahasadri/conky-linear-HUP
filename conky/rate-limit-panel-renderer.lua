@@ -5,7 +5,6 @@ return function(shared, repo_root)
   local cursor_usage_tsv_path = repo_root .. '/cache/cursor-usage-render.tsv'
   local gemini_usage_tsv_path = repo_root .. '/cache/gemini-usage-render.tsv'
   local grok_usage_tsv_path = repo_root .. '/cache/grok-usage-render.tsv'
-  local pioneer_usage_tsv_path = repo_root .. '/cache/pioneer-usage-render.tsv'
   local font = 'JetBrains Mono'
   local panel_width = 1000
   local panel_height = 110
@@ -203,10 +202,6 @@ return function(shared, repo_root)
     return read_usage_tsv(grok_usage_tsv_path, 'Grok')
   end
 
-  local function read_pioneer_usage_tsv()
-    return read_usage_tsv(pioneer_usage_tsv_path, 'Pioneer')
-  end
-
   local function read_codex_usage_json()
     local content = shared.read_file(codex_usage_path)
     if not content then
@@ -279,8 +274,6 @@ return function(shared, repo_root)
       return 30
     elseif provider == 'grok' then
       return 35
-    elseif provider == 'pioneer' then
-      return 38
     end
 
     return 40
@@ -326,7 +319,6 @@ return function(shared, repo_root)
     local cursor_usage = read_cursor_usage_tsv()
     local gemini_usage = read_gemini_usage_tsv()
     local grok_usage = read_grok_usage_tsv()
-    local pioneer_usage = read_pioneer_usage_tsv()
     local usage = {
       ok = false,
       error = '',
@@ -382,17 +374,6 @@ return function(shared, repo_root)
       end
       for _, account in ipairs(grok_usage.accounts or {}) do
         account.provider = account.provider or 'Grok'
-        table.insert(usage.accounts, account)
-      end
-    end
-
-    if pioneer_usage then
-      usage.ok = usage.ok or pioneer_usage.ok
-      if usage.error == '' then
-        usage.error = pioneer_usage.error or ''
-      end
-      for _, account in ipairs(pioneer_usage.accounts or {}) do
-        account.provider = account.provider or 'Pioneer'
         table.insert(usage.accounts, account)
       end
     end
@@ -535,7 +516,7 @@ return function(shared, repo_root)
     for _, account in ipairs(accounts or {}) do
       if string.lower(account.provider or '') == provider_lower then
         if not (provider_lower == 'codex' and is_free_account(account)) then
-          if provider_lower == 'cursor' or provider_lower == 'gemini' or provider_lower == 'grok' or provider_lower == 'pioneer' then
+          if provider_lower == 'cursor' or provider_lower == 'gemini' or provider_lower == 'grok' then
             for _, window in ipairs(account.windows or {}) do
               local pace = calculate_window_pace(window, window_duration(window))
               if pace then
@@ -807,10 +788,6 @@ return function(shared, repo_root)
       return '8b7ab0', 'a899c9', '5d4f78', '4a3f63'
     end
 
-    if provider_name(account) == 'pioneer' then
-      return 'f59e0b', 'fbbf24', 'b45309', '92400e'
-    end
-
     if is_free then
       if provider_name(account) == 'codex' then
         return '2563eb', '1e3a8a', '2563eb', '1e3a8a'
@@ -846,10 +823,6 @@ return function(shared, repo_root)
         second = window
       elseif provider_name(account) == 'gemini' and window_label == 'gemini' then
         first = window
-      elseif provider_name(account) == 'pioneer' and window_label == 'daily' then
-        first = window
-      elseif provider_name(account) == 'pioneer' and window_label == 'monthly' then
-        second = window
       elseif provider_name(account) == 'grok' and window_label == 'monthly' then
         second = window
       elseif window_label == 'weekly' then
@@ -863,7 +836,6 @@ return function(shared, repo_root)
       local selection_color = provider_name(account) == 'codex' and '00e5ff'
         or provider_name(account) == 'cursor' and '94a3b8'
         or provider_name(account) == 'grok' and '9a86b3'
-        or provider_name(account) == 'pioneer' and 'f59e0b'
         or first_accent
 
       shared.set_hex(cr, selection_color, 0.20)
@@ -995,14 +967,12 @@ return function(shared, repo_root)
     local cursor_label = 'CURSOR'
     local gemini_label = 'ANTIGRAVITY'
     local grok_label = 'GROK'
-    local pioneer_label = 'PIONEER'
 
     local codex_color = '00e5ff'
     local claude_color = 'ff7a59'
     local cursor_color = '94a3b8'
     local gemini_color = '4ade80'
     local grok_color = '9a86b3'
-    local pioneer_color = 'f59e0b'
 
     if usage.ok and #usage.accounts > 0 then
       local codex_avg_delta = calculate_provider_average_pace(usage.accounts, 'Codex')
@@ -1010,14 +980,12 @@ return function(shared, repo_root)
       local cursor_avg_delta = calculate_provider_average_pace(usage.accounts, 'Cursor')
       local gemini_avg_delta = calculate_provider_average_pace(usage.accounts, 'Gemini')
       local grok_avg_delta = calculate_provider_average_pace(usage.accounts, 'Grok')
-      local pioneer_avg_delta = calculate_provider_average_pace(usage.accounts, 'Pioneer')
 
       codex_label = get_provider_label_from_delta('Codex', codex_avg_delta)
       claude_label = get_provider_label_from_delta('Claude', claude_avg_delta)
       cursor_label = get_provider_label_from_delta('Cursor', cursor_avg_delta)
       gemini_label = get_provider_label_from_delta('Antigravity', gemini_avg_delta)
       grok_label = get_provider_label_from_delta('Grok', grok_avg_delta)
-      pioneer_label = get_provider_label_from_delta('Pioneer', pioneer_avg_delta)
     end
 
     local chip_x = x + 48
@@ -1031,18 +999,11 @@ return function(shared, repo_root)
       chip_x + codex_chip_width + claude_chip_width + cursor_chip_width + 24,
       y
     )
-    local grok_chip_width = draw_title_chip(
+    draw_title_chip(
       cr,
       grok_label,
       grok_color,
       chip_x + codex_chip_width + claude_chip_width + cursor_chip_width + gemini_chip_width + 32,
-      y
-    )
-    draw_title_chip(
-      cr,
-      pioneer_label,
-      pioneer_color,
-      chip_x + codex_chip_width + claude_chip_width + cursor_chip_width + gemini_chip_width + grok_chip_width + 40,
       y
     )
 

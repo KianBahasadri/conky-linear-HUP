@@ -7,7 +7,8 @@ Each provider fetcher handles expired or rejected credentials differently:
 - **Cursor** reads `~/.config/cursor/auth.json.*`. It does not refresh tokens itself; it uses the access token stored in the auth file. On HTTP errors or missing usage buckets, the account row is written with empty bars and no stale-cache fallback. Cursor must refresh `auth.json` on its own.
 - **Gemini** reads Antigravity Keyring items discovered from `~/.gemini/antigravity-cli/rotate-auth`. The fetcher never edits Keyring credentials directly. For the selected profile only, HTTP `401` or `403` triggers `agy models`, a re-read of the CLI-refreshed Keyring item, and one retry. Inactive profiles are never refreshed because that would require switching the active account. On any remaining error, the panel serves the last successful quota from `cache/gemini-usage-cache-<label>.json`.
 - **Grok** reads `~/.grok/auth.json.*`. It does not refresh tokens itself; Grok CLI refreshes `auth.json` in place while you are actively using Grok. On any fetch error, including HTTP `401` expired credentials, the panel serves the last successful monthly usage from `cache/grok-usage-cache-<label>.json`, falling back to the last good account entry in `grok-usage.json` if no per-account cache exists yet. Usage is unlikely to change while Grok is idle, so stale data is intentional.
-- **Pioneer** uses the static `PIONEER_API_KEY` from `.env`, not OAuth tokens. Invalid or missing keys produce an error row with empty bars and no stale-cache fallback.
+
+Pioneer was removed from the rate limit panel and no longer has credential or cache handling.
 
 ## Claude rotation recovery
 

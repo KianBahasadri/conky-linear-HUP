@@ -16,8 +16,6 @@
 - `cache/grok-usage.json`: normalized Grok Build account/monthly usage for inspection.
 - `cache/grok-usage-render.tsv`: renderer-friendly Grok usage consumed by the Cairo renderer.
 - `cache/grok-usage-cache-*.json`: last successful Grok usage per account.
-- `cache/pioneer-usage.json`: normalized Pioneer account/daily and monthly usage for inspection.
-- `cache/pioneer-usage-render.tsv`: renderer-friendly Pioneer usage consumed by the Cairo renderer.
 - `cache/minecraft-status.json`: Minecraft Java server status consumed by the Cairo renderer.
 - `cache/github-contributions.json`: GitHub contribution squares consumed by the Cairo renderer.
 
@@ -33,6 +31,6 @@
 - Linear: `180s`
 - Codex: `300s`
 - Claude: `60s` with a per-account API cache
-- Cursor, Gemini, Grok, and Pioneer: `300s`
+- Cursor, Gemini, and Grok: `300s`
 - Minecraft: `60s`
 - GitHub: `1800s`

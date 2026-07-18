@@ -2,7 +2,7 @@
 
 ## Layout and colors
 
-- The quota panel shows separate `CODEX`, `CLAUDE`, `CURSOR`, `GEMINI`, `GROK`, and `PIONEER` chips. Codex rows use cyan/navy bars; Claude rows use coral/gold bars; Cursor rows use grey bars; Gemini rows use Google blue/green and yellow/red bars; Grok rows use regal purple bars; Pioneer rows use amber/gold daily and monthly bars.
+- The quota panel shows separate `CODEX`, `CLAUDE`, `CURSOR`, `GEMINI`, and `GROK` chips. Codex rows use cyan/navy bars; Claude rows use coral/gold bars; Cursor rows use grey bars; Gemini rows use Google blue/green and yellow/red bars; Grok rows use regal purple bars.
 - The selection chevron marks selected auth profiles: Codex rows whose path resolves to `~/.codex/auth.json`, Cursor rows whose path resolves to `~/.config/cursor/auth.json`, Claude rows whose path resolves to `~/.claude/.credentials.json` or whose access token equals the one in that file, Gemini rows matching Antigravity's `current` profile, and Grok rows whose path resolves to `~/.grok/auth.json`. Codex uses a blue chevron, Claude uses orange, Cursor uses grey, Gemini uses Google blue, and Grok uses purple. Token comparison is required for Claude because Claude Code replaces `~/.claude/.credentials.json` with a new regular file on login and on every OAuth refresh, so a symlink there does not survive.
 - All account-rotation tooling is stored in `~/.config/clusterfork`.
 
@@ -34,10 +34,9 @@
 - Usage is fetched from Grok Build's billing API at `cli-chat-proxy.grok.com/v1/billing?format=credits`. It renders the monthly included-credit pool as one bar per account.
 - `GROK_HOME` overrides the Grok config directory and `GROK_CLI_CHAT_PROXY_BASE_URL` overrides the billing API base URL.
 
-## Pioneer
+## Removed providers
 
-- Usage is fetched with `PIONEER_API_KEY` from `GET /billing/plan-info` for the daily credit pool and team overage settings for the billing-period monthly pool (`current_month_start`, `current_period_usage`).
-- `PIONEER_USAGE_LABEL` overrides the Pioneer account label and `PIONEER_MONTHLY_CREDIT_LIMIT` overrides the monthly credit cap when Pioneer does not expose one.
+- **Pioneer** was removed from the rate limit panel. The Pioneer fetch script, cache files, env vars, and panel chip are no longer used.
 
 ## Pace markers
 
