@@ -8,6 +8,7 @@ LINEAR_LOG_PATH="$CACHE_DIR/conky-linear.log"
 RATE_LIMIT_PANEL_LOG_PATH="$CACHE_DIR/conky-rate-limit-panel.log"
 MINECRAFT_LOG_PATH="$CACHE_DIR/conky-minecraft.log"
 GITHUB_LOG_PATH="$CACHE_DIR/conky-github.log"
+WEATHER_LOG_PATH="$CACHE_DIR/conky-weather.log"
 LINEAR_FETCH_PID="$CACHE_DIR/linear-fetch-loop.pid"
 CODEX_FETCH_PID="$CACHE_DIR/codex-fetch-loop.pid"
 CLAUDE_FETCH_PID="$CACHE_DIR/claude-fetch-loop.pid"
@@ -16,23 +17,26 @@ GEMINI_FETCH_PID="$CACHE_DIR/gemini-fetch-loop.pid"
 GROK_FETCH_PID="$CACHE_DIR/grok-fetch-loop.pid"
 MINECRAFT_FETCH_PID="$CACHE_DIR/minecraft-fetch-loop.pid"
 GITHUB_FETCH_PID="$CACHE_DIR/github-fetch-loop.pid"
+WEATHER_FETCH_PID="$CACHE_DIR/weather-fetch-loop.pid"
 
 mkdir -p "$CACHE_DIR"
 
-overlay_keys=(linear rate-limit-panel minecraft github)
-fetch_keys=(linear codex claude cursor gemini grok minecraft github)
+overlay_keys=(linear rate-limit-panel minecraft github weather)
+fetch_keys=(linear codex claude cursor gemini grok minecraft github weather)
 
 declare -A overlay_config=(
   [linear]="$ROOT/conky/linear-overlay.conkyrc"
   [rate-limit-panel]="$ROOT/conky/rate-limit-panel-overlay.conkyrc"
   [minecraft]="$ROOT/conky/minecraft-overlay.conkyrc"
   [github]="$ROOT/conky/github-overlay.conkyrc"
+  [weather]="$ROOT/conky/weather-overlay.conkyrc"
 )
 declare -A overlay_log_path=(
   [linear]="$LINEAR_LOG_PATH"
   [rate-limit-panel]="$RATE_LIMIT_PANEL_LOG_PATH"
   [minecraft]="$MINECRAFT_LOG_PATH"
   [github]="$GITHUB_LOG_PATH"
+  [weather]="$WEATHER_LOG_PATH"
 )
 declare -A fetch_label=(
   [linear]="Linear"
@@ -43,6 +47,7 @@ declare -A fetch_label=(
   [grok]="Grok"
   [minecraft]="Minecraft"
   [github]="GitHub"
+  [weather]="Weather"
 )
 declare -A fetch_overlay_key=(
   [linear]="linear"
@@ -53,6 +58,7 @@ declare -A fetch_overlay_key=(
   [grok]="rate-limit-panel"
   [minecraft]="minecraft"
   [github]="github"
+  [weather]="weather"
 )
 declare -A fetch_pid_file=(
   [linear]="$LINEAR_FETCH_PID"
@@ -63,6 +69,7 @@ declare -A fetch_pid_file=(
   [grok]="$GROK_FETCH_PID"
   [minecraft]="$MINECRAFT_FETCH_PID"
   [github]="$GITHUB_FETCH_PID"
+  [weather]="$WEATHER_FETCH_PID"
 )
 
 log_to() {

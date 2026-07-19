@@ -18,6 +18,7 @@
 - `cache/grok-usage-cache-*.json`: last successful Grok usage per account.
 - `cache/minecraft-status.json`: Minecraft Java server status consumed by the Cairo renderer.
 - `cache/github-contributions.json`: GitHub contribution squares consumed by the Cairo renderer.
+- `cache/weather-status.json`: normalized weather, air quality, and running guidance consumed by the Cairo renderer.
 
 ## Logs
 
@@ -25,6 +26,7 @@
 - `cache/conky-rate-limit-panel.log`: rate limit panel fetch loops and Conky output.
 - `cache/conky-minecraft.log`: Minecraft fetch, launcher, and Minecraft Conky output.
 - `cache/conky-github.log`: GitHub fetch, launcher, and GitHub Conky output.
+- `cache/conky-weather.log`: weather fetch, launcher, and weather Conky output.
 
 ## Fetch intervals
 
@@ -34,3 +36,4 @@
 - Cursor, Gemini, and Grok: `300s`
 - Minecraft: `60s`
 - GitHub: `1800s`
+- Weather and air quality: `600s`

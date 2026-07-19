@@ -8,4 +8,5 @@
 - [Expired credentials and stale cache](expired-credentials.md) — token refresh and fallback behavior per provider
 - [Minecraft overlay](minecraft.md) — server status and PebbleHost integration
 - [GitHub overlay](github.md) — contribution tracker
+- [Weather and running overlay](weather.md) — current conditions, air quality, and run guidance
 - [Testing](testing.md) — run the Python test suite

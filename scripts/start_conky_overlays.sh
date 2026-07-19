@@ -31,12 +31,14 @@ BASE_CONFIG="$ROOT/conky/linear-overlay.conkyrc"
 RATE_LIMIT_PANEL_CONFIG="$ROOT/conky/rate-limit-panel-overlay.conkyrc"
 MINECRAFT_CONFIG="$ROOT/conky/minecraft-overlay.conkyrc"
 GITHUB_CONFIG="$ROOT/conky/github-overlay.conkyrc"
+WEATHER_CONFIG="$ROOT/conky/weather-overlay.conkyrc"
 GENERATED_DIR="$ROOT/conky/generated"
 CACHE_DIR="$ROOT/cache"
 LINEAR_LOG_PATH="$CACHE_DIR/conky-linear.log"
 RATE_LIMIT_PANEL_LOG_PATH="$CACHE_DIR/conky-rate-limit-panel.log"
 MINECRAFT_LOG_PATH="$CACHE_DIR/conky-minecraft.log"
 GITHUB_LOG_PATH="$CACHE_DIR/conky-github.log"
+WEATHER_LOG_PATH="$CACHE_DIR/conky-weather.log"
 LINEAR_FETCH_PID="$CACHE_DIR/linear-fetch-loop.pid"
 CODEX_FETCH_PID="$CACHE_DIR/codex-fetch-loop.pid"
 CLAUDE_FETCH_PID="$CACHE_DIR/claude-fetch-loop.pid"
@@ -45,6 +47,7 @@ GEMINI_FETCH_PID="$CACHE_DIR/gemini-fetch-loop.pid"
 GROK_FETCH_PID="$CACHE_DIR/grok-fetch-loop.pid"
 MINECRAFT_FETCH_PID="$CACHE_DIR/minecraft-fetch-loop.pid"
 GITHUB_FETCH_PID="$CACHE_DIR/github-fetch-loop.pid"
+WEATHER_FETCH_PID="$CACHE_DIR/weather-fetch-loop.pid"
 OVERLAY_WIDTH=1540
 LINEAR_GAP_Y=4
 LINEAR_PRIMARY_GAP_Y=34
@@ -61,35 +64,43 @@ GITHUB_GAP_X="${GITHUB_GAP_X:-18}"
 GITHUB_GAP_Y="${GITHUB_GAP_Y:-0}"
 GITHUB_REFRESH_SECONDS="${GITHUB_REFRESH_SECONDS:-1800}"
 GITHUB_OVERLAY_ENABLED="${GITHUB_OVERLAY_ENABLED:-1}"
+WEATHER_GAP_X="${WEATHER_GAP_X:-18}"
+WEATHER_GAP_Y="${WEATHER_GAP_Y:-12}"
+WEATHER_REFRESH_SECONDS="${WEATHER_REFRESH_SECONDS:-600}"
+WEATHER_OVERLAY_ENABLED="${WEATHER_OVERLAY_ENABLED:-1}"
 GENERATE_ONLY=0
 MONITOR_HAS_PRIMARY=0
 
-overlay_keys=(linear rate-limit-panel minecraft github)
-fetch_keys=(linear codex claude cursor gemini grok minecraft github)
+overlay_keys=(linear rate-limit-panel minecraft github weather)
+fetch_keys=(linear codex claude cursor gemini grok minecraft github weather)
 
 declare -A overlay_disabled_name=(
   [linear]="linear"
   [rate-limit-panel]="rate limit panel"
   [minecraft]="minecraft"
   [github]="github"
+  [weather]="weather"
 )
 declare -A overlay_config=(
   [linear]="$BASE_CONFIG"
   [rate-limit-panel]="$RATE_LIMIT_PANEL_CONFIG"
   [minecraft]="$MINECRAFT_CONFIG"
   [github]="$GITHUB_CONFIG"
+  [weather]="$WEATHER_CONFIG"
 )
 declare -A overlay_log_path=(
   [linear]="$LINEAR_LOG_PATH"
   [rate-limit-panel]="$RATE_LIMIT_PANEL_LOG_PATH"
   [minecraft]="$MINECRAFT_LOG_PATH"
   [github]="$GITHUB_LOG_PATH"
+  [weather]="$WEATHER_LOG_PATH"
 )
 declare -A overlay_enabled_var=(
   [linear]="LINEAR_OVERLAY_ENABLED"
   [rate-limit-panel]="RATE_LIMIT_PANEL_ENABLED"
   [minecraft]="MINECRAFT_OVERLAY_ENABLED"
   [github]="GITHUB_OVERLAY_ENABLED"
+  [weather]="WEATHER_OVERLAY_ENABLED"
 )
 
 declare -A fetch_label=(
@@ -101,6 +112,7 @@ declare -A fetch_label=(
   [grok]="Grok"
   [minecraft]="Minecraft"
   [github]="GitHub"
+  [weather]="Weather"
 )
 declare -A fetch_overlay_key=(
   [linear]="linear"
@@ -111,6 +123,7 @@ declare -A fetch_overlay_key=(
   [grok]="rate-limit-panel"
   [minecraft]="minecraft"
   [github]="github"
+  [weather]="weather"
 )
 declare -A fetch_interval=(
   [linear]="180"
@@ -121,6 +134,7 @@ declare -A fetch_interval=(
   [grok]="300"
   [minecraft]="$MINECRAFT_REFRESH_SECONDS"
   [github]="$GITHUB_REFRESH_SECONDS"
+  [weather]="$WEATHER_REFRESH_SECONDS"
 )
 declare -A fetch_script=(
   [linear]="$ROOT/scripts/fetch_linear_tasks.py"
@@ -131,6 +145,7 @@ declare -A fetch_script=(
   [grok]="$ROOT/scripts/fetch_grok_usage.py"
   [minecraft]="$ROOT/scripts/fetch_minecraft_status.py"
   [github]="$ROOT/scripts/fetch_github_contributions.py"
+  [weather]="$ROOT/scripts/fetch_weather.py"
 )
 declare -A fetch_pid_file=(
   [linear]="$LINEAR_FETCH_PID"
@@ -141,6 +156,7 @@ declare -A fetch_pid_file=(
   [grok]="$GROK_FETCH_PID"
   [minecraft]="$MINECRAFT_FETCH_PID"
   [github]="$GITHUB_FETCH_PID"
+  [weather]="$WEATHER_FETCH_PID"
 )
 
 env_flag_disabled() {
@@ -253,6 +269,7 @@ for fetch_key in "${fetch_keys[@]}"; do
 done
 pkill -f "$ROOT/scripts/fetch_minecraft_status.py" 2>/dev/null || true
 pkill -f "$ROOT/scripts/fetch_github_contributions.py" 2>/dev/null || true
+pkill -f "$ROOT/scripts/fetch_weather.py" 2>/dev/null || true
 log_overlay linear "stopped existing matching Conky processes"
 
 if [[ "$GENERATE_ONLY" -eq 0 ]]; then
@@ -303,6 +320,7 @@ generate_config() {
       *"fetch_cursor_usage.py"*) ;;
       *"fetch_gemini_usage.py"*) ;;
       *"fetch_grok_usage.py"*) ;;
+      *"fetch_weather.py"*) ;;
       *)
         printf "%s\n" "$config_line"
         ;;
@@ -359,6 +377,7 @@ overlay_gap_x() {
     linear|rate-limit-panel) printf "%s\n" "$monitor_gap_x" ;;
     minecraft) printf "%s\n" "$MINECRAFT_GAP_X" ;;
     github) printf "%s\n" "$GITHUB_GAP_X" ;;
+    weather) printf "%s\n" "$WEATHER_GAP_X" ;;
   esac
 }
 
@@ -371,6 +390,7 @@ overlay_gap_y() {
     rate-limit-panel) printf "%s\n" "$RATE_LIMIT_PANEL_GAP_Y" ;;
     minecraft) printf "%s\n" "$MINECRAFT_GAP_Y" ;;
     github) printf "%s\n" "$GITHUB_GAP_Y" ;;
+    weather) printf "%s\n" "$WEATHER_GAP_Y" ;;
   esac
 }
 
@@ -394,6 +414,9 @@ log_generated_overlay() {
       ;;
     github)
       log_overlay github "generated monitor_index=$monitor_index width=$width gap_x=$GITHUB_GAP_X gap_y=$GITHUB_GAP_Y config=$config_path"
+      ;;
+    weather)
+      log_overlay weather "generated monitor_index=$monitor_index width=$width gap_x=$WEATHER_GAP_X gap_y=$WEATHER_GAP_Y config=$config_path"
       ;;
   esac
 }
@@ -420,6 +443,9 @@ launch_overlay() {
       ;;
     github)
       log_overlay github "launched monitor_index=$monitor_index width=$width gap_x=$GITHUB_GAP_X gap_y=$GITHUB_GAP_Y config=$config_path pid=$!"
+      ;;
+    weather)
+      log_overlay weather "launched monitor_index=$monitor_index width=$width gap_x=$WEATHER_GAP_X gap_y=$WEATHER_GAP_Y config=$config_path pid=$!"
       ;;
   esac
 }

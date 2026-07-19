@@ -78,3 +78,20 @@ Pioneer env vars (`PIONEER_API_KEY`, `PIONEER_USAGE_LABEL`, `PIONEER_MONTHLY_CRE
 | `GITHUB_GAP_Y` | Vertical gap from screen edge |
 | `GITHUB_REFRESH_SECONDS` | Fetch interval |
 | `GITHUB_TIMEOUT_SECONDS` | Request timeout |
+
+## Weather and running overlay
+
+| Variable | Purpose |
+| --- | --- |
+| `WEATHER_OVERLAY_ENABLED` | Set to `0` to disable |
+| `WEATHER_LATITUDE` | Exact latitude; must be paired with longitude |
+| `WEATHER_LONGITUDE` | Exact longitude; must be paired with latitude |
+| `WEATHER_LOCATION` | City or postal code to geocode when coordinates are unset |
+| `WEATHER_LOCATION_LABEL` | Override the displayed location name |
+| `WEATHER_UNITS` | `imperial`, `metric`, or `auto` (IP country only); defaults to `imperial` |
+| `WEATHER_GAP_X` | Horizontal gap from the right screen edge |
+| `WEATHER_GAP_Y` | Vertical gap from the bottom screen edge |
+| `WEATHER_REFRESH_SECONDS` | Weather and air-quality refresh interval |
+| `WEATHER_TIMEOUT_SECONDS` | Timeout for each provider request |
+
+Location resolution prefers exact coordinates, then `WEATHER_LOCATION`, then an approximate public-IP location. Exact coordinates are recommended for local conditions.

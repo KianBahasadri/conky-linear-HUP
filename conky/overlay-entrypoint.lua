@@ -38,3 +38,10 @@ local github_tracker = dofile(conky_dir .. '/github-tracker-renderer.lua')(share
 function conky_draw_github_tracker()
   github_tracker.draw()
 end
+
+-- Weather and running conditions
+local weather = dofile(conky_dir .. '/weather-renderer.lua')(shared, repo_root)
+
+function conky_draw_weather()
+  weather.draw()
+end
