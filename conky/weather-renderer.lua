@@ -217,7 +217,6 @@ return function(shared, repo_root)
 
   local function draw_error(cr, status, x, y)
     draw_frame(cr, x, y, 'f87171', 'ff4d00')
-    draw_chip(cr, 'OUTDOORS', x + 26, y - 9, 102, 'f87171')
 
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
     cairo_set_font_size(cr, 28)
@@ -241,7 +240,6 @@ return function(shared, repo_root)
     local accent = status.run_color
     local secondary = status.aqi_color
     draw_frame(cr, x, y, accent, secondary)
-    draw_chip(cr, 'OUTDOORS', x + 26, y - 9, 102, accent)
     draw_chip(
       cr,
       status.stale and 'STALE' or 'RUN ' .. status.run_status,
