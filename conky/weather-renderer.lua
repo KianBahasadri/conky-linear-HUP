@@ -108,6 +108,10 @@ return function(shared, repo_root)
   end
 
   local function draw_weather_icon(cr, x, y, status, color)
+    -- Drop any leftover current point (e.g. after location text) so the first
+    -- arc does not stroke a line from that point into the icon.
+    cairo_new_path(cr)
+
     if status.is_day then
       shared.set_hex(cr, 'facc15', 0.95)
       cairo_arc(cr, x + 16, y + 15, 8, 0, math.pi * 2)
@@ -120,14 +124,24 @@ return function(shared, repo_root)
       end
       cairo_stroke(cr)
     else
-      shared.set_hex(cr, 'c4b5fd', 0.94)
-      cairo_arc(cr, x + 16, y + 15, 10, math.pi * 0.35, math.pi * 1.7)
-      cairo_arc_negative(cr, x + 21, y + 10, 9, math.pi * 1.55, math.pi * 0.5)
+      -- Filled crescent: outer disc path closed by an offset inner cut.
+      local cx, cy = x + 15, y + 14
+      local outer_r, inner_r, cut_dx = 9.5, 8.2, 4.8
+      local cos_a = (cut_dx * cut_dx + outer_r * outer_r - inner_r * inner_r) / (2 * cut_dx * outer_r)
+      local cos_b = (cut_dx * cut_dx + inner_r * inner_r - outer_r * outer_r) / (2 * cut_dx * inner_r)
+      local alpha = math.acos(math.max(-1, math.min(1, cos_a)))
+      local beta = math.acos(math.max(-1, math.min(1, cos_b)))
+      shared.set_hex(cr, 'c4b5fd', 0.96)
+      cairo_new_sub_path(cr)
+      cairo_arc(cr, cx, cy, outer_r, alpha, math.pi * 2 - alpha)
+      cairo_arc_negative(cr, cx + cut_dx, cy, inner_r, math.pi + beta, math.pi - beta)
+      cairo_close_path(cr)
       cairo_fill(cr)
     end
 
     if status.weather_code >= 2 then
       shared.set_hex(cr, 'cbd5e1', 0.96)
+      cairo_new_sub_path(cr)
       cairo_arc(cr, x + 11, y + 26, 7, math.pi, math.pi * 2)
       cairo_arc(cr, x + 20, y + 22, 9, math.pi, math.pi * 2)
       cairo_arc(cr, x + 30, y + 27, 7, math.pi, math.pi * 2)
