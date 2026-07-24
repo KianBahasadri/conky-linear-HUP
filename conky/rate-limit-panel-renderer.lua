@@ -481,6 +481,15 @@ return function(shared, repo_root)
     return nil
   end
 
+  local function find_monthly_window(account)
+    for _, window in ipairs(account.windows or {}) do
+      if normalized_window_label(window) == 'monthly' then
+        return window
+      end
+    end
+    return nil
+  end
+
   local function calculate_window_pace(window, window_seconds)
     if not window or window_seconds <= 0 then
       return nil
@@ -549,6 +558,15 @@ return function(shared, repo_root)
           if provider_lower == 'cursor' or provider_lower == 'gemini' or provider_lower == 'grok' then
             for _, window in ipairs(account.windows or {}) do
               local pace = calculate_window_pace(window, window_duration(window))
+              if pace then
+                delta_total = delta_total + pace.delta
+                delta_count = delta_count + 1
+              end
+            end
+          elseif provider_lower == 'opencode' then
+            local monthly = find_monthly_window(account)
+            if monthly then
+              local pace = calculate_window_pace(monthly, window_duration(monthly))
               if pace then
                 delta_total = delta_total + pace.delta
                 delta_count = delta_count + 1
