@@ -16,6 +16,7 @@ OUTPUT_PATH = CACHE_DIR / "cursor-usage.json"
 RENDER_PATH = CACHE_DIR / "cursor-usage-render.tsv"
 LOG_PATH = CACHE_DIR / "conky-rate-limit-panel.log"
 DEFAULT_AUTH_NAME = "auth.json"
+CURSOR_AUTH_STORE_DIR = Path.home() / ".local" / "share" / "clusterfork-auth" / "cursor"
 API_BASE_URL = "https://api2.cursor.sh/aiserver.v1.DashboardService"
 USER_AGENT = "cursor/3.7.21"
 MONTHLY_WINDOW_SECONDS = 31 * 24 * 60 * 60
@@ -28,6 +29,17 @@ flatten_bars = common.flatten_bars
 
 def cursor_home():
     return Path(os.environ.get("CURSOR_HOME", Path.home() / ".config" / "cursor")).expanduser()
+
+
+def cursor_auth_store_dir():
+    configured = os.environ.get("CURSOR_AUTH_STORE_DIR", "").strip()
+    if configured:
+        return Path(configured).expanduser()
+    # When CURSOR_HOME is explicitly overridden, use it as the auth store dir
+    # to maintain backward compatibility with the old single-directory layout.
+    if os.environ.get("CURSOR_HOME"):
+        return cursor_home()
+    return Path.home() / ".local" / "share" / "clusterfork-auth" / "cursor"
 
 
 def default_auth_path():
@@ -44,11 +56,14 @@ def discover_auth_files():
     if configured:
         return [(auth_label(configured), configured, is_selected_auth(configured))]
 
-    default_path = default_auth_path()
-    suffixed_paths = sorted(path for path in default_path.parent.glob(f"{DEFAULT_AUTH_NAME}.*") if path.is_file())
+    # Prefer the shared clusterfork-auth store when it has profiles.
+    store_dir = cursor_auth_store_dir()
+    search_dir = store_dir if store_dir.is_dir() else default_auth_path().parent
+    suffixed_paths = sorted(path for path in search_dir.glob(f"{DEFAULT_AUTH_NAME}.*") if path.is_file())
     if suffixed_paths:
         return [(auth_label(path), path, is_selected_auth(path)) for path in suffixed_paths]
 
+    default_path = default_auth_path()
     return [(auth_label(default_path), default_path, is_selected_auth(default_path))]
 
 

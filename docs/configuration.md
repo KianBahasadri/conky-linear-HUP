@@ -29,10 +29,12 @@ Copy `.env.example` to `.env` and fill in the overlays you use.
 | `CODEX_AUTH_PATH` | Force a single Codex auth file |
 | `CODEX_HOME` | Override the Codex config directory |
 | `CODEX_SQLITE_HOME` | Override Codex local state sqlite directory |
+| `CODEX_AUTH_STORE_DIR` | Override the shared Codex auth store directory |
 | `CODEX_USAGE_DEGENERATE_RETRIES` | Retries when Codex returns degenerate usage windows |
 | `CODEX_LOCAL_RATE_LIMIT_MAX_AGE_SECONDS` | Max age for local Codex session rate limits |
 | `CURSOR_AUTH_PATH` | Force a single Cursor auth file |
 | `CURSOR_HOME` | Override the Cursor config directory |
+| `CURSOR_AUTH_STORE_DIR` | Override the shared Cursor auth store directory |
 | `GEMINI_ANTIGRAVITY_STATE_DIR` | Override Antigravity rotation state directory |
 | `GEMINI_CODE_ASSIST_ENDPOINT` | Override the Antigravity API endpoint |
 | `GEMINI_ANTIGRAVITY_CLI` | Override the `agy` executable |
@@ -40,6 +42,9 @@ Copy `.env.example` to `.env` and fill in the overlays you use.
 | `GROK_AUTH_PATH` | Force a single Grok auth file |
 | `GROK_HOME` | Override the Grok config directory |
 | `GROK_CLI_CHAT_PROXY_BASE_URL` | Override the Grok billing API base URL |
+| `OPENCODE_AUTH_PATH` | Force a single OpenCode Go auth file |
+| `OPENCODE_HOME` | Override the OpenCode data directory |
+| `OPENCODE_DB` | Override the OpenCode SQLite database path |
 
 Pioneer env vars (`PIONEER_API_KEY`, `PIONEER_USAGE_LABEL`, `PIONEER_MONTHLY_CREDIT_LIMIT`) were removed with the Pioneer rate-limit panel integration.
 

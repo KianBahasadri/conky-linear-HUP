@@ -22,6 +22,7 @@ LOG_PATH = CACHE_DIR / "conky-rate-limit-panel.log"
 DEFAULT_AUTH_PATH = Path.home() / ".codex" / "auth.json"
 CODEX_HOME = Path.home() / ".codex"
 CODEX_SQLITE_HOME = CODEX_HOME
+CODEX_AUTH_STORE_DIR = Path.home() / ".local" / "share" / "clusterfork-auth" / "codex"
 USAGE_URL = "https://chatgpt.com/backend-api/wham/usage"
 TOKEN_URL = "https://auth.openai.com/oauth/token"
 CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
@@ -44,11 +45,21 @@ flatten_bars = common.flatten_bars
 def configure_from_env():
     global CODEX_HOME
     global CODEX_SQLITE_HOME
+    global CODEX_AUTH_STORE_DIR
     global DEGENERATE_RETRIES
     global LOCAL_RATE_LIMIT_MAX_AGE_SECONDS
 
     CODEX_HOME = Path(os.environ.get("CODEX_HOME", Path.home() / ".codex")).expanduser()
     CODEX_SQLITE_HOME = Path(os.environ.get("CODEX_SQLITE_HOME", CODEX_HOME)).expanduser()
+    codex_auth_store = os.environ.get("CODEX_AUTH_STORE_DIR", "").strip()
+    if codex_auth_store:
+        CODEX_AUTH_STORE_DIR = Path(codex_auth_store).expanduser()
+    elif os.environ.get("CODEX_HOME"):
+        # When CODEX_HOME is explicitly overridden, use it as the auth store dir
+        # to maintain backward compatibility with the old single-directory layout.
+        CODEX_AUTH_STORE_DIR = CODEX_HOME
+    else:
+        CODEX_AUTH_STORE_DIR = Path.home() / ".local" / "share" / "clusterfork-auth" / "codex"
     DEGENERATE_RETRIES = int(os.environ.get("CODEX_USAGE_DEGENERATE_RETRIES", "4"))
     LOCAL_RATE_LIMIT_MAX_AGE_SECONDS = int(os.environ.get("CODEX_LOCAL_RATE_LIMIT_MAX_AGE_SECONDS", "21600"))
 
@@ -59,7 +70,10 @@ def discover_auth_files():
         path = Path(configured_path).expanduser()
         return [(auth_label(path), path, is_selected_auth(path))]
 
-    suffixed_paths = sorted(DEFAULT_AUTH_PATH.parent.glob("auth.json.*"))
+    # Prefer the shared clusterfork-auth store when it has profiles.
+    store_dir = CODEX_AUTH_STORE_DIR if CODEX_AUTH_STORE_DIR.is_dir() else None
+    search_dir = store_dir if store_dir else DEFAULT_AUTH_PATH.parent
+    suffixed_paths = sorted(search_dir.glob("auth.json.*"))
     if suffixed_paths:
         return [(auth_label(path), path, is_selected_auth(path)) for path in suffixed_paths if path.is_file()]
 

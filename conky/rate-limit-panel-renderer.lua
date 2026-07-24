@@ -5,6 +5,7 @@ return function(shared, repo_root)
   local cursor_usage_tsv_path = repo_root .. '/cache/cursor-usage-render.tsv'
   local gemini_usage_tsv_path = repo_root .. '/cache/gemini-usage-render.tsv'
   local grok_usage_tsv_path = repo_root .. '/cache/grok-usage-render.tsv'
+  local opencode_usage_tsv_path = repo_root .. '/cache/opencode-usage-render.tsv'
   local font = 'JetBrains Mono'
   local panel_width = 1000
   local panel_height = 110
@@ -202,6 +203,10 @@ return function(shared, repo_root)
     return read_usage_tsv(grok_usage_tsv_path, 'Grok')
   end
 
+  local function read_opencode_usage_tsv()
+    return read_usage_tsv(opencode_usage_tsv_path, 'OpenCode')
+  end
+
   local function read_codex_usage_json()
     local content = shared.read_file(codex_usage_path)
     if not content then
@@ -274,6 +279,8 @@ return function(shared, repo_root)
       return 30
     elseif provider == 'grok' then
       return 35
+    elseif provider == 'opencode' then
+      return 38
     end
 
     return 40
@@ -319,6 +326,7 @@ return function(shared, repo_root)
     local cursor_usage = read_cursor_usage_tsv()
     local gemini_usage = read_gemini_usage_tsv()
     local grok_usage = read_grok_usage_tsv()
+    local opencode_usage = read_opencode_usage_tsv()
     local usage = {
       ok = false,
       error = '',
@@ -374,6 +382,17 @@ return function(shared, repo_root)
       end
       for _, account in ipairs(grok_usage.accounts or {}) do
         account.provider = account.provider or 'Grok'
+        table.insert(usage.accounts, account)
+      end
+    end
+
+    if opencode_usage then
+      usage.ok = usage.ok or opencode_usage.ok
+      if usage.error == '' then
+        usage.error = opencode_usage.error or ''
+      end
+      for _, account in ipairs(opencode_usage.accounts or {}) do
+        account.provider = account.provider or 'OpenCode'
         table.insert(usage.accounts, account)
       end
     end
@@ -788,6 +807,11 @@ return function(shared, repo_root)
       return '8b7ab0', 'a899c9', '5d4f78', '4a3f63'
     end
 
+    if provider_name(account) == 'opencode' then
+      -- Black 5h, dark grey weekly.
+      return '000000', '52525b', '27272a', '18181b'
+    end
+
     if is_free then
       if provider_name(account) == 'codex' then
         return '2563eb', '1e3a8a', '2563eb', '1e3a8a'
@@ -836,6 +860,7 @@ return function(shared, repo_root)
       local selection_color = provider_name(account) == 'codex' and '00e5ff'
         or provider_name(account) == 'cursor' and '94a3b8'
         or provider_name(account) == 'grok' and '9a86b3'
+        or provider_name(account) == 'opencode' and '000000'
         or first_accent
 
       shared.set_hex(cr, selection_color, 0.20)
@@ -967,12 +992,14 @@ return function(shared, repo_root)
     local cursor_label = 'CURSOR'
     local gemini_label = 'ANTIGRAVITY'
     local grok_label = 'GROK'
+    local opencode_label = 'OPENCODE'
 
     local codex_color = '00e5ff'
     local claude_color = 'ff7a59'
     local cursor_color = '94a3b8'
     local gemini_color = '4ade80'
     local grok_color = '9a86b3'
+    local opencode_color = '000000'
 
     if usage.ok and #usage.accounts > 0 then
       local codex_avg_delta = calculate_provider_average_pace(usage.accounts, 'Codex')
@@ -980,12 +1007,14 @@ return function(shared, repo_root)
       local cursor_avg_delta = calculate_provider_average_pace(usage.accounts, 'Cursor')
       local gemini_avg_delta = calculate_provider_average_pace(usage.accounts, 'Gemini')
       local grok_avg_delta = calculate_provider_average_pace(usage.accounts, 'Grok')
+      local opencode_avg_delta = calculate_provider_average_pace(usage.accounts, 'OpenCode')
 
       codex_label = get_provider_label_from_delta('Codex', codex_avg_delta)
       claude_label = get_provider_label_from_delta('Claude', claude_avg_delta)
       cursor_label = get_provider_label_from_delta('Cursor', cursor_avg_delta)
       gemini_label = get_provider_label_from_delta('Antigravity', gemini_avg_delta)
       grok_label = get_provider_label_from_delta('Grok', grok_avg_delta)
+      opencode_label = get_provider_label_from_delta('OpenCode', opencode_avg_delta)
     end
 
     local chip_x = x + 48
@@ -999,11 +1028,18 @@ return function(shared, repo_root)
       chip_x + codex_chip_width + claude_chip_width + cursor_chip_width + 24,
       y
     )
-    draw_title_chip(
+    local grok_chip_width = draw_title_chip(
       cr,
       grok_label,
       grok_color,
       chip_x + codex_chip_width + claude_chip_width + cursor_chip_width + gemini_chip_width + 32,
+      y
+    )
+    draw_title_chip(
+      cr,
+      opencode_label,
+      opencode_color,
+      chip_x + codex_chip_width + claude_chip_width + cursor_chip_width + gemini_chip_width + grok_chip_width + 40,
       y
     )
 
