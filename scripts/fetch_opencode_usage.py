@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
+import configparser
 import json
 import os
 import re
+import shutil
+import sqlite3
+import tempfile
+import time
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
@@ -29,6 +34,9 @@ MONTHLY_WINDOW_SECONDS = 31 * 24 * 60 * 60
 WORKSPACE_URL_ENV = "OPENCODE_WORKSPACE_URL"
 WORKSPACE_ID_ENV = "OPENCODE_WORKSPACE_ID"
 COOKIE_ENV_NAMES = ("OPENCODE_COOKIE", "OPENCODE_AUTH_COOKIE")
+FIREFOX_PROFILE_ENV = "OPENCODE_FIREFOX_PROFILE"
+FIREFOX_HOME_ENV = "OPENCODE_FIREFOX_HOME"
+COOKIE_HOST_SUFFIX = "opencode.ai"
 USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/131 Safari/537.36"
 
 
@@ -50,24 +58,171 @@ def workspace_url():
     )
 
 
+def _normalize_cookie_env_value(env_name, value):
+    # Accept a raw Cookie header, while allowing a single token to be
+    # supplied as the historical auth-cookie shorthand.
+    parts = [part.strip() for part in value.split(";") if part.strip()]
+    if not parts:
+        raise RuntimeError(f"{env_name} must contain a valid Cookie header")
+    if all("=" in part for part in parts):
+        return "; ".join(parts)
+    if len(parts) == 1:
+        return f"auth={parts[0]}"
+    raise RuntimeError(f"{env_name} must contain a valid Cookie header")
+
+
+def firefox_home():
+    configured = os.environ.get(FIREFOX_HOME_ENV, "").strip()
+    if configured:
+        return Path(configured).expanduser()
+    return Path.home() / ".mozilla" / "firefox"
+
+
+def _profiles_ini_path(home):
+    return Path(home) / "profiles.ini"
+
+
+def resolve_firefox_profile_dir(home=None):
+    """Pick the Firefox profile whose cookies.sqlite should supply auth."""
+    home = Path(home or firefox_home())
+    configured = os.environ.get(FIREFOX_PROFILE_ENV, "").strip()
+    if configured:
+        path = Path(configured).expanduser()
+        if path.is_dir():
+            return path
+        candidate = home / configured
+        if candidate.is_dir():
+            return candidate
+        raise RuntimeError(f"Firefox profile not found: {configured}")
+
+    profiles_ini = _profiles_ini_path(home)
+    if not profiles_ini.is_file():
+        raise RuntimeError(f"Firefox profiles.ini missing: {profiles_ini}")
+
+    parser = configparser.ConfigParser()
+    parser.read(profiles_ini)
+
+    def section_path(section):
+        raw = parser.get(section, "Path", fallback="").strip()
+        if not raw:
+            return None
+        path = Path(raw)
+        if parser.getboolean(section, "IsRelative", fallback=True):
+            path = home / path
+        return path if path.is_dir() else None
+
+    # Install* Default= is what current Firefox actually launches.
+    for section in parser.sections():
+        if not section.startswith("Install"):
+            continue
+        default_path = parser.get(section, "Default", fallback="").strip()
+        if not default_path:
+            continue
+        path = Path(default_path)
+        if not path.is_absolute():
+            path = home / path
+        if path.is_dir():
+            return path
+
+    for section in parser.sections():
+        if not section.startswith("Profile"):
+            continue
+        if parser.get(section, "Default", fallback="") != "1":
+            continue
+        path = section_path(section)
+        if path:
+            return path
+
+    for section in parser.sections():
+        if not section.startswith("Profile"):
+            continue
+        path = section_path(section)
+        if path and (path / "cookies.sqlite").is_file():
+            return path
+
+    raise RuntimeError(f"no usable Firefox profile found under {home}")
+
+
+def _cookie_expiry_epoch_seconds(expiry):
+    try:
+        value = int(expiry)
+    except (TypeError, ValueError):
+        return 0
+    # Some Firefox builds store moz_cookies.expiry in milliseconds.
+    if value > 10_000_000_000:
+        return value // 1000
+    return value
+
+
+def read_firefox_opencode_cookies(profile_dir=None):
+    """Return name->value cookies for opencode.ai from Firefox's cookie DB."""
+    profile_dir = Path(profile_dir or resolve_firefox_profile_dir())
+    db_path = profile_dir / "cookies.sqlite"
+    if not db_path.is_file():
+        raise RuntimeError(f"Firefox cookies.sqlite missing: {db_path}")
+
+    # Copy the live DB (and WAL siblings) so a locked Firefox profile still works.
+    with tempfile.TemporaryDirectory(prefix="opencode-ff-cookies-") as tmp_dir:
+        tmp_root = Path(tmp_dir)
+        tmp_db = tmp_root / "cookies.sqlite"
+        shutil.copy2(db_path, tmp_db)
+        for suffix in ("-wal", "-shm"):
+            sibling = Path(str(db_path) + suffix)
+            if sibling.is_file():
+                shutil.copy2(sibling, Path(str(tmp_db) + suffix))
+
+        connection = sqlite3.connect(f"file:{tmp_db}?mode=ro", uri=True)
+        try:
+            rows = connection.execute(
+                """
+                SELECT name, value, host, expiry
+                FROM moz_cookies
+                WHERE host = ? OR host = ? OR host LIKE ?
+                ORDER BY name COLLATE NOCASE
+                """,
+                (COOKIE_HOST_SUFFIX, f".{COOKIE_HOST_SUFFIX}", f"%.{COOKIE_HOST_SUFFIX}"),
+            ).fetchall()
+        finally:
+            connection.close()
+
+    now = int(time.time())
+    cookies = {}
+    for name, value, _host, expiry in rows:
+        if not name or value is None:
+            continue
+        expiry_seconds = _cookie_expiry_epoch_seconds(expiry)
+        if expiry_seconds and expiry_seconds < now:
+            continue
+        cookies[str(name)] = str(value)
+
+    if "auth" not in cookies:
+        raise RuntimeError(
+            f"Firefox profile {profile_dir.name} has no live opencode.ai auth cookie; "
+            "log into opencode.ai in Firefox"
+        )
+    return cookies
+
+
+def cookie_header_from_firefox(profile_dir=None):
+    cookies = read_firefox_opencode_cookies(profile_dir)
+    # Prefer auth first so the header matches a logged-in dashboard request.
+    names = ["auth"] + sorted(name for name in cookies if name != "auth")
+    return "; ".join(f"{name}={cookies[name]}" for name in names)
+
+
 def cookie_header():
     for env_name in COOKIE_ENV_NAMES:
         value = os.environ.get(env_name, "").strip()
         if value:
-            # Accept a raw Cookie header, while allowing a single token to be
-            # supplied as the historical auth-cookie shorthand.
-            parts = [part.strip() for part in value.split(";") if part.strip()]
-            if not parts:
-                raise RuntimeError(f"{env_name} must contain a valid Cookie header")
-            if all("=" in part for part in parts):
-                return "; ".join(parts)
-            if len(parts) == 1:
-                return f"auth={parts[0]}"
-            raise RuntimeError(f"{env_name} must contain a valid Cookie header")
+            return _normalize_cookie_env_value(env_name, value)
 
-    raise RuntimeError(
-        "OpenCode dashboard cookie is missing; set OPENCODE_COOKIE to the browser Cookie header"
-    )
+    try:
+        return cookie_header_from_firefox()
+    except Exception as error:
+        raise RuntimeError(
+            "OpenCode dashboard cookie is missing; log into opencode.ai in Firefox "
+            f"or set OPENCODE_COOKIE ({error})"
+        ) from error
 
 
 def parse_reset_time_to_seconds(reset_str):
@@ -98,7 +253,11 @@ def _slot_text(chunk, slot):
 
 def _window_key(label):
     normalized = label.lower().replace("–", "-").replace("—", "-")
-    if re.search(r"\b5\s*(?:h|hours?|hour)\b", normalized) or "5-hour" in normalized:
+    if (
+        re.search(r"\b5\s*(?:h|hours?|hour)\b", normalized)
+        or "5-hour" in normalized
+        or "rolling" in normalized
+    ):
         return "5h"
     if "week" in normalized:
         return "weekly"
@@ -215,9 +374,9 @@ def load_web_cache(url):
     return None
 
 
-def account_payload(label, windows, stale=False, error=""):
+def account_payload(label, windows, stale=False, error="", ok=True):
     account = {
-        "ok": True,
+        "ok": ok,
         "label": label,
         "email": "",
         "accountId": "",
@@ -231,14 +390,43 @@ def account_payload(label, windows, stale=False, error=""):
     return account
 
 
-def write_error(message):
+def empty_usage_windows():
+    """Placeholder 5h/weekly/monthly bars so the row stays visible on hard failure."""
+    return [
+        {
+            "label": label,
+            "usedPercent": 0.0,
+            "remainingPercent": 100.0,
+            "resetsAt": None,
+            "resetAtEpoch": 0,
+            "resetAfterSeconds": 0,
+            "windowSeconds": window_seconds,
+            "costUsd": 0.0,
+            "limitUsd": limit_usd,
+        }
+        for label, limit_usd, window_seconds in (
+            ("5h", FIVE_HOUR_LIMIT_USD, FIVE_HOUR_WINDOW_SECONDS),
+            ("weekly", WEEKLY_LIMIT_USD, WEEKLY_WINDOW_SECONDS),
+            ("monthly", MONTHLY_LIMIT_USD, MONTHLY_WINDOW_SECONDS),
+        )
+    ]
+
+
+def write_error(message, label="default"):
+    account = account_payload(
+        label,
+        empty_usage_windows(),
+        stale=True,
+        error=message,
+        ok=False,
+    )
     output = {
         "updatedAt": datetime.now(timezone.utc).isoformat(),
         "provider": "OpenCode",
         "ok": False,
         "error": message,
-        "accounts": [],
-        "bars": [],
+        "accounts": [account],
+        "bars": flatten_bars([account]),
     }
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     common.write_usage_outputs(OUTPUT_PATH, RENDER_PATH, output)
@@ -288,7 +476,7 @@ def main():
             print(json.dumps(output, indent=2))
             return 0
 
-        write_error(f"OpenCode web usage fetch failed: {web_error}")
+        write_error(f"OpenCode web usage fetch failed: {web_error}", label=label)
         return 1
 
 
