@@ -848,6 +848,26 @@ return function(shared, repo_root)
     return string.lower(account.provider or 'codex')
   end
 
+  local function window_reset_has_passed(window)
+    -- Only absolute reset timestamps can prove a cached window is over.
+    if window.reset_at_epoch and window.reset_at_epoch > 0 then
+      return window.reset_at_epoch <= os.time()
+    end
+    return false
+  end
+
+  local function window_needs_refresh(account, window, index)
+    local provider = provider_name(account)
+    if provider == 'claude' then
+      -- Claude's 5h window is meaningless once the OAuth grant is stale.
+      return (account.stale or not account.ok) and index == 1
+    end
+
+    -- Default for every other expired/stale account: keep cached fill and reset
+    -- until that window's reset time has already passed.
+    return account.stale and window_reset_has_passed(window)
+  end
+
   local function provider_accents(account, is_free)
     if provider_name(account) == 'cursor' then
       return '94a3b8', '64748b', '475569', '334155'
@@ -1070,7 +1090,7 @@ return function(shared, repo_root)
       local bar_x = bar_area_start + (i - 1) * bar_unit_width
       local accent = accent_list[i] or second_accent
       local accent_secondary = accent_secondary_list[i] or second_accent_secondary
-      local refresh = (claude_needs_refresh and i == 1) or account.stale
+      local refresh = window_needs_refresh(account, window, i)
       draw_usage_bar(cr, window, bar_x, bar_y, accent, accent_secondary, show_bar_pace, refresh, layout)
 
       if overlay_labels[i] then
