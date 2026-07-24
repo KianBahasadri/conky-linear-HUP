@@ -654,12 +654,12 @@ return function(shared, repo_root)
 
   end
 
-  local function draw_pace_marker(cr, pace, x, bar_y)
+  local function draw_pace_marker(cr, pace, x, bar_y, bar_w)
     if not pace then
       return
     end
 
-    local marker_x = math.floor(x + bar_width * (shared.clamp(pace.expected, 0, 100) / 100) + 0.5)
+    local marker_x = math.floor(x + bar_w * (shared.clamp(pace.expected, 0, 100) / 100) + 0.5)
     local marker_left = marker_x - math.floor(pace_marker_width / 2)
     local is_neutral = pace.state == 'neutral'
 
@@ -679,16 +679,23 @@ return function(shared, repo_root)
     cairo_show_text(cr, label)
   end
 
-  local function draw_usage_bar(cr, window, x, y, accent, accent_secondary, show_pace, refresh_mode)
+  local function draw_usage_bar(cr, window, x, y, accent, accent_secondary, show_pace, refresh_mode, layout)
     if show_pace == nil then
       show_pace = true
     end
+
+    local bw = layout and layout.bar_width or bar_width
+    local btg = layout and layout.bar_text_gap or bar_text_gap
+    local bcw = layout and layout.bar_countdown_width or bar_countdown_width
+    local brg = layout and layout.bar_reset_gap or bar_reset_gap
+    local brw = layout and layout.bar_reset_width or bar_reset_width
+    local brdw = layout and layout.bar_reset_date_width or bar_reset_date_width
 
     local used = shared.clamp(window.used_percent, 0, 100)
     if refresh_mode then
       used = 0
     end
-    local fill_width = bar_width * (used / 100)
+    local fill_width = bw * (used / 100)
     local window_label = normalized_window_label(window)
     local is_weekly = window_label == 'weekly'
     local is_five_hour = window_label == '5h'
@@ -703,7 +710,7 @@ return function(shared, repo_root)
     end
 
     local bar_y = y
-    shared.rounded_rect(cr, x, bar_y, bar_width, bar_height, 4)
+    shared.rounded_rect(cr, x, bar_y, bw, bar_height, 4)
     shared.set_hex(cr, '020617', 0.68)
     cairo_fill_preserve(cr)
     shared.set_hex(cr, accent, 0.52)
@@ -732,7 +739,7 @@ return function(shared, repo_root)
 
     shared.set_hex(cr, accent_secondary, 0.34)
     cairo_set_line_width(cr, 1)
-    local tick_gap = bar_width / 4
+    local tick_gap = bw / 4
     for tick = 1, 3 do
       local tick_x = x + tick * tick_gap
       cairo_move_to(cr, tick_x, bar_y + 1)
@@ -742,18 +749,18 @@ return function(shared, repo_root)
 
     shared.set_hex(cr, 'f8fafc', 0.18)
     cairo_move_to(cr, x + 8, bar_y + 4)
-    cairo_line_to(cr, x + bar_width - 8, bar_y + 4)
+    cairo_line_to(cr, x + bw - 8, bar_y + 4)
     cairo_stroke(cr)
 
     if show_pace and not refresh_mode then
-      draw_pace_marker(cr, calculate_window_pace(window, window_duration(window)), x, bar_y)
+      draw_pace_marker(cr, calculate_window_pace(window, window_duration(window)), x, bar_y, bw)
     end
 
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL)
     cairo_set_font_size(cr, 11)
-    local text_x = x + bar_width + bar_text_gap
-    local reset_x = text_x + bar_countdown_width + bar_reset_gap
-    countdown_label = shared.truncate_title(cr, countdown_label, bar_countdown_width)
+    local text_x = x + bw + btg
+    local reset_x = text_x + bcw + brg
+    countdown_label = shared.truncate_title(cr, countdown_label, bcw)
 
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
     cairo_set_font_size(cr, 10)
@@ -764,10 +771,10 @@ return function(shared, repo_root)
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL)
     cairo_set_font_size(cr, 10)
     shared.set_hex(cr, accent, 0.82)
-    if reset_date_label and reset_date_label ~= '' then
+    if brdw > 0 and reset_date_label and reset_date_label ~= '' then
       cairo_move_to(cr, reset_x, y + 8)
       cairo_show_text(cr, reset_date_label)
-      cairo_move_to(cr, reset_x + bar_reset_date_width, y + 8)
+      cairo_move_to(cr, reset_x + brdw, y + 8)
       cairo_show_text(cr, reset_time_label or '')
     else
       cairo_move_to(cr, reset_x, y + 8)
@@ -808,8 +815,8 @@ return function(shared, repo_root)
     end
 
     if provider_name(account) == 'opencode' then
-      -- Black 5h, dark grey weekly.
-      return '000000', '52525b', '27272a', '18181b'
+      -- Black 5h, dark grey weekly, mid grey monthly.
+      return '000000', '52525b', '27272a', '18181b', '3f3f46', '27272a'
     end
 
     if is_free then
@@ -828,27 +835,81 @@ return function(shared, repo_root)
     return '00e5ff', '8b5cf6', '2563eb', '1e3a8a'
   end
 
-  local function draw_account_row(cr, account, x, y)
-    local name = string.upper(account.label)
-    local first = nil
-    local second = nil
-    local label_x = x + 22
-    local is_free = is_free_account(account)
-    local first_accent, first_accent_secondary, second_accent, second_accent_secondary = provider_accents(account, is_free)
-    local is_active = account.is_selected
+  local bar_area_right_margin = 62
 
-    for _, window in ipairs(account.windows or {}) do
+  local function make_bar_layout(num_bars)
+    local available = panel_width - account_row_x - panel_first_bar_x - bar_area_right_margin
+
+    if num_bars >= 3 then
+      local btx, bcw, brg, brw = 10, 40, 4, 52
+      local text_total = btx + bcw + brg + brw
+      local unit = available / num_bars
+      local bw = math.max(40, math.floor(unit - text_total))
+      return {
+        bar_width = bw,
+        bar_text_gap = btx,
+        bar_countdown_width = bcw,
+        bar_reset_gap = brg,
+        bar_reset_width = brw,
+        bar_reset_date_width = 0,
+        text_total = text_total,
+      }
+    end
+
+    local text_total = bar_text_gap + bar_countdown_width + bar_reset_gap + bar_reset_width
+    local unit = available / num_bars
+    local bw = math.max(40, math.floor(unit - text_total))
+    return {
+      bar_width = bw,
+      bar_text_gap = bar_text_gap,
+      bar_countdown_width = bar_countdown_width,
+      bar_reset_gap = bar_reset_gap,
+      bar_reset_width = bar_reset_width,
+      bar_reset_date_width = bar_reset_date_width,
+      text_total = text_total,
+    }
+  end
+
+  local function get_row_windows(account)
+    local provider = provider_name(account)
+    local windows = account.windows or {}
+
+    if provider == 'grok' then
+      for _, w in ipairs(windows) do
+        if normalized_window_label(w) == 'monthly' then return { w } end
+      end
+      for _, w in ipairs(windows) do
+        if normalized_window_label(w) == 'weekly' then return { w } end
+      end
+      if windows[1] then return { windows[1] } end
+      return {}
+    end
+
+    if provider == 'opencode' then
+      local result = {}
+      for _, w in ipairs(windows) do
+        if normalized_window_label(w) == '5h' then table.insert(result, w) end
+      end
+      for _, w in ipairs(windows) do
+        if normalized_window_label(w) == 'weekly' then table.insert(result, w) end
+      end
+      for _, w in ipairs(windows) do
+        if normalized_window_label(w) == 'monthly' then table.insert(result, w) end
+      end
+      return result
+    end
+
+    local first, second
+    for _, window in ipairs(windows) do
       local window_label = normalized_window_label(window)
-      if provider_name(account) == 'cursor' and window_label == 'api' then
+      if provider == 'cursor' and window_label == 'api' then
         second = window
-      elseif provider_name(account) == 'cursor' and window_label == 'auto' then
+      elseif provider == 'cursor' and window_label == 'auto' then
         first = window
-      elseif provider_name(account) == 'gemini' and window_label == 'other' then
+      elseif provider == 'gemini' and window_label == 'other' then
         second = window
-      elseif provider_name(account) == 'gemini' and window_label == 'gemini' then
+      elseif provider == 'gemini' and window_label == 'gemini' then
         first = window
-      elseif provider_name(account) == 'grok' and window_label == 'monthly' then
-        second = window
       elseif window_label == 'weekly' then
         second = window
       elseif not first then
@@ -856,11 +917,43 @@ return function(shared, repo_root)
       end
     end
 
+    local result = {}
+    if first then table.insert(result, first) end
+    if second then table.insert(result, second) end
+    return result
+  end
+
+  local function draw_account_row(cr, account, x, y)
+    local name = string.upper(account.label)
+    local label_x = x + 22
+    local is_free = is_free_account(account)
+    local first_accent, first_accent_secondary, second_accent, second_accent_secondary, third_accent, third_accent_secondary = provider_accents(account, is_free)
+    local is_active = account.is_selected
+
+    local row_windows = get_row_windows(account)
+
+    -- A Claude account whose OAuth token is no longer fresh (fetcher serving
+    -- stale cache, or the fetch failed outright) has a meaningless 5h window --
+    -- it usually drops off entirely. Draw an empty 5h bar labeled "refresh" to
+    -- prompt a re-auth.
+    local claude_needs_refresh = provider_name(account) == 'claude' and (account.stale or not account.ok)
+    if claude_needs_refresh and #row_windows == 0 then
+      row_windows = {
+        {
+          used_percent = 0,
+          label = '5h',
+          reset_at_epoch = 0,
+          reset_after_seconds = 0,
+          window_seconds = five_hour_window_seconds,
+        }
+      }
+    end
+
     if account.is_selected then
       local selection_color = provider_name(account) == 'codex' and '00e5ff'
         or provider_name(account) == 'cursor' and '94a3b8'
         or provider_name(account) == 'grok' and '9a86b3'
-        or provider_name(account) == 'opencode' and '000000'
+        or provider_name(account) == 'opencode' and '52525b'
         or first_accent
 
       shared.set_hex(cr, selection_color, 0.20)
@@ -888,45 +981,33 @@ return function(shared, repo_root)
     cairo_move_to(cr, label_x, y + 23)
     cairo_show_text(cr, shared.truncate_title(cr, name, 120))
 
+    local num_bars = #row_windows
+    if num_bars == 0 then return end
+
     local show_bar_pace = not (provider_name(account) == 'codex' and is_free)
     local bar_y = y + 15
-    local first_bar_x = x + panel_first_bar_x
-    local second_bar_x = x + panel_first_bar_x + bar_width + bar_countdown_width + bar_reset_width + bar_pair_gap
+    local layout = make_bar_layout(num_bars)
+    local bar_unit_width = layout.bar_width + layout.text_total
+    local bar_area_start = x + panel_first_bar_x
 
-    -- A Claude account whose OAuth token is no longer fresh (fetcher serving
-    -- stale cache, or the fetch failed outright) has a meaningless 5h window --
-    -- it usually drops off entirely. Draw an empty 5h bar labeled "refresh" to
-    -- prompt a re-auth.
-    local claude_needs_refresh = provider_name(account) == 'claude' and (account.stale or not account.ok)
-    if claude_needs_refresh and not first then
-      first = {
-        used_percent = 0,
-        label = '5h',
-        reset_at_epoch = 0,
-        reset_after_seconds = 0,
-        window_seconds = five_hour_window_seconds,
-      }
-    end
-
-    if first then
-      draw_usage_bar(cr, first, first_bar_x, bar_y, first_accent, first_accent_secondary, show_bar_pace, claude_needs_refresh)
-    end
-    if second then
-      draw_usage_bar(cr, second, second_bar_x, bar_y, second_accent, second_accent_secondary, show_bar_pace)
-    end
+    local accent_list = { first_accent, second_accent, third_accent or second_accent }
+    local accent_secondary_list = { first_accent_secondary, second_accent_secondary, third_accent_secondary or second_accent_secondary }
+    local overlay_labels = {}
     if provider_name(account) == 'cursor' then
-      if first then
-        draw_bar_overlay_label(cr, 'AUTO', first_bar_x, bar_y, '000000')
-      end
-      if second then
-        draw_bar_overlay_label(cr, 'API', second_bar_x, bar_y)
-      end
+      overlay_labels = { 'AUTO', 'API' }
     elseif provider_name(account) == 'gemini' then
-      if first then
-        draw_bar_overlay_label(cr, 'Gemini', first_bar_x, bar_y, '000000')
-      end
-      if second then
-        draw_bar_overlay_label(cr, 'Other', second_bar_x, bar_y, '000000')
+      overlay_labels = { 'Gemini', 'Other' }
+    end
+
+    for i, window in ipairs(row_windows) do
+      local bar_x = bar_area_start + (i - 1) * bar_unit_width
+      local accent = accent_list[i] or second_accent
+      local accent_secondary = accent_secondary_list[i] or second_accent_secondary
+      local refresh = claude_needs_refresh and i == 1
+      draw_usage_bar(cr, window, bar_x, bar_y, accent, accent_secondary, show_bar_pace, refresh, layout)
+
+      if overlay_labels[i] then
+        draw_bar_overlay_label(cr, overlay_labels[i], bar_x, bar_y, i == 1 and '000000' or nil)
       end
     end
   end
