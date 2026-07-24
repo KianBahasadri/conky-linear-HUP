@@ -856,15 +856,14 @@ return function(shared, repo_root)
     return false
   end
 
-  local function window_needs_refresh(account, window, index)
-    local provider = provider_name(account)
-    if provider == 'claude' then
-      -- Claude's 5h window is meaningless once the OAuth grant is stale.
-      return (account.stale or not account.ok) and index == 1
+  local function window_needs_refresh(account, window)
+    -- Placeholder bars stand in for an account with no cached sample at all.
+    if window.needs_refresh then
+      return true
     end
 
-    -- Default for every other expired/stale account: keep cached fill and reset
-    -- until that window's reset time has already passed.
+    -- Every expired/stale account: keep cached fill and reset until that
+    -- window's reset time has already passed.
     return account.stale and window_reset_has_passed(window)
   end
 
@@ -1019,12 +1018,11 @@ return function(shared, repo_root)
 
     local row_windows = get_row_windows(account)
 
-    -- A Claude account whose OAuth token is no longer fresh (fetcher serving
-    -- stale cache, or the fetch failed outright) has a meaningless 5h window --
-    -- it usually drops off entirely. Draw an empty 5h bar labeled "refresh" to
-    -- prompt a re-auth.
-    local claude_needs_refresh = provider_name(account) == 'claude' and (account.stale or not account.ok)
-    if claude_needs_refresh and #row_windows == 0 then
+    -- A Claude account with no windows at all (no cached sample, or unreadable
+    -- credentials) would drop off the panel entirely. Keep the row with an empty
+    -- 5h bar labeled "refresh" to prompt a re-auth.
+    local claude_has_no_data = provider_name(account) == 'claude' and (account.stale or not account.ok)
+    if claude_has_no_data and #row_windows == 0 then
       row_windows = {
         {
           used_percent = 0,
@@ -1032,6 +1030,7 @@ return function(shared, repo_root)
           reset_at_epoch = 0,
           reset_after_seconds = 0,
           window_seconds = five_hour_window_seconds,
+          needs_refresh = true,
         }
       }
     end
@@ -1090,7 +1089,7 @@ return function(shared, repo_root)
       local bar_x = bar_area_start + (i - 1) * bar_unit_width
       local accent = accent_list[i] or second_accent
       local accent_secondary = accent_secondary_list[i] or second_accent_secondary
-      local refresh = window_needs_refresh(account, window, i)
+      local refresh = window_needs_refresh(account, window)
       draw_usage_bar(cr, window, bar_x, bar_y, accent, accent_secondary, show_bar_pace, refresh, layout)
 
       if overlay_labels[i] then

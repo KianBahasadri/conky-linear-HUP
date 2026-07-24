@@ -473,6 +473,59 @@ def test_fetch_account_falls_back_to_stale_cache_when_refresh_fails(monkeypatch,
     assert [window["usedPercent"] for window in account["windows"]] == [12.0, 34.0]
 
 
+def test_fetch_account_keeps_stale_cache_after_window_reset_passes(monkeypatch, tmp_path):
+    now = int(datetime.now(timezone.utc).timestamp())
+    credentials_path = tmp_path / ".credentials.json.kian"
+    write_credentials(credentials_path, token="revoked", refresh_token="refresh-1", expires_at_ms=(now + 3600) * 1000)
+    monkeypatch.setattr(claude, "CACHE_DIR", tmp_path / "cache")
+    monkeypatch.setenv("CLAUDE_USAGE_TTL", "0")
+    claude.write_account_cache(
+        "kian",
+        {
+            "five_hour": {"used_percentage": 12, "resets_at": now - 3600},
+            "seven_day": {"used_percentage": 34, "resets_at": now - 60},
+        },
+        200,
+    )
+
+    monkeypatch.setattr(
+        claude,
+        "quota_request",
+        lambda auth: (401, {}, '{"type":"error","error":{"type":"authentication_error"}}'),
+    )
+
+    def failing_refresh(auth):
+        raise RuntimeError("Claude OAuth token refresh failed: HTTP 400: invalid_grant")
+
+    monkeypatch.setattr(claude, "refresh_credentials", failing_refresh)
+
+    account = claude.fetch_account("kian", credentials_path, False)
+
+    # The row must survive with its last known windows so the renderer can draw
+    # the "refresh" prompt; dropping them removes the account from the panel.
+    assert account["staleCache"] is True
+    assert [window["usedPercent"] for window in account["windows"]] == [12.0, 34.0]
+    assert [window["resetAtEpoch"] for window in account["windows"]] == [now - 3600, now - 60]
+    assert [window["resetAfterSeconds"] for window in account["windows"]] == [0, 0]
+
+
+def test_live_windows_still_drop_once_reset_passes():
+    now = int(datetime.now(timezone.utc).timestamp())
+    usage = {
+        "five_hour": {"used_percentage": 12, "resets_at": now - 3600},
+        "seven_day": {"used_percentage": 34, "resets_at": now + 86400},
+    }
+
+    assert [window["label"] for window in claude.windows_from_usage(usage)] == ["weekly"]
+    assert [window["label"] for window in claude.windows_from_usage(usage, keep_expired=True)] == ["5h", "weekly"]
+
+
+def test_windows_without_reset_timestamp_are_dropped():
+    usage = {"five_hour": {"used_percentage": 12}, "seven_day": {"used_percentage": 34, "resets_at": 0}}
+
+    assert claude.windows_from_usage(usage, keep_expired=True) == []
+
+
 def test_fetch_account_uses_fresh_cache(monkeypatch, tmp_path):
     now = int(datetime.now(timezone.utc).timestamp())
     credentials_path = tmp_path / ".credentials.json.kian"

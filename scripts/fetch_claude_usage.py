@@ -462,13 +462,18 @@ def write_account_cache(label, usage, status, email=""):
     atomic_write_json(account_cache_path(label), payload)
 
 
-def normalize_window(label, raw_window, fetched_at):
+def normalize_window(label, raw_window, fetched_at, keep_expired=False):
     if not isinstance(raw_window, dict):
         return None
 
     used_percent = max(0.0, min(100.0, as_float(raw_window.get("used_percentage"))))
     reset_at = as_int(raw_window.get("resets_at"))
-    if reset_at <= int(fetched_at.timestamp()):
+    if reset_at <= 0:
+        return None
+    # Live responses only describe windows that are still open. A stale cache is
+    # served with keep_expired so the panel can hold the last known fill until
+    # that window's reset has actually passed.
+    if reset_at <= int(fetched_at.timestamp()) and not keep_expired:
         return None
 
     reset_after_seconds = max(0, reset_at - int(fetched_at.timestamp()))
@@ -485,11 +490,11 @@ def normalize_window(label, raw_window, fetched_at):
     }
 
 
-def windows_from_usage(usage):
+def windows_from_usage(usage, keep_expired=False):
     fetched_at = datetime.now(timezone.utc)
     windows = []
     for label, key in (("5h", "five_hour"), ("weekly", "seven_day")):
-        window = normalize_window(label, usage.get(key), fetched_at)
+        window = normalize_window(label, usage.get(key), fetched_at, keep_expired)
         if window:
             windows.append(window)
     return windows
@@ -502,7 +507,7 @@ def cache_is_fresh(cache):
 
 
 def account_from_usage(auth, usage, is_selected, error="", stale=False):
-    windows = windows_from_usage(usage)
+    windows = windows_from_usage(usage, keep_expired=stale)
     account = {
         "ok": bool(windows),
         "label": auth["label"],
@@ -553,7 +558,7 @@ def fetch_account(label, path, is_selected):
             )
             return account
         except Exception as error:
-            if isinstance(cached, dict) and windows_from_usage(cached):
+            if isinstance(cached, dict) and windows_from_usage(cached, keep_expired=True):
                 account = account_from_usage(auth, cached, is_selected, f"using stale cache after {error}", stale=True)
                 log_event(f"account={label} using stale Claude usage cache after error: {error}")
                 return account
