@@ -429,7 +429,8 @@ return function(shared, repo_root)
     return format_reset(seconds)
   end
 
-  local function format_reset_at(window)
+  local function format_reset_at(window, num_bars)
+    num_bars = num_bars or 1
     if seconds_until_reset(window) <= 0 and (window.used_percent or 0) <= 0 then
       return '', ''
     end
@@ -446,16 +447,26 @@ return function(shared, repo_root)
     end
 
     local local_time = os.date('*t', reset_time)
-    local label = normalized_window_label(window)
     local hour = local_time.hour % 12
     if hour == 0 then
       hour = 12
     end
     local meridiem = local_time.hour >= 12 and 'PM' or 'AM'
     local time_label = string.format('%d:%02d %s', hour, local_time.min, meridiem)
+    local date_label = string.format('%s %02d', os.date('%b', reset_time), local_time.day)
 
+    if num_bars >= 2 then
+      local sec_left = seconds_until_reset(window)
+      if sec_left < 36 * 3600 then
+        return '', time_label
+      else
+        return date_label, ''
+      end
+    end
+
+    local label = normalized_window_label(window)
     if label == 'weekly' or seconds_until_reset(window) > 86400 then
-      return string.format('%s %02d', os.date('%b', reset_time), local_time.day), time_label
+      return date_label, time_label
     end
 
     return '', time_label
@@ -700,7 +711,7 @@ return function(shared, repo_root)
     local is_weekly = window_label == 'weekly'
     local is_five_hour = window_label == '5h'
     local countdown_label = format_window_countdown(window)
-    local reset_date_label, reset_time_label = format_reset_at(window)
+    local reset_date_label, reset_time_label = format_reset_at(window, layout and layout.num_bars or 1)
     if refresh_mode then
       -- The token is no longer fresh, so any cached number is stale: blank the
       -- countdown/reset time and prompt a re-auth instead.
@@ -756,29 +767,31 @@ return function(shared, repo_root)
       draw_pace_marker(cr, calculate_window_pace(window, window_duration(window)), x, bar_y, bw)
     end
 
-    cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL)
-    cairo_set_font_size(cr, 11)
     local text_x = x + bw + btg
     local reset_x = text_x + bcw + brg
-    countdown_label = shared.truncate_title(cr, countdown_label, bcw)
+    local font_size = 10
 
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
-    cairo_set_font_size(cr, 10)
+    cairo_set_font_size(cr, font_size)
+    countdown_label = shared.truncate_title(cr, countdown_label, bcw)
+
     shared.set_hex(cr, accent, 0.95)
     cairo_move_to(cr, text_x, y + 8)
     cairo_show_text(cr, countdown_label)
 
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL)
-    cairo_set_font_size(cr, 10)
+    cairo_set_font_size(cr, font_size)
     shared.set_hex(cr, accent, 0.82)
-    if brdw > 0 and reset_date_label and reset_date_label ~= '' then
+    if reset_date_label and reset_date_label ~= '' then
       cairo_move_to(cr, reset_x, y + 8)
       cairo_show_text(cr, reset_date_label)
-      cairo_move_to(cr, reset_x + brdw, y + 8)
-      cairo_show_text(cr, reset_time_label or '')
-    else
+      if reset_time_label and reset_time_label ~= '' then
+        cairo_move_to(cr, reset_x + (brdw > 0 and brdw or 48), y + 8)
+        cairo_show_text(cr, reset_time_label)
+      end
+    elseif reset_time_label and reset_time_label ~= '' then
       cairo_move_to(cr, reset_x, y + 8)
-      cairo_show_text(cr, reset_time_label or '')
+      cairo_show_text(cr, reset_time_label)
     end
   end
 
@@ -815,8 +828,8 @@ return function(shared, repo_root)
     end
 
     if provider_name(account) == 'opencode' then
-      -- Black 5h, dark grey weekly, mid grey monthly.
-      return '000000', '52525b', '27272a', '18181b', '3f3f46', '27272a'
+      -- Soft rose-crimson 5h, lighter rose weekly, deeper rose monthly.
+      return 'f43f5e', 'fb7185', 'be123c', '881337', 'e11d48', 'be123c'
     end
 
     if is_free then
@@ -840,33 +853,35 @@ return function(shared, repo_root)
   local function make_bar_layout(num_bars)
     local available = panel_width - account_row_x - panel_first_bar_x - bar_area_right_margin
 
-    if num_bars >= 3 then
-      local btx, bcw, brg, brw = 10, 40, 4, 52
+    if num_bars == 1 then
+      local btx, bcw, brg, brw = 8, 54, 4, 116
       local text_total = btx + bcw + brg + brw
-      local unit = available / num_bars
-      local bw = math.max(40, math.floor(unit - text_total))
+      local bw = math.max(40, math.floor(available - 120))
       return {
         bar_width = bw,
         bar_text_gap = btx,
         bar_countdown_width = bcw,
         bar_reset_gap = brg,
         bar_reset_width = brw,
-        bar_reset_date_width = 0,
+        bar_reset_date_width = 48,
         text_total = text_total,
+        num_bars = 1,
       }
     end
 
-    local text_total = bar_text_gap + bar_countdown_width + bar_reset_gap + bar_reset_width
+    local btx, bcw, brg, brw = 8, 54, 4, 54
+    local text_total = btx + bcw + brg + brw
     local unit = available / num_bars
-    local bw = math.max(40, math.floor(unit - text_total))
+    local bw = math.max(30, math.floor(unit - text_total))
     return {
       bar_width = bw,
-      bar_text_gap = bar_text_gap,
-      bar_countdown_width = bar_countdown_width,
-      bar_reset_gap = bar_reset_gap,
-      bar_reset_width = bar_reset_width,
-      bar_reset_date_width = bar_reset_date_width,
+      bar_text_gap = btx,
+      bar_countdown_width = bcw,
+      bar_reset_gap = brg,
+      bar_reset_width = brw,
+      bar_reset_date_width = 0,
       text_total = text_total,
+      num_bars = num_bars,
     }
   end
 
@@ -953,7 +968,7 @@ return function(shared, repo_root)
       local selection_color = provider_name(account) == 'codex' and '00e5ff'
         or provider_name(account) == 'cursor' and '94a3b8'
         or provider_name(account) == 'grok' and '9a86b3'
-        or provider_name(account) == 'opencode' and '52525b'
+        or provider_name(account) == 'opencode' and 'ef4444'
         or first_accent
 
       shared.set_hex(cr, selection_color, 0.20)
@@ -1080,7 +1095,7 @@ return function(shared, repo_root)
     local cursor_color = '94a3b8'
     local gemini_color = '4ade80'
     local grok_color = '9a86b3'
-    local opencode_color = '000000'
+    local opencode_color = 'ef4444'
 
     if usage.ok and #usage.accounts > 0 then
       local codex_avg_delta = calculate_provider_average_pace(usage.accounts, 'Codex')
