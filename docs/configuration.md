@@ -42,9 +42,11 @@ Copy `.env.example` to `.env` and fill in the overlays you use.
 | `GROK_AUTH_PATH` | Force a single Grok auth file |
 | `GROK_HOME` | Override the Grok config directory |
 | `GROK_CLI_CHAT_PROXY_BASE_URL` | Override the Grok billing API base URL |
-| `OPENCODE_AUTH_PATH` | Force a single OpenCode Go auth file |
-| `OPENCODE_HOME` | Override the OpenCode data directory |
-| `OPENCODE_DB` | Override the OpenCode SQLite database path |
+| `OPENCODE_WORKSPACE_URL` | OpenCode Go dashboard URL to fetch |
+| `OPENCODE_WORKSPACE_ID` | Workspace ID used to construct the dashboard URL when `OPENCODE_WORKSPACE_URL` is unset |
+| `OPENCODE_COOKIE` | Browser `Cookie` header for the OpenCode dashboard |
+| `OPENCODE_AUTH_COOKIE` | Backward-compatible alias for `OPENCODE_COOKIE` |
+| `OPENCODE_USAGE_LABEL` | Label shown for the dashboard workspace |
 
 Pioneer env vars (`PIONEER_API_KEY`, `PIONEER_USAGE_LABEL`, `PIONEER_MONTHLY_CREDIT_LIMIT`) were removed with the Pioneer rate-limit panel integration.
 

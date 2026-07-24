@@ -16,6 +16,9 @@
 - `cache/grok-usage.json`: normalized Grok Build account/monthly usage for inspection.
 - `cache/grok-usage-render.tsv`: renderer-friendly Grok usage consumed by the Cairo renderer.
 - `cache/grok-usage-cache-*.json`: last successful Grok usage per account.
+- `cache/opencode-usage.json`: normalized OpenCode Go account/window usage for inspection.
+- `cache/opencode-usage-render.tsv`: renderer-friendly OpenCode Go usage consumed by the Cairo renderer.
+- `cache/opencode-web-cache.json`: last successful OpenCode Go dashboard response used when the dashboard request fails.
 - `cache/minecraft-status.json`: Minecraft Java server status consumed by the Cairo renderer.
 - `cache/github-contributions.json`: GitHub contribution squares consumed by the Cairo renderer.
 - `cache/weather-status.json`: normalized weather, air quality, and running guidance consumed by the Cairo renderer.
@@ -34,6 +37,7 @@
 - Codex: `300s`
 - Claude: `60s` with a per-account API cache
 - Cursor, Gemini, and Grok: `300s`
+- OpenCode: `300s`; dashboard response is retained as a stale fallback when the latest request fails
 - Minecraft: `60s`
 - GitHub: `1800s`
 - Weather and air quality: `600s`

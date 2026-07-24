@@ -1,156 +1,172 @@
 import json
-import sqlite3
+
+import pytest
 
 import fetch_opencode_usage as opencode
 
 
-def write_auth(path, key="sk-test-key"):
-    path.write_text(json.dumps({"opencode-go": {"type": "api", "key": key}}), encoding="utf-8")
+USAGE_HTML = """
+<main>
+  <div class="usage-item">
+    <span data-slot="usage-label">5-hour rolling</span>
+    <span data-slot="usage-value">73.5%</span>
+    <span data-slot="reset-time">Resets in 2 hours 43 minutes</span>
+  </div>
+  <div class="usage-item">
+    <span data-slot="usage-label">Weekly</span>
+    <span data-slot="usage-value">44%</span>
+    <span data-slot="reset-time">Resets in 2 days 19 hours</span>
+  </div>
+  <div class="usage-item">
+    <span data-slot="usage-label">Monthly</span>
+    <span data-slot="usage-value">10%</span>
+    <span data-slot="reset-time">Resets in 30 days 21 hours</span>
+  </div>
+</main>
+"""
 
 
-def write_auth_no_go(path):
-    path.write_text(json.dumps({"github-copilot": {"type": "oauth", "refresh": "r", "access": "a", "expires": 0}}), encoding="utf-8")
+def test_parse_reset_time_to_seconds():
+    assert opencode.parse_reset_time_to_seconds("2 hours 43 minutes") == 9780
+    assert opencode.parse_reset_time_to_seconds("2 days 19 hours") == 241200
+    assert opencode.parse_reset_time_to_seconds("30 days 21 hours") == 2667600
+    assert opencode.parse_reset_time_to_seconds("15 minutes") == 900
+    assert opencode.parse_reset_time_to_seconds("") == 0
 
 
-def create_test_db(path, sessions):
-    conn = sqlite3.connect(str(path))
-    conn.execute(
-        "CREATE TABLE session (id TEXT PRIMARY KEY, model TEXT, cost REAL DEFAULT 0, tokens_input INTEGER DEFAULT 0, tokens_output INTEGER DEFAULT 0, time_created INTEGER DEFAULT 0)"
-    )
-    for session in sessions:
-        conn.execute(
-            "INSERT INTO session (id, model, cost, tokens_input, tokens_output, time_created) VALUES (?, ?, ?, ?, ?, ?)",
-            session,
-        )
-    conn.commit()
-    conn.close()
+def test_parse_usage_html_returns_dashboard_windows():
+    windows = opencode.parse_usage_html(USAGE_HTML, now_epoch=1_800_000_000)
+
+    assert [window["label"] for window in windows] == ["5h", "weekly", "monthly"]
+    assert windows[0]["usedPercent"] == 73.5
+    assert windows[0]["remainingPercent"] == 26.5
+    assert windows[0]["resetAfterSeconds"] == 9780
+    assert windows[0]["resetAtEpoch"] == 1_800_009_780
+    assert windows[1]["costUsd"] == 13.2
+    assert windows[2]["costUsd"] == 6.0
 
 
-def test_discover_auth_files_only_includes_go_subscribers(monkeypatch, tmp_path):
-    go_profile = tmp_path / "auth.json.alice"
-    no_go_profile = tmp_path / "auth.json.bob"
-    write_auth(go_profile)
-    write_auth_no_go(no_go_profile)
-    (tmp_path / "auth.json").symlink_to(go_profile)
-    monkeypatch.setenv("OPENCODE_HOME", str(tmp_path))
-
-    discovered = opencode.discover_auth_files()
-
-    assert [(label, selected) for label, _, selected in discovered] == [("alice", True)]
+def test_parse_usage_html_requires_all_windows():
+    with pytest.raises(RuntimeError, match="monthly"):
+        opencode.parse_usage_html(USAGE_HTML.replace("Monthly", "Daily"))
 
 
-def test_discover_auth_files_marks_selected_by_symlink(monkeypatch, tmp_path):
-    profile_a = tmp_path / "auth.json.alice"
-    profile_b = tmp_path / "auth.json.bob"
-    write_auth(profile_a)
-    write_auth(profile_b)
-    (tmp_path / "auth.json").symlink_to(profile_b)
-    monkeypatch.setenv("OPENCODE_HOME", str(tmp_path))
+def test_cookie_header_accepts_cookie_header_and_token(monkeypatch):
+    monkeypatch.setenv("OPENCODE_COOKIE", "session=abc; theme=dark")
+    assert opencode.cookie_header() == "session=abc; theme=dark"
 
-    discovered = opencode.discover_auth_files()
-
-    assert [(label, selected) for label, _, selected in discovered] == [("alice", False), ("bob", True)]
+    monkeypatch.setenv("OPENCODE_COOKIE", "abc")
+    assert opencode.cookie_header() == "auth=abc"
 
 
-def test_compute_usage_windows(monkeypatch, tmp_path):
-    db_path = tmp_path / "test.db"
-    now_ms = 1800000000000  # arbitrary fixed timestamp in ms
-    five_h_ms = 5 * 3600 * 1000
-    week_ms = 7 * 24 * 3600 * 1000
+def test_cookie_header_requires_configuration(monkeypatch):
+    monkeypatch.delenv("OPENCODE_COOKIE", raising=False)
+    monkeypatch.delenv("OPENCODE_AUTH_COOKIE", raising=False)
 
-    sessions = [
-        # Recent session within all windows
-        ("s1", '{"id":"kimi-k3","providerID":"opencode-go"}', 2.0, 1000, 500, now_ms - 3600000),
-        # Session from 6 hours ago (outside 5h, inside weekly/monthly)
-        ("s2", '{"id":"qwen3.7-max","providerID":"opencode-go"}', 3.0, 2000, 800, now_ms - 6 * 3600000),
-        # Session from 10 days ago (outside 5h and weekly, inside monthly)
-        ("s3", '{"id":"kimi-k3","providerID":"opencode-go"}', 5.0, 3000, 1200, now_ms - 10 * 24 * 3600000),
-        # Non-opencode-go session (should be excluded)
-        ("s4", '{"id":"gpt-5.5","providerID":"openai"}', 99.0, 9999, 9999, now_ms - 3600000),
-    ]
-    create_test_db(db_path, sessions)
-
-    windows = opencode.compute_usage_windows(str(db_path), now_ms)
-
-    assert windows["5h"]["cost"] == 2.0
-    assert windows["weekly"]["cost"] == 5.0
-    assert windows["monthly"]["cost"] == 10.0
-    assert windows["5h"]["oldest_session_ms"] == now_ms - 3600000
-    assert windows["weekly"]["oldest_session_ms"] == now_ms - 6 * 3600000
-    assert windows["monthly"]["oldest_session_ms"] == now_ms - 10 * 24 * 3600000
+    with pytest.raises(RuntimeError, match="OPENCODE_COOKIE"):
+        opencode.cookie_header()
 
 
-def test_normalize_window_computes_percentage():
-    window = opencode.normalize_window("5h", 6.0, 12.0, 18000, 0)
+def test_workspace_url_accepts_url_or_id(monkeypatch):
+    monkeypatch.setenv("OPENCODE_WORKSPACE_URL", "https://example.test/workspace/go")
+    assert opencode.workspace_url() == "https://example.test/workspace/go"
 
-    assert window["usedPercent"] == 50.0
-    assert window["remainingPercent"] == 50.0
-    assert window["costUsd"] == 6.0
-    assert window["limitUsd"] == 12.0
-    assert window["resetAtEpoch"] == 0
-
-
-def test_normalize_window_caps_at_100_percent():
-    window = opencode.normalize_window("weekly", 35.0, 30.0, 604800, 0)
-
-    assert window["usedPercent"] == 100.0
-    assert window["remainingPercent"] == 0.0
+    monkeypatch.delenv("OPENCODE_WORKSPACE_URL")
+    monkeypatch.setenv("OPENCODE_WORKSPACE_ID", "wrk_test")
+    assert opencode.workspace_url() == "https://opencode.ai/workspace/wrk_test/go"
 
 
-def test_normalize_window_computes_reset_in_seconds_from_oldest_session():
-    oldest_session_ms = 1800000000000
-    window = opencode.normalize_window("5h", 6.0, 12.0, 18000, oldest_session_ms)
+class FakeResponse:
+    def __init__(self, body, url="https://opencode.ai/workspace/wrk_test/go"):
+        self.body = body.encode("utf-8")
+        self.url = url
 
-    expected_reset_epoch = int(oldest_session_ms / 1000) + 18000
-    from datetime import datetime, timezone
-    now_epoch = int(datetime.now(timezone.utc).timestamp())
+    def __enter__(self):
+        return self
 
-    assert window["resetAtEpoch"] == expected_reset_epoch
-    assert window["resetAfterSeconds"] == max(0, expected_reset_epoch - now_epoch)
-    assert window["resetsAt"] is not None
-    assert window["windowSeconds"] == 18000
+    def __exit__(self, *_args):
+        return False
+
+    def geturl(self):
+        return self.url
+
+    def read(self):
+        return self.body
 
 
-def test_normalize_usage_produces_three_windows():
-    auth = {"label": "alice", "path": None, "api_key": "sk-test"}
-    windows = {
-        "5h": {"cost": 2.0, "oldest_session_ms": 1800000000000},
-        "weekly": {"cost": 10.0, "oldest_session_ms": 1800000000000},
-        "monthly": {"cost": 30.0, "oldest_session_ms": 1800000000000},
+def test_fetch_usage_from_web_sends_cookie(monkeypatch):
+    captured = {}
+
+    def fake_urlopen(request, timeout):
+        captured["url"] = request.full_url
+        captured["cookie"] = request.get_header("Cookie")
+        captured["timeout"] = timeout
+        return FakeResponse(USAGE_HTML)
+
+    monkeypatch.setattr(opencode.urllib.request, "urlopen", fake_urlopen)
+    windows = opencode.fetch_usage_from_web("https://example.test/go", "session=abc")
+
+    assert captured == {
+        "url": "https://example.test/go",
+        "cookie": "session=abc",
+        "timeout": 10,
     }
-
-    account = opencode.normalize_usage(auth, windows, True)
-
-    assert account["ok"] is True
-    assert account["planType"] == "go"
-    assert account["isSelected"] is True
-    assert len(account["windows"]) == 3
-    assert account["windows"][0]["label"] == "5h"
-    assert account["windows"][1]["label"] == "weekly"
-    assert account["windows"][2]["label"] == "monthly"
-    assert account["windows"][0]["usedPercent"] == 16.7
-    assert account["windows"][1]["usedPercent"] == 33.3
-    assert account["windows"][2]["usedPercent"] == 50.0
+    assert len(windows) == 3
 
 
-def test_fetch_account_with_missing_db(monkeypatch, tmp_path):
-    auth_path = tmp_path / "auth.json.alice"
-    write_auth(auth_path)
-    monkeypatch.setenv("OPENCODE_HOME", str(tmp_path))
-    monkeypatch.setenv("OPENCODE_DB", str(tmp_path / "nonexistent.db"))
+def test_web_cache_is_scoped_to_workspace(monkeypatch, tmp_path):
+    monkeypatch.setattr(opencode, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(opencode, "WEB_CACHE_PATH", tmp_path / "opencode-web-cache.json")
+    windows = opencode.parse_usage_html(USAGE_HTML, now_epoch=1_800_000_000)
 
-    account = opencode.fetch_account("alice", auth_path, True)
+    opencode.save_web_cache(windows, "https://example.test/workspace/a/go")
 
-    assert account["ok"] is False
-    assert "not found" in account["error"]
+    assert opencode.load_web_cache("https://example.test/workspace/a/go") == windows
+    assert opencode.load_web_cache("https://example.test/workspace/b/go") is None
 
 
-def test_read_auth_rejects_missing_go_key(tmp_path):
-    auth_path = tmp_path / "auth.json.bob"
-    write_auth_no_go(auth_path)
+def test_main_uses_fresh_web_data(monkeypatch, tmp_path):
+    output_path = tmp_path / "opencode-usage.json"
+    render_path = tmp_path / "opencode-usage-render.tsv"
+    monkeypatch.setattr(opencode, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(opencode, "OUTPUT_PATH", output_path)
+    monkeypatch.setattr(opencode, "RENDER_PATH", render_path)
+    monkeypatch.setattr(opencode, "WEB_CACHE_PATH", tmp_path / "web-cache.json")
+    monkeypatch.setattr(opencode, "log_event", lambda _message: None)
+    monkeypatch.setattr(opencode.common, "load_env", lambda: None)
+    monkeypatch.setenv("OPENCODE_WORKSPACE_URL", "https://example.test/workspace/go")
+    monkeypatch.setenv("OPENCODE_USAGE_LABEL", "dashboard")
+    monkeypatch.setattr(
+        opencode,
+        "fetch_usage_from_web",
+        lambda _url: opencode.parse_usage_html(USAGE_HTML, 1_800_000_000),
+    )
 
-    try:
-        opencode.read_auth("bob", auth_path)
-        assert False, "should have raised"
-    except RuntimeError as e:
-        assert "no opencode-go API key" in str(e)
+    assert opencode.main() == 0
+    output = json.loads(output_path.read_text(encoding="utf-8"))
+    assert output["ok"] is True
+    assert output["accounts"][0]["label"] == "dashboard"
+    assert output["accounts"][0]["staleCache"] is False
+
+
+def test_main_uses_matching_stale_web_cache(monkeypatch, tmp_path):
+    output_path = tmp_path / "opencode-usage.json"
+    render_path = tmp_path / "opencode-usage-render.tsv"
+    monkeypatch.setattr(opencode, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(opencode, "OUTPUT_PATH", output_path)
+    monkeypatch.setattr(opencode, "RENDER_PATH", render_path)
+    monkeypatch.setattr(opencode, "WEB_CACHE_PATH", tmp_path / "web-cache.json")
+    monkeypatch.setattr(opencode, "log_event", lambda _message: None)
+    monkeypatch.setattr(opencode.common, "load_env", lambda: None)
+    monkeypatch.setenv("OPENCODE_WORKSPACE_URL", "https://example.test/workspace/go")
+    def fail_fetch(_url):
+        raise RuntimeError("offline")
+
+    monkeypatch.setattr(opencode, "fetch_usage_from_web", fail_fetch)
+    windows = opencode.parse_usage_html(USAGE_HTML, now_epoch=1_800_000_000)
+    opencode.save_web_cache(windows, "https://example.test/workspace/go")
+
+    assert opencode.main() == 0
+    output = json.loads(output_path.read_text(encoding="utf-8"))
+    assert output["accounts"][0]["staleCache"] is True
+    assert "offline" in output["accounts"][0]["error"]

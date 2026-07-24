@@ -1070,7 +1070,7 @@ return function(shared, repo_root)
       local bar_x = bar_area_start + (i - 1) * bar_unit_width
       local accent = accent_list[i] or second_accent
       local accent_secondary = accent_secondary_list[i] or second_accent_secondary
-      local refresh = claude_needs_refresh and i == 1
+      local refresh = (claude_needs_refresh and i == 1) or account.stale
       draw_usage_bar(cr, window, bar_x, bar_y, accent, accent_secondary, show_bar_pace, refresh, layout)
 
       if overlay_labels[i] then

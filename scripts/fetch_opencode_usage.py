@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 import json
 import os
-import sqlite3
-import sys
+import re
+import urllib.error
+import urllib.request
 from datetime import datetime, timezone
+from html import unescape
 from pathlib import Path
 
 import fetch_common as common
@@ -14,11 +16,8 @@ CACHE_DIR = ROOT / "cache"
 OUTPUT_PATH = CACHE_DIR / "opencode-usage.json"
 RENDER_PATH = CACHE_DIR / "opencode-usage-render.tsv"
 LOG_PATH = CACHE_DIR / "conky-rate-limit-panel.log"
-DEFAULT_AUTH_NAME = "auth.json"
-OPENCODE_HOME = Path.home() / ".local" / "share" / "opencode"
-OPENCODE_DB = OPENCODE_HOME / "opencode.db"
+WEB_CACHE_PATH = CACHE_DIR / "opencode-web-cache.json"
 
-# OpenCode Go subscription limits (dollar values)
 FIVE_HOUR_LIMIT_USD = 12.0
 WEEKLY_LIMIT_USD = 30.0
 MONTHLY_LIMIT_USD = 60.0
@@ -27,218 +26,212 @@ FIVE_HOUR_WINDOW_SECONDS = common.FIVE_HOUR_WINDOW_SECONDS
 WEEKLY_WINDOW_SECONDS = common.WEEKLY_WINDOW_SECONDS
 MONTHLY_WINDOW_SECONDS = 31 * 24 * 60 * 60
 
+WORKSPACE_URL_ENV = "OPENCODE_WORKSPACE_URL"
+WORKSPACE_ID_ENV = "OPENCODE_WORKSPACE_ID"
+COOKIE_ENV_NAMES = ("OPENCODE_COOKIE", "OPENCODE_AUTH_COOKIE")
+USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/131 Safari/537.36"
+
 
 log_event = common.make_logger(LOG_PATH, "fetch_opencode_usage")
-atomic_write_json = common.atomic_write_json
-as_float = common.as_float
-as_int = common.as_int
 flatten_bars = common.flatten_bars
 
 
-def opencode_home():
-    return Path(os.environ.get("OPENCODE_HOME", Path.home() / ".local" / "share" / "opencode")).expanduser()
-
-
-def opencode_db_path():
-    return Path(os.environ.get("OPENCODE_DB", opencode_home() / "opencode.db")).expanduser()
-
-
-def default_auth_path():
-    return opencode_home() / DEFAULT_AUTH_NAME
-
-
-def configured_auth_path():
-    configured = os.environ.get("OPENCODE_AUTH_PATH", "").strip()
-    return Path(configured).expanduser() if configured else None
-
-
-def has_go_key(path):
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-        go_auth = raw.get("opencode-go")
-        return bool(go_auth and go_auth.get("type") == "api" and go_auth.get("key"))
-    except (FileNotFoundError, json.JSONDecodeError):
-        return False
-
-
-def discover_auth_files():
-    configured = configured_auth_path()
+def workspace_url():
+    configured = os.environ.get(WORKSPACE_URL_ENV, "").strip()
     if configured:
-        return [(auth_label(configured), configured, is_selected_auth(configured))]
+        return configured
 
-    home = opencode_home()
-    suffixed_paths = sorted(
-        path for path in home.glob(f"{DEFAULT_AUTH_NAME}.*") if path.is_file() and has_go_key(path)
+    workspace_id = os.environ.get(WORKSPACE_ID_ENV, "").strip()
+    if workspace_id:
+        return f"https://opencode.ai/workspace/{workspace_id}/go"
+
+    raise RuntimeError(
+        f"{WORKSPACE_URL_ENV} or {WORKSPACE_ID_ENV} must be set for the OpenCode dashboard"
     )
-    if suffixed_paths:
-        return [(auth_label(path), path, is_selected_auth(path)) for path in suffixed_paths]
-
-    default_path = default_auth_path()
-    return [(auth_label(default_path), default_path, is_selected_auth(default_path))]
 
 
-def is_selected_auth(path):
+def cookie_header():
+    for env_name in COOKIE_ENV_NAMES:
+        value = os.environ.get(env_name, "").strip()
+        if value:
+            # Accept a raw Cookie header, while allowing a single token to be
+            # supplied as the historical auth-cookie shorthand.
+            parts = [part.strip() for part in value.split(";") if part.strip()]
+            if not parts:
+                raise RuntimeError(f"{env_name} must contain a valid Cookie header")
+            if all("=" in part for part in parts):
+                return "; ".join(parts)
+            if len(parts) == 1:
+                return f"auth={parts[0]}"
+            raise RuntimeError(f"{env_name} must contain a valid Cookie header")
+
+    raise RuntimeError(
+        "OpenCode dashboard cookie is missing; set OPENCODE_COOKIE to the browser Cookie header"
+    )
+
+
+def parse_reset_time_to_seconds(reset_str):
+    if not reset_str:
+        return 0
+    reset_str = unescape(str(reset_str)).lower().strip()
+
+    def extract_unit(pattern):
+        return sum(int(value) for value in re.findall(pattern, reset_str))
+
+    days = extract_unit(r"(\d+)\s*(?:days?|d\b)")
+    hours = extract_unit(r"(\d+)\s*(?:hours?|hrs?|h\b)")
+    minutes = extract_unit(r"(\d+)\s*(?:minutes?|mins?|m\b)")
+    seconds = extract_unit(r"(\d+)\s*(?:seconds?|secs?|s\b)")
+    return days * 86400 + hours * 3600 + minutes * 60 + seconds
+
+
+def _slot_text(chunk, slot):
+    match = re.search(
+        rf'data-slot\s*=\s*["\']{re.escape(slot)}["\'][^>]*>(.*?)</',
+        chunk,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    if not match:
+        return ""
+    return re.sub(r"<[^>]+>", "", unescape(match.group(1))).strip()
+
+
+def _window_key(label):
+    normalized = label.lower().replace("–", "-").replace("—", "-")
+    if re.search(r"\b5\s*(?:h|hours?|hour)\b", normalized) or "5-hour" in normalized:
+        return "5h"
+    if "week" in normalized:
+        return "weekly"
+    if "month" in normalized:
+        return "monthly"
+    return None
+
+
+def _window_spec(label):
+    return {
+        "5h": (FIVE_HOUR_LIMIT_USD, FIVE_HOUR_WINDOW_SECONDS),
+        "weekly": (WEEKLY_LIMIT_USD, WEEKLY_WINDOW_SECONDS),
+        "monthly": (MONTHLY_LIMIT_USD, MONTHLY_WINDOW_SECONDS),
+    }[label]
+
+
+def parse_usage_html(html, now_epoch=None):
+    """Parse the three usage cards rendered by the OpenCode dashboard."""
+    now_epoch = int(now_epoch if now_epoch is not None else datetime.now(timezone.utc).timestamp())
+    windows = {}
+
+    # The dashboard marks each card with usage-item. Keep the card boundary so
+    # similarly named elements elsewhere on the page cannot be mixed together.
+    chunks = re.split(r"(?=usage-item\b)", html, flags=re.IGNORECASE)[1:]
+    for chunk in chunks:
+        label = _slot_text(chunk[:4000], "usage-label")
+        value = _slot_text(chunk[:4000], "usage-value")
+        window = _window_key(label)
+        if not window or not re.fullmatch(r"\d+(?:\.\d+)?%", value):
+            continue
+
+        used_percent = max(0.0, min(100.0, float(value[:-1])))
+        reset_text = _slot_text(chunk[:4000], "reset-time")
+        reset_text = re.sub(r"^resets in\s*", "", reset_text, flags=re.IGNORECASE).strip()
+        reset_after_seconds = parse_reset_time_to_seconds(reset_text)
+        reset_at_epoch = now_epoch + reset_after_seconds if reset_after_seconds > 0 else 0
+        resets_at = (
+            datetime.fromtimestamp(reset_at_epoch, tz=timezone.utc).isoformat()
+            if reset_at_epoch > 0
+            else None
+        )
+        limit_usd, window_seconds = _window_spec(window)
+        windows[window] = {
+            "label": window,
+            "usedPercent": round(used_percent, 1),
+            "remainingPercent": round(100.0 - used_percent, 1),
+            "resetsAt": resets_at,
+            "resetAtEpoch": reset_at_epoch,
+            "resetAfterSeconds": reset_after_seconds,
+            "windowSeconds": window_seconds,
+            "costUsd": round((used_percent / 100.0) * limit_usd, 4),
+            "limitUsd": limit_usd,
+        }
+
+    expected = ("5h", "weekly", "monthly")
+    missing = [label for label in expected if label not in windows]
+    if missing:
+        raise RuntimeError(f"OpenCode dashboard usage cards missing: {', '.join(missing)}")
+    return [windows[label] for label in expected]
+
+
+def fetch_usage_from_web(url=None, cookies=None):
+    """Fetch usage from the OpenCode web dashboard only."""
+    url = url or workspace_url()
+    cookies = cookies or cookie_header()
+    request = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": USER_AGENT,
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Cookie": cookies,
+        },
+    )
+
     try:
-        return default_auth_path().resolve() == path.resolve()
+        with urllib.request.urlopen(request, timeout=10) as response:
+            final_url = response.geturl()
+            if any(marker in final_url.lower() for marker in ("/login", "/authorize", "auth.opencode.ai")):
+                raise RuntimeError("OpenCode dashboard session expired (redirected to login)")
+            html = response.read().decode("utf-8", errors="replace")
+    except urllib.error.HTTPError as error:
+        raise RuntimeError(f"OpenCode dashboard returned HTTP {error.code}") from error
+    except urllib.error.URLError as error:
+        raise RuntimeError(f"OpenCode dashboard request failed: {error.reason}") from error
+
+    return parse_usage_html(html)
+
+
+def save_web_cache(windows, url):
+    try:
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        common.atomic_write_json(
+            WEB_CACHE_PATH,
+            {
+                "fetched_at": int(datetime.now(timezone.utc).timestamp()),
+                "workspace_url": url,
+                "windows": windows,
+            },
+        )
     except OSError:
-        return default_auth_path() == path
+        pass
 
 
-def auth_label(path):
-    name = path.name
-    prefix = f"{DEFAULT_AUTH_NAME}."
-    if name.startswith(prefix) and len(name) > len(prefix):
-        return name[len(prefix):]
-    if name == DEFAULT_AUTH_NAME:
-        return "default"
-    return path.stem.lstrip(".") or name
-
-
-def read_auth(label, path):
+def load_web_cache(url):
     try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        raise RuntimeError(f"missing OpenCode auth file: {path}")
-    except json.JSONDecodeError as error:
-        raise RuntimeError(f"invalid OpenCode auth JSON: {error}") from error
-
-    go_auth = raw.get("opencode-go")
-    if not go_auth or go_auth.get("type") != "api" or not go_auth.get("key"):
-        raise RuntimeError(f"auth file has no opencode-go API key: {path}")
-
-    return {
-        "label": label,
-        "path": path,
-        "api_key": go_auth["key"],
-    }
+        raw = json.loads(WEB_CACHE_PATH.read_text(encoding="utf-8"))
+        if raw.get("workspace_url") != url:
+            return None
+        windows = raw.get("windows")
+        if isinstance(windows, list) and len(windows) == 3:
+            return windows
+    except (FileNotFoundError, json.JSONDecodeError, OSError, AttributeError):
+        pass
+    return None
 
 
-def compute_usage_windows(db_path, now_ms):
-    """Query the opencode SQLite database for Go usage in each window.
-
-    Returns total cost and the oldest session time for each sliding window.
-    The reset time is when that oldest session falls outside the window.
-    """
-    five_hours_ago_ms = now_ms - (FIVE_HOUR_WINDOW_SECONDS * 1000)
-    week_ago_ms = now_ms - (WEEKLY_WINDOW_SECONDS * 1000)
-    month_ago_ms = now_ms - (MONTHLY_WINDOW_SECONDS * 1000)
-
-    connection = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
-    try:
-        row = connection.execute(
-            """
-            SELECT
-              COALESCE(SUM(CASE WHEN time_created > ? THEN cost END), 0),
-              COALESCE(SUM(CASE WHEN time_created > ? THEN cost END), 0),
-              COALESCE(SUM(CASE WHEN time_created > ? THEN cost END), 0),
-              COALESCE(MIN(CASE WHEN time_created > ? THEN time_created END), 0),
-              COALESCE(MIN(CASE WHEN time_created > ? THEN time_created END), 0),
-              COALESCE(MIN(CASE WHEN time_created > ? THEN time_created END), 0)
-            FROM session
-            WHERE model LIKE '%opencode-go%'
-            """,
-            (
-                five_hours_ago_ms,
-                week_ago_ms,
-                month_ago_ms,
-                five_hours_ago_ms,
-                week_ago_ms,
-                month_ago_ms,
-            ),
-        ).fetchone()
-    finally:
-        connection.close()
-
-    return {
-        "5h": {"cost": row[0], "oldest_session_ms": row[3]},
-        "weekly": {"cost": row[1], "oldest_session_ms": row[4]},
-        "monthly": {"cost": row[2], "oldest_session_ms": row[5]},
-    }
-
-
-def normalize_window(label, cost_usd, limit_usd, window_seconds, oldest_session_ms):
-    used_percent = min(100.0, (cost_usd / limit_usd) * 100) if limit_usd > 0 else 0.0
-
-    now_epoch = int(datetime.now(timezone.utc).timestamp())
-    reset_at_epoch = 0
-    if oldest_session_ms > 0:
-        reset_at_epoch = int(oldest_session_ms / 1000) + window_seconds
-    reset_after_seconds = max(0, reset_at_epoch - now_epoch) if reset_at_epoch > 0 else 0
-    resets_at_iso = (
-        datetime.fromtimestamp(reset_at_epoch, tz=timezone.utc).isoformat()
-        if reset_at_epoch > 0
-        else None
-    )
-
-    return {
-        "label": label,
-        "usedPercent": round(used_percent, 1),
-        "remainingPercent": max(0, round(100.0 - used_percent, 1)),
-        "resetsAt": resets_at_iso,
-        "resetAtEpoch": reset_at_epoch,
-        "resetAfterSeconds": reset_after_seconds,
-        "windowSeconds": window_seconds,
-        "costUsd": round(cost_usd, 4),
-        "limitUsd": limit_usd,
-    }
-
-
-def normalize_usage(auth, windows, is_selected):
-    return {
+def account_payload(label, windows, stale=False, error=""):
+    account = {
         "ok": True,
-        "label": auth["label"],
+        "label": label,
         "email": "",
         "accountId": "",
         "planType": "go",
-        "isSelected": is_selected,
-        "windows": [
-            normalize_window(
-                "5h", windows["5h"]["cost"], FIVE_HOUR_LIMIT_USD,
-                FIVE_HOUR_WINDOW_SECONDS, windows["5h"]["oldest_session_ms"],
-            ),
-            normalize_window(
-                "weekly", windows["weekly"]["cost"], WEEKLY_LIMIT_USD,
-                WEEKLY_WINDOW_SECONDS, windows["weekly"]["oldest_session_ms"],
-            ),
-            normalize_window(
-                "monthly", windows["monthly"]["cost"], MONTHLY_LIMIT_USD,
-                MONTHLY_WINDOW_SECONDS, windows["monthly"]["oldest_session_ms"],
-            ),
-        ],
+        "isSelected": True,
+        "windows": windows,
+        "staleCache": stale,
     }
-
-
-def normalize_error(label, message, is_selected=False):
-    return {
-        "ok": False,
-        "label": label,
-        "error": message,
-        "isSelected": is_selected,
-        "windows": [],
-    }
-
-
-def fetch_account(label, path, is_selected):
-    try:
-        auth = read_auth(label, path)
-        db_path = opencode_db_path()
-        if not db_path.is_file():
-            return normalize_error(label, f"OpenCode database not found: {db_path}", is_selected)
-
-        now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
-        windows = compute_usage_windows(db_path, now_ms)
-        account = normalize_usage(auth, windows, is_selected)
-        log_event(
-            f"account={label} completed plan=go "
-            f"5h=${windows['5h']['cost']:.2f} weekly=${windows['weekly']['cost']:.2f} monthly=${windows['monthly']['cost']:.2f}"
-        )
-        return account
-    except Exception as error:
-        return normalize_error(label, str(error), is_selected)
+    if error:
+        account["error"] = error
+    return account
 
 
 def write_error(message):
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
     output = {
         "updatedAt": datetime.now(timezone.utc).isoformat(),
         "provider": "OpenCode",
@@ -247,6 +240,7 @@ def write_error(message):
         "accounts": [],
         "bars": [],
     }
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
     common.write_usage_outputs(OUTPUT_PATH, RENDER_PATH, output)
     log_event(f"error: {message}")
 
@@ -254,26 +248,47 @@ def write_error(message):
 def main():
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     common.load_env()
-    auth_files = discover_auth_files()
-    labels = ",".join(label for label, _, _ in auth_files)
-    log_event(f"starting OpenCode Go usage fetch accounts={labels or 'none'}")
+    label = os.environ.get("OPENCODE_USAGE_LABEL", "default").strip() or "default"
 
     try:
-        accounts = [fetch_account(label, path, is_selected) for label, path, is_selected in auth_files]
-        ok_count = sum(1 for account in accounts if account.get("ok"))
+        url = workspace_url()
+        windows = fetch_usage_from_web(url)
+        save_web_cache(windows, url)
+        account = account_payload(label, windows)
         output = {
             "updatedAt": datetime.now(timezone.utc).isoformat(),
             "provider": "OpenCode",
-            "ok": ok_count > 0,
-            "accounts": accounts,
-            "bars": flatten_bars(accounts),
+            "ok": True,
+            "accounts": [account],
+            "bars": flatten_bars([account]),
         }
         common.write_usage_outputs(OUTPUT_PATH, RENDER_PATH, output)
-        log_event(f"completed fetch accounts={len(accounts)} ok={ok_count} wrote={OUTPUT_PATH.name}")
+        log_event(f"completed web fetch account={label} wrote={OUTPUT_PATH.name}")
         print(json.dumps(output, indent=2))
-        return 0 if ok_count > 0 else 1
-    except Exception as error:
-        write_error(f"OpenCode Go usage fetch failed: {error}")
+        return 0
+    except Exception as web_error:
+        log_event(f"web fetch failed ({web_error})")
+        try:
+            url = workspace_url()
+        except RuntimeError:
+            url = ""
+        cached_windows = load_web_cache(url) if url else None
+        if cached_windows:
+            error = f"using stale web cache after {web_error}"
+            account = account_payload(label, cached_windows, stale=True, error=error)
+            output = {
+                "updatedAt": datetime.now(timezone.utc).isoformat(),
+                "provider": "OpenCode",
+                "ok": True,
+                "accounts": [account],
+                "bars": flatten_bars([account]),
+            }
+            common.write_usage_outputs(OUTPUT_PATH, RENDER_PATH, output)
+            log_event(f"using stale web usage cache for account={label}")
+            print(json.dumps(output, indent=2))
+            return 0
+
+        write_error(f"OpenCode web usage fetch failed: {web_error}")
         return 1
 
 

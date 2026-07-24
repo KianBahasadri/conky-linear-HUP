@@ -3,7 +3,7 @@
 ## Layout and colors
 
 - The quota panel shows separate `CODEX`, `CLAUDE`, `CURSOR`, `GEMINI`, `GROK`, and `OPENCODE` chips. Codex rows use cyan/navy bars; Claude rows use coral/gold bars; Cursor rows use grey bars; Gemini rows use Google blue/green and yellow/red bars; Grok rows use regal purple bars; OpenCode Go rows use amber/gold bars.
-- The selection chevron marks selected auth profiles: Codex rows whose path resolves to `~/.local/share/clusterfork-auth/codex/current`, Cursor rows whose path resolves to `~/.local/share/clusterfork-auth/cursor/current`, Claude rows whose path resolves to `~/.claude/.credentials.json` or whose access token equals the one in that file, Gemini rows matching Antigravity's `current` profile, Grok rows whose path resolves to `~/.grok/auth.json`, and OpenCode Go rows whose path resolves to `~/.local/share/opencode/auth.json`. Codex uses a blue chevron, Claude uses orange, Cursor uses grey, Gemini uses Google blue, Grok uses purple, and OpenCode Go uses amber. Token comparison is required for Claude because Claude Code replaces `~/.claude/.credentials.json` with a new regular file on login and on every OAuth refresh, so a symlink there does not survive.
+- The selection chevron marks selected auth profiles: Codex rows whose path resolves to `~/.local/share/clusterfork-auth/codex/current`, Cursor rows whose path resolves to `~/.local/share/clusterfork-auth/cursor/current`, Claude rows whose path resolves to `~/.claude/.credentials.json` or whose access token equals the one in that file, Gemini rows matching Antigravity's `current` profile, Grok rows whose path resolves to `~/.grok/auth.json`, and the configured OpenCode Go dashboard workspace. Codex uses a blue chevron, Claude uses orange, Cursor uses grey, Gemini uses Google blue, Grok uses purple, and OpenCode Go uses amber. Token comparison is required for Claude because Claude Code replaces `~/.claude/.credentials.json` with a new regular file on login and on every OAuth refresh, so a symlink there does not survive.
 - All account-rotation tooling is stored in `~/.config/clusterfork`. Shared auth profiles for Codex and Cursor are stored in `~/.local/share/clusterfork-auth/`.
 
 ## Codex
@@ -37,10 +37,11 @@
 
 ## OpenCode Go
 
-- Accounts are discovered from `~/.local/share/opencode/auth.json.*`; only profiles containing an `opencode-go` API key are included. `OPENCODE_AUTH_PATH` forces a single auth file.
-- Usage is computed locally from the OpenCode SQLite database at `~/.local/share/opencode/opencode.db`. The `session` table tracks per-session `cost` in USD, filtered by `providerID: "opencode-go"`.
-- Three windows are tracked: 5-hour ($12 limit), weekly ($30 limit), and monthly ($60 limit). The panel renders 5h and weekly bars per account.
-- `OPENCODE_HOME` overrides the OpenCode data directory and `OPENCODE_DB` overrides the database path.
+- Usage is fetched from the authenticated OpenCode Go dashboard configured by `OPENCODE_WORKSPACE_URL` (or `OPENCODE_WORKSPACE_ID`). The browser `Cookie` header must be supplied through `OPENCODE_COOKIE`; `OPENCODE_AUTH_COOKIE` is an alias.
+- The fetcher uses one dashboard `GET` request per refresh. It never reads OpenCode local files, never opens a SQLite database, and never calls the OpenCode API or sends a usage probe.
+- The dashboard's 5-hour ($12 limit), weekly ($30 limit), and monthly ($60 limit) cards are parsed and rendered as three bars.
+- `cache/opencode-web-cache.json` stores the last successful dashboard response. If the next request fails, that response is shown as stale until a fresh dashboard request succeeds. The workspace URL is stored with the cache so data from a different workspace cannot be reused.
+- `OPENCODE_USAGE_LABEL` controls the row label; the dashboard is represented as one selected workspace row rather than local auth profiles.
 
 ## Removed providers
 
