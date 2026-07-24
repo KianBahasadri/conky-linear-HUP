@@ -767,6 +767,41 @@ return function(shared, repo_root)
       draw_pace_marker(cr, calculate_window_pace(window, window_duration(window)), x, bar_y, bw)
     end
 
+    if layout and layout.num_bars == 3 then
+      local text_x = x + bw + btg
+      local font_size = 10
+      local sec_left = seconds_until_reset(window)
+      local single_label = ''
+      if refresh_mode then
+        single_label = 'refresh'
+      elseif sec_left < 86400 then
+        local reset_time = 0
+        if window.reset_at_epoch and window.reset_at_epoch > 0 then
+          reset_time = window.reset_at_epoch
+        elseif window.reset_after_seconds and window.reset_after_seconds > 0 then
+          reset_time = os.time() + window.reset_after_seconds
+        end
+        if reset_time > 0 then
+          local local_time = os.date('*t', reset_time)
+          local hour = local_time.hour % 12
+          if hour == 0 then hour = 12 end
+          local meridiem = local_time.hour >= 12 and 'PM' or 'AM'
+          single_label = string.format('%d:%02d %s', hour, local_time.min, meridiem)
+        else
+          single_label = format_window_countdown(window)
+        end
+      else
+        single_label = format_window_countdown(window)
+      end
+
+      cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
+      cairo_set_font_size(cr, font_size)
+      shared.set_hex(cr, accent, 0.92)
+      cairo_move_to(cr, text_x, y + 8)
+      cairo_show_text(cr, shared.truncate_title(cr, single_label, brw))
+      return
+    end
+
     local text_x = x + bw + btg
     local reset_x = text_x + bcw + brg
     local font_size = 10
@@ -866,6 +901,23 @@ return function(shared, repo_root)
         bar_reset_date_width = 48,
         text_total = text_total,
         num_bars = 1,
+      }
+    end
+
+    if num_bars == 3 then
+      local btx, bcw, brg, brw = 6, 0, 0, 48
+      local text_total = btx + bcw + brg + brw
+      local unit = available / 3
+      local bw = math.max(40, math.floor(unit - text_total))
+      return {
+        bar_width = bw,
+        bar_text_gap = btx,
+        bar_countdown_width = bcw,
+        bar_reset_gap = brg,
+        bar_reset_width = brw,
+        bar_reset_date_width = 0,
+        text_total = text_total,
+        num_bars = 3,
       }
     end
 
