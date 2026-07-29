@@ -20,6 +20,9 @@ Copy `.env.example` to `.env` and fill in the overlays you use.
 | Variable | Purpose |
 | --- | --- |
 | `RATE_LIMIT_PANEL_ENABLED` | Set to `0` to disable |
+| `RATE_LIMIT_CHANGED_INTERVAL` | Short repoll delay while usage is active (default `60`) |
+| `RATE_LIMIT_UNCHANGED_INTERVAL` | Long repoll delay after idle past the recent-change window (default `300`) |
+| `RATE_LIMIT_RECENT_CHANGE_WINDOW` | Seconds after any usage change to keep using the short interval (default `600`) |
 | `CLAUDE_PLAN_TYPE` | Default Claude plan label when not inferred |
 | `CLAUDE_USAGE_LABEL` | Claude account label override |
 | `CLAUDE_CREDENTIALS_PATH` | Force a single Claude credentials file |

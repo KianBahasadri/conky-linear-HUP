@@ -69,6 +69,13 @@ WEATHER_GAP_X="${WEATHER_GAP_X:-18}"
 WEATHER_GAP_Y="${WEATHER_GAP_Y:-12}"
 WEATHER_REFRESH_SECONDS="${WEATHER_REFRESH_SECONDS:-600}"
 WEATHER_OVERLAY_ENABLED="${WEATHER_OVERLAY_ENABLED:-1}"
+# Adaptive rate-limit polling: repoll quickly for a while after any usage change,
+# then back off when idle. Applied to all rate-limit-panel fetchers
+# (codex/claude/cursor/gemini/grok/opencode).
+RATE_LIMIT_CHANGED_INTERVAL="${RATE_LIMIT_CHANGED_INTERVAL:-60}"
+RATE_LIMIT_UNCHANGED_INTERVAL="${RATE_LIMIT_UNCHANGED_INTERVAL:-300}"
+# Keep using the short interval for this many seconds after any detected change.
+RATE_LIMIT_RECENT_CHANGE_WINDOW="${RATE_LIMIT_RECENT_CHANGE_WINDOW:-600}"
 GENERATE_ONLY=0
 MONITOR_HAS_PRIMARY=0
 
@@ -128,14 +135,17 @@ declare -A fetch_overlay_key=(
   [github]="github"
   [weather]="weather"
 )
+# Interval for non-adaptive fetchers. Rate-limit keys (codex/claude/cursor/
+# gemini/grok/opencode) use adaptive polling via fetch_render_path; their
+# fetch_interval values are unused fallbacks only.
 declare -A fetch_interval=(
-  [linear]="180"
-  [codex]="300"
-  [claude]="60"
-  [cursor]="300"
-  [gemini]="300"
-  [grok]="300"
-  [opencode]="300"
+  [linear]="60"
+  [codex]="$RATE_LIMIT_UNCHANGED_INTERVAL"
+  [claude]="$RATE_LIMIT_UNCHANGED_INTERVAL"
+  [cursor]="$RATE_LIMIT_UNCHANGED_INTERVAL"
+  [gemini]="$RATE_LIMIT_UNCHANGED_INTERVAL"
+  [grok]="$RATE_LIMIT_UNCHANGED_INTERVAL"
+  [opencode]="$RATE_LIMIT_UNCHANGED_INTERVAL"
   [minecraft]="$MINECRAFT_REFRESH_SECONDS"
   [github]="$GITHUB_REFRESH_SECONDS"
   [weather]="$WEATHER_REFRESH_SECONDS"
@@ -163,6 +173,20 @@ declare -A fetch_pid_file=(
   [minecraft]="$MINECRAFT_FETCH_PID"
   [github]="$GITHUB_FETCH_PID"
   [weather]="$WEATHER_FETCH_PID"
+)
+# Render TSV paths for rate-limit-panel fetchers that support adaptive polling.
+# Keys with an empty render path use the static fetch_interval instead.
+declare -A fetch_render_path=(
+  [linear]=""
+  [codex]="$CACHE_DIR/codex-usage-render.tsv"
+  [claude]="$CACHE_DIR/claude-usage-render.tsv"
+  [cursor]="$CACHE_DIR/cursor-usage-render.tsv"
+  [gemini]="$CACHE_DIR/gemini-usage-render.tsv"
+  [grok]="$CACHE_DIR/grok-usage-render.tsv"
+  [opencode]="$CACHE_DIR/opencode-usage-render.tsv"
+  [minecraft]=""
+  [github]=""
+  [weather]=""
 )
 
 env_flag_disabled() {
@@ -217,24 +241,75 @@ start_fetch_loop() {
   local pid_file="${fetch_pid_file[$fetch_key]}"
   local log_key="${fetch_overlay_key[$fetch_key]}"
   local log_path="${overlay_log_path[$log_key]}"
+  local render_path="${fetch_render_path[$fetch_key]:-}"
 
   stop_fetch_loop "$fetch_key"
 
   # The loop body runs in the child shell with paths passed as positional args,
   # so it must stay single-quoted (no expansion in this parent shell).
+  # Adaptive rate-limit fetchers (render_path set) fingerprint the meaningful
+  # usage data in their render TSV. After any change they keep the short interval
+  # for RATE_LIMIT_RECENT_CHANGE_WINDOW seconds, then back off. Other fetchers
+  # use the static interval.
   # shellcheck disable=SC2016
   setsid bash -c '
     script_path="$1"
     log_path="$2"
     interval_seconds="$3"
+    render_path="$4"
+    changed_interval="$5"
+    unchanged_interval="$6"
+    recent_change_window="$7"
+    fingerprint_path=""
+    last_change_path=""
+    [[ -n "$render_path" ]] && fingerprint_path="${render_path}.fingerprint"
+    [[ -n "$render_path" ]] && last_change_path="${render_path}.last_change"
+
+    compute_fingerprint() {
+      [[ -n "$render_path" && -f "$render_path" ]] || return 0
+      # Drop the volatile "meta" line (updatedAt changes every poll) and blank
+      # time-derived bar columns (resetsAt, resetAtEpoch, resetAfterSeconds) so
+      # only meaningful usage / structure contributes to the fingerprint.
+      awk -F"\t" -v OFS="\t" "
+        \$1 != \"meta\" {
+          if (\$1 == \"bar\") { \$8 = \"\"; \$9 = \"\"; \$10 = \"\" }
+          print
+        }
+      " "$render_path" | sha256sum | cut -d" " -f1
+    }
 
     while true; do
+      prev_fp=""
+      last_change_epoch=""
+      [[ -n "$fingerprint_path" && -f "$fingerprint_path" ]] && prev_fp="$(<"$fingerprint_path")"
+      [[ -n "$last_change_path" && -f "$last_change_path" ]] && last_change_epoch="$(<"$last_change_path")"
       "$script_path" >/dev/null 2>>"$log_path" || true
-      sleep "$interval_seconds"
+      if [[ -n "$render_path" ]]; then
+        new_fp="$(compute_fingerprint)"
+        now_epoch="$(date +%s)"
+        if [[ -z "$prev_fp" || "$new_fp" != "$prev_fp" ]]; then
+          printf "%s\n" "$new_fp" > "$fingerprint_path"
+          printf "%s\n" "$now_epoch" > "$last_change_path"
+          sleep "$changed_interval"
+        elif [[ "$last_change_epoch" =~ ^[0-9]+$ ]] \
+            && (( now_epoch - last_change_epoch < recent_change_window )); then
+          sleep "$changed_interval"
+        else
+          sleep "$unchanged_interval"
+        fi
+      else
+        sleep "$interval_seconds"
+      fi
     done
-  ' bash "$script_path" "$log_path" "$interval_seconds" </dev/null >/dev/null 2>&1 &
+  ' bash "$script_path" "$log_path" "$interval_seconds" "$render_path" \
+    "$RATE_LIMIT_CHANGED_INTERVAL" "$RATE_LIMIT_UNCHANGED_INTERVAL" \
+    "$RATE_LIMIT_RECENT_CHANGE_WINDOW" </dev/null >/dev/null 2>&1 &
   printf '%s\n' "$!" > "$pid_file"
-  log_overlay "$log_key" "started $label fetch loop interval=${interval_seconds}s pid=$!"
+  if [[ -n "$render_path" ]]; then
+    log_overlay "$log_key" "started $label fetch loop adaptive (changed=${RATE_LIMIT_CHANGED_INTERVAL}s unchanged=${RATE_LIMIT_UNCHANGED_INTERVAL}s recent_window=${RATE_LIMIT_RECENT_CHANGE_WINDOW}s) pid=$!"
+  else
+    log_overlay "$log_key" "started $label fetch loop interval=${interval_seconds}s pid=$!"
+  fi
 }
 
 if [[ "${1:-}" == "--generate-only" ]]; then
@@ -252,6 +327,21 @@ fi
 if [[ ! "$PRIMARY_WAIT_SECONDS" =~ ^[0-9]+$ ]]; then
   log_overlay linear "invalid PRIMARY_WAIT_SECONDS=$PRIMARY_WAIT_SECONDS; using 20"
   PRIMARY_WAIT_SECONDS=20
+fi
+
+if [[ ! "$RATE_LIMIT_CHANGED_INTERVAL" =~ ^[1-9][0-9]*$ ]]; then
+  log_overlay rate-limit-panel "invalid RATE_LIMIT_CHANGED_INTERVAL=$RATE_LIMIT_CHANGED_INTERVAL; using 60"
+  RATE_LIMIT_CHANGED_INTERVAL=60
+fi
+
+if [[ ! "$RATE_LIMIT_UNCHANGED_INTERVAL" =~ ^[1-9][0-9]*$ ]]; then
+  log_overlay rate-limit-panel "invalid RATE_LIMIT_UNCHANGED_INTERVAL=$RATE_LIMIT_UNCHANGED_INTERVAL; using 300"
+  RATE_LIMIT_UNCHANGED_INTERVAL=300
+fi
+
+if [[ ! "$RATE_LIMIT_RECENT_CHANGE_WINDOW" =~ ^[1-9][0-9]*$ ]]; then
+  log_overlay rate-limit-panel "invalid RATE_LIMIT_RECENT_CHANGE_WINDOW=$RATE_LIMIT_RECENT_CHANGE_WINDOW; using 600"
+  RATE_LIMIT_RECENT_CHANGE_WINDOW=600
 fi
 
 log_overlay linear "starting; root=$ROOT generate_only=$GENERATE_ONLY"
