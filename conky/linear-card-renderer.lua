@@ -21,17 +21,17 @@ return function(shared, repo_root)
       return { cards = {}, error = '' }
     end
 
-    local error_message = content:match('"error"%s*:%s*"(.-)"')
+    local error_message = shared.match_json_string(content, 'error')
     local cards = {}
     for object in content:gmatch('{%s-"identifier".-}') do
-      local identifier = object:match('"identifier"%s*:%s*"(.-)"')
-      local state = object:match('"state"%s*:%s*"(.-)"')
-      local title = object:match('"title"%s*:%s*"(.-)"')
+      local identifier = shared.match_json_string(object, 'identifier')
+      local state = shared.match_json_string(object, 'state')
+      local title = shared.match_json_string(object, 'title')
       local done = object:match('"done"%s*:%s*(true)') ~= nil
       local due_today = object:match('"dueToday"%s*:%s*(true)') ~= nil
-      local due_date = object:match('"dueDate"%s*:%s*"(.-)"')
+      local due_date = shared.match_json_string(object, 'dueDate')
       local competition_upcoming = object:match('"competitionUpcoming"%s*:%s*(true)') ~= nil
-      local competition_due_date = object:match('"competitionDueDate"%s*:%s*"(.-)"')
+      local competition_due_date = shared.match_json_string(object, 'competitionDueDate')
 
       if title then
         table.insert(cards, {

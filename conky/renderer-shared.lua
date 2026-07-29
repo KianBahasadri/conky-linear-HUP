@@ -12,11 +12,73 @@ function shared.read_file(path)
 end
 
 function shared.unescape_json_string(value)
-  value = value:gsub('\\n', ' ')
-  value = value:gsub('\\"', '"')
-  value = value:gsub('\\/', '/')
-  value = value:gsub('\\\\', '\\')
-  return value
+  if not value then
+    return value
+  end
+
+  -- Single-pass unescape so sequences like \\n stay as backslash + n.
+  local parts = {}
+  local index = 1
+  while index <= #value do
+    local character = value:sub(index, index)
+    if character == '\\' and index < #value then
+      local next_character = value:sub(index + 1, index + 1)
+      if next_character == 'n' or next_character == 't' or next_character == 'r' then
+        table.insert(parts, ' ')
+      elseif next_character == '"' then
+        table.insert(parts, '"')
+      elseif next_character == '/' then
+        table.insert(parts, '/')
+      elseif next_character == '\\' then
+        table.insert(parts, '\\')
+      else
+        table.insert(parts, next_character)
+      end
+      index = index + 2
+    else
+      table.insert(parts, character)
+      index = index + 1
+    end
+  end
+  return table.concat(parts)
+end
+
+-- Extract a JSON string field value, respecting escaped quotes and backslashes.
+-- Non-greedy Lua patterns like "(.-)" stop at the first ", which breaks titles
+-- such as: "add \"create new property\" button..."
+function shared.match_json_string(text, key)
+  if not text or not key then
+    return nil
+  end
+
+  local escaped_key = key:gsub('(%W)', '%%%1')
+  local _, value_start = text:find('"' .. escaped_key .. '"%s*:%s*"')
+  if not value_start then
+    return nil
+  end
+
+  local parts = {}
+  local index = value_start + 1
+  while index <= #text do
+    local character = text:sub(index, index)
+    if character == '\\' then
+      local next_character = text:sub(index + 1, index + 1)
+      if next_character == '' then
+        table.insert(parts, character)
+        break
+      end
+      table.insert(parts, character)
+      table.insert(parts, next_character)
+      index = index + 2
+    elseif character == '"' then
+      break
+    else
+      table.insert(parts, character)
+      index = index + 1
+    end
+  end
+
+  return table.concat(parts)
 end
 
 function shared.set_hex(cr, hex, alpha)
