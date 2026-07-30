@@ -100,7 +100,7 @@ def test_normalize_windows_combines_flash_and_pro_separately_from_other_quotas()
     ]
     assert windows[1]["usedPercent"] == 70
     assert windows[1]["models"] == ["claude-sonnet-4-6", "gemini-embedding-001"]
-    assert windows[0]["windowSeconds"] == gemini.DAY_SECONDS
+    assert windows[0]["windowSeconds"] == gemini.WEEK_SECONDS
 
 
 def test_normalize_windows_uses_fixed_week_for_long_reset():

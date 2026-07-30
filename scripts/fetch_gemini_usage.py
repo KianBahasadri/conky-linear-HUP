@@ -207,10 +207,13 @@ def classify_model(model_id):
     return "other"
 
 
-def quota_window_seconds(reset_after_seconds):
-    if reset_after_seconds > 2 * DAY_SECONDS:
-        return WEEK_SECONDS
-    return DAY_SECONDS
+def quota_window_seconds(_reset_after_seconds):
+    # retrieveUserQuota exposes a reset timestamp, but not the bucket's
+    # period or start timestamp. A short time until reset therefore does not
+    # prove that the bucket is a daily window; it may simply be near the end
+    # of its weekly cycle. Use the documented weekly Antigravity baseline
+    # instead of guessing from the current countdown.
+    return WEEK_SECONDS
 
 
 def normalize_windows(payload, fetched_at=None):
