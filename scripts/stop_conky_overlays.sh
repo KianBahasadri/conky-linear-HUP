@@ -9,6 +9,7 @@ RATE_LIMIT_PANEL_LOG_PATH="$CACHE_DIR/conky-rate-limit-panel.log"
 MINECRAFT_LOG_PATH="$CACHE_DIR/conky-minecraft.log"
 GITHUB_LOG_PATH="$CACHE_DIR/conky-github.log"
 WEATHER_LOG_PATH="$CACHE_DIR/conky-weather.log"
+RESOURCE_MONITOR_LOG_PATH="$CACHE_DIR/conky-resource-monitor.log"
 LINEAR_FETCH_PID="$CACHE_DIR/linear-fetch-loop.pid"
 CODEX_FETCH_PID="$CACHE_DIR/codex-fetch-loop.pid"
 CLAUDE_FETCH_PID="$CACHE_DIR/claude-fetch-loop.pid"
@@ -21,7 +22,7 @@ WEATHER_FETCH_PID="$CACHE_DIR/weather-fetch-loop.pid"
 
 mkdir -p "$CACHE_DIR"
 
-overlay_keys=(linear rate-limit-panel minecraft github weather)
+overlay_keys=(linear rate-limit-panel minecraft github weather resource-monitor)
 fetch_keys=(linear codex claude cursor gemini grok minecraft github weather)
 
 declare -A overlay_config=(
@@ -30,6 +31,7 @@ declare -A overlay_config=(
   [minecraft]="$ROOT/conky/minecraft-overlay.conkyrc"
   [github]="$ROOT/conky/github-overlay.conkyrc"
   [weather]="$ROOT/conky/weather-overlay.conkyrc"
+  [resource-monitor]="$ROOT/conky/resource-monitor-overlay.conkyrc"
 )
 declare -A overlay_log_path=(
   [linear]="$LINEAR_LOG_PATH"
@@ -37,6 +39,7 @@ declare -A overlay_log_path=(
   [minecraft]="$MINECRAFT_LOG_PATH"
   [github]="$GITHUB_LOG_PATH"
   [weather]="$WEATHER_LOG_PATH"
+  [resource-monitor]="$RESOURCE_MONITOR_LOG_PATH"
 )
 declare -A fetch_label=(
   [linear]="Linear"

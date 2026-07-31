@@ -11,3 +11,7 @@
 - [GitHub overlay](github.md) — contribution tracker
 - [Weather and running overlay](weather.md) — current conditions, air quality, and run guidance
 - [Testing](testing.md) — run the Python test suite
+
+## Layout
+
+Vertical alignment matters for every overlay: columns of labels and values, gauge tops vs Linear cards, and stacked readouts should share x-positions (and matching baselines) whenever they form a visual column. Keep text and displays vertically aligned across rows; do not leave near-miss offsets.

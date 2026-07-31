@@ -45,3 +45,10 @@ local weather = dofile(conky_dir .. '/weather-renderer.lua')(shared, repo_root)
 function conky_draw_weather()
   weather.draw()
 end
+
+-- System resource monitor
+local resource_monitor = dofile(conky_dir .. '/resource-monitor-renderer.lua')(shared, repo_root)
+
+function conky_draw_resource_monitor()
+  resource_monitor.draw()
+end

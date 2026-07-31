@@ -32,6 +32,7 @@ RATE_LIMIT_PANEL_CONFIG="$ROOT/conky/rate-limit-panel-overlay.conkyrc"
 MINECRAFT_CONFIG="$ROOT/conky/minecraft-overlay.conkyrc"
 GITHUB_CONFIG="$ROOT/conky/github-overlay.conkyrc"
 WEATHER_CONFIG="$ROOT/conky/weather-overlay.conkyrc"
+RESOURCE_MONITOR_CONFIG="$ROOT/conky/resource-monitor-overlay.conkyrc"
 GENERATED_DIR="$ROOT/conky/generated"
 CACHE_DIR="$ROOT/cache"
 LINEAR_LOG_PATH="$CACHE_DIR/conky-linear.log"
@@ -39,6 +40,7 @@ RATE_LIMIT_PANEL_LOG_PATH="$CACHE_DIR/conky-rate-limit-panel.log"
 MINECRAFT_LOG_PATH="$CACHE_DIR/conky-minecraft.log"
 GITHUB_LOG_PATH="$CACHE_DIR/conky-github.log"
 WEATHER_LOG_PATH="$CACHE_DIR/conky-weather.log"
+RESOURCE_MONITOR_LOG_PATH="$CACHE_DIR/conky-resource-monitor.log"
 LINEAR_FETCH_PID="$CACHE_DIR/linear-fetch-loop.pid"
 CODEX_FETCH_PID="$CACHE_DIR/codex-fetch-loop.pid"
 CLAUDE_FETCH_PID="$CACHE_DIR/claude-fetch-loop.pid"
@@ -69,6 +71,10 @@ WEATHER_GAP_X="${WEATHER_GAP_X:-18}"
 WEATHER_GAP_Y="${WEATHER_GAP_Y:-12}"
 WEATHER_REFRESH_SECONDS="${WEATHER_REFRESH_SECONDS:-600}"
 WEATHER_OVERLAY_ENABLED="${WEATHER_OVERLAY_ENABLED:-1}"
+RESOURCE_MONITOR_GAP_X="${RESOURCE_MONITOR_GAP_X:-0}"
+# Empty means follow Linear's per-monitor gap_y so gauge tops stay flush with cards.
+RESOURCE_MONITOR_GAP_Y="${RESOURCE_MONITOR_GAP_Y:-}"
+RESOURCE_MONITOR_OVERLAY_ENABLED="${RESOURCE_MONITOR_OVERLAY_ENABLED:-1}"
 # Adaptive rate-limit polling: repoll quickly for a while after any usage change,
 # then back off when idle. Applied to all rate-limit-panel fetchers
 # (codex/claude/cursor/gemini/grok/opencode).
@@ -79,7 +85,7 @@ RATE_LIMIT_RECENT_CHANGE_WINDOW="${RATE_LIMIT_RECENT_CHANGE_WINDOW:-600}"
 GENERATE_ONLY=0
 MONITOR_HAS_PRIMARY=0
 
-overlay_keys=(linear rate-limit-panel minecraft github weather)
+overlay_keys=(linear rate-limit-panel minecraft github weather resource-monitor)
 fetch_keys=(linear codex claude cursor gemini grok opencode minecraft github weather)
 
 declare -A overlay_disabled_name=(
@@ -88,6 +94,7 @@ declare -A overlay_disabled_name=(
   [minecraft]="minecraft"
   [github]="github"
   [weather]="weather"
+  [resource-monitor]="resource monitor"
 )
 declare -A overlay_config=(
   [linear]="$BASE_CONFIG"
@@ -95,6 +102,7 @@ declare -A overlay_config=(
   [minecraft]="$MINECRAFT_CONFIG"
   [github]="$GITHUB_CONFIG"
   [weather]="$WEATHER_CONFIG"
+  [resource-monitor]="$RESOURCE_MONITOR_CONFIG"
 )
 declare -A overlay_log_path=(
   [linear]="$LINEAR_LOG_PATH"
@@ -102,6 +110,7 @@ declare -A overlay_log_path=(
   [minecraft]="$MINECRAFT_LOG_PATH"
   [github]="$GITHUB_LOG_PATH"
   [weather]="$WEATHER_LOG_PATH"
+  [resource-monitor]="$RESOURCE_MONITOR_LOG_PATH"
 )
 declare -A overlay_enabled_var=(
   [linear]="LINEAR_OVERLAY_ENABLED"
@@ -109,6 +118,7 @@ declare -A overlay_enabled_var=(
   [minecraft]="MINECRAFT_OVERLAY_ENABLED"
   [github]="GITHUB_OVERLAY_ENABLED"
   [weather]="WEATHER_OVERLAY_ENABLED"
+  [resource-monitor]="RESOURCE_MONITOR_OVERLAY_ENABLED"
 )
 
 declare -A fetch_label=(
@@ -475,6 +485,7 @@ overlay_gap_x() {
     minecraft) printf "%s\n" "$MINECRAFT_GAP_X" ;;
     github) printf "%s\n" "$GITHUB_GAP_X" ;;
     weather) printf "%s\n" "$WEATHER_GAP_X" ;;
+    resource-monitor) printf "%s\n" "$RESOURCE_MONITOR_GAP_X" ;;
   esac
 }
 
@@ -488,6 +499,13 @@ overlay_gap_y() {
     minecraft) printf "%s\n" "$MINECRAFT_GAP_Y" ;;
     github) printf "%s\n" "$GITHUB_GAP_Y" ;;
     weather) printf "%s\n" "$WEATHER_GAP_Y" ;;
+    resource-monitor)
+      if [[ -n "$RESOURCE_MONITOR_GAP_Y" ]]; then
+        printf "%s\n" "$RESOURCE_MONITOR_GAP_Y"
+      else
+        printf "%s\n" "$linear_gap_y"
+      fi
+      ;;
   esac
 }
 
@@ -514,6 +532,9 @@ log_generated_overlay() {
       ;;
     weather)
       log_overlay weather "generated monitor_index=$monitor_index width=$width gap_x=$WEATHER_GAP_X gap_y=$WEATHER_GAP_Y config=$config_path"
+      ;;
+    resource-monitor)
+      log_overlay resource-monitor "generated monitor_index=$monitor_index width=$width gap_x=$RESOURCE_MONITOR_GAP_X gap_y=$(overlay_gap_y resource-monitor "$linear_gap_y") config=$config_path"
       ;;
   esac
 }
@@ -543,6 +564,9 @@ launch_overlay() {
       ;;
     weather)
       log_overlay weather "launched monitor_index=$monitor_index width=$width gap_x=$WEATHER_GAP_X gap_y=$WEATHER_GAP_Y config=$config_path pid=$!"
+      ;;
+    resource-monitor)
+      log_overlay resource-monitor "launched monitor_index=$monitor_index width=$width gap_x=$RESOURCE_MONITOR_GAP_X gap_y=$(overlay_gap_y resource-monitor "$linear_gap_y") config=$config_path pid=$!"
       ;;
   esac
 }

@@ -107,3 +107,15 @@ Pioneer env vars (`PIONEER_API_KEY`, `PIONEER_USAGE_LABEL`, `PIONEER_MONTHLY_CRE
 | `WEATHER_TIMEOUT_SECONDS` | Timeout for each provider request |
 
 Location resolution prefers exact coordinates, then `WEATHER_LOCATION`, then an approximate public-IP location. Exact coordinates are recommended for local conditions.
+
+## System resource monitor
+
+| Variable | Purpose |
+| --- | --- |
+| `RESOURCE_MONITOR_OVERLAY_ENABLED` | Set to `0` to disable |
+| `RESOURCE_MONITOR_GAP_X` | Horizontal gap from the right screen edge |
+| `RESOURCE_MONITOR_GAP_Y` | Optional vertical gap override; when unset, follows Linear’s per-monitor `gap_y` so gauge tops stay flush with cards |
+| `RESOURCE_HISTORY_SAMPLES` | Samples retained for sparklines; defaults to `90` |
+| `RESOURCE_NET_GAUGE_WINDOW` | Moving-average window (samples) for the NET gauge; defaults to `6` |
+
+The transparent HUD is generated on every monitor. It reads local Linux telemetry for CPU, memory, network throughput, `/` and `/home` disk usage, load average, and uptime. Each display retains its own recent samples for the active Conky session. Bottom readouts fill a 3-column grid in column-major order under the gauges (LOAD/UP, `/`/`/home`, IN/OUT); see [Layout](README.md#layout).
