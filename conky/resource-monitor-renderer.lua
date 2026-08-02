@@ -267,6 +267,160 @@ return function(shared, repo_root)
     return count > 0 and sum / count or 0
   end
 
+  -- Hourly IN/OUT maxima for the last week, shared across monitors so the
+  -- sparkline scale stays stable instead of auto-fitting the short live window.
+  local net_week_seconds = 7 * 24 * 3600
+  local net_week_flush_interval = 30
+  local net_peaks_path = repo_root .. '/cache/resource-net-peaks.tsv'
+  local net_week_peaks = {}
+  local net_week_peaks_loaded = false
+  local net_week_peaks_dirty = false
+  local net_week_peaks_last_flush = 0
+
+  local function hour_bucket(timestamp)
+    return math.floor((timestamp or 0) / 3600) * 3600
+  end
+
+  local function prune_net_week_peaks(now)
+    local cutoff = (now or os.time()) - net_week_seconds
+    for hour, _ in pairs(net_week_peaks) do
+      if hour < cutoff then
+        net_week_peaks[hour] = nil
+        net_week_peaks_dirty = true
+      end
+    end
+  end
+
+  local function merge_net_week_peak(hour, rx_rate, tx_rate)
+    if not hour then
+      return
+    end
+    local entry = net_week_peaks[hour]
+    if not entry then
+      net_week_peaks[hour] = {
+        rx = math.max(0, rx_rate or 0),
+        tx = math.max(0, tx_rate or 0),
+      }
+      net_week_peaks_dirty = true
+      return
+    end
+    local rx = math.max(0, rx_rate or 0)
+    local tx = math.max(0, tx_rate or 0)
+    if rx > (entry.rx or 0) then
+      entry.rx = rx
+      net_week_peaks_dirty = true
+    end
+    if tx > (entry.tx or 0) then
+      entry.tx = tx
+      net_week_peaks_dirty = true
+    end
+  end
+
+  local function write_net_week_peaks()
+    local hours = {}
+    for hour, _ in pairs(net_week_peaks) do
+      table.insert(hours, hour)
+    end
+    table.sort(hours)
+
+    local lines = { '# hour_epoch rx_peak_bps tx_peak_bps' }
+    for _, hour in ipairs(hours) do
+      local entry = net_week_peaks[hour]
+      table.insert(
+        lines,
+        string.format('%d %.0f %.0f', hour, entry.rx or 0, entry.tx or 0)
+      )
+    end
+
+    local tmp_path = string.format(
+      '%s.tmp.%d',
+      net_peaks_path,
+      math.floor((os.clock() % 1) * 1e9) + (os.time() % 100000)
+    )
+    local file = io.open(tmp_path, 'w')
+    if not file then
+      return
+    end
+    local wrote = file:write(table.concat(lines, '\n'))
+    wrote = wrote and file:write('\n')
+    local closed = file:close()
+    if not wrote or not closed or not os.rename(tmp_path, net_peaks_path) then
+      os.remove(tmp_path)
+      return
+    end
+    net_week_peaks_dirty = false
+    net_week_peaks_last_flush = os.time()
+  end
+
+  local function load_net_week_peaks()
+    local content = shared.read_file(net_peaks_path)
+    if content then
+      for line in content:gmatch('[^\r\n]+') do
+        if not line:match('^%s*#') then
+          local hour, rx, tx = line:match('^%s*(%d+)%s+([%d%.]+)%s+([%d%.]+)%s*$')
+          if hour then
+            merge_net_week_peak(tonumber(hour), tonumber(rx), tonumber(tx))
+          end
+        end
+      end
+    end
+    -- merge_net_week_peak marks dirty; a fresh load should not force a rewrite
+    -- unless pruning drops expired hour buckets.
+    net_week_peaks_dirty = false
+    net_week_peaks_loaded = true
+    prune_net_week_peaks(os.time())
+    if net_week_peaks_dirty then
+      write_net_week_peaks()
+    end
+  end
+
+  local function flush_net_week_peaks(now, force)
+    now = now or os.time()
+    if not net_week_peaks_dirty then
+      return
+    end
+    if not force and (now - net_week_peaks_last_flush) < net_week_flush_interval then
+      return
+    end
+
+    -- Re-read before writing so another monitor's higher peaks are not lost.
+    local content = shared.read_file(net_peaks_path)
+    if content then
+      for line in content:gmatch('[^\r\n]+') do
+        if not line:match('^%s*#') then
+          local hour, rx, tx = line:match('^%s*(%d+)%s+([%d%.]+)%s+([%d%.]+)%s*$')
+          if hour then
+            merge_net_week_peak(tonumber(hour), tonumber(rx), tonumber(tx))
+          end
+        end
+      end
+    end
+    prune_net_week_peaks(now)
+    write_net_week_peaks()
+  end
+
+  local function record_net_week_peaks(status)
+    if not net_week_peaks_loaded then
+      load_net_week_peaks()
+    end
+    local now = status.timestamp or os.time()
+    merge_net_week_peak(hour_bucket(now), status.rx_rate or 0, status.tx_rate or 0)
+    prune_net_week_peaks(now)
+    flush_net_week_peaks(now, false)
+  end
+
+  local function week_net_rate_ceiling()
+    if not net_week_peaks_loaded then
+      load_net_week_peaks()
+    end
+    prune_net_week_peaks(os.time())
+    local peak = 1024
+    for _, entry in pairs(net_week_peaks) do
+      peak = math.max(peak, entry.rx or 0, entry.tx or 0)
+    end
+    return peak
+  end
+
   local function format_rate_compact(bytes)
     if not bytes or bytes <= 0 then
       return '0'
@@ -529,19 +683,12 @@ return function(shared, repo_root)
     )
   end
 
-  local function draw_trace(cr, values, x, y, width, height, color, maximum)
-    local scale = math.max(maximum or 1, 1)
-
-    shared.set_hex(cr, colors.dim, 0.45)
-    cairo_set_line_width(cr, 0.7)
-    cairo_move_to(cr, x, y + height)
-    cairo_line_to(cr, x + width, y + height)
-    cairo_stroke(cr)
-
+  local function draw_trace_series(cr, values, x, y, width, height, color, maximum)
     if #values == 0 then
       return
     end
 
+    local scale = math.max(maximum or 1, 1)
     cairo_new_path(cr)
     for index, value in ipairs(values) do
       local progress = #values == 1 and 1 or (index - 1) / (#values - 1)
@@ -563,6 +710,29 @@ return function(shared, repo_root)
     shared.set_hex(cr, color, 1)
     cairo_arc(cr, x + width, last_y, 1.5, 0, math.pi * 2)
     cairo_fill(cr)
+  end
+
+  -- One shared plot for every series so CPU/RAM/%-scaled nets read against the
+  -- same time axis; each series keeps its own vertical scale.
+  local function draw_shared_traces(cr, series_list, x, y, width, height)
+    shared.set_hex(cr, colors.dim, 0.45)
+    cairo_set_line_width(cr, 0.7)
+    cairo_move_to(cr, x, y + height)
+    cairo_line_to(cr, x + width, y + height)
+    cairo_stroke(cr)
+
+    for _, series in ipairs(series_list) do
+      draw_trace_series(
+        cr,
+        series.values,
+        x,
+        y,
+        width,
+        height,
+        series.color,
+        series.maximum
+      )
+    end
   end
 
   local function draw_readout(cr, label, value, x, y, color, cell_width)
@@ -626,15 +796,13 @@ return function(shared, repo_root)
     local cpu_color = usage_color(status.cpu, colors.green)
     local ram_color = usage_color(status.ram, colors.violet)
     local disk_color = usage_color(math.max(status.root_disk or 0, status.home_disk or 0), colors.amber)
-    local rx_peak, tx_peak, net_peak = 1024, 1024, 1024
+    local rx_peak, tx_peak = 1024, 1024
     for _, sample in ipairs(history) do
       rx_peak = math.max(rx_peak, sample.rx_rate or 0)
       tx_peak = math.max(tx_peak, sample.tx_rate or 0)
-      net_peak = math.max(net_peak, sample.net or 0)
     end
     local rx_ceiling = math.max(1024, rx_peak * 1.12)
     local tx_ceiling = math.max(1024, tx_peak * 1.12)
-    local net_ceiling = math.max(1024, net_peak * 1.12)
     local smooth_rx = average_history_field('rx_rate', net_gauge_window)
     local smooth_tx = average_history_field('tx_rate', net_gauge_window)
     local smooth_net = smooth_rx + smooth_tx
@@ -663,15 +831,21 @@ return function(shared, repo_root)
       value_size = #format_rate_compact(smooth_net) > 4 and 10 or 12,
     }, x + 230, y + gauge_center_y, 33)
 
-    local cpu_trace, ram_trace, net_trace = {}, {}, {}
+    local cpu_trace, ram_trace, rx_trace, tx_trace = {}, {}, {}, {}
     for _, sample in ipairs(history) do
       table.insert(cpu_trace, sample.cpu or 0)
       table.insert(ram_trace, sample.ram or 0)
-      table.insert(net_trace, sample.net or 0)
+      table.insert(rx_trace, sample.rx_rate or 0)
+      table.insert(tx_trace, sample.tx_rate or 0)
     end
-    draw_trace(cr, cpu_trace, x + 12, y + 90, hud_width - 24, 8, cpu_color, 100)
-    draw_trace(cr, ram_trace, x + 12, y + 103, hud_width - 24, 8, ram_color, 100)
-    draw_trace(cr, net_trace, x + 12, y + 116, hud_width - 24, 8, colors.cyan, net_ceiling)
+    -- NET lines use the max IN/OUT rate recorded in the last week.
+    local rate_ceiling = week_net_rate_ceiling()
+    draw_shared_traces(cr, {
+      { values = cpu_trace, color = cpu_color, maximum = 100 },
+      { values = ram_trace, color = ram_color, maximum = 100 },
+      { values = rx_trace, color = colors.cyan, maximum = rate_ceiling },
+      { values = tx_trace, color = colors.magenta, maximum = rate_ceiling },
+    }, x + 12, y + 90, hud_width - 24, 34)
 
     draw_readout_grid(cr, {
       { label = 'LOAD', value = string.format('%.2f', status.load_one), color = cpu_color },
@@ -688,7 +862,7 @@ return function(shared, repo_root)
       },
       { label = 'IN', value = format_rate_compact(status.rx_rate) .. '/s', color = colors.cyan },
       { label = 'OUT', value = format_rate_compact(status.tx_rate) .. '/s', color = colors.magenta },
-    }, x + 13, y + 157, hud_width - 26, 3, 19)
+    }, x + 13, y + 153, hud_width - 26, 3, 19)
   end
 
   local function draw()
@@ -700,6 +874,7 @@ return function(shared, repo_root)
     local cr = cairo_create(surface)
     local status = collect_status(history[#history])
     record_status(status)
+    record_net_week_peaks(status)
     local x = math.max(6, math.floor((conky_window.width - hud_width) / 2))
     draw_hud(cr, status, x, 0)
 
