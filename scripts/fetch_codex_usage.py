@@ -234,13 +234,24 @@ def latest_rollout_paths(limit=20):
     return sorted(CODEX_HOME.glob("sessions/**/*.jsonl"), key=lambda path: path.stat().st_mtime, reverse=True)[:limit]
 
 
-def read_latest_local_rate_limits():
+def row_has_usage_limit_error(row):
+    payload = row.get("payload")
+    if not isinstance(payload, dict):
+        return False
+
+    error = payload.get("error")
+    return isinstance(error, dict) and error.get("codex_error_info") == "usage_limit_exceeded"
+
+
+def read_local_rate_limit_samples():
     now = int(datetime.now(timezone.utc).timestamp())
-    best = None
+    samples = []
 
     for path in latest_rollout_paths():
         if not path.is_file():
             continue
+
+        latest = None
         try:
             with path.open("r", encoding="utf-8") as rollout:
                 for line in rollout:
@@ -248,27 +259,42 @@ def read_latest_local_rate_limits():
                         row = json.loads(line)
                     except json.JSONDecodeError:
                         continue
-                    payload = row.get("payload") or {}
-                    if not isinstance(payload, dict) or not isinstance(payload.get("rate_limits"), dict):
-                        continue
+
                     event_epoch = parse_iso_epoch(row.get("timestamp"))
                     if not event_epoch:
                         continue
-                    rate_limits = payload["rate_limits"]
-                    if not local_rate_limits_have_future_window(rate_limits, now):
-                        continue
-                    if now - event_epoch > LOCAL_RATE_LIMIT_MAX_AGE_SECONDS:
-                        continue
-                    if not best or event_epoch > best["eventEpoch"]:
-                        best = {
+
+                    payload = row.get("payload") or {}
+                    rate_limits = row.get("rate_limits")
+                    if not isinstance(rate_limits, dict) and isinstance(payload, dict):
+                        rate_limits = payload.get("rate_limits")
+                    if isinstance(rate_limits, dict) and local_rate_limits_have_future_window(rate_limits, now):
+                        latest = {
                             "eventEpoch": event_epoch,
                             "path": path,
                             "rateLimits": rate_limits,
+                            "exhausted": False,
                         }
+                    elif latest and event_epoch >= latest["eventEpoch"] and row_has_usage_limit_error(row):
+                        # The endpoint can briefly report an old percentage before
+                        # Codex rejects the next turn for the same window.
+                        latest["eventEpoch"] = event_epoch
+                        latest["exhausted"] = True
         except OSError as error:
             log_event(f"could not read Codex rollout for local rate limits path={path}: {error}")
 
-    return best
+        if latest and now - latest["eventEpoch"] <= LOCAL_RATE_LIMIT_MAX_AGE_SECONDS:
+            samples.append(latest)
+
+    return samples
+
+
+def read_latest_local_rate_limits():
+    """Return the newest local sample for callers that only need one profile."""
+    samples = read_local_rate_limit_samples()
+    if samples:
+        return max(samples, key=lambda sample: sample["eventEpoch"])
+    return None
 
 
 def local_rate_limits_have_future_window(rate_limits, now):
@@ -285,9 +311,10 @@ def local_rate_limit_windows(local_rate_limits):
 
     rate_limits = local_rate_limits["rateLimits"]
     now = int(datetime.now(timezone.utc).timestamp())
+    exhausted = local_rate_limits.get("exhausted", False)
     windows = []
-    primary = normalize_local_rate_limit_window("5h", rate_limits.get("primary"), now)
-    secondary = normalize_local_rate_limit_window("weekly", rate_limits.get("secondary"), now)
+    primary = normalize_local_rate_limit_window("5h", rate_limits.get("primary"), now, exhausted=exhausted)
+    secondary = normalize_local_rate_limit_window("weekly", rate_limits.get("secondary"), now, exhausted=exhausted)
     if primary:
         windows.append(primary)
     if secondary:
@@ -295,18 +322,22 @@ def local_rate_limit_windows(local_rate_limits):
     return windows
 
 
-def normalize_local_rate_limit_window(label, window, now):
+def normalize_local_rate_limit_window(label, window, now, exhausted=False):
     if not isinstance(window, dict):
         return None
 
     reset_at = as_int(window.get("resets_at"))
     window_seconds = as_int(window.get("window_minutes")) * 60
     used_percent = max(0.0, min(100.0, as_float(window.get("used_percent"))))
+    if exhausted:
+        used_percent = 100.0
     if reset_at <= now or window_seconds <= 0:
         return None
 
+    normalized_label = "weekly" if window_seconds > LONG_WINDOW_THRESHOLD_SECONDS else "5h"
+
     return {
-        "label": label,
+        "label": normalized_label,
         "usedPercent": round(used_percent, 1),
         "remainingPercent": max(0, round(100 - used_percent, 1)),
         "resetsAt": datetime.fromtimestamp(reset_at, tz=timezone.utc).isoformat(),
@@ -417,12 +448,16 @@ def carry_forward_previous_windows(account, previous_accounts):
     return account
 
 
-def normalize_window(label, window, fetched_at):
+def normalize_window(label, window, fetched_at, exhausted=False):
     if not isinstance(window, dict):
         return None
 
     limit_window_seconds = as_int(window.get("limit_window_seconds"))
     used_percent = max(0.0, min(100.0, as_float(window.get("used_percent"))))
+    if exhausted:
+        # The API's reached/allowed flags are authoritative when the numeric
+        # percentage is stale or inconsistent with the account's actual state.
+        used_percent = 100.0
     reset_at = as_float(window.get("reset_at"))
     reset_after_seconds = as_int(window.get("reset_after_seconds"))
     resets_at_iso = None
@@ -461,6 +496,7 @@ def normalize_usage(auth, usage, is_selected):
     fetched_at = datetime.now(timezone.utc)
     windows = []
     labels_seen = set()
+    exhausted = rate_limit.get("limit_reached") is True or rate_limit.get("allowed") is False
 
     if is_paid_plan(plan_type) and meaningful_window_count(usage) == 0:
         return {
@@ -475,7 +511,7 @@ def normalize_usage(auth, usage, is_selected):
         }
 
     for label, key in (("5h", "primary_window"), ("weekly", "secondary_window")):
-        normalized = normalize_window(label, rate_limit.get(key), fetched_at)
+        normalized = normalize_window(label, rate_limit.get(key), fetched_at, exhausted=exhausted)
         if not normalized:
             continue
         if normalized["label"] in labels_seen:
@@ -535,51 +571,69 @@ def matching_local_window_count(account, local_windows):
 
 
 def apply_local_rate_limits(accounts, local_rate_limits):
-    windows = local_rate_limit_windows(local_rate_limits)
-    if not windows:
+    if isinstance(local_rate_limits, list):
+        samples = local_rate_limits
+    elif isinstance(local_rate_limits, dict):
+        samples = [local_rate_limits]
+    else:
+        samples = []
+
+    if not samples:
         return accounts
 
-    local_plan_type = str(local_rate_limits["rateLimits"].get("plan_type", "")).lower()
-    candidates = []
-    for account in accounts:
-        account_plan_type = str(account.get("planType", "")).lower()
-        if local_plan_type and account_plan_type and local_plan_type != account_plan_type:
+    applied_epochs = {}
+    for local_sample in sorted(samples, key=lambda sample: sample.get("eventEpoch", 0)):
+        windows = local_rate_limit_windows(local_sample)
+        if not windows:
             continue
 
-        match_count = matching_local_window_count(account, windows)
-        if match_count <= 0:
+        local_plan_type = str(local_sample["rateLimits"].get("plan_type", "")).lower()
+        candidates = []
+        for account in accounts:
+            account_plan_type = str(account.get("planType", "")).lower()
+            if local_plan_type and account_plan_type and local_plan_type != account_plan_type:
+                continue
+
+            match_count = matching_local_window_count(account, windows)
+            if match_count <= 0:
+                continue
+
+            score = (match_count, 0 if account.get("carriedForward") else 1)
+            candidates.append((score, account))
+
+        if not candidates:
+            log_event(
+                "ignored local Codex session rate_limits because no account API windows "
+                f"matched path={local_sample['path'].name}"
+            )
             continue
 
-        score = (match_count, 0 if account.get("carriedForward") else 1)
-        candidates.append((score, account))
+        candidates.sort(key=lambda candidate: candidate[0], reverse=True)
+        best_score, best_account = candidates[0]
+        if len(candidates) > 1 and candidates[1][0] == best_score:
+            labels = ",".join(candidate[1].get("label", "") for candidate in candidates if candidate[0] == best_score)
+            log_event(
+                "ignored local Codex session rate_limits because the account match was ambiguous "
+                f"accounts={labels} path={local_sample['path'].name}"
+            )
+            continue
 
-    if not candidates:
+        account_label = best_account.get("label", "")
+        if local_sample.get("eventEpoch", 0) < applied_epochs.get(account_label, -1):
+            continue
+
+        best_account["windows"] = windows
+        best_account["localRateLimits"] = True
+        best_account["localRateLimitsPath"] = str(local_sample["path"])
+        best_account["localRateLimitsUpdatedAt"] = datetime.fromtimestamp(
+            local_sample["eventEpoch"], tz=timezone.utc
+        ).isoformat()
+        applied_epochs[account_label] = local_sample.get("eventEpoch", 0)
         log_event(
-            "ignored local Codex session rate_limits because no account API windows "
-            f"matched path={local_rate_limits['path'].name}"
+            f"account={account_label} matched local Codex session rate_limits "
+            f"windows={len(windows)} path={local_sample['path'].name}"
         )
-        return accounts
 
-    candidates.sort(key=lambda candidate: candidate[0], reverse=True)
-    best_score, best_account = candidates[0]
-    if len(candidates) > 1 and candidates[1][0] == best_score:
-        labels = ",".join(candidate[1].get("label", "") for candidate in candidates if candidate[0] == best_score)
-        log_event(
-            "ignored local Codex session rate_limits because the account match was ambiguous "
-            f"accounts={labels} path={local_rate_limits['path'].name}"
-        )
-        return accounts
-
-    best_account["windows"] = windows
-    best_account["localRateLimits"] = True
-    best_account["localRateLimitsPath"] = str(local_rate_limits["path"])
-    best_account["localRateLimitsUpdatedAt"] = datetime.fromtimestamp(
-        local_rate_limits["eventEpoch"], tz=timezone.utc
-    ).isoformat()
-    log_event(
-        f"account={best_account.get('label', '')} matched local Codex session rate_limits "
-        f"windows={len(windows)} path={local_rate_limits['path'].name}"
-    )
     return accounts
 
 
@@ -641,7 +695,7 @@ def main():
     configure_from_env()
     auth_files = discover_auth_files()
     previous_accounts = load_previous_accounts()
-    local_rate_limits = read_latest_local_rate_limits()
+    local_rate_limits = read_local_rate_limit_samples()
     labels = ",".join(label for label, _, _ in auth_files)
     log_event(f"starting Codex usage fetch accounts={labels or 'none'}")
 

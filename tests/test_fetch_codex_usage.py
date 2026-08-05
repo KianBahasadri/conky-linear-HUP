@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -113,3 +114,102 @@ def test_ambiguous_local_rate_limit_match_is_ignored():
 
     assert all("localRateLimits" not in account for account in accounts)
     assert all([item["usedPercent"] for item in account["windows"]] == [10, 20] for account in accounts)
+
+
+def test_reached_api_quota_overrides_stale_window_percentage():
+    now = int(datetime.now(timezone.utc).timestamp())
+    auth = {"label": "ahmad", "email": "", "account_id": ""}
+    usage = {
+        "plan_type": "plus",
+        "rate_limit": {
+            "allowed": False,
+            "limit_reached": True,
+            "primary_window": {
+                "used_percent": 47,
+                "limit_window_seconds": codex.WEEKLY_WINDOW_SECONDS,
+                "reset_after_seconds": 3600,
+                "reset_at": now + 3600,
+            },
+            "secondary_window": None,
+        },
+    }
+
+    account = codex.normalize_usage(auth, usage, False)
+
+    assert account["windows"][0]["usedPercent"] == 100.0
+    assert account["windows"][0]["remainingPercent"] == 0
+
+
+def test_local_weekly_primary_window_matches_api_weekly_window():
+    now = int(datetime.now(timezone.utc).timestamp())
+    reset_at = now + 3600
+    accounts = [
+        {
+            "ok": True,
+            "label": "ahmad",
+            "planType": "plus",
+            "windows": [window("weekly", 47, reset_at, codex.WEEKLY_WINDOW_SECONDS)],
+        }
+    ]
+    local_sample = {
+        "eventEpoch": now,
+        "path": Path("/tmp/rollout-ahmad.jsonl"),
+        "rateLimits": {
+            "plan_type": "plus",
+            "primary": {"used_percent": 47, "window_minutes": 10080, "resets_at": reset_at},
+            "secondary": None,
+        },
+        "exhausted": True,
+    }
+
+    codex.apply_local_rate_limits(accounts, [local_sample])
+
+    assert accounts[0]["localRateLimits"] is True
+    assert accounts[0]["windows"][0]["label"] == "weekly"
+    assert accounts[0]["windows"][0]["usedPercent"] == 100.0
+
+
+def test_rollout_usage_limit_error_marks_latest_sample_exhausted(tmp_path, monkeypatch):
+    now = datetime.now(timezone.utc)
+    reset_at = int(now.timestamp()) + 3600
+    path = tmp_path / "rollout-ahmad.jsonl"
+    path.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "timestamp": now.isoformat(),
+                            "rate_limits": {
+                                "plan_type": "plus",
+                                "primary": {
+                                    "used_percent": 47,
+                                    "window_minutes": 10080,
+                                    "resets_at": reset_at,
+                                },
+                                "secondary": None,
+                            },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "timestamp": datetime.fromtimestamp(
+                            now.timestamp() + 1, tz=timezone.utc
+                        ).isoformat(),
+                        "payload": {
+                            "type": "task_complete",
+                            "error": {"codex_error_info": "usage_limit_exceeded"},
+                        },
+                    }
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(codex, "latest_rollout_paths", lambda: [path])
+
+    samples = codex.read_local_rate_limit_samples()
+
+    assert len(samples) == 1
+    assert samples[0]["exhausted"] is True
+    assert codex.local_rate_limit_windows(samples[0])[0]["usedPercent"] == 100.0

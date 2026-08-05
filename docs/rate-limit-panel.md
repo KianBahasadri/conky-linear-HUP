@@ -11,6 +11,7 @@
 
 - Multiple accounts are discovered from `~/.local/share/clusterfork-auth/codex/auth.json.*`; `CODEX_AUTH_PATH` forces a single auth file. The legacy path `~/.codex/auth.json.*` is used as a fallback when the shared store directory does not exist.
 - `CODEX_HOME`, `CODEX_SQLITE_HOME`, `CODEX_AUTH_STORE_DIR`, `CODEX_USAGE_DEGENERATE_RETRIES`, and `CODEX_LOCAL_RATE_LIMIT_MAX_AGE_SECONDS` are advanced overrides for local Codex state discovery and retry behavior. Local session rate limits do not include an account ID, so they are only applied when their reset windows uniquely match one account's API response.
+- Recent Codex rollout samples are evaluated per session, not as one global latest sample. They can override a stale usage endpoint value when the plan, window duration, and reset time uniquely identify an account; a following local `usage_limit_exceeded` event marks that matching window exhausted until a newer sample arrives.
 
 ## Claude
 
