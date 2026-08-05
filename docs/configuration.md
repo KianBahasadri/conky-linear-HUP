@@ -34,7 +34,7 @@ Copy `.env.example` to `.env` and fill in the overlays you use.
 | `CODEX_SQLITE_HOME` | Override Codex local state sqlite directory |
 | `CODEX_AUTH_STORE_DIR` | Override the shared Codex auth store directory |
 | `CODEX_USAGE_DEGENERATE_RETRIES` | Retries when Codex returns degenerate usage windows |
-| `CODEX_LOCAL_RATE_LIMIT_MAX_AGE_SECONDS` | Max age for local Codex session rate limits |
+| `CODEX_LOCAL_RATE_LIMIT_MAX_AGE_SECONDS` | Max age for local Codex session rate-limit diagnostics |
 | `CURSOR_AUTH_PATH` | Force a single Cursor auth file |
 | `CURSOR_HOME` | Override the Cursor config directory |
 | `CURSOR_AUTH_STORE_DIR` | Override the shared Cursor auth store directory |

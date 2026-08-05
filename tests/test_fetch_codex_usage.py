@@ -75,6 +75,58 @@ def test_local_rate_limit_log_includes_before_and_after_values(monkeypatch):
     )
 
 
+def test_fresh_endpoint_data_is_authoritative_for_every_account(monkeypatch):
+    now = int(datetime.now(timezone.utc).timestamp())
+    accounts = [
+        {
+            "ok": True,
+            "endpointFresh": True,
+            "label": "aryk",
+            "planType": "plus",
+            "windows": [
+                window("5h", 100, now + 12000, codex.FIVE_HOUR_WINDOW_SECONDS),
+                window("weekly", 100, now + 520000, codex.WEEKLY_WINDOW_SECONDS),
+            ],
+        },
+        {
+            "ok": True,
+            "endpointFresh": True,
+            "label": "ryan",
+            "planType": "plus",
+            "windows": [
+                window("5h", 20, now + 17000, codex.FIVE_HOUR_WINDOW_SECONDS),
+                window("weekly", 30, now + 600000, codex.WEEKLY_WINDOW_SECONDS),
+            ],
+        },
+    ]
+    ryan_local_sample = {
+        "eventEpoch": now,
+        "path": Path("/tmp/rollout-ryan.jsonl"),
+        "rateLimits": {
+            "plan_type": "plus",
+            "primary": {
+                "used_percent": 90,
+                "window_minutes": 300,
+                "resets_at": now + 17000,
+            },
+            "secondary": {
+                "used_percent": 80,
+                "window_minutes": 10080,
+                "resets_at": now + 600000,
+            },
+        },
+    }
+    events = []
+    monkeypatch.setattr(codex, "log_event", events.append)
+
+    codex.apply_local_rate_limits(accounts, [local_rate_limits(now), ryan_local_sample])
+
+    assert [item["usedPercent"] for item in accounts[0]["windows"]] == [100, 100]
+    assert [item["usedPercent"] for item in accounts[1]["windows"]] == [20, 30]
+    assert all("localRateLimits" not in account for account in accounts)
+    assert sum("endpoint data is authoritative" in event for event in events) == 2
+
+
 def test_final_account_log_includes_source_and_values(monkeypatch):
     events = []
     monkeypatch.setattr(codex, "log_event", events.append)
@@ -197,6 +249,7 @@ def test_reached_api_quota_overrides_stale_window_percentage():
 
     account = codex.normalize_usage(auth, usage, False)
 
+    assert account["endpointFresh"] is True
     assert account["windows"][0]["usedPercent"] == 100.0
     assert account["windows"][0]["remainingPercent"] == 0
 

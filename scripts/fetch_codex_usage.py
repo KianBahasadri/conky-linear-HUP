@@ -401,53 +401,6 @@ def retry_degenerate_usage(auth, label, usage):
     return best_usage
 
 
-def load_previous_accounts():
-    try:
-        previous = json.loads(OUTPUT_PATH.read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
-
-    accounts = {}
-    for account in previous.get("accounts", []):
-        label = account.get("label", "")
-        if label:
-            accounts[label] = account
-    return accounts
-
-
-def future_windows(account):
-    now = int(datetime.now(timezone.utc).timestamp())
-    windows = []
-    for window in account.get("windows", []):
-        reset_at = as_int(window.get("resetAtEpoch"))
-        if reset_at > now:
-            windows.append(window)
-    return windows
-
-
-def carry_forward_previous_windows(account, previous_accounts):
-    previous = previous_accounts.get(account.get("label", ""))
-    if not previous:
-        return account
-
-    previous_windows = future_windows(previous)
-    if not previous_windows:
-        return account
-
-    current_has_future_window = any(as_int(window.get("resetAtEpoch")) > 0 for window in account.get("windows", []))
-    if current_has_future_window:
-        return account
-
-    plan_type = str(account.get("planType") or previous.get("planType") or "").lower()
-    if plan_type not in ("plus", "pro", "team", "enterprise"):
-        return account
-
-    account["windows"] = previous_windows
-    account["carriedForward"] = True
-    account["error"] = account.get("error", "")
-    return account
-
-
 def normalize_window(label, window, fetched_at, exhausted=False):
     if not isinstance(window, dict):
         return None
@@ -518,8 +471,6 @@ def local_rate_limit_path_name(account):
 def account_value_source(account):
     if account.get("localRateLimits"):
         return "local"
-    if account.get("carriedForward"):
-        return "carried-forward"
     if account.get("ok"):
         return "api"
     return "error"
@@ -531,6 +482,7 @@ def log_final_account(account):
         f"account={account.get('label', '')}",
         "stage=final",
         f"ok={1 if account.get('ok') else 0}",
+        f"endpoint_fresh={1 if account.get('endpointFresh') else 0}",
         f"selected={1 if account.get('isSelected') else 0}",
         f"plan={account.get('planType') or 'unknown'}",
         f"source={account_value_source(account)}",
@@ -540,8 +492,6 @@ def log_final_account(account):
     if account.get("localRateLimits"):
         fields.append(f"local_path={local_rate_limit_path_name(account)}")
         fields.append(f"local_updated={account.get('localRateLimitsUpdatedAt') or '-'}")
-    if account.get("carriedForward"):
-        fields.append("carried_forward=1")
     if account.get("error"):
         fields.append(f"error={account['error']}")
     log_event(" ".join(fields))
@@ -558,6 +508,7 @@ def normalize_usage(auth, usage, is_selected):
     if is_paid_plan(plan_type) and meaningful_window_count(usage) == 0:
         return {
             "ok": True,
+            "endpointFresh": True,
             "label": auth["label"],
             "email": auth["email"],
             "accountId": auth["account_id"],
@@ -579,6 +530,7 @@ def normalize_usage(auth, usage, is_selected):
 
     return {
         "ok": True,
+        "endpointFresh": True,
         "label": auth["label"],
         "email": auth["email"],
         "accountId": auth["account_id"],
@@ -591,6 +543,7 @@ def normalize_usage(auth, usage, is_selected):
 def normalize_error(label, message, is_selected=False):
     return {
         "ok": False,
+        "endpointFresh": False,
         "label": label,
         "error": message,
         "isSelected": is_selected,
@@ -647,7 +600,12 @@ def apply_local_rate_limits(accounts, local_rate_limits):
 
         local_plan_type = str(local_sample["rateLimits"].get("plan_type", "")).lower()
         candidates = []
+        endpoint_accounts = []
         for account in accounts:
+            if account.get("endpointFresh"):
+                endpoint_accounts.append(account.get("label", ""))
+                continue
+
             account_plan_type = str(account.get("planType", "")).lower()
             if local_plan_type and account_plan_type and local_plan_type != account_plan_type:
                 continue
@@ -656,14 +614,21 @@ def apply_local_rate_limits(accounts, local_rate_limits):
             if match_count <= 0:
                 continue
 
-            score = (match_count, 0 if account.get("carriedForward") else 1)
+            score = (match_count,)
             candidates.append((score, account))
 
         if not candidates:
-            log_event(
-                "ignored local Codex session rate_limits because no account API windows "
-                f"matched path={local_sample['path'].name} values={local_values}"
-            )
+            if endpoint_accounts:
+                log_event(
+                    "discarded local Codex session rate_limits because endpoint data is authoritative "
+                    f"accounts={','.join(endpoint_accounts)} path={local_sample['path'].name} "
+                    f"values={local_values}"
+                )
+            else:
+                log_event(
+                    "ignored local Codex session rate_limits because no account API windows "
+                    f"matched path={local_sample['path'].name} values={local_values}"
+                )
             continue
 
         candidates.sort(key=lambda candidate: candidate[0], reverse=True)
@@ -763,14 +728,12 @@ def main():
     common.load_env()
     configure_from_env()
     auth_files = discover_auth_files()
-    previous_accounts = load_previous_accounts()
     local_rate_limits = read_local_rate_limit_samples()
     labels = ",".join(label for label, _, _ in auth_files)
     log_event(f"starting Codex usage fetch accounts={labels or 'none'}")
 
     try:
         accounts = [fetch_account(label, path, is_selected) for label, path, is_selected in auth_files]
-        accounts = [carry_forward_previous_windows(account, previous_accounts) for account in accounts]
         accounts = apply_local_rate_limits(accounts, local_rate_limits)
         accounts = sort_accounts(accounts)
         for account in accounts:
