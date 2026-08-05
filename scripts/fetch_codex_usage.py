@@ -490,6 +490,63 @@ def normalize_window(label, window, fetched_at, exhausted=False):
     }
 
 
+def format_usage_windows(windows):
+    """Format normalized windows for diagnostics without including credentials."""
+    if not windows:
+        return "none"
+
+    formatted = []
+    for window in windows:
+        label = str(window.get("label") or "unknown")
+        used_percent = as_float(window.get("usedPercent"))
+        remaining_percent = as_float(window.get("remainingPercent"))
+        reset_at = str(window.get("resetsAt") or "-")
+        reset_after = as_int(window.get("resetAfterSeconds"))
+        window_seconds = as_int(window.get("windowSeconds"))
+        formatted.append(
+            f"{label}(used={used_percent:.1f}%,remaining={remaining_percent:.1f}%,"
+            f"reset={reset_at},reset_after={reset_after}s,window={window_seconds}s)"
+        )
+    return ";".join(formatted)
+
+
+def local_rate_limit_path_name(account):
+    path = account.get("localRateLimitsPath")
+    return Path(path).name if path else "-"
+
+
+def account_value_source(account):
+    if account.get("localRateLimits"):
+        return "local"
+    if account.get("carriedForward"):
+        return "carried-forward"
+    if account.get("ok"):
+        return "api"
+    return "error"
+
+
+def log_final_account(account):
+    """Log the exact normalized values that will be written for one account."""
+    fields = [
+        f"account={account.get('label', '')}",
+        "stage=final",
+        f"ok={1 if account.get('ok') else 0}",
+        f"selected={1 if account.get('isSelected') else 0}",
+        f"plan={account.get('planType') or 'unknown'}",
+        f"source={account_value_source(account)}",
+        f"windows={len(account.get('windows') or [])}",
+        f"values={format_usage_windows(account.get('windows') or [])}",
+    ]
+    if account.get("localRateLimits"):
+        fields.append(f"local_path={local_rate_limit_path_name(account)}")
+        fields.append(f"local_updated={account.get('localRateLimitsUpdatedAt') or '-'}")
+    if account.get("carriedForward"):
+        fields.append("carried_forward=1")
+    if account.get("error"):
+        fields.append(f"error={account['error']}")
+    log_event(" ".join(fields))
+
+
 def normalize_usage(auth, usage, is_selected):
     rate_limit = usage.get("rate_limit") or {}
     plan_type = usage.get("plan_type", "")
@@ -586,6 +643,7 @@ def apply_local_rate_limits(accounts, local_rate_limits):
         windows = local_rate_limit_windows(local_sample)
         if not windows:
             continue
+        local_values = format_usage_windows(windows)
 
         local_plan_type = str(local_sample["rateLimits"].get("plan_type", "")).lower()
         candidates = []
@@ -604,7 +662,7 @@ def apply_local_rate_limits(accounts, local_rate_limits):
         if not candidates:
             log_event(
                 "ignored local Codex session rate_limits because no account API windows "
-                f"matched path={local_sample['path'].name}"
+                f"matched path={local_sample['path'].name} values={local_values}"
             )
             continue
 
@@ -614,14 +672,21 @@ def apply_local_rate_limits(accounts, local_rate_limits):
             labels = ",".join(candidate[1].get("label", "") for candidate in candidates if candidate[0] == best_score)
             log_event(
                 "ignored local Codex session rate_limits because the account match was ambiguous "
-                f"accounts={labels} path={local_sample['path'].name}"
+                f"accounts={labels} path={local_sample['path'].name} values={local_values}"
             )
             continue
 
         account_label = best_account.get("label", "")
         if local_sample.get("eventEpoch", 0) < applied_epochs.get(account_label, -1):
+            log_event(
+                f"account={account_label} ignored older local Codex session rate_limits "
+                f"event={local_sample.get('eventEpoch', 0)} "
+                f"newer_event={applied_epochs[account_label]} "
+                f"path={local_sample['path'].name} values={local_values}"
+            )
             continue
 
+        previous_values = format_usage_windows(best_account.get("windows") or [])
         best_account["windows"] = windows
         best_account["localRateLimits"] = True
         best_account["localRateLimitsPath"] = str(local_sample["path"])
@@ -629,9 +694,12 @@ def apply_local_rate_limits(accounts, local_rate_limits):
             local_sample["eventEpoch"], tz=timezone.utc
         ).isoformat()
         applied_epochs[account_label] = local_sample.get("eventEpoch", 0)
+        local_event = best_account["localRateLimitsUpdatedAt"]
         log_event(
             f"account={account_label} matched local Codex session rate_limits "
-            f"windows={len(windows)} path={local_sample['path'].name}"
+            f"windows={len(windows)} event={local_event} path={local_sample['path'].name} "
+            f"previous_values={previous_values} local_values={local_values} "
+            f"final_values={format_usage_windows(best_account['windows'])}"
         )
 
     return accounts
@@ -682,7 +750,8 @@ def fetch_account(label, path, is_selected):
         account = normalize_usage(auth, usage, is_selected)
         log_event(
             f"account={label} completed plan={account['planType'] or 'unknown'} "
-            f"windows={len(account['windows'])}"
+            f"windows={len(account['windows'])} source=api "
+            f"values={format_usage_windows(account['windows'])}"
         )
         return account
     except Exception as error:
@@ -704,6 +773,8 @@ def main():
         accounts = [carry_forward_previous_windows(account, previous_accounts) for account in accounts]
         accounts = apply_local_rate_limits(accounts, local_rate_limits)
         accounts = sort_accounts(accounts)
+        for account in accounts:
+            log_final_account(account)
         ok_count = sum(1 for account in accounts if account.get("ok"))
         output = {
             "updatedAt": datetime.now(timezone.utc).isoformat(),

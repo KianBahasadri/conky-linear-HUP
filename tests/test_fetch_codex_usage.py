@@ -37,6 +37,67 @@ def local_rate_limits(now):
     }
 
 
+def test_format_usage_windows_includes_values_and_reset_details():
+    reset_at = 1_800_000_000
+    values = codex.format_usage_windows(
+        [window("weekly", 93.0, reset_at, codex.WEEKLY_WINDOW_SECONDS)]
+    )
+
+    assert values == (
+        "weekly(used=93.0%,remaining=7.0%,reset=2027-01-15T08:00:00+00:00,"
+        "reset_after=3600s,window=604800s)"
+    )
+
+
+def test_local_rate_limit_log_includes_before_and_after_values(monkeypatch):
+    now = int(datetime.now(timezone.utc).timestamp())
+    accounts = [
+        {
+            "ok": True,
+            "label": "aryk",
+            "planType": "plus",
+            "windows": [
+                window("5h", 80, now + 12000, codex.FIVE_HOUR_WINDOW_SECONDS),
+                window("weekly", 39, now + 520000, codex.WEEKLY_WINDOW_SECONDS),
+            ],
+        }
+    ]
+    events = []
+    monkeypatch.setattr(codex, "log_event", events.append)
+
+    codex.apply_local_rate_limits(accounts, local_rate_limits(now))
+
+    assert any(
+        "previous_values=5h(used=80.0%,remaining=20.0%" in event
+        and "local_values=5h(used=82.0%,remaining=18.0%" in event
+        and "final_values=5h(used=82.0%,remaining=18.0%" in event
+        for event in events
+    )
+
+
+def test_final_account_log_includes_source_and_values(monkeypatch):
+    events = []
+    monkeypatch.setattr(codex, "log_event", events.append)
+    account = {
+        "ok": True,
+        "label": "ricky",
+        "planType": "plus",
+        "isSelected": True,
+        "windows": [window("weekly", 1.0, 1_800_000_000, codex.WEEKLY_WINDOW_SECONDS)],
+        "localRateLimits": True,
+        "localRateLimitsPath": "/tmp/rollout-ricky.jsonl",
+        "localRateLimitsUpdatedAt": "2027-01-15T07:00:00+00:00",
+    }
+
+    codex.log_final_account(account)
+
+    assert len(events) == 1
+    assert "stage=final" in events[0]
+    assert "source=local" in events[0]
+    assert "values=weekly(used=1.0%,remaining=99.0%" in events[0]
+    assert "local_path=rollout-ricky.jsonl" in events[0]
+
+
 def test_local_rate_limits_follow_matching_account_after_profile_switch():
     now = int(datetime.now(timezone.utc).timestamp())
     aryk_primary_reset = now + 12000
