@@ -153,7 +153,8 @@ def test_read_firefox_opencode_cookies(tmp_path):
             name TEXT,
             value TEXT,
             host TEXT,
-            expiry INTEGER
+            expiry INTEGER,
+            originAttributes TEXT NOT NULL DEFAULT ''
         )
         """
     )
@@ -172,6 +173,68 @@ def test_read_firefox_opencode_cookies(tmp_path):
     cookies = opencode.read_firefox_opencode_cookies(profile)
     assert cookies == {"auth": "token-value", "oc_locale": "en"}
     assert opencode.cookie_header_from_firefox(profile).startswith("auth=token-value")
+
+
+def test_read_firefox_opencode_cookies_filters_named_container(monkeypatch, tmp_path):
+    profile = tmp_path / "profile"
+    profile.mkdir()
+    (profile / "containers.json").write_text(
+        json.dumps(
+            {
+                "identities": [
+                    {"name": "other account", "userContextId": 7},
+                    {"name": "kian ALT", "userContextId": 6},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    db_path = profile / "cookies.sqlite"
+    connection = sqlite3.connect(db_path)
+    connection.execute(
+        """
+        CREATE TABLE moz_cookies (
+            name TEXT,
+            value TEXT,
+            host TEXT,
+            expiry INTEGER,
+            originAttributes TEXT NOT NULL DEFAULT ''
+        )
+        """
+    )
+    connection.executemany(
+        """
+        INSERT INTO moz_cookies (name, value, host, expiry, originAttributes)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        [
+            ("auth", "other-token", "opencode.ai", 2_000_000_000_000, "^userContextId=7"),
+            ("auth", "kian-token", "opencode.ai", 2_000_000_000_000, "^userContextId=6"),
+            ("oc_locale", "en", "opencode.ai", 2_000_000_000_000, "^userContextId=6"),
+            ("auth", "default-token", "opencode.ai", 2_000_000_000_000, ""),
+        ],
+    )
+    connection.commit()
+    connection.close()
+
+    monkeypatch.setenv("OPENCODE_FIREFOX_CONTAINER", "kian alt")
+
+    assert opencode.read_firefox_opencode_cookies(profile) == {
+        "auth": "kian-token",
+        "oc_locale": "en",
+    }
+
+
+def test_resolve_firefox_container_id_rejects_unknown_name(tmp_path):
+    profile = tmp_path / "profile"
+    profile.mkdir()
+    (profile / "containers.json").write_text(
+        json.dumps({"identities": [{"name": "kian ALT", "userContextId": 6}]}),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RuntimeError, match="container not found"):
+        opencode.resolve_firefox_container_id(profile, "missing")
 
 
 def test_workspace_url_accepts_url_or_id(monkeypatch):

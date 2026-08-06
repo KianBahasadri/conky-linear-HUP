@@ -36,6 +36,7 @@ WORKSPACE_ID_ENV = "OPENCODE_WORKSPACE_ID"
 COOKIE_ENV_NAMES = ("OPENCODE_COOKIE", "OPENCODE_AUTH_COOKIE")
 FIREFOX_PROFILE_ENV = "OPENCODE_FIREFOX_PROFILE"
 FIREFOX_HOME_ENV = "OPENCODE_FIREFOX_HOME"
+FIREFOX_CONTAINER_ENV = "OPENCODE_FIREFOX_CONTAINER"
 COOKIE_HOST_SUFFIX = "opencode.ai"
 USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/131 Safari/537.36"
 
@@ -154,9 +155,73 @@ def _cookie_expiry_epoch_seconds(expiry):
     return value
 
 
+def _origin_attributes_user_context_id(origin_attributes):
+    """Return Firefox's container id from a cookie originAttributes value."""
+    attributes = str(origin_attributes or "").lstrip("^")
+    for attribute in attributes.split("&"):
+        key, separator, value = attribute.partition("=")
+        if separator and key == "userContextId":
+            try:
+                return int(value)
+            except ValueError:
+                return None
+    return None
+
+
+def resolve_firefox_container_id(profile_dir=None, container_name=None):
+    """Resolve a configured Firefox container name to its userContextId."""
+    requested = (
+        container_name
+        if container_name is not None
+        else os.environ.get(FIREFOX_CONTAINER_ENV, "")
+    ).strip()
+    if not requested:
+        return None
+
+    profile_dir = Path(profile_dir or resolve_firefox_profile_dir())
+    containers_path = profile_dir / "containers.json"
+    try:
+        container_data = json.loads(containers_path.read_text(encoding="utf-8"))
+    except FileNotFoundError as error:
+        raise RuntimeError(
+            f"Firefox containers.json missing for profile {profile_dir.name}"
+        ) from error
+    except (json.JSONDecodeError, OSError) as error:
+        raise RuntimeError(
+            f"Firefox containers.json could not be read for profile {profile_dir.name}"
+        ) from error
+
+    matches = []
+    available = []
+    for identity in container_data.get("identities", []):
+        name = str(identity.get("name") or "").strip()
+        user_context_id = identity.get("userContextId")
+        if name and user_context_id is not None:
+            available.append(name)
+        if name.casefold() == requested.casefold():
+            try:
+                matches.append((name, int(user_context_id)))
+            except (TypeError, ValueError):
+                continue
+
+    if len(matches) > 1:
+        raise RuntimeError(
+            f"Firefox container name is ambiguous: {requested!r}"
+        )
+    if not matches:
+        available_text = ", ".join(sorted(set(available), key=str.casefold))
+        suffix = f"; available named containers: {available_text}" if available_text else ""
+        raise RuntimeError(
+            f"Firefox container not found: {requested!r} in profile {profile_dir.name}{suffix}"
+        )
+    return matches[0][1]
+
+
 def read_firefox_opencode_cookies(profile_dir=None):
     """Return name->value cookies for opencode.ai from Firefox's cookie DB."""
     profile_dir = Path(profile_dir or resolve_firefox_profile_dir())
+    configured_container = os.environ.get(FIREFOX_CONTAINER_ENV, "").strip()
+    container_id = resolve_firefox_container_id(profile_dir, configured_container)
     db_path = profile_dir / "cookies.sqlite"
     if not db_path.is_file():
         raise RuntimeError(f"Firefox cookies.sqlite missing: {db_path}")
@@ -176,6 +241,7 @@ def read_firefox_opencode_cookies(profile_dir=None):
             rows = connection.execute(
                 """
                 SELECT name, value, host, expiry
+                    , originAttributes
                 FROM moz_cookies
                 WHERE host = ? OR host = ? OR host LIKE ?
                 ORDER BY name COLLATE NOCASE
@@ -187,8 +253,13 @@ def read_firefox_opencode_cookies(profile_dir=None):
 
     now = int(time.time())
     cookies = {}
-    for name, value, _host, expiry in rows:
+    for name, value, _host, expiry, origin_attributes in rows:
         if not name or value is None:
+            continue
+        if (
+            container_id is not None
+            and _origin_attributes_user_context_id(origin_attributes) != container_id
+        ):
             continue
         expiry_seconds = _cookie_expiry_epoch_seconds(expiry)
         if expiry_seconds and expiry_seconds < now:
@@ -196,8 +267,13 @@ def read_firefox_opencode_cookies(profile_dir=None):
         cookies[str(name)] = str(value)
 
     if "auth" not in cookies:
+        container_suffix = (
+            f" in Firefox container {configured_container!r}"
+            if configured_container
+            else ""
+        )
         raise RuntimeError(
-            f"Firefox profile {profile_dir.name} has no live opencode.ai auth cookie; "
+            f"Firefox profile {profile_dir.name}{container_suffix} has no live opencode.ai auth cookie; "
             "log into opencode.ai in Firefox"
         )
     return cookies

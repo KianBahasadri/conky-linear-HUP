@@ -40,7 +40,7 @@
 
 ## OpenCode Go
 
-- Usage is fetched from the authenticated OpenCode Go dashboard configured by `OPENCODE_WORKSPACE_URL` (or `OPENCODE_WORKSPACE_ID`). The session cookie is read from Firefox's `cookies.sqlite` for `opencode.ai` (Install default profile, overridable with `OPENCODE_FIREFOX_PROFILE`). `OPENCODE_COOKIE` / `OPENCODE_AUTH_COOKIE` remain optional overrides.
+- Usage is fetched from the authenticated OpenCode Go dashboard configured by `OPENCODE_WORKSPACE_URL` (or `OPENCODE_WORKSPACE_ID`). The session cookie is read from Firefox's `cookies.sqlite` for `opencode.ai` (Install default profile, overridable with `OPENCODE_FIREFOX_PROFILE`). Set `OPENCODE_FIREFOX_CONTAINER` to select a named Firefox container; matching is case-insensitive. `OPENCODE_COOKIE` / `OPENCODE_AUTH_COOKIE` remain optional overrides.
 - The fetcher uses one dashboard `GET` request per refresh. It never reads OpenCode local auth files or SQLite usage DBs, and never calls the OpenCode API or sends a usage probe.
 - The dashboard's rolling/5-hour ($12 limit), weekly ($30 limit), and monthly ($60 limit) cards are parsed and rendered as three bars.
 - The `OPENCODE` title chip's percentage uses the monthly window (skipped entirely if the row has none), unlike Codex/Claude which use the weekly window.
