@@ -11,6 +11,7 @@ Copy `.env.example` to `.env` and fill in the overlays you use.
 | `LINEAR_TASK_STATES` | Issue states to include |
 | `LINEAR_TASK_LIMIT` | Max active issues shown |
 | `LINEAR_COMPETITION_TASK_LIMIT` | Max competition-project issues shown |
+| `LINEAR_BACKLOG_DUE_SOON_LIMIT` | Max Backlog issues due within 3 days shown |
 | `LINEAR_DONE_LOOKBACK_HOURS` | How long completed cards stay visible |
 | `LINEAR_PRIMARY_MONITOR_INDEX` | Monitor index for primary placement |
 | `PRIMARY_WAIT_SECONDS` | Startup wait before placing on the primary monitor |

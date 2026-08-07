@@ -4,6 +4,7 @@
 - Non-red, non-green cards show their due date when one is available.
 - If any unfinished card is due today, non-due unfinished cards are hidden so urgent work dominates the overlay.
 - Unfinished issues in the `Competitions` project due in the next 3 days are always shown, with their due date beside the issue id.
+- Issues in the `Backlog` state with a due date in the next 3 days are also shown (including when urgent due-today filtering is active).
 - Cancelled and duplicate issues are never shown.
 - Recently completed cards remain visible for `LINEAR_DONE_LOOKBACK_HOURS`.
 - Overlay window height is computed from the card grid (rows × card size + gaps) on each Linear fetch and when overlays start, so any number of rows fits without clipping.

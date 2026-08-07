@@ -33,7 +33,7 @@ OVERLAY_WIDTH = 1540
 
 
 QUERY = """
-query IssuesByWorkflowState($first: Int!, $competitionFirst: Int!) {
+query IssuesByWorkflowState($first: Int!, $competitionFirst: Int!, $backlogFirst: Int!) {
   workflowStates {
     nodes {
       name
@@ -51,6 +51,20 @@ query IssuesByWorkflowState($first: Int!, $competitionFirst: Int!) {
       project: { name: { eq: "Competitions" } }
       dueDate: { gte: "P0D", lte: "P3D" }
       state: { type: { neq: "completed" } }
+    }
+  ) {
+    nodes {
+      ...IssueFields
+    }
+  }
+  backlogDueSoon: issues(
+    first: $backlogFirst,
+    filter: {
+      state: {
+        name: { eq: "Backlog" }
+        type: { neq: "completed" }
+      }
+      dueDate: { gte: "P0D", lte: "P3D" }
     }
   ) {
     nodes {
@@ -82,9 +96,16 @@ atomic_write_text = common.atomic_write_text
 atomic_write_json = common.atomic_write_json
 
 
-def linear_request(api_key, limit, competition_limit):
+def linear_request(api_key, limit, competition_limit, backlog_limit):
     payload = json.dumps(
-        {"query": QUERY, "variables": {"first": limit, "competitionFirst": competition_limit}}
+        {
+            "query": QUERY,
+            "variables": {
+                "first": limit,
+                "competitionFirst": competition_limit,
+                "backlogFirst": backlog_limit,
+            },
+        }
     ).encode("utf-8")
     request = urllib.request.Request(
         API_URL,
@@ -162,15 +183,8 @@ def is_cancelled_or_duplicate(task):
     }
 
 
-def is_upcoming_competition(task, now_date=None):
-    if is_cancelled_or_duplicate(task):
-        return False
-
-    if is_completed(task):
-        return False
-
-    project_name = (task.get("project") or {}).get("name", "")
-    if project_name != "Competitions":
+def is_due_within_days(task, days=3, now_date=None):
+    if is_cancelled_or_duplicate(task) or is_completed(task):
         return False
 
     due_date = parse_linear_date(task.get("dueDate"))
@@ -178,7 +192,23 @@ def is_upcoming_competition(task, now_date=None):
         return False
 
     today = now_date or datetime.now().date()
-    return today <= due_date <= today + timedelta(days=3)
+    return today <= due_date <= today + timedelta(days=days)
+
+
+def is_upcoming_competition(task, now_date=None):
+    project_name = (task.get("project") or {}).get("name", "")
+    if project_name != "Competitions":
+        return False
+
+    return is_due_within_days(task, days=3, now_date=now_date)
+
+
+def is_due_soon_backlog(task, now_date=None):
+    state_name = (task.get("state") or {}).get("name", "").strip()
+    if state_name != "Backlog":
+        return False
+
+    return is_due_within_days(task, days=3, now_date=now_date)
 
 
 def render(tasks, state_names, lookback_hours):
@@ -255,14 +285,23 @@ def render_cards(tasks, state_names, lookback_hours):
         for task in tasks
         if is_upcoming_competition(task, today) and task not in active and task not in recently_done
     ]
+    due_soon_backlog = [
+        task
+        for task in tasks
+        if is_due_soon_backlog(task, today)
+        and task not in active
+        and task not in recently_done
+        and task not in upcoming_competitions
+    ]
     cards = []
     cards_by_title_and_done = {}
 
-    for task in active + upcoming_competitions + recently_done:
+    for task in active + upcoming_competitions + due_soon_backlog + recently_done:
         title = task.get("title", "Untitled")
         identifier = task.get("identifier", "")
         task_done = task in recently_done
         competition_upcoming = is_upcoming_competition(task, today)
+        backlog_due_soon = is_due_soon_backlog(task, today)
         group_key = (title, task_done)
         card = cards_by_title_and_done.get(group_key)
 
@@ -281,6 +320,7 @@ def render_cards(tasks, state_names, lookback_hours):
                 "competitionDueDate": format_due_date(task.get("dueDate"), today)
                 if competition_upcoming
                 else "",
+                "backlogDueSoon": backlog_due_soon,
             }
             cards_by_title_and_done[group_key] = card
             cards.append(card)
@@ -306,6 +346,8 @@ def render_cards(tasks, state_names, lookback_hours):
                 card["competitionDueIso"] = task.get("dueDate")
                 card["competitionDueDate"] = format_due_date(task.get("dueDate"), today)
 
+        card["backlogDueSoon"] = card.get("backlogDueSoon", False) or backlog_due_soon
+
         if task.get("state", {}).get("name") == "In Progress" and not task_done:
             card["state"] = "In Progress"
 
@@ -325,6 +367,7 @@ def collect_tasks(response, state_names):
                 state.get("name") not in state_names
                 and state.get("type") != "completed"
                 and not is_upcoming_competition(task)
+                and not is_due_soon_backlog(task)
             ):
                 continue
 
@@ -332,6 +375,10 @@ def collect_tasks(response, state_names):
 
     for task in response["data"].get("competitionIssues", {}).get("nodes", []):
         if not is_cancelled_or_duplicate(task) and is_upcoming_competition(task):
+            tasks_by_identifier[task["identifier"]] = task
+
+    for task in response["data"].get("backlogDueSoon", {}).get("nodes", []):
+        if not is_cancelled_or_duplicate(task) and is_due_soon_backlog(task):
             tasks_by_identifier[task["identifier"]] = task
 
     return sorted(
@@ -470,6 +517,11 @@ def main():
         competition_limit = 50
 
     try:
+        backlog_limit = int(os.environ.get("LINEAR_BACKLOG_DUE_SOON_LIMIT", "50"))
+    except ValueError:
+        backlog_limit = 50
+
+    try:
         lookback_hours = int(os.environ.get("LINEAR_DONE_LOOKBACK_HOURS", "18"))
     except ValueError:
         lookback_hours = 18
@@ -477,12 +529,12 @@ def main():
     state_list = ",".join(sorted(state_names)) or "none"
     log_event(
         f"querying {API_URL} operation=IssuesByWorkflowState first={limit} "
-        f"competition_first={competition_limit} active_states={state_list} "
-        f"done_lookback_hours={lookback_hours}"
+        f"competition_first={competition_limit} backlog_first={backlog_limit} "
+        f"active_states={state_list} done_lookback_hours={lookback_hours}"
     )
 
     try:
-        response = linear_request(api_key, limit, competition_limit)
+        response = linear_request(api_key, limit, competition_limit, backlog_limit)
     except urllib.error.HTTPError as error:
         write_error(f"Linear API error: HTTP {error.code}")
         return 1

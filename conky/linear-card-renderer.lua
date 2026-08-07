@@ -32,6 +32,7 @@ return function(shared, repo_root)
       local due_date = shared.match_json_string(object, 'dueDate')
       local competition_upcoming = object:match('"competitionUpcoming"%s*:%s*(true)') ~= nil
       local competition_due_date = shared.match_json_string(object, 'competitionDueDate')
+      local backlog_due_soon = object:match('"backlogDueSoon"%s*:%s*(true)') ~= nil
 
       if title then
         table.insert(cards, {
@@ -43,6 +44,7 @@ return function(shared, repo_root)
           due_date = due_date and shared.unescape_json_string(due_date) or '',
           competition_upcoming = competition_upcoming,
           competition_due_date = competition_due_date and shared.unescape_json_string(competition_due_date) or '',
+          backlog_due_soon = backlog_due_soon,
         })
       end
     end
@@ -68,7 +70,7 @@ return function(shared, repo_root)
 
     local filtered_cards = {}
     for _, card in ipairs(cards) do
-      if card.done or card.due_today or card.competition_upcoming then
+      if card.done or card.due_today or card.competition_upcoming or card.backlog_due_soon then
         table.insert(filtered_cards, card)
       end
     end
