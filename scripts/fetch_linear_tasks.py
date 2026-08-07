@@ -299,6 +299,7 @@ def render_cards(tasks, state_names, lookback_hours):
     for task in active + upcoming_competitions + due_soon_backlog + recently_done:
         title = task.get("title", "Untitled")
         identifier = task.get("identifier", "")
+        project_name = (task.get("project") or {}).get("name", "")
         task_done = task in recently_done
         competition_upcoming = is_upcoming_competition(task, today)
         backlog_due_soon = is_due_soon_backlog(task, today)
@@ -309,6 +310,8 @@ def render_cards(tasks, state_names, lookback_hours):
             card = {
                 "identifier": identifier,
                 "identifiers": [],
+                "projectName": project_name,
+                "projectNames": [],
                 "state": task.get("state", {}).get("name", ""),
                 "title": title,
                 "done": task_done,
@@ -330,6 +333,10 @@ def render_cards(tasks, state_names, lookback_hours):
 
         if len(card["identifiers"]) > 1:
             card["identifier"] = "   ".join(card["identifiers"])
+
+        if project_name and project_name not in card["projectNames"]:
+            card["projectNames"].append(project_name)
+            card["projectName"] = " / ".join(card["projectNames"])
 
         card["done"] = card["done"] and task_done
         card["dueToday"] = card["dueToday"] or is_due_now(task)

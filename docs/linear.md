@@ -1,5 +1,7 @@
 # Linear overlay
 
+- Card headers show the project name in the bold accent row, with the issue identifier as a smaller muted line beneath it; the issue title is centered in the main card body.
+- Issue titles keep the normal font size for up to two lines; longer titles shrink slightly to fit up to three lines before truncating with an ellipsis.
 - Card colors are stateful: green is recently completed, red is due today, cyan is normal active work.
 - Non-red, non-green cards show their due date when one is available.
 - If any unfinished card is due today, non-due unfinished cards are hidden so urgent work dominates the overlay.

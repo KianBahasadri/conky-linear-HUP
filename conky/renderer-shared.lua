@@ -142,7 +142,9 @@ function shared.truncate_title(cr, title, max_width)
   return suffix
 end
 
-function shared.wrap_title(cr, title, max_width)
+function shared.wrap_title(cr, title, max_width, max_lines)
+  max_lines = max_lines or 2
+
   local words = {}
   for word in title:gmatch('%S+') do
     table.insert(words, word)
@@ -174,9 +176,15 @@ function shared.wrap_title(cr, title, max_width)
     return { '' }
   end
 
-  if #lines > 2 then
-    lines[2] = shared.truncate_title(cr, lines[2] .. ' ' .. table.concat(lines, ' ', 3), max_width)
-    return { lines[1], lines[2] }
+  if #lines > max_lines then
+    local overflow = {}
+    for index = max_lines, #lines do
+      table.insert(overflow, lines[index])
+    end
+    lines[max_lines] = shared.truncate_title(cr, table.concat(overflow, ' '), max_width)
+    for index = #lines, max_lines + 1, -1 do
+      table.remove(lines, index)
+    end
   end
 
   for index, line in ipairs(lines) do

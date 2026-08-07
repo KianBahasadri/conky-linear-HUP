@@ -128,7 +128,7 @@ def test_render_cards_includes_backlog_due_soon_flag():
     due_today = today.isoformat()
     tasks = [
         _issue("ABC-1", "Backlog soon", "Backlog", due_date=due_soon),
-        _issue("ABC-2", "Active work", "Todo"),
+        _issue("ABC-2", "Active work", "Todo", project="Core"),
         _issue("ABC-3", "Backlog today", "Backlog", due_date=due_today),
     ]
 
@@ -141,5 +141,6 @@ def test_render_cards_includes_backlog_due_soon_flag():
     assert cards_by_id["ABC-1"]["dueDate"] != ""
     assert cards_by_id["ABC-1"]["dueToday"] is False
     assert cards_by_id["ABC-2"]["backlogDueSoon"] is False
+    assert cards_by_id["ABC-2"]["projectName"] == "Core"
     assert cards_by_id["ABC-3"]["backlogDueSoon"] is True
     assert cards_by_id["ABC-3"]["dueToday"] is True

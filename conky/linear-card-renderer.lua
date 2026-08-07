@@ -12,6 +12,8 @@ return function(shared, repo_root)
   local font = 'JetBrains Mono'
   local font_size = 16
   local line_height = 22
+  local compact_font_size = 14
+  local compact_line_height = 19
   local title_offset_y = 7
   local default_window_width = 1540
 
@@ -25,6 +27,7 @@ return function(shared, repo_root)
     local cards = {}
     for object in content:gmatch('{%s-"identifier".-}') do
       local identifier = shared.match_json_string(object, 'identifier')
+      local project_name = shared.match_json_string(object, 'projectName')
       local state = shared.match_json_string(object, 'state')
       local title = shared.match_json_string(object, 'title')
       local done = object:match('"done"%s*:%s*(true)') ~= nil
@@ -37,6 +40,7 @@ return function(shared, repo_root)
       if title then
         table.insert(cards, {
           identifier = identifier and shared.unescape_json_string(identifier) or '',
+          project_name = project_name and shared.unescape_json_string(project_name) or '',
           state = state and shared.unescape_json_string(state) or '',
           title = shared.unescape_json_string(title),
           done = done,
@@ -206,9 +210,13 @@ return function(shared, repo_root)
     cairo_arc(cr, x + card_width - 58, y + card_height - 28, 2, 0, math.pi * 2)
     cairo_fill(cr)
 
+    local project_name = card.project_name ~= '' and card.project_name or 'No project'
+
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
     cairo_set_font_size(cr, 11)
     shared.set_hex(cr, accent, 0.88)
+    cairo_move_to(cr, x + 22, y + 19)
+    cairo_show_text(cr, shared.truncate_title(cr, project_name, card_width - 44))
 
     local identifier_max_width = card_width - 44
     local visible_due_date = ''
@@ -225,21 +233,33 @@ return function(shared, repo_root)
       identifier_max_width = math.max(40, card_width - 62 - due_extents.width)
     end
 
-    shared.set_hex(cr, accent, 0.88)
+    cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL)
+    cairo_set_font_size(cr, 9)
+    shared.set_hex(cr, '94a3b8', 0.76)
     cairo_move_to(cr, x + 22, y + 31)
     cairo_show_text(cr, shared.truncate_title(cr, card.identifier, identifier_max_width))
 
-    cairo_set_font_size(cr, font_size)
+    cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
+    local title_font_size = font_size
+    local title_line_height = line_height
+    cairo_set_font_size(cr, title_font_size)
 
-    local lines = shared.wrap_title(cr, card.title, card_width - 36)
+    local lines = shared.wrap_title(cr, card.title, card_width - 36, 3)
+    if #lines > 2 then
+      title_font_size = compact_font_size
+      title_line_height = compact_line_height
+      cairo_set_font_size(cr, title_font_size)
+      lines = shared.wrap_title(cr, card.title, card_width - 36, 3)
+    end
+
     local extents = cairo_text_extents_t:create()
-    local total_text_height = #lines * line_height
-    local first_baseline = y + (card_height - total_text_height) / 2 + font_size + title_offset_y
+    local total_text_height = #lines * title_line_height
+    local first_baseline = y + (card_height - total_text_height) / 2 + title_font_size + title_offset_y
 
     for index, line in ipairs(lines) do
       cairo_text_extents(cr, line, extents)
       local text_x = x + (card_width - extents.width) / 2 - extents.x_bearing
-      local text_y = first_baseline + (index - 1) * line_height
+      local text_y = first_baseline + (index - 1) * title_line_height
 
       shared.set_hex(cr, accent, 0.24)
       cairo_move_to(cr, text_x - 1, text_y)
