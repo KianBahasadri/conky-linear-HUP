@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import fetch_common as common
@@ -5,6 +6,18 @@ import fetch_common as common
 
 def test_escape_tsv():
     assert common.escape_tsv("a\\b\tc\nd") == "a\\\\b\\tc\\nd"
+
+
+def test_atomic_write_json_preserves_unicode(tmp_path):
+    path = tmp_path / "cards.json"
+    common.atomic_write_json(
+        path,
+        {"title": "Consistency — scenario targets"},
+    )
+    raw = path.read_text(encoding="utf-8")
+    assert "—" in raw
+    assert "\\u2014" not in raw
+    assert json.loads(raw)["title"] == "Consistency — scenario targets"
 
 
 def test_numeric_helpers_return_defaults_for_bad_input():

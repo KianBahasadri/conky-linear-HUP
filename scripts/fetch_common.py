@@ -46,7 +46,9 @@ def atomic_write_text(path, content):
 
 
 def atomic_write_json(path, data):
-    atomic_write_text(path, json.dumps(data, indent=2))
+    # ensure_ascii=False keeps characters like em dashes as UTF-8 instead of \u2014,
+    # which the Conky Lua JSON string unescaper must otherwise decode.
+    atomic_write_text(path, json.dumps(data, indent=2, ensure_ascii=False))
 
 
 def escape_tsv(value):

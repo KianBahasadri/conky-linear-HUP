@@ -11,12 +11,45 @@ function shared.read_file(path)
   return content
 end
 
+-- Encode a Unicode code point as UTF-8 (Lua 5.1–compatible; no utf8 lib required).
+function shared.utf8_char(codepoint)
+  if not codepoint or codepoint < 0 then
+    return ''
+  end
+  if codepoint < 0x80 then
+    return string.char(codepoint)
+  end
+  if codepoint < 0x800 then
+    return string.char(
+      0xC0 + math.floor(codepoint / 0x40),
+      0x80 + (codepoint % 0x40)
+    )
+  end
+  if codepoint < 0x10000 then
+    return string.char(
+      0xE0 + math.floor(codepoint / 0x1000),
+      0x80 + (math.floor(codepoint / 0x40) % 0x40),
+      0x80 + (codepoint % 0x40)
+    )
+  end
+  if codepoint <= 0x10FFFF then
+    return string.char(
+      0xF0 + math.floor(codepoint / 0x40000),
+      0x80 + (math.floor(codepoint / 0x1000) % 0x40),
+      0x80 + (math.floor(codepoint / 0x40) % 0x40),
+      0x80 + (codepoint % 0x40)
+    )
+  end
+  return ''
+end
+
 function shared.unescape_json_string(value)
   if not value then
     return value
   end
 
   -- Single-pass unescape so sequences like \\n stay as backslash + n.
+  -- Also decodes \uXXXX (and UTF-16 surrogate pairs) so em dashes etc. render.
   local parts = {}
   local index = 1
   while index <= #value do
@@ -25,16 +58,42 @@ function shared.unescape_json_string(value)
       local next_character = value:sub(index + 1, index + 1)
       if next_character == 'n' or next_character == 't' or next_character == 'r' then
         table.insert(parts, ' ')
+        index = index + 2
       elseif next_character == '"' then
         table.insert(parts, '"')
+        index = index + 2
       elseif next_character == '/' then
         table.insert(parts, '/')
+        index = index + 2
       elseif next_character == '\\' then
         table.insert(parts, '\\')
+        index = index + 2
+      elseif next_character == 'u' then
+        local hex = value:sub(index + 2, index + 5)
+        if hex:match('^%x%x%x%x$') then
+          local codepoint = tonumber(hex, 16)
+          index = index + 6
+          -- UTF-16 surrogate pair: high + low → one supplementary code point
+          if codepoint >= 0xD800 and codepoint <= 0xDBFF then
+            local low_escape = value:sub(index, index + 5)
+            local low_hex = value:sub(index + 2, index + 5)
+            if low_escape:match('^\\u%x%x%x%x$') then
+              local low = tonumber(low_hex, 16)
+              if low >= 0xDC00 and low <= 0xDFFF then
+                codepoint = 0x10000 + (codepoint - 0xD800) * 0x400 + (low - 0xDC00)
+                index = index + 6
+              end
+            end
+          end
+          table.insert(parts, shared.utf8_char(codepoint))
+        else
+          table.insert(parts, next_character)
+          index = index + 2
+        end
       else
         table.insert(parts, next_character)
+        index = index + 2
       end
-      index = index + 2
     else
       table.insert(parts, character)
       index = index + 1
