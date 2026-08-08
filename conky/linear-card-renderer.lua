@@ -10,8 +10,16 @@ return function(shared, repo_root)
   local empty_height = 100
   local radius = 18
   local font = 'JetBrains Mono'
+  -- JetBrains Mono has no emoji glyphs, and the cairo toy text API does not fall
+  -- back per glyph, so project icons need their own family.
+  local emoji_font = 'Noto Color Emoji'
   local font_size = 16
   local line_height = 22
+  local project_font_size = 11
+  -- Emoji glyphs are taller than their nominal size, so run them a step smaller
+  -- than the project name to keep both inside the card's inner border.
+  local project_icon_size = 10
+  local project_icon_gap = 5
   local compact_font_size = 14
   local compact_line_height = 19
   local title_offset_y = 7
@@ -28,6 +36,7 @@ return function(shared, repo_root)
     for object in content:gmatch('{%s-"identifier".-}') do
       local identifier = shared.match_json_string(object, 'identifier')
       local project_name = shared.match_json_string(object, 'projectName')
+      local project_icon = shared.match_json_string(object, 'projectIcon')
       local state = shared.match_json_string(object, 'state')
       local title = shared.match_json_string(object, 'title')
       local done = object:match('"done"%s*:%s*(true)') ~= nil
@@ -41,6 +50,7 @@ return function(shared, repo_root)
         table.insert(cards, {
           identifier = identifier and shared.unescape_json_string(identifier) or '',
           project_name = project_name and shared.unescape_json_string(project_name) or '',
+          project_icon = project_icon and shared.unescape_json_string(project_icon) or '',
           state = state and shared.unescape_json_string(state) or '',
           title = shared.unescape_json_string(title),
           done = done,
@@ -211,12 +221,29 @@ return function(shared, repo_root)
     cairo_fill(cr)
 
     local project_name = card.project_name ~= '' and card.project_name or 'No project'
+    local project_x = x + 22
+    local project_max_width = card_width - 44
+
+    if card.project_icon ~= '' then
+      cairo_select_font_face(cr, emoji_font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL)
+      cairo_set_font_size(cr, project_icon_size)
+      local icon_extents = cairo_text_extents_t:create()
+      cairo_text_extents(cr, card.project_icon, icon_extents)
+      -- Color glyphs carry their own palette; the source only sets opacity.
+      shared.set_hex(cr, 'f8fafc', 0.95)
+      cairo_move_to(cr, project_x, y + 19)
+      cairo_show_text(cr, card.project_icon)
+
+      local icon_step = icon_extents.x_advance + project_icon_gap
+      project_x = project_x + icon_step
+      project_max_width = project_max_width - icon_step
+    end
 
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
-    cairo_set_font_size(cr, 11)
+    cairo_set_font_size(cr, project_font_size)
     shared.set_hex(cr, accent, 0.88)
-    cairo_move_to(cr, x + 22, y + 19)
-    cairo_show_text(cr, shared.truncate_title(cr, project_name, card_width - 44))
+    cairo_move_to(cr, project_x, y + 19)
+    cairo_show_text(cr, shared.truncate_title(cr, project_name, project_max_width))
 
     local identifier_max_width = card_width - 44
     local visible_due_date = ''

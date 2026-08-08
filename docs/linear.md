@@ -1,6 +1,7 @@
 # Linear overlay
 
 - Card headers show the project name in the bold accent row, with the issue identifier as a smaller muted line beneath it; the issue title is centered in the main card body.
+- The project's emoji is drawn to the left of the project name, rendered from `Noto Color Emoji` because the card font has no emoji glyphs. Linear returns the icon as a shortcode (`:trophy:`) on a separate `icon` field, which `emoji_from_project_icon` resolves; projects using a built-in Linear icon (`Users`) or an unresolvable shortcode simply show no icon.
 - Issue titles keep the normal font size for up to two lines; longer titles shrink slightly to fit up to three lines before truncating with an ellipsis.
 - Card colors are stateful: green is recently completed, red is due today, cyan is normal active work.
 - Non-red, non-green cards show their due date when one is available.

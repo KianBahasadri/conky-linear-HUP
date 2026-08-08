@@ -22,7 +22,16 @@ def test_linear_overlay_height_uses_window_width():
     )
 
 
-def _issue(identifier, title, state_name, *, due_date=None, project=None, state_type="unstarted"):
+def _issue(
+    identifier,
+    title,
+    state_name,
+    *,
+    due_date=None,
+    project=None,
+    project_icon=None,
+    state_type="unstarted",
+):
     return {
         "identifier": identifier,
         "title": title,
@@ -30,7 +39,7 @@ def _issue(identifier, title, state_name, *, due_date=None, project=None, state_
         "dueDate": due_date,
         "priorityLabel": "No priority",
         "url": f"https://linear.app/issue/{identifier}",
-        "project": {"name": project} if project else None,
+        "project": {"name": project, "icon": project_icon} if project else None,
         "state": {"name": state_name, "type": state_type},
     }
 
@@ -144,3 +153,52 @@ def test_render_cards_includes_backlog_due_soon_flag():
     assert cards_by_id["ABC-2"]["projectName"] == "Core"
     assert cards_by_id["ABC-3"]["backlogDueSoon"] is True
     assert cards_by_id["ABC-3"]["dueToday"] is True
+
+
+def test_emoji_from_project_icon_resolves_shortcodes():
+    # Shortcode that matches the Unicode character name.
+    assert linear.emoji_from_project_icon(":trophy:") == "🏆"
+    assert linear.emoji_from_project_icon(":radioactive_sign:") == "☢"
+    # Shortcode that needs the alias table.
+    assert linear.emoji_from_project_icon(":mortar_board:") == "🎓"
+    assert linear.emoji_from_project_icon(":eggplant:") == "🍆"
+
+
+def test_emoji_from_project_icon_ignores_non_emoji_icons():
+    # Built-in Linear icon names are not emoji.
+    assert linear.emoji_from_project_icon("Users") == ""
+    assert linear.emoji_from_project_icon(None) == ""
+    assert linear.emoji_from_project_icon("") == ""
+    # Unknown shortcodes degrade to no icon rather than a placeholder glyph.
+    assert linear.emoji_from_project_icon(":not_a_real_emoji:") == ""
+    # Names that resolve to non-symbol characters are rejected.
+    assert linear.emoji_from_project_icon(":latin_small_letter_a:") == ""
+
+
+def test_render_cards_carries_project_icon():
+    tasks = [
+        _issue("ABC-1", "Comp work", "Todo", project="Competitions", project_icon=":trophy:"),
+        _issue("ABC-2", "Icon-less", "Todo", project="Hangout Automator", project_icon="Users"),
+        _issue("ABC-3", "No project", "Todo"),
+    ]
+
+    payload = linear.render_cards(tasks, {"Todo", "In Progress"}, lookback_hours=18)
+    cards_by_id = {card["identifier"]: card for card in payload["cards"]}
+
+    assert cards_by_id["ABC-1"]["projectIcon"] == "🏆"
+    assert cards_by_id["ABC-2"]["projectIcon"] == ""
+    assert cards_by_id["ABC-3"]["projectIcon"] == ""
+
+
+def test_render_cards_merges_to_first_available_icon():
+    # Same title across projects collapses into one card; the icon follows.
+    tasks = [
+        _issue("ABC-1", "Shared", "Todo", project="Hangout Automator", project_icon="Users"),
+        _issue("ABC-2", "Shared", "Todo", project="Competitions", project_icon=":trophy:"),
+    ]
+
+    payload = linear.render_cards(tasks, {"Todo", "In Progress"}, lookback_hours=18)
+    card = payload["cards"][0]
+
+    assert card["projectName"] == "Hangout Automator / Competitions"
+    assert card["projectIcon"] == "🏆"

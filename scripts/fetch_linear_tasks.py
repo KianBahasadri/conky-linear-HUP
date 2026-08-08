@@ -5,6 +5,7 @@ import re
 import signal
 import sys
 import textwrap
+import unicodedata
 import urllib.error
 import urllib.request
 from datetime import datetime, timedelta, timezone
@@ -82,6 +83,7 @@ fragment IssueFields on Issue {
   url
   project {
     name
+    icon
   }
   state {
     name
@@ -89,6 +91,52 @@ fragment IssueFields on Issue {
   }
 }
 """
+
+
+# A Linear project icon is either an emoji shortcode (":trophy:") or the name of a
+# built-in Linear icon ("Users"). Only shortcodes can be drawn on a card.
+EMOJI_SHORTCODE_PATTERN = re.compile(r"^:([a-z0-9_+-]+):$")
+
+# Most shortcodes are the Unicode character name with underscores for spaces, so
+# unicodedata resolves them. These are the common ones where the two disagree.
+EMOJI_SHORTCODE_ALIASES = {
+    "+1": "👍", "-1": "👎", "100": "💯", "alien": "👽", "apple": "🍎", "art": "🎨", "beer": "🍺",
+    "blush": "😊", "book": "📖", "boom": "💥", "bulb": "💡", "car": "🚗", "clap": "👏", "coffee": "☕",
+    "computer": "💻", "construction": "🚧", "dart": "🎯", "dna": "🧬", "earth_americas": "🌎",
+    "eggplant": "🍆", "email": "📧", "gem": "💎", "gift": "🎁", "headphones": "🎧", "heart": "❤",
+    "heart_eyes": "😍", "house": "🏠", "iphone": "📱", "laughing": "😆", "link": "🔗", "mag": "🔍",
+    "medal": "🏅", "mega": "📣", "moneybag": "💰", "mortar_board": "🎓", "ocean": "🌊",
+    "office": "🏢", "ok_hand": "👌", "pencil": "📝", "phone": "☎", "pizza": "🍕",
+    "point_right": "👉", "poop": "💩", "pray": "🙏", "recycle": "♻", "rotating_light": "🚨",
+    "smile": "😄", "smiley": "😃", "sob": "😭", "star": "⭐", "sunny": "☀", "tada": "🎉", "tv": "📺",
+    "warning": "⚠", "wave": "👋", "white_check_mark": "✅", "x": "❌", "zap": "⚡",
+}
+
+
+def emoji_from_project_icon(icon):
+    """Return the emoji for a Linear project icon, or "" when it is not an emoji."""
+    if not icon:
+        return ""
+
+    match = EMOJI_SHORTCODE_PATTERN.match(icon.strip().lower())
+    if not match:
+        return ""
+
+    shortcode = match.group(1)
+    if shortcode in EMOJI_SHORTCODE_ALIASES:
+        return EMOJI_SHORTCODE_ALIASES[shortcode]
+
+    try:
+        character = unicodedata.lookup(shortcode.replace("_", " ").upper())
+    except KeyError:
+        return ""
+
+    # unicodedata also resolves control-character and letter names, so keep only
+    # symbols the emoji font can actually draw.
+    if unicodedata.category(character) != "So" and ord(character) < 0x1F000:
+        return ""
+
+    return character
 
 
 log_event = common.make_logger(LOG_PATH, "fetch_linear_tasks")
@@ -299,7 +347,9 @@ def render_cards(tasks, state_names, lookback_hours):
     for task in active + upcoming_competitions + due_soon_backlog + recently_done:
         title = task.get("title", "Untitled")
         identifier = task.get("identifier", "")
-        project_name = (task.get("project") or {}).get("name", "")
+        project = task.get("project") or {}
+        project_name = project.get("name", "")
+        project_icon = emoji_from_project_icon(project.get("icon"))
         task_done = task in recently_done
         competition_upcoming = is_upcoming_competition(task, today)
         backlog_due_soon = is_due_soon_backlog(task, today)
@@ -312,6 +362,7 @@ def render_cards(tasks, state_names, lookback_hours):
                 "identifiers": [],
                 "projectName": project_name,
                 "projectNames": [],
+                "projectIcon": project_icon,
                 "state": task.get("state", {}).get("name", ""),
                 "title": title,
                 "done": task_done,
@@ -337,6 +388,9 @@ def render_cards(tasks, state_names, lookback_hours):
         if project_name and project_name not in card["projectNames"]:
             card["projectNames"].append(project_name)
             card["projectName"] = " / ".join(card["projectNames"])
+            # Merged cards show one icon: the first project that has an emoji.
+            if not card["projectIcon"]:
+                card["projectIcon"] = project_icon
 
         card["done"] = card["done"] and task_done
         card["dueToday"] = card["dueToday"] or is_due_now(task)
