@@ -5,7 +5,8 @@ return function(shared, repo_root)
   local panel_height = 110
   local radius = 18
   local bottom_padding = 4
-  local info_x = 168
+  local info_x = 26
+  local names_x = 168
   local divider_x = 148
 
   local function parse_string_array(content, key)
@@ -68,6 +69,14 @@ return function(shared, repo_root)
     shared.set_hex(cr, color, 0.92)
     cairo_move_to(cr, x + 40, y)
     cairo_show_text(cr, shared.truncate_title(cr, value, 82))
+  end
+
+  local function draw_metric_value(cr, value, x, y, color)
+    cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
+    cairo_set_font_size(cr, 11)
+    shared.set_hex(cr, color, 0.92)
+    cairo_move_to(cr, x, y)
+    cairo_show_text(cr, value)
   end
 
   local function draw_chip(cr, label, x, y, width, color)
@@ -163,6 +172,10 @@ return function(shared, repo_root)
   local function draw_status(cr, status, x, y)
     local accent = status.ok and '39ff88' or 'f87171'
     local secondary = status.ok and '00e5ff' or 'ff4d00'
+    local content_x = status.server_info_ok and names_x or info_x
+    local ping_x = status.server_info_ok and info_x or info_x + 64
+    local online_value_offset = status.server_info_ok and 52 or 42
+    local summary_y = y + 36
 
     draw_frame(cr, x, y, accent, secondary)
     draw_chip(cr, 'MINECRAFT', x + 28, y - 9, 112, accent)
@@ -186,13 +199,13 @@ return function(shared, repo_root)
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
     cairo_set_font_size(cr, 10)
     shared.set_hex(cr, accent, 0.72)
-    cairo_move_to(cr, x + 26, y + 42)
+    cairo_move_to(cr, x + content_x, summary_y)
     cairo_show_text(cr, 'ONLINE')
 
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
     cairo_set_font_size(cr, 10)
     shared.set_hex(cr, accent, 0.72)
-    cairo_move_to(cr, x + 78, y + 42)
+    cairo_move_to(cr, x + content_x + online_value_offset, summary_y)
     cairo_show_text(cr, string.format('%d', status.online))
 
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL)
@@ -200,17 +213,17 @@ return function(shared, repo_root)
     if #status.player_names > 0 then
       for index = 1, math.min(3, #status.player_names) do
         shared.set_hex(cr, 'f8fafc', index == 1 and 0.86 or 0.62)
-        cairo_move_to(cr, x + 26, y + 62 + (index - 1) * 15)
-        cairo_show_text(cr, shared.truncate_title(cr, status.player_names[index], 112))
+        cairo_move_to(cr, x + content_x, y + 56 + (index - 1) * 15)
+        cairo_show_text(cr, shared.truncate_title(cr, status.player_names[index], 160))
       end
     else
       shared.set_hex(cr, 'f8fafc', 0.52)
-      cairo_move_to(cr, x + 26, y + 70)
+      cairo_move_to(cr, x + content_x, y + 64)
       cairo_show_text(cr, status.online > 0 and 'Names unavailable' or 'No players online')
     end
 
-    draw_info_row(cr, 'PING', string.format('%d ms', status.latency_ms), x + info_x, y + 42, ping_color(status.latency_ms))
     if status.server_info_ok then
+      draw_metric_value(cr, string.format('%dms', status.latency_ms), x + info_x, summary_y, ping_color(status.latency_ms))
       local memory_percent = 0
       if status.memory_limit_mb > 0 then
         memory_percent = (status.memory_mb / status.memory_limit_mb) * 100
@@ -218,15 +231,16 @@ return function(shared, repo_root)
       draw_info_row(cr, 'CPU', string.format('%.1f%%', status.cpu_percent), x + info_x, y + 64, usage_color(status.cpu_percent))
       draw_info_row(cr, 'RAM', format_memory(status.memory_mb, status.memory_limit_mb), x + info_x, y + 86, usage_color(memory_percent))
     else
-      draw_info_row(cr, 'CPU', '--', x + info_x, y + 64, 'f8fafc')
-      draw_info_row(cr, 'RAM', '--', x + info_x, y + 86, 'f8fafc')
+      draw_metric_value(cr, string.format('%dms', status.latency_ms), x + ping_x, summary_y, ping_color(status.latency_ms))
     end
 
-    shared.set_hex(cr, secondary, 0.42)
-    cairo_set_line_width(cr, 1)
-    cairo_move_to(cr, x + divider_x, y + 32)
-    cairo_line_to(cr, x + divider_x, y + 96)
-    cairo_stroke(cr)
+    if status.server_info_ok then
+      shared.set_hex(cr, secondary, 0.42)
+      cairo_set_line_width(cr, 1)
+      cairo_move_to(cr, x + divider_x, y + 32)
+      cairo_line_to(cr, x + divider_x, y + 96)
+      cairo_stroke(cr)
+    end
   end
 
   local function draw()
