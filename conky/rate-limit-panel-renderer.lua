@@ -21,9 +21,6 @@ return function(shared, repo_root)
   local bar_height = 8
   local bar_text_gap = 14
   local bar_countdown_width = 54
-  local bar_reset_gap = 0
-  local bar_reset_width = 116
-  local bar_reset_date_width = 48
   local bar_pair_gap = 0
   local bottom_padding = 4
   local five_hour_window_seconds = 18000
@@ -429,49 +426,6 @@ return function(shared, repo_root)
     return format_reset(seconds)
   end
 
-  local function format_reset_at(window, num_bars)
-    num_bars = num_bars or 1
-    if seconds_until_reset(window) <= 0 and (window.used_percent or 0) <= 0 then
-      return '', ''
-    end
-
-    local reset_time = 0
-    if window.reset_at_epoch and window.reset_at_epoch > 0 then
-      reset_time = window.reset_at_epoch
-    elseif window.reset_after_seconds and window.reset_after_seconds > 0 then
-      reset_time = os.time() + window.reset_after_seconds
-    end
-
-    if reset_time <= 0 then
-      return '', format_window_countdown(window)
-    end
-
-    local local_time = os.date('*t', reset_time)
-    local hour = local_time.hour % 12
-    if hour == 0 then
-      hour = 12
-    end
-    local meridiem = local_time.hour >= 12 and 'PM' or 'AM'
-    local time_label = string.format('%d:%02d %s', hour, local_time.min, meridiem)
-    local date_label = string.format('%s %02d', os.date('%b', reset_time), local_time.day)
-
-    if num_bars >= 2 then
-      local sec_left = seconds_until_reset(window)
-      if sec_left < 36 * 3600 then
-        return '', time_label
-      else
-        return date_label, ''
-      end
-    end
-
-    local label = normalized_window_label(window)
-    if label == 'weekly' or seconds_until_reset(window) > 86400 then
-      return date_label, time_label
-    end
-
-    return '', time_label
-  end
-
   local function find_weekly_window(account)
     for _, window in ipairs(account.windows or {}) do
       if normalized_window_label(window) == 'weekly' then
@@ -716,26 +670,17 @@ return function(shared, repo_root)
     local bw = layout and layout.bar_width or bar_width
     local btg = layout and layout.bar_text_gap or bar_text_gap
     local bcw = layout and layout.bar_countdown_width or bar_countdown_width
-    local brg = layout and layout.bar_reset_gap or bar_reset_gap
-    local brw = layout and layout.bar_reset_width or bar_reset_width
-    local brdw = layout and layout.bar_reset_date_width or bar_reset_date_width
 
     local used = shared.clamp(window.used_percent, 0, 100)
     if refresh_mode then
       used = 0
     end
     local fill_width = bw * (used / 100)
-    local window_label = normalized_window_label(window)
-    local is_weekly = window_label == 'weekly'
-    local is_five_hour = window_label == '5h'
     local countdown_label = format_window_countdown(window)
-    local reset_date_label, reset_time_label = format_reset_at(window, layout and layout.num_bars or 1)
     if refresh_mode then
       -- The token is no longer fresh, so any cached number is stale: blank the
-      -- countdown/reset time and prompt a re-auth instead.
+      -- countdown and prompt a re-auth instead.
       countdown_label = 'refresh'
-      reset_date_label = ''
-      reset_time_label = ''
     end
 
     local bar_y = y
@@ -785,43 +730,7 @@ return function(shared, repo_root)
       draw_pace_marker(cr, calculate_window_pace(window, window_duration(window)), x, bar_y, bw)
     end
 
-    if layout and layout.num_bars == 3 then
-      local text_x = x + bw + btg
-      local font_size = 10
-      local sec_left = seconds_until_reset(window)
-      local single_label = ''
-      if refresh_mode then
-        single_label = 'refresh'
-      elseif sec_left < 86400 then
-        local reset_time = 0
-        if window.reset_at_epoch and window.reset_at_epoch > 0 then
-          reset_time = window.reset_at_epoch
-        elseif window.reset_after_seconds and window.reset_after_seconds > 0 then
-          reset_time = os.time() + window.reset_after_seconds
-        end
-        if reset_time > 0 then
-          local local_time = os.date('*t', reset_time)
-          local hour = local_time.hour % 12
-          if hour == 0 then hour = 12 end
-          local meridiem = local_time.hour >= 12 and 'PM' or 'AM'
-          single_label = string.format('%d:%02d %s', hour, local_time.min, meridiem)
-        else
-          single_label = format_window_countdown(window)
-        end
-      else
-        single_label = format_window_countdown(window)
-      end
-
-      cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
-      cairo_set_font_size(cr, font_size)
-      shared.set_hex(cr, accent, 0.92)
-      cairo_move_to(cr, text_x, y + 8)
-      cairo_show_text(cr, shared.truncate_title(cr, single_label, brw))
-      return
-    end
-
     local text_x = x + bw + btg
-    local reset_x = text_x + bcw + brg
     local font_size = 10
 
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
@@ -831,21 +740,6 @@ return function(shared, repo_root)
     shared.set_hex(cr, accent, 0.95)
     cairo_move_to(cr, text_x, y + 8)
     cairo_show_text(cr, countdown_label)
-
-    cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL)
-    cairo_set_font_size(cr, font_size)
-    shared.set_hex(cr, accent, 0.82)
-    if reset_date_label and reset_date_label ~= '' then
-      cairo_move_to(cr, reset_x, y + 8)
-      cairo_show_text(cr, reset_date_label)
-      if reset_time_label and reset_time_label ~= '' then
-        cairo_move_to(cr, reset_x + (brdw > 0 and brdw or 48), y + 8)
-        cairo_show_text(cr, reset_time_label)
-      end
-    elseif reset_time_label and reset_time_label ~= '' then
-      cairo_move_to(cr, reset_x, y + 8)
-      cairo_show_text(cr, reset_time_label)
-    end
   end
 
   local function draw_panel_error(cr, usage, x, y)
@@ -920,55 +814,28 @@ return function(shared, repo_root)
     return '00e5ff', '8b5cf6', '2563eb', '1e3a8a'
   end
 
-  local bar_area_right_margin = 62
+  -- Match the left row inset so panel content has equal side padding.
+  local bar_area_side_margin = account_row_x
 
   local function make_bar_layout(num_bars)
-    local available = panel_width - account_row_x - panel_first_bar_x - bar_area_right_margin
-
-    if num_bars == 1 then
-      local btx, bcw, brg, brw = 8, 54, 4, 116
-      local text_total = btx + bcw + brg + brw
-      local bw = math.max(40, math.floor(available - 120))
-      return {
-        bar_width = bw,
-        bar_text_gap = btx,
-        bar_countdown_width = bcw,
-        bar_reset_gap = brg,
-        bar_reset_width = brw,
-        bar_reset_date_width = 48,
-        text_total = text_total,
-        num_bars = 1,
-      }
-    end
-
-    if num_bars == 3 then
-      local btx, bcw, brg, brw = 6, 0, 0, 48
-      local text_total = btx + bcw + brg + brw
-      local unit = available / 3
-      local bw = math.max(40, math.floor(unit - text_total))
-      return {
-        bar_width = bw,
-        bar_text_gap = btx,
-        bar_countdown_width = bcw,
-        bar_reset_gap = brg,
-        bar_reset_width = brw,
-        bar_reset_date_width = 0,
-        text_total = text_total,
-        num_bars = 3,
-      }
-    end
-
-    local btx, bcw, brg, brw = 8, 54, 4, 54
-    local text_total = btx + bcw + brg + brw
+    local available = panel_width - account_row_x - panel_first_bar_x - bar_area_side_margin
+    local btx = num_bars == 3 and 6 or 8
+    local bcw = 54
+    local text_total = btx + bcw
+    local min_bw = num_bars == 1 and 40 or (num_bars == 3 and 40 or 30)
     local unit = available / num_bars
-    local bw = math.max(30, math.floor(unit - text_total))
+    local bw = math.max(min_bw, math.floor(unit - text_total))
+    -- Fold floor remainder into the bar so unused width does not collect on the right.
+    local used = num_bars * (bw + text_total)
+    local leftover = available - used
+    if leftover > 0 then
+      bw = bw + math.floor(leftover / num_bars)
+    end
+
     return {
       bar_width = bw,
       bar_text_gap = btx,
       bar_countdown_width = bcw,
-      bar_reset_gap = brg,
-      bar_reset_width = brw,
-      bar_reset_date_width = 0,
       text_total = text_total,
       num_bars = num_bars,
     }
