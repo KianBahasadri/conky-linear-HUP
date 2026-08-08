@@ -641,6 +641,14 @@ return function(shared, repo_root)
     if not pace then
       return
     end
+    -- INTENTION (see docs/rate-limit-panel.md § Pace markers): expected is
+    -- (windowSeconds - remaining) / windowSeconds * 100. Hide only when the
+    -- full window is still remaining (expected <= 0). Any elapsed time shows
+    -- the tick — even if the bar would still round that to 0% / left edge.
+    -- Do not gate on usedPercent or on pixel/rounded display position.
+    if (pace.expected or 0) <= 0 then
+      return
+    end
 
     local marker_x = math.floor(x + bar_w * (shared.clamp(pace.expected, 0, 100) / 100) + 0.5)
     local marker_left = marker_x - math.floor(pace_marker_width / 2)
