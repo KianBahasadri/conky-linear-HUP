@@ -514,9 +514,9 @@ def main():
     }
 
     try:
-        limit = int(os.environ.get("LINEAR_TASK_LIMIT", "20"))
+        limit = int(os.environ.get("LINEAR_TASK_LIMIT", "30"))
     except ValueError:
-        limit = 20
+        limit = 30
 
     try:
         competition_limit = int(os.environ.get("LINEAR_COMPETITION_TASK_LIMIT", "50"))
