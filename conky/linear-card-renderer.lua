@@ -22,7 +22,15 @@ return function(shared, repo_root)
   local project_icon_gap = 5
   local compact_font_size = 14
   local compact_line_height = 19
-  local title_offset_y = 7
+  -- Baseline of the header row that carries the project icon and name.
+  local project_offset_y = 19
+  -- Identifier and due date share a footer row, mirroring the project row's inset.
+  local meta_font_size = 9
+  local meta_offset_y = card_height - 15
+  -- The header baseline and the footer row are inset by roughly the same amount
+  -- from their edges, so centring the title on the card leaves even gaps either
+  -- side. Retune this if project_offset_y or meta_offset_y moves.
+  local title_offset_y = 0
   local default_window_width = 1540
 
   local function read_cards()
@@ -207,43 +215,54 @@ return function(shared, repo_root)
     cairo_line_to(cr, x + 58, y + 28)
     cairo_stroke(cr)
 
+    -- Kept clear of the footer row so the trace underlines the due date instead
+    -- of striking through it.
     shared.set_hex(cr, accent_secondary, 0.18)
-    cairo_move_to(cr, x + card_width - 22, y + card_height - 18)
-    cairo_line_to(cr, x + card_width - 48, y + card_height - 18)
-    cairo_line_to(cr, x + card_width - 58, y + card_height - 28)
+    cairo_move_to(cr, x + card_width - 22, y + card_height - 14)
+    cairo_line_to(cr, x + card_width - 48, y + card_height - 14)
+    cairo_line_to(cr, x + card_width - 58, y + card_height - 24)
     cairo_stroke(cr)
 
     shared.set_hex(cr, accent, 0.34)
     cairo_arc(cr, x + 58, y + 28, 2, 0, math.pi * 2)
     cairo_fill(cr)
     shared.set_hex(cr, accent_secondary, 0.28)
-    cairo_arc(cr, x + card_width - 58, y + card_height - 28, 2, 0, math.pi * 2)
+    cairo_arc(cr, x + card_width - 58, y + card_height - 24, 2, 0, math.pi * 2)
     cairo_fill(cr)
 
     local project_name = card.project_name ~= '' and card.project_name or 'No project'
-    local project_x = x + 22
     local project_max_width = card_width - 44
+    local icon_step = 0
 
     if card.project_icon ~= '' then
       cairo_select_font_face(cr, emoji_font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL)
       cairo_set_font_size(cr, project_icon_size)
       local icon_extents = cairo_text_extents_t:create()
       cairo_text_extents(cr, card.project_icon, icon_extents)
-      -- Color glyphs carry their own palette; the source only sets opacity.
-      shared.set_hex(cr, 'f8fafc', 0.95)
-      cairo_move_to(cr, project_x, y + 19)
-      cairo_show_text(cr, card.project_icon)
-
-      local icon_step = icon_extents.x_advance + project_icon_gap
-      project_x = project_x + icon_step
+      icon_step = icon_extents.x_advance + project_icon_gap
       project_max_width = project_max_width - icon_step
     end
 
+    -- Icon and name are measured first so the pair centres as one block.
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
     cairo_set_font_size(cr, project_font_size)
+    local project_text = shared.truncate_title(cr, project_name, project_max_width)
+    local project_extents = cairo_text_extents_t:create()
+    cairo_text_extents(cr, project_text, project_extents)
+    local project_x = x + (card_width - icon_step - project_extents.width) / 2
+
     shared.set_hex(cr, accent, 0.88)
-    cairo_move_to(cr, project_x, y + 19)
-    cairo_show_text(cr, shared.truncate_title(cr, project_name, project_max_width))
+    cairo_move_to(cr, project_x + icon_step - project_extents.x_bearing, y + project_offset_y)
+    cairo_show_text(cr, project_text)
+
+    if card.project_icon ~= '' then
+      cairo_select_font_face(cr, emoji_font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL)
+      cairo_set_font_size(cr, project_icon_size)
+      -- Color glyphs carry their own palette; the source only sets opacity.
+      shared.set_hex(cr, 'f8fafc', 0.95)
+      cairo_move_to(cr, project_x, y + project_offset_y)
+      cairo_show_text(cr, card.project_icon)
+    end
 
     local identifier_max_width = card_width - 44
     local visible_due_date = ''
@@ -252,18 +271,21 @@ return function(shared, repo_root)
     end
 
     if visible_due_date ~= '' then
+      -- Set explicitly: the header may have left the emoji font selected.
+      cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
+      cairo_set_font_size(cr, project_font_size)
       local due_extents = cairo_text_extents_t:create()
       cairo_text_extents(cr, visible_due_date, due_extents)
       shared.set_hex(cr, accent, 0.88)
-      cairo_move_to(cr, x + card_width - 22 - due_extents.width - due_extents.x_bearing, y + 31)
+      cairo_move_to(cr, x + card_width - 22 - due_extents.width - due_extents.x_bearing, y + meta_offset_y)
       cairo_show_text(cr, visible_due_date)
       identifier_max_width = math.max(40, card_width - 62 - due_extents.width)
     end
 
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL)
-    cairo_set_font_size(cr, 9)
+    cairo_set_font_size(cr, meta_font_size)
     shared.set_hex(cr, '94a3b8', 0.76)
-    cairo_move_to(cr, x + 22, y + 31)
+    cairo_move_to(cr, x + 22, y + meta_offset_y)
     cairo_show_text(cr, shared.truncate_title(cr, card.identifier, identifier_max_width))
 
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
