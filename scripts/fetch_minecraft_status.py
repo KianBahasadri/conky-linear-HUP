@@ -280,7 +280,100 @@ def query_pebblehost(host, port):
     }
 
 
-def write_error(message):
+def read_previous_status():
+    try:
+        payload = json.loads(STATUS_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, TypeError, ValueError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def parse_status_epoch(payload, *keys):
+    if not isinstance(payload, dict):
+        return None
+
+    for key in keys:
+        value = payload.get(key)
+        if value is None or value == "":
+            continue
+        try:
+            return int(float(value))
+        except (TypeError, ValueError):
+            pass
+        if key.endswith("Epoch"):
+            continue
+        epoch = common.parse_iso_epoch(value)
+        if epoch:
+            return epoch
+
+    return None
+
+
+def last_seen_max_gap_seconds():
+    return float(os.environ.get("MINECRAFT_LAST_SEEN_MAX_GAP_SECONDS", "300"))
+
+
+def apply_last_player_seen(status, previous):
+    """Track last observed player only across continuous successful polls.
+
+    A large gap since the previous successful query (host sleep, network down,
+    etc.) invalidates idle duration: players may have joined during the gap.
+    """
+    now_iso = status["updatedAt"]
+    now_epoch = common.parse_iso_epoch(now_iso) or int(datetime.now(timezone.utc).timestamp())
+    max_gap = last_seen_max_gap_seconds()
+    online = int(status.get("onlinePlayers") or 0)
+
+    previous_success_epoch = parse_status_epoch(
+        previous, "lastSuccessfulAtEpoch", "lastSuccessfulAt"
+    )
+    if previous_success_epoch is None and previous.get("ok"):
+        previous_success_epoch = parse_status_epoch(previous, "updatedAt")
+
+    previous_seen_epoch = parse_status_epoch(
+        previous, "lastPlayerSeenAtEpoch", "lastPlayerSeenAt"
+    )
+    previous_seen_at = previous.get("lastPlayerSeenAt") if previous_seen_epoch is not None else None
+    # Upgrade path: older caches only had onlinePlayers, not last-seen fields.
+    if previous_seen_epoch is None and previous.get("ok") and int(previous.get("onlinePlayers") or 0) > 0:
+        previous_seen_epoch = parse_status_epoch(previous, "updatedAt")
+        previous_seen_at = previous.get("updatedAt")
+
+    continuous = (
+        previous_success_epoch is not None
+        and (now_epoch - previous_success_epoch) <= max_gap
+    )
+
+    if online > 0:
+        status["lastPlayerSeenAt"] = now_iso
+        status["lastPlayerSeenAtEpoch"] = now_epoch
+    elif continuous and previous_seen_epoch is not None:
+        status["lastPlayerSeenAt"] = previous_seen_at or previous.get("lastPlayerSeenAt")
+        status["lastPlayerSeenAtEpoch"] = previous_seen_epoch
+    # else: gap or never observed players — omit last-seen fields
+
+    status["lastSuccessfulAt"] = now_iso
+    status["lastSuccessfulAtEpoch"] = now_epoch
+    return status
+
+
+def preserve_observation_fields(data, previous):
+    """Keep last-seen markers across failed polls without extending idle time."""
+    for key in (
+        "lastPlayerSeenAt",
+        "lastPlayerSeenAtEpoch",
+        "lastSuccessfulAt",
+        "lastSuccessfulAtEpoch",
+    ):
+        if key in previous and previous[key] is not None:
+            data[key] = previous[key]
+    return data
+
+
+def write_error(message, previous=None):
+    if previous is None:
+        previous = read_previous_status()
+
     data = {
         "ok": False,
         "updatedAt": datetime.now(timezone.utc).isoformat(),
@@ -288,6 +381,7 @@ def write_error(message):
         "address": os.environ.get("MINECRAFT_SERVER", "").strip(),
         "error": message,
     }
+    preserve_observation_fields(data, previous)
     atomic_write_json(STATUS_PATH, data)
     log_event(f"error: {message}")
 
@@ -295,6 +389,7 @@ def write_error(message):
 def main():
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     common.load_env()
+    previous = read_previous_status()
 
     try:
         host, port = parse_server()
@@ -303,7 +398,7 @@ def main():
         log_event(f"querying {host}:{port}")
         status = query_status(host, port, timeout, protocol_version)
     except Exception as error:
-        write_error(f"Minecraft status failed: {error}")
+        write_error(f"Minecraft status failed: {error}", previous=previous)
         return 1
 
     try:
@@ -318,11 +413,14 @@ def main():
         )
         log_event(f"PebbleHost fetch failed: {error}")
 
+    apply_last_player_seen(status, previous)
     atomic_write_json(STATUS_PATH, status)
+    last_seen = status.get("lastPlayerSeenAtEpoch")
     log_event(
         f"completed fetch address={status['address']} "
         f"players={status['onlinePlayers']}/{status['maxPlayers']} latency_ms={status['latencyMs']} "
-        f"server_info_ok={status.get('serverInfoOk')}"
+        f"server_info_ok={status.get('serverInfoOk')} "
+        f"last_player_seen_epoch={last_seen}"
     )
     print(json.dumps(status, indent=2))
     return 0

@@ -71,6 +71,7 @@ Pioneer env vars (`PIONEER_API_KEY`, `PIONEER_USAGE_LABEL`, `PIONEER_MONTHLY_CRE
 | `MINECRAFT_REFRESH_SECONDS` | Fetch interval |
 | `MINECRAFT_STATUS_TIMEOUT_SECONDS` | TCP status probe timeout |
 | `MINECRAFT_PROTOCOL_VERSION` | Protocol version for status negotiation |
+| `MINECRAFT_LAST_SEEN_MAX_GAP_SECONDS` | Max gap between successful polls to keep last-player idle time (default `300`) |
 
 ## PebbleHost Minecraft stats
 

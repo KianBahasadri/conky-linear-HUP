@@ -57,6 +57,40 @@ return function(shared, repo_root)
     return '39ff88'
   end
 
+  local function format_ago(seconds)
+    if not seconds or seconds < 0 then
+      seconds = 0
+    end
+    if seconds < 60 then
+      return string.format('%ds', math.floor(seconds))
+    end
+    if seconds < 3600 then
+      return string.format('%dm', math.floor(seconds / 60))
+    end
+    if seconds < 86400 then
+      local hours = math.floor(seconds / 3600)
+      local minutes = math.floor((seconds % 3600) / 60)
+      if minutes > 0 then
+        return string.format('%dh %dm', hours, minutes)
+      end
+      return string.format('%dh', hours)
+    end
+    local days = math.floor(seconds / 86400)
+    local hours = math.floor((seconds % 86400) / 3600)
+    if hours > 0 then
+      return string.format('%dd %dh', days, hours)
+    end
+    return string.format('%dd', days)
+  end
+
+  local function empty_players_label(status)
+    if status.last_player_seen_epoch and status.last_player_seen_epoch > 0 then
+      local ago = os.time() - status.last_player_seen_epoch
+      return 'Last player ' .. format_ago(ago) .. ' ago'
+    end
+    return 'No players online'
+  end
+
   local function draw_info_row(cr, label, value, x, y, color)
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
     cairo_set_font_size(cr, 10)
@@ -122,6 +156,7 @@ return function(shared, repo_root)
     local memory_mb = tonumber(content:match('"memoryMb"%s*:%s*([%d%.%-]+)')) or 0
     local memory_limit_mb = tonumber(content:match('"memoryLimitMb"%s*:%s*(%d+)')) or 0
     local player_names = parse_string_array(content, 'playerNames')
+    local last_player_seen_epoch = tonumber(content:match('"lastPlayerSeenAtEpoch"%s*:%s*(%-?%d+)'))
 
     return {
       ok = ok,
@@ -138,6 +173,7 @@ return function(shared, repo_root)
       memory_mb = memory_mb,
       memory_limit_mb = memory_limit_mb,
       player_names = player_names,
+      last_player_seen_epoch = last_player_seen_epoch,
     }
   end
 
@@ -219,7 +255,8 @@ return function(shared, repo_root)
     else
       shared.set_hex(cr, 'f8fafc', 0.52)
       cairo_move_to(cr, x + content_x, y + 64)
-      cairo_show_text(cr, status.online > 0 and 'Names unavailable' or 'No players online')
+      local empty_label = status.online > 0 and 'Names unavailable' or empty_players_label(status)
+      cairo_show_text(cr, shared.truncate_title(cr, empty_label, 160))
     end
 
     if status.server_info_ok then
