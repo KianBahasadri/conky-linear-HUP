@@ -47,8 +47,7 @@ See [Configuration](configuration.md) for the full variable table.
 
 ## Reading the panel
 
-- Header: GitHub mark, **rotating fun-fact ticker**, and git-status refresh age top-right.
-- Fun facts come from `scripts/fetch_git_funfacts.py` → `cache/git-funfacts.json` (local fleet, contribution graph, GitHub account/repos, light LOC/TODO scans). They rotate every `GIT_FUNFACT_ROTATE_SECONDS` (default `300`).
+- Frame is repo rows only (no header bar). Under the box, bottom-right: a chip with the GitHub mark and git-status refresh age (fun-fact ticker is not drawn).
 - Each row is two lines: repo name on top, branch underneath. Left accent bar encodes state; clean rows are dimmed.
-- Counts on the right: `S` staged, `M` modified (worktree), `U` untracked, `C` conflicted.
+- Compact badges sit on the **branch line** (right side): `S` staged, `M` modified, `U` untracked, `C` conflicted, plus tags like `STASH×n` / `CONFLICT`.
 - Sync: `^n` ahead, `vn` behind when nonzero.

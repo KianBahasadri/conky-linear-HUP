@@ -1,6 +1,5 @@
 return function(shared, repo_root)
   local status_path = repo_root .. '/cache/git-status.json'
-  local funfacts_path = repo_root .. '/cache/git-funfacts.json'
   local font = 'JetBrains Mono'
   -- Fixed design width. Never permanently clamp this from a 0-sized first frame
   -- (Conky often reports width=0 on the first draw hook).
@@ -9,9 +8,12 @@ return function(shared, repo_root)
   local radius = 18
   -- Two-line rows: repo name on top, branch underneath.
   local row_height = 40
-  -- Funfact header collapses when the ticker fits on one line.
-  local header_height_one = 42
-  local header_height_two = 58
+  -- Inside the frame: tight top/bottom padding around repo rows (no header bar).
+  local content_top = 8
+  local content_bottom = 10
+  -- Outside the frame: octocat + refresh age sit bottom-right below the box.
+  local footer_gap = 4
+  local footer_height = 22
   -- Small inset so the frame glow is not clipped by the window edge.
   local top_padding = 4
   local side_padding = 14
@@ -306,10 +308,10 @@ return function(shared, repo_root)
     return table.concat(parts, ' ')
   end
 
-  local function panel_height_for(repo_count, header_h)
+  local function panel_height_for(repo_count)
     local rows = math.max(1, repo_count)
-    -- Bottom padding inside the frame (no legend footer).
-    return (header_h or header_height_two) + rows * row_height + 12
+    -- Frame only: top inset + rows + bottom inset (footer draws outside).
+    return content_top + rows * row_height + content_bottom
   end
 
   local function draw_github_mark(cr, x, y, size, color, alpha)
@@ -338,70 +340,12 @@ return function(shared, repo_root)
     cairo_fill(cr)
   end
 
-  local function read_funfact()
-    local content = shared.read_file(funfacts_path)
-    if not content then
-      return ''
-    end
-    -- Prefer nested current.text; fall back to a top-level text field.
-    local current_body = content:match('"current"%s*:%s*{([^}]*)}') or ''
-    local text = json_string(current_body, 'text', '')
-    if text == '' then
-      text = json_string(content, 'text', '')
-    end
-    return text
-  end
-
-  -- Wrap into two lines with different max widths: line 1 sits beside the
-  -- octocat (and timer), line 2 may use the full content width under it.
-  local function wrap_fact_two_lines(cr, text, width1, width2)
-    local words = {}
-    for word in text:gmatch('%S+') do
-      table.insert(words, word)
-    end
-    if #words == 0 then
-      return { '' }
-    end
-
-    local extents = cairo_text_extents_t:create()
-    local line1 = ''
-    local index = 1
-    while index <= #words do
-      local candidate = line1 == '' and words[index] or (line1 .. ' ' .. words[index])
-      cairo_text_extents(cr, candidate, extents)
-      if extents.width <= width1 then
-        line1 = candidate
-        index = index + 1
-      else
-        break
-      end
-    end
-
-    -- If the first word alone overflows line 1, force-truncate it there.
-    if line1 == '' then
-      line1 = shared.truncate_title(cr, words[1], width1)
-      index = 2
-    end
-
-    if index > #words then
-      return { line1 }
-    end
-
-    local rest = {}
-    for i = index, #words do
-      table.insert(rest, words[i])
-    end
-    local line2 = shared.truncate_title(cr, table.concat(rest, ' '), width2)
-    return { line1, line2 }
-  end
-
-  -- Measure/wrap the funfact so the panel can collapse when line 2 is unused.
-  local function prepare_header(cr, status)
-    local logo_size = 13
-    local logo_gap = 6
-    local fact_font_size = 12
-    -- Tuck into the top-left corner (was side_padding+4 ≈ 18px — sat too far right).
-    local logo_x_offset = 10
+  local function prepare_footer(cr, status)
+    local logo_size = 11
+    local pad_x = 8
+    local logo_timer_gap = 5
+    local timer_font_size = 10
+    local chip_height = 20
 
     local ago = '—'
     if status.updated_at_epoch and status.updated_at_epoch > 0 then
@@ -411,83 +355,59 @@ return function(shared, repo_root)
       ago = 'STALE · ' .. ago
     end
 
-    local right_edge_offset = panel_width - side_padding - 4
+    -- Reserve a fixed timer slot so the chip width does not jitter as digits change.
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL)
-    cairo_set_font_size(cr, fact_font_size)
-    -- Fixed timer slot: measure the widest expected label, never the live value,
-    -- so digit changes cannot reflow the funfact line.
-    local timer_slot_sample = status.stale and 'STALE · 99s ago' or '99s ago'
-    local timer_width = text_width(cr, timer_slot_sample) + 8
-
-    -- Line 1: to the right of the octocat, left of the fixed timer slot.
-    local line1_x_offset = logo_x_offset + logo_size + logo_gap
-    local line1_max = right_edge_offset - timer_width - line1_x_offset
-    if line1_max < 36 then
-      line1_max = 36
-    end
-    -- Line 2: full content width, including under the octocat.
-    local line2_x_offset = logo_x_offset
-    local line2_max = right_edge_offset - line2_x_offset
-    if line2_max < 48 then
-      line2_max = 48
-    end
-
-    local fact = read_funfact()
-    if fact == '' then
-      fact = 'gathering cool git facts...'
-    end
-
-    cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL)
-    cairo_set_font_size(cr, fact_font_size)
-    local lines = wrap_fact_two_lines(cr, fact, line1_max, line2_max)
-    local has_line2 = lines[2] and lines[2] ~= ''
-    local height = has_line2 and header_height_two or header_height_one
+    cairo_set_font_size(cr, timer_font_size)
+    local slot = status.stale and ('STALE · ' .. '99s ago') or '99s ago'
+    local timer_slot_width = math.max(text_width(cr, slot), text_width(cr, ago))
+    local chip_width = pad_x + logo_size + logo_timer_gap + timer_slot_width + pad_x
 
     return {
-      height = height,
-      has_line2 = has_line2,
-      lines = lines,
       ago = ago,
       logo_size = logo_size,
-      fact_font_size = fact_font_size,
-      logo_x_offset = logo_x_offset,
-      line1_x_offset = line1_x_offset,
-      line2_x_offset = line2_x_offset,
-      right_edge_offset = right_edge_offset,
+      pad_x = pad_x,
+      logo_timer_gap = logo_timer_gap,
+      timer_font_size = timer_font_size,
+      timer_slot_width = timer_slot_width,
+      chip_width = chip_width,
+      chip_height = chip_height,
     }
   end
 
-  local function draw_header(cr, header, x, y, accent)
-    local logo_x = x + header.logo_x_offset
-    local logo_color = accent or colors.frame
-    local line1_y = header.has_line2 and (y + 23) or (y + 26)
-    local line2_y = y + 39
-    -- Vertically center the mark on the first funfact line (cairo baseline).
-    local logo_y = line1_y - header.logo_size * 0.78
-    draw_github_mark(cr, logo_x, logo_y, header.logo_size, logo_color, 0.96)
+  local function draw_footer(cr, footer, frame_x, frame_y, frame_width, frame_height, accent)
+    -- Sit just under the frame, right-aligned chip: [octocat] [timer]
+    local chip_color = accent or colors.frame
+    local chip_x = frame_x + frame_width - footer.chip_width - side_padding + 2
+    local chip_y = frame_y + frame_height + footer_gap
+    local chip_h = footer.chip_height
 
-    local right_edge = x + header.right_edge_offset
+    shared.rounded_rect(cr, chip_x, chip_y, footer.chip_width, chip_h, 6)
+    shared.set_hex(cr, '020617', 0.96)
+    cairo_fill_preserve(cr)
+    shared.set_hex(cr, chip_color, 0.84)
+    cairo_set_line_width(cr, 1.5)
+    cairo_stroke(cr)
 
+    local logo_x = chip_x + footer.pad_x
+    local logo_y = chip_y + (chip_h - footer.logo_size) / 2
+    draw_github_mark(cr, logo_x, logo_y, footer.logo_size, chip_color, 0.96)
+
+    local text_x = logo_x + footer.logo_size + footer.logo_timer_gap
+    local baseline_y = chip_y + chip_h * 0.68
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL)
-    cairo_set_font_size(cr, header.fact_font_size)
-    shared.set_hex(cr, colors.text, 0.88)
-    cairo_move_to(cr, x + header.line1_x_offset, line1_y)
-    cairo_show_text(cr, header.lines[1] or '')
-    if header.has_line2 then
-      shared.set_hex(cr, colors.text, 0.82)
-      cairo_move_to(cr, x + header.line2_x_offset, line2_y)
-      cairo_show_text(cr, header.lines[2])
-    end
-
-    cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL)
-    cairo_set_font_size(cr, header.fact_font_size)
-    draw_right_text(cr, header.ago, right_edge, line1_y, colors.dim, 0.9)
+    cairo_set_font_size(cr, footer.timer_font_size)
+    shared.set_hex(cr, colors.dim, 0.95)
+    cairo_move_to(cr, text_x, baseline_y)
+    cairo_show_text(cr, footer.ago)
   end
 
-  -- Width needed for the right-side counts/tags so name truncation can use the rest.
+  -- Compact badge font (counts/tags/sync sit on the branch line).
+  local badge_font_size = 8
+
+  -- Width needed for the right-side counts/tags so branch truncation can use the rest.
   local function right_block_width(cr, repo)
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
-    cairo_set_font_size(cr, 10)
+    cairo_set_font_size(cr, badge_font_size)
     local parts = {}
     if repo.state == 'conflict' then
       table.insert(parts, 'CONFLICT')
@@ -512,11 +432,11 @@ return function(shared, repo_root)
     for index, label in ipairs(parts) do
       total = total + text_width(cr, label)
       if index < #parts then
-        total = total + 6
+        total = total + 5
       end
     end
-    -- Gap between name/branch text and the right block.
-    return total + 12
+    -- Gap between branch text and the right block.
+    return total + 10
   end
 
   local function draw_row(cr, repo, x, y, width)
@@ -541,10 +461,14 @@ return function(shared, repo_root)
     -- Text starts just after the left accent bar (no status glyph/icon).
     local name_x = x + 22
     local right_edge = x + width - side_padding - 6
-    -- Only reserve the space the right-side badges actually need.
-    local name_max = right_edge - right_block_width(cr, repo) - name_x
+    -- Repo name uses the full row; badges share the branch line only.
+    local name_max = right_edge - name_x
     if name_max < 48 then
       name_max = 48
+    end
+    local branch_max = right_edge - right_block_width(cr, repo) - name_x
+    if branch_max < 40 then
+      branch_max = 40
     end
 
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
@@ -569,28 +493,28 @@ return function(shared, repo_root)
     cairo_set_font_size(cr, 10)
     shared.set_hex(cr, branch_color, alpha * 0.9)
     cairo_move_to(cr, name_x, branch_y)
-    cairo_show_text(cr, shared.truncate_title(cr, branch_label, name_max))
+    cairo_show_text(cr, shared.truncate_title(cr, branch_label, branch_max))
 
-    -- Right side: counts + tags + sync, vertically centered on the two-line block
+    -- Right side of the branch line: compact counts + tags + sync
     local right = right_edge
-    local counts_y = row_y + 22
+    local counts_y = branch_y
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
-    cairo_set_font_size(cr, 10)
+    cairo_set_font_size(cr, badge_font_size)
 
     if repo.state == 'conflict' then
-      right = right - draw_right_text(cr, 'CONFLICT', right, counts_y, colors.conflict, 1) - 8
+      right = right - draw_right_text(cr, 'CONFLICT', right, counts_y, colors.conflict, 1) - 6
     elseif repo.state == 'stash' and repo.stash > 0 then
-      right = right - draw_right_text(cr, 'STASH×' .. repo.stash, right, counts_y, colors.stash, 1) - 8
+      right = right - draw_right_text(cr, 'STASH×' .. repo.stash, right, counts_y, colors.stash, 1) - 6
     elseif repo.state == 'error' then
-      right = right - draw_right_text(cr, 'ERR', right, counts_y, colors.error, 1) - 8
+      right = right - draw_right_text(cr, 'ERR', right, counts_y, colors.error, 1) - 6
     elseif repo.state == 'detached' then
-      right = right - draw_right_text(cr, 'DETACHED', right, counts_y, colors.detached, 1) - 8
+      right = right - draw_right_text(cr, 'DETACHED', right, counts_y, colors.detached, 1) - 6
     end
 
     local counts = build_counts(repo)
     for index = #counts, 1, -1 do
       local part = counts[index]
-      right = right - draw_right_text(cr, part.text, right, counts_y, part.color, alpha) - 6
+      right = right - draw_right_text(cr, part.text, right, counts_y, part.color, alpha) - 5
     end
 
     local sync = build_sync(repo)
@@ -602,7 +526,7 @@ return function(shared, repo_root)
         sync_color = colors.behind
       end
       cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
-      cairo_set_font_size(cr, 10)
+      cairo_set_font_size(cr, badge_font_size)
       draw_right_text(cr, sync, right, counts_y, sync_color, alpha)
     end
   end
@@ -621,12 +545,12 @@ return function(shared, repo_root)
     return accent
   end
 
-  local function draw_empty(cr, status, x, y, height, header)
+  local function draw_empty(cr, status, x, y, height, footer)
     local accent = colors.frame
     draw_frame(cr, x, y, panel_width, height, accent, colors.frame_secondary)
-    draw_header(cr, header, x, y, accent)
+    draw_footer(cr, footer, x, y, panel_width, height, accent)
 
-    local content_y = y + header.height
+    local content_y = y + content_top
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
     cairo_set_font_size(cr, 14)
     shared.set_hex(cr, colors.dirty, 1)
@@ -646,20 +570,20 @@ return function(shared, repo_root)
 
   local function draw_status(cr, status, x, y)
     local repos = status.repos or {}
-    local header = prepare_header(cr, status)
-    local height = panel_height_for(#repos, header.height)
+    local footer = prepare_footer(cr, status)
+    local height = panel_height_for(#repos)
     if #repos == 0 then
       height = math.max(height, 120)
-      draw_empty(cr, status, x, y, height, header)
+      draw_empty(cr, status, x, y, height, footer)
       return
     end
 
     local accent = status_accent(status)
 
     draw_frame(cr, x, y, panel_width, height, accent, colors.frame_secondary)
-    draw_header(cr, header, x, y, accent)
+    draw_footer(cr, footer, x, y, panel_width, height, accent)
 
-    local row_y = y + header.height
+    local row_y = y + content_top
     for _, repo in ipairs(repos) do
       draw_row(cr, repo, x, row_y, panel_width)
       row_y = row_y + row_height
