@@ -21,11 +21,12 @@ MINECRAFT_FETCH_PID="$CACHE_DIR/minecraft-fetch-loop.pid"
 GITHUB_FETCH_PID="$CACHE_DIR/github-fetch-loop.pid"
 WEATHER_FETCH_PID="$CACHE_DIR/weather-fetch-loop.pid"
 GIT_FETCH_PID="$CACHE_DIR/git-fetch-loop.pid"
+GIT_FUNFACTS_FETCH_PID="$CACHE_DIR/git-funfacts-fetch-loop.pid"
 
 mkdir -p "$CACHE_DIR"
 
 overlay_keys=(linear rate-limit-panel minecraft github weather resource-monitor git)
-fetch_keys=(linear codex claude cursor gemini grok minecraft github weather git)
+fetch_keys=(linear codex claude cursor gemini grok minecraft github weather git git-funfacts)
 
 declare -A overlay_config=(
   [linear]="$ROOT/conky/linear-overlay.conkyrc"
@@ -56,6 +57,7 @@ declare -A fetch_label=(
   [github]="GitHub"
   [weather]="Weather"
   [git]="Git"
+  [git-funfacts]="Git funfacts"
 )
 declare -A fetch_overlay_key=(
   [linear]="linear"
@@ -68,6 +70,7 @@ declare -A fetch_overlay_key=(
   [github]="github"
   [weather]="weather"
   [git]="git"
+  [git-funfacts]="git"
 )
 declare -A fetch_pid_file=(
   [linear]="$LINEAR_FETCH_PID"
@@ -80,6 +83,7 @@ declare -A fetch_pid_file=(
   [github]="$GITHUB_FETCH_PID"
   [weather]="$WEATHER_FETCH_PID"
   [git]="$GIT_FETCH_PID"
+  [git-funfacts]="$GIT_FUNFACTS_FETCH_PID"
 )
 
 log_to() {

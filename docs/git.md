@@ -30,12 +30,15 @@ GIT_REPO_PATHS=~/linux-state-search:~/hangout-automator
 | `GIT_HIDE_CLEAN` | `1` hides fully clean repos |
 | `GIT_INCLUDE_STASH` | `0` skips stash counting |
 | `GIT_DEFAULT_BRANCHES` | Branches treated as default for muted styling |
+| `GIT_FUNFACT_ROTATE_SECONDS` | How long each header joke stays (default `300`) |
+| `GIT_FUNFACTS_REFRESH_SECONDS` | Fun-fact fetch loop interval (default `60`) |
 
 See [Configuration](configuration.md) for the full variable table.
 
 ## Reading the panel
 
-- Header: GitHub mark, exception chips only (`CONFLICT` / `BEHIND` / `AHEAD` / `STASH` / `ERR`), fleet-wide file totals (`S`/`M`/`U`/`C` and `^`/`v` sync sums), refresh age top-right. No dirty/clean chips (redundant with rows).
+- Header: GitHub mark, **rotating fun-fact ticker**, and git-status refresh age top-right.
+- Fun facts come from `scripts/fetch_git_funfacts.py` → `cache/git-funfacts.json` (local fleet, contribution graph, GitHub account/repos, light LOC/TODO scans). They rotate every `GIT_FUNFACT_ROTATE_SECONDS` (default `300`).
 - Each row is two lines: repo name on top, branch underneath. Glyph and left accent encode state; clean rows are dimmed.
 - Counts on the right: `S` staged, `M` modified (worktree), `U` untracked, `C` conflicted.
 - Sync: `^n` ahead, `vn` behind when nonzero.

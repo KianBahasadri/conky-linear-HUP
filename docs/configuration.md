@@ -137,5 +137,7 @@ The transparent HUD is generated on every monitor. It reads local Linux telemetr
 | `GIT_HIDE_CLEAN` | `1` hides clean repos |
 | `GIT_INCLUDE_STASH` | `0` skips stash list |
 | `GIT_DEFAULT_BRANCHES` | Default branch names for muted branch styling |
+| `GIT_FUNFACT_ROTATE_SECONDS` | Header fun-fact rotation interval (default `300`) |
+| `GIT_FUNFACTS_REFRESH_SECONDS` | Fun-fact fetch loop interval (default `60`) |
 
-See [Git status overlay](git.md) for layout and severity rules.
+See [Git status overlay](git.md) for layout, severity rules, and the rotating ticker.

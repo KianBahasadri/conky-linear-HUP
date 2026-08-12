@@ -54,6 +54,7 @@ MINECRAFT_FETCH_PID="$CACHE_DIR/minecraft-fetch-loop.pid"
 GITHUB_FETCH_PID="$CACHE_DIR/github-fetch-loop.pid"
 WEATHER_FETCH_PID="$CACHE_DIR/weather-fetch-loop.pid"
 GIT_FETCH_PID="$CACHE_DIR/git-fetch-loop.pid"
+GIT_FUNFACTS_FETCH_PID="$CACHE_DIR/git-funfacts-fetch-loop.pid"
 OVERLAY_WIDTH=1540
 LINEAR_GAP_Y=4
 LINEAR_PRIMARY_GAP_Y=34
@@ -82,6 +83,8 @@ GIT_GAP_X="${GIT_GAP_X:-1}"
 # Empty means follow Linear's per-monitor gap_y (primary clears the GNOME top bar).
 GIT_GAP_Y="${GIT_GAP_Y-1}"
 GIT_REFRESH_SECONDS="${GIT_REFRESH_SECONDS:-30}"
+# Fun-fact ticker refresh (rotation cadence is GIT_FUNFACT_ROTATE_SECONDS inside the script).
+GIT_FUNFACTS_REFRESH_SECONDS="${GIT_FUNFACTS_REFRESH_SECONDS:-60}"
 GIT_OVERLAY_ENABLED="${GIT_OVERLAY_ENABLED:-1}"
 # Adaptive rate-limit polling: repoll quickly for a while after any usage change,
 # then back off when idle. Applied to all rate-limit-panel fetchers
@@ -94,7 +97,7 @@ GENERATE_ONLY=0
 MONITOR_HAS_PRIMARY=0
 
 overlay_keys=(linear rate-limit-panel minecraft github weather resource-monitor git)
-fetch_keys=(linear codex claude cursor gemini grok opencode minecraft github weather git)
+fetch_keys=(linear codex claude cursor gemini grok opencode minecraft github weather git git-funfacts)
 
 declare -A overlay_disabled_name=(
   [linear]="linear"
@@ -145,6 +148,7 @@ declare -A fetch_label=(
   [github]="GitHub"
   [weather]="Weather"
   [git]="Git"
+  [git-funfacts]="Git funfacts"
 )
 declare -A fetch_overlay_key=(
   [linear]="linear"
@@ -158,6 +162,7 @@ declare -A fetch_overlay_key=(
   [github]="github"
   [weather]="weather"
   [git]="git"
+  [git-funfacts]="git"
 )
 # Interval for non-adaptive fetchers. Rate-limit keys (codex/claude/cursor/
 # gemini/grok/opencode) use adaptive polling via fetch_render_path; their
@@ -174,6 +179,7 @@ declare -A fetch_interval=(
   [github]="$GITHUB_REFRESH_SECONDS"
   [weather]="$WEATHER_REFRESH_SECONDS"
   [git]="$GIT_REFRESH_SECONDS"
+  [git-funfacts]="$GIT_FUNFACTS_REFRESH_SECONDS"
 )
 declare -A fetch_script=(
   [linear]="$ROOT/scripts/fetch_linear_tasks.py"
@@ -187,6 +193,7 @@ declare -A fetch_script=(
   [github]="$ROOT/scripts/fetch_github_contributions.py"
   [weather]="$ROOT/scripts/fetch_weather.py"
   [git]="$ROOT/scripts/fetch_git_status.py"
+  [git-funfacts]="$ROOT/scripts/fetch_git_funfacts.py"
 )
 declare -A fetch_pid_file=(
   [linear]="$LINEAR_FETCH_PID"
@@ -200,6 +207,7 @@ declare -A fetch_pid_file=(
   [github]="$GITHUB_FETCH_PID"
   [weather]="$WEATHER_FETCH_PID"
   [git]="$GIT_FETCH_PID"
+  [git-funfacts]="$GIT_FUNFACTS_FETCH_PID"
 )
 # Render TSV paths for rate-limit-panel fetchers that support adaptive polling.
 # Keys with an empty render path use the static fetch_interval instead.
@@ -215,6 +223,7 @@ declare -A fetch_render_path=(
   [github]=""
   [weather]=""
   [git]=""
+  [git-funfacts]=""
 )
 
 env_flag_disabled() {
@@ -448,6 +457,7 @@ generate_config() {
       *"fetch_opencode_usage.py"*) ;;
       *"fetch_weather.py"*) ;;
       *"fetch_git_status.py"*) ;;
+      *"fetch_git_funfacts.py"*) ;;
       *)
         printf "%s\n" "$config_line"
         ;;

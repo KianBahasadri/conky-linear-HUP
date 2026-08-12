@@ -25,6 +25,8 @@
 - `cache/github-contributions.json`: GitHub contribution squares consumed by the Cairo renderer.
 - `cache/weather-status.json`: normalized weather, air quality, and running guidance consumed by the Cairo renderer.
 - `cache/git-status.json`: local git fleet status consumed by the Cairo renderer.
+- `cache/git-funfacts.json`: current rotating header fun-fact for the git overlay.
+- `cache/github-account-cache.json`: GitHub user/repos snapshot used by fun-facts (TTL ~1h).
 - `cache/resource-net-peaks.tsv`: hourly max IN/OUT byte rates from the resource monitor; retained for 7 days and used as the NET sparkline scale.
 
 ## Logs
@@ -45,3 +47,4 @@
 - GitHub: `1800s`
 - Weather and air quality: `600s`
 - Git status: `30s` (override with `GIT_REFRESH_SECONDS`)
+- Git fun-facts: poll `60s`, rotate line every `GIT_FUNFACT_ROTATE_SECONDS` (default `300`)
