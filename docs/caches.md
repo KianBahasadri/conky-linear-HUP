@@ -25,6 +25,7 @@
 - `cache/github-contributions.json`: GitHub contribution squares consumed by the Cairo renderer.
 - `cache/weather-status.json`: normalized weather, air quality, and running guidance consumed by the Cairo renderer.
 - `cache/git-status.json`: local git fleet status consumed by the Cairo renderer.
+- `cache/git-repo-discovery.json`: auto-discovered home repos with recent commits (TTL `GIT_SCAN_TTL_SECONDS`).
 - `cache/git-funfacts.json`: current rotating header fun-fact for the git overlay.
 - `cache/github-account-cache.json`: GitHub user/repos snapshot used by fun-facts (TTL ~1h).
 - `cache/resource-net-peaks.tsv`: hourly max IN/OUT byte rates from the resource monitor; retained for 7 days and used as the NET sparkline scale.

@@ -17,6 +17,7 @@ import fetch_common as common
 ROOT = Path(__file__).resolve().parents[1]
 CACHE_DIR = ROOT / "cache"
 STATUS_PATH = CACHE_DIR / "git-status.json"
+DISCOVERY_PATH = CACHE_DIR / "git-repo-discovery.json"
 LOG_PATH = CACHE_DIR / "conky-git.log"
 
 # Severity tiers used for sorting (higher = more urgent).
@@ -29,6 +30,44 @@ SEVERITY_AHEAD = 15
 SEVERITY_CLEAN = 0
 
 DEFAULT_BRANCHES = ("main", "master")
+DEFAULT_SCAN_DAYS = 14
+DEFAULT_SCAN_MAX_DEPTH = 3
+DEFAULT_SCAN_TTL_SECONDS = 300
+
+# Directories we never descend into while discovering repos under $HOME.
+SKIP_DIR_NAMES = frozenset(
+    {
+        ".cache",
+        ".cargo",
+        ".config",
+        ".cursor",
+        ".docker",
+        ".git",
+        ".local",
+        ".npm",
+        ".nvm",
+        ".pyenv",
+        ".rustup",
+        ".steam",
+        ".thumbnails",
+        ".Trash",
+        ".var",
+        ".venv",
+        "__pycache__",
+        "AppData",
+        "Applications",
+        "Library",
+        "Movies",
+        "Music",
+        "node_modules",
+        "Pictures",
+        "snap",
+        "target",
+        "Trash",
+        "venv",
+        "Videos",
+    }
+)
 
 
 log_event = common.make_logger(LOG_PATH, "fetch_git_status")
@@ -77,7 +116,7 @@ def expand_repo_path(raw_path):
 
 
 def parse_repo_paths(raw=None):
-    """Return ordered unique repo paths from GIT_REPO_PATHS."""
+    """Return ordered unique repo paths from GIT_REPO_PATHS (pinned extras)."""
     if raw is None:
         raw = os.environ.get("GIT_REPO_PATHS", "")
     paths = []
@@ -90,6 +129,61 @@ def parse_repo_paths(raw=None):
         seen.add(key)
         paths.append(path)
     return paths
+
+
+def parse_blacklist(raw=None):
+    """
+    Parse GIT_REPO_BLACKLIST entries.
+
+    Path-like entries (~, /, $VAR) match resolved paths (exact or under that dir).
+    Bare names match the repo directory basename (case-insensitive).
+    """
+    if raw is None:
+        raw = os.environ.get("GIT_REPO_BLACKLIST", "")
+    rules = []
+    for entry in split_path_list(raw):
+        if entry.startswith("~") or entry.startswith("$") or "/" in entry:
+            rules.append(expand_repo_path(entry))
+        else:
+            rules.append(entry.casefold())
+    return rules
+
+
+def is_blacklisted(path: Path, rules=None) -> bool:
+    if rules is None:
+        rules = parse_blacklist()
+    if not rules:
+        return False
+    try:
+        resolved = path.resolve()
+    except OSError:
+        resolved = path
+    name = resolved.name.casefold()
+    for rule in rules:
+        if isinstance(rule, Path):
+            try:
+                rule_resolved = rule.resolve()
+            except OSError:
+                rule_resolved = rule
+            if resolved == rule_resolved:
+                return True
+            # Blacklisting a parent directory drops every repo under it.
+            try:
+                resolved.relative_to(rule_resolved)
+                return True
+            except ValueError:
+                continue
+        elif name == str(rule).casefold():
+            return True
+    return False
+
+
+def apply_blacklist(paths, rules=None):
+    if rules is None:
+        rules = parse_blacklist()
+    if not rules:
+        return list(paths)
+    return [path for path in paths if not is_blacklisted(path, rules)]
 
 
 def parse_default_branches(raw=None):
@@ -119,6 +213,193 @@ def run_git(repo_path, args, timeout):
         message = re.sub(r"\s+", " ", message)
         raise RuntimeError(message or f"git exited {completed.returncode}")
     return completed.stdout
+
+
+def is_git_repo(path: Path) -> bool:
+    """True if path is a git work tree root (.git file or directory)."""
+    git_entry = path / ".git"
+    return git_entry.is_dir() or git_entry.is_file()
+
+
+def should_skip_dir(name: str) -> bool:
+    if name in SKIP_DIR_NAMES:
+        return True
+    # Skip most hidden dirs; still allow scanning non-hidden project folders.
+    if name.startswith("."):
+        return True
+    return False
+
+
+def last_commit_epoch(repo_path: Path, timeout: float) -> int | None:
+    """Return unix epoch of HEAD commit, or None if unavailable."""
+    try:
+        output = run_git(repo_path, ["log", "-1", "--format=%ct"], timeout=timeout)
+    except (RuntimeError, TimeoutError):
+        return None
+    raw = (output or "").strip().splitlines()
+    if not raw:
+        return None
+    try:
+        return int(raw[0].strip())
+    except ValueError:
+        return None
+
+
+def scan_home_for_recent_repos(
+    root: Path | None = None,
+    since_days: int | None = None,
+    max_depth: int | None = None,
+    timeout: float = 1.5,
+):
+    """
+    Walk root (default $HOME) for git repos with a commit in the last since_days.
+
+    Skips heavy/hidden directories. Does not descend into a found repo.
+    Returns paths sorted by most-recent commit first.
+    """
+    if root is None:
+        root_raw = os.environ.get("GIT_SCAN_ROOT", "").strip() or str(Path.home())
+        root = expand_repo_path(root_raw)
+    if since_days is None:
+        since_days = env_int("GIT_SCAN_DAYS", DEFAULT_SCAN_DAYS)
+    if max_depth is None:
+        max_depth = env_int("GIT_SCAN_MAX_DEPTH", DEFAULT_SCAN_MAX_DEPTH)
+
+    since_days = max(1, int(since_days))
+    max_depth = max(1, min(8, int(max_depth)))
+    cutoff = int(datetime.now(timezone.utc).timestamp()) - since_days * 86400
+
+    found: list[tuple[int, Path]] = []
+    root = Path(root)
+    if not root.is_dir():
+        return []
+
+    # Depth-limited BFS so shallow personal projects win over deep junk.
+    queue: list[tuple[Path, int]] = [(root, 0)]
+    while queue:
+        current, depth = queue.pop(0)
+        if depth > max_depth:
+            continue
+        try:
+            entries = list(current.iterdir())
+        except OSError:
+            continue
+
+        for entry in entries:
+            try:
+                if not entry.is_dir() or entry.is_symlink():
+                    continue
+            except OSError:
+                continue
+
+            name = entry.name
+            # Skip hidden/bulk dirs at every depth (including $HOME children).
+            if should_skip_dir(name) or name in SKIP_DIR_NAMES:
+                continue
+
+            if is_git_repo(entry):
+                epoch = last_commit_epoch(entry, timeout=timeout)
+                if epoch is not None and epoch >= cutoff:
+                    found.append((epoch, entry.resolve()))
+                # Never walk into a git work tree.
+                continue
+
+            if depth < max_depth:
+                queue.append((entry, depth + 1))
+
+    found.sort(key=lambda item: (-item[0], str(item[1]).lower()))
+    return [path for _, path in found]
+
+
+def load_discovery_cache(ttl_seconds: int):
+    try:
+        payload = json.loads(DISCOVERY_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    updated = int(payload.get("updatedAtEpoch") or 0)
+    now = int(datetime.now(timezone.utc).timestamp())
+    if not updated or now - updated > max(30, ttl_seconds):
+        return None
+    paths = []
+    for raw in payload.get("paths") or []:
+        try:
+            paths.append(Path(raw))
+        except TypeError:
+            continue
+    return paths
+
+
+def save_discovery_cache(paths, meta=None):
+    payload = {
+        "updatedAt": datetime.now(timezone.utc).isoformat(),
+        "updatedAtEpoch": int(datetime.now(timezone.utc).timestamp()),
+        "paths": [str(path) for path in paths],
+        "meta": meta or {},
+    }
+    atomic_write_json(DISCOVERY_PATH, payload)
+
+
+def discover_scanned_repos(timeout=None):
+    """Return recent home repos, using the discovery cache when fresh."""
+    if timeout is None:
+        timeout = env_float("GIT_TIMEOUT_SECONDS", 2.0)
+    scan_timeout = min(float(timeout), 1.5)
+    ttl = env_int("GIT_SCAN_TTL_SECONDS", DEFAULT_SCAN_TTL_SECONDS)
+    cached = load_discovery_cache(ttl)
+    if cached is not None:
+        return cached
+
+    paths = scan_home_for_recent_repos(timeout=scan_timeout)
+    save_discovery_cache(
+        paths,
+        meta={
+            "sinceDays": env_int("GIT_SCAN_DAYS", DEFAULT_SCAN_DAYS),
+            "maxDepth": env_int("GIT_SCAN_MAX_DEPTH", DEFAULT_SCAN_MAX_DEPTH),
+            "root": str(expand_repo_path(os.environ.get("GIT_SCAN_ROOT", "") or str(Path.home()))),
+        },
+    )
+    log_event(
+        f"discovered {len(paths)} recent repo(s) under home "
+        f"(last {env_int('GIT_SCAN_DAYS', DEFAULT_SCAN_DAYS)}d)"
+    )
+    return paths
+
+
+def merge_repo_paths(pinned, scanned):
+    """Pinned first (stable order), then scanned uniques."""
+    merged = []
+    seen = set()
+    for path in list(pinned or []) + list(scanned or []):
+        try:
+            key = str(Path(path).resolve())
+        except OSError:
+            key = str(path)
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(Path(path))
+    return merged
+
+
+def resolve_repo_paths(repo_paths=None, timeout=None):
+    """
+    Build the fleet list: GIT_REPO_PATHS (pinned) ∪ home scan, minus blacklist.
+
+    - Pinned paths are always included first (even without a recent commit).
+    - Scan adds any other home repos with a commit in the last GIT_SCAN_DAYS.
+    - GIT_REPO_BLACKLIST drops matches by basename or path (always applied).
+    - Discovery is cached for GIT_SCAN_TTL_SECONDS (default 300).
+
+    When repo_paths is passed explicitly (tests), that list is used as-is after
+    blacklisting — no scan merge.
+    """
+    rules = parse_blacklist()
+    if repo_paths is not None:
+        return apply_blacklist(list(repo_paths), rules)
+
+    pinned = parse_repo_paths()
+    scanned = discover_scanned_repos(timeout=timeout)
+    return apply_blacklist(merge_repo_paths(pinned, scanned), rules)
 
 
 def parse_ahead_behind(ab_line):
@@ -375,10 +656,11 @@ def build_summary(repos):
 
 def collect_status(repo_paths=None, timeout=None, hide_clean=None, max_repos=None):
     common.load_env()
-    if repo_paths is None:
-        repo_paths = parse_repo_paths()
     if timeout is None:
         timeout = env_float("GIT_TIMEOUT_SECONDS", 2.0)
+    timeout = max(0.5, float(timeout))
+    if repo_paths is None:
+        repo_paths = resolve_repo_paths(timeout=timeout)
     if hide_clean is None:
         hide_clean = env_flag("GIT_HIDE_CLEAN", False)
     if max_repos is None:
@@ -386,15 +668,18 @@ def collect_status(repo_paths=None, timeout=None, hide_clean=None, max_repos=Non
     if max_repos < 1:
         max_repos = 12
 
-    timeout = max(0.5, float(timeout))
     include_stash = env_flag("GIT_INCLUDE_STASH", True)
 
     if not repo_paths:
+        days = env_int("GIT_SCAN_DAYS", DEFAULT_SCAN_DAYS)
         return {
             "ok": False,
             "updatedAt": datetime.now(timezone.utc).isoformat(),
             "updatedAtEpoch": int(datetime.now(timezone.utc).timestamp()),
-            "error": "Set GIT_REPO_PATHS in .env (colon-separated repo paths)",
+            "error": (
+                f"No git repos with commits in the last {days} days under $HOME "
+                "(pin with GIT_REPO_PATHS or loosen GIT_REPO_BLACKLIST / GIT_SCAN_DAYS)"
+            ),
             "summary": build_summary([]),
             "repos": [],
         }

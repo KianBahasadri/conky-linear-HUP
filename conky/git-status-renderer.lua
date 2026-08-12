@@ -196,18 +196,18 @@ return function(shared, repo_root)
     if not seconds or seconds < 0 then
       seconds = 0
     end
-    -- Fixed 2-digit numeric field (space-padded) so " 5s ago" and "22s ago"
-    -- reserve the same width in the monospace font and the fact text doesn't reflow.
+    -- Always two digits so the label shape is stable; layout still reserves a
+    -- fixed slot measured from "99s ago" (not the live string).
     if seconds < 60 then
-      return string.format('%2ds ago', math.floor(seconds))
+      return string.format('%02ds ago', math.floor(seconds))
     end
     if seconds < 3600 then
-      return string.format('%2dm ago', math.floor(seconds / 60))
+      return string.format('%02dm ago', math.floor(seconds / 60))
     end
     if seconds < 86400 then
-      return string.format('%2dh ago', math.floor(seconds / 3600))
+      return string.format('%02dh ago', math.floor(seconds / 3600))
     end
-    return string.format('%2dd ago', math.floor(seconds / 86400))
+    return string.format('%02dd ago', math.floor(seconds / 86400))
   end
 
   local function text_width(cr, value)
@@ -414,9 +414,12 @@ return function(shared, repo_root)
     local right_edge_offset = panel_width - side_padding - 4
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL)
     cairo_set_font_size(cr, fact_font_size)
-    local timer_width = text_width(cr, ago) + 10
+    -- Fixed timer slot: measure the widest expected label, never the live value,
+    -- so digit changes cannot reflow the funfact line.
+    local timer_slot_sample = status.stale and 'STALE · 99s ago' or '99s ago'
+    local timer_width = text_width(cr, timer_slot_sample) + 8
 
-    -- Line 1: to the right of the octocat, left of the timer.
+    -- Line 1: to the right of the octocat, left of the fixed timer slot.
     local line1_x_offset = logo_x_offset + logo_size + logo_gap
     local line1_max = right_edge_offset - timer_width - line1_x_offset
     if line1_max < 36 then
@@ -535,20 +538,14 @@ return function(shared, repo_root)
 
     local name_y = row_y + 16
     local branch_y = row_y + 31
-    local left = x + 22
-    local name_x = left + 16
+    -- Text starts just after the left accent bar (no status glyph/icon).
+    local name_x = x + 22
     local right_edge = x + width - side_padding - 6
     -- Only reserve the space the right-side badges actually need.
     local name_max = right_edge - right_block_width(cr, repo) - name_x
     if name_max < 48 then
       name_max = 48
     end
-
-    cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
-    cairo_set_font_size(cr, 12)
-    shared.set_hex(cr, style.color, alpha)
-    cairo_move_to(cr, left, name_y + 2)
-    cairo_show_text(cr, style.glyph)
 
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
     cairo_set_font_size(cr, 12)
@@ -642,7 +639,7 @@ return function(shared, repo_root)
     cairo_move_to(cr, x + side_padding + 8, content_y + 46)
     local message = status.error
     if message == '' then
-      message = 'Set GIT_REPO_PATHS in .env'
+      message = 'No recent repos (or set GIT_REPO_PATHS)'
     end
     cairo_show_text(cr, shared.truncate_title(cr, message, panel_width - 40))
   end

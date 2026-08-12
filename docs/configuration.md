@@ -128,7 +128,12 @@ The transparent HUD is generated on every monitor. It reads local Linux telemetr
 | Variable | Purpose |
 | --- | --- |
 | `GIT_OVERLAY_ENABLED` | Set to `0` to disable |
-| `GIT_REPO_PATHS` | Colon-separated local repo paths (`~` expanded; commas/newlines also accepted) |
+| `GIT_REPO_PATHS` | Optional pin list always merged into the fleet (before blacklist) |
+| `GIT_REPO_BLACKLIST` | Basename or path excludes (applied to pin + scan) |
+| `GIT_SCAN_ROOT` | Directory to scan for git repos (default `$HOME`) |
+| `GIT_SCAN_DAYS` | Keep scanned repos with a commit in the last N days (default `14`) |
+| `GIT_SCAN_MAX_DEPTH` | Max walk depth under the scan root (default `3`) |
+| `GIT_SCAN_TTL_SECONDS` | Discovery cache TTL (default `300`) |
 | `GIT_GAP_X` | Horizontal gap from the left screen edge |
 | `GIT_GAP_Y` | Vertical gap from the top screen edge |
 | `GIT_REFRESH_SECONDS` | Fetch interval (default `30`) |
