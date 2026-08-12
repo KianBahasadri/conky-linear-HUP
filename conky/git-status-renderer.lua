@@ -481,6 +481,41 @@ return function(shared, repo_root)
     draw_right_text(cr, header.ago, right_edge, line1_y, colors.dim, 0.9)
   end
 
+  -- Width needed for the right-side counts/tags so name truncation can use the rest.
+  local function right_block_width(cr, repo)
+    cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
+    cairo_set_font_size(cr, 10)
+    local parts = {}
+    if repo.state == 'conflict' then
+      table.insert(parts, 'CONFLICT')
+    elseif repo.state == 'stash' and repo.stash > 0 then
+      table.insert(parts, 'STASH×' .. repo.stash)
+    elseif repo.state == 'error' then
+      table.insert(parts, 'ERR')
+    elseif repo.state == 'detached' then
+      table.insert(parts, 'DETACHED')
+    end
+    for _, part in ipairs(build_counts(repo)) do
+      table.insert(parts, part.text)
+    end
+    local sync = build_sync(repo)
+    if sync ~= '' then
+      table.insert(parts, sync)
+    end
+    if #parts == 0 then
+      return 8
+    end
+    local total = 0
+    for index, label in ipairs(parts) do
+      total = total + text_width(cr, label)
+      if index < #parts then
+        total = total + 6
+      end
+    end
+    -- Gap between name/branch text and the right block.
+    return total + 12
+  end
+
   local function draw_row(cr, repo, x, y, width)
     local style = state_style(repo.state)
     local alpha = style.alpha
@@ -502,8 +537,12 @@ return function(shared, repo_root)
     local branch_y = row_y + 31
     local left = x + 22
     local name_x = left + 16
-    -- Counts sit on the right; leave the left block for name/branch.
-    local text_max = width - side_padding - 110
+    local right_edge = x + width - side_padding - 6
+    -- Only reserve the space the right-side badges actually need.
+    local name_max = right_edge - right_block_width(cr, repo) - name_x
+    if name_max < 48 then
+      name_max = 48
+    end
 
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
     cairo_set_font_size(cr, 12)
@@ -514,7 +553,7 @@ return function(shared, repo_root)
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
     cairo_set_font_size(cr, 12)
     shared.set_hex(cr, colors.text, alpha)
-    local name = shared.truncate_title(cr, repo.name, text_max - (name_x - x))
+    local name = shared.truncate_title(cr, repo.name, name_max)
     cairo_move_to(cr, name_x, name_y)
     cairo_show_text(cr, name)
 
@@ -533,10 +572,10 @@ return function(shared, repo_root)
     cairo_set_font_size(cr, 10)
     shared.set_hex(cr, branch_color, alpha * 0.9)
     cairo_move_to(cr, name_x, branch_y)
-    cairo_show_text(cr, shared.truncate_title(cr, branch_label, text_max - (name_x - x)))
+    cairo_show_text(cr, shared.truncate_title(cr, branch_label, name_max))
 
     -- Right side: counts + tags + sync, vertically centered on the two-line block
-    local right = x + width - side_padding - 6
+    local right = right_edge
     local counts_y = row_y + 22
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
     cairo_set_font_size(cr, 10)
