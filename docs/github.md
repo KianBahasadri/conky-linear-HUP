@@ -1,10 +1,39 @@
 # GitHub overlay
 
-- The GitHub tracker is a transparent left-side rail with only contribution squares.
-- `GITHUB_USERNAME` controls the rendered account. `GH_USERNAME` is also accepted. If both are missing, the fetcher tries `git config github.user` and then the GitHub remote owner.
-- `GITHUB_TOKEN` is optional and only used for authenticated requests to the public contributions endpoint.
-- Set `GITHUB_OVERLAY_ENABLED=0` to disable the GitHub overlay and its refresh loop.
-- `GITHUB_REFRESH_SECONDS`, `GITHUB_TIMEOUT_SECONDS`, `GITHUB_GAP_X`, and `GITHUB_GAP_Y` can tune refresh cadence, request timeout, and placement.
+Transparent left-side contribution rail (year of squares). No chrome — only the calendar column.
+
+## Data
+
+- `scripts/fetch_github_contributions.py` → `cache/github-contributions.json`.
+- `GITHUB_USERNAME` controls the account (`GH_USERNAME` is also accepted). If both are missing, the fetcher tries `git config github.user` and then the GitHub remote owner.
+- `GITHUB_TOKEN` is optional; used only for authenticated requests to the public contributions endpoint.
+- Set `GITHUB_OVERLAY_ENABLED=0` to disable the overlay and its refresh loop.
+
+## Layout and placement
+
+- Alignment is **`top_left`**. The renderer draws the grid from the top of the window; vertical position is entirely `gap_y`.
+- When **`GITHUB_GAP_Y` is unset**, `scripts/start_conky_overlays.sh` **auto-centers** the rail in the free band between:
+  - the **git status panel** (top), and
+  - the **Minecraft panel** (bottom),
+  using each monitor’s pixel height from `xrandr --listmonitors`.
+- Auto placement estimates panel heights (git footer chip included) so the rail sits in the middle of that band, then subtracts `GITHUB_AUTO_GAP_NUDGE_UP` (default `28`) so it sits slightly high of pure center.
+- Set an explicit `GITHUB_GAP_Y` to pin the top of the rail; leave it empty to keep auto-centering.
+
+| Variable | Purpose |
+| --- | --- |
+| `GITHUB_OVERLAY_ENABLED` | `0` disables overlay + fetch loop |
+| `GITHUB_USERNAME` / `GH_USERNAME` | Account to render |
+| `GITHUB_TOKEN` | Optional auth for the contributions endpoint |
+| `GITHUB_GAP_X` | Horizontal gap from the left edge (default `18`) |
+| `GITHUB_GAP_Y` | Top offset in px; **empty = auto-center** between git + Minecraft |
+| `GITHUB_REFRESH_SECONDS` | Fetch interval (default `1800`) |
+| `GITHUB_TIMEOUT_SECONDS` | Request timeout |
+| `GITHUB_AUTO_GIT_PANEL_H` | Estimated git panel height for auto gap (default `300`) |
+| `GITHUB_AUTO_MC_PANEL_H` | Estimated Minecraft clearance for auto gap (default `126`) |
+| `GITHUB_AUTO_RAIL_H` | Estimated contribution column height (default `590`) |
+| `GITHUB_AUTO_GAP_NUDGE_UP` | Pixels to shift auto gap upward (default `28`) |
+
+See [Configuration](configuration.md) for the full variable table.
 
 ## Contribution calendar troubleshooting
 

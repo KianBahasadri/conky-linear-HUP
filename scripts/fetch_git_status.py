@@ -664,9 +664,9 @@ def collect_status(repo_paths=None, timeout=None, hide_clean=None, max_repos=Non
     if hide_clean is None:
         hide_clean = env_flag("GIT_HIDE_CLEAN", False)
     if max_repos is None:
-        max_repos = env_int("GIT_MAX_REPOS", 12)
+        max_repos = env_int("GIT_MAX_REPOS", 6)
     if max_repos < 1:
-        max_repos = 12
+        max_repos = 6
 
     include_stash = env_flag("GIT_INCLUDE_STASH", True)
 

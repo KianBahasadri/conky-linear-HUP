@@ -10,6 +10,7 @@ Top-left fleet panel for local repository health. Each configured repo shows bra
 - Blacklist matches directory basenames (`dev-box`) or paths (`~/old-project`); path rules also drop repos nested under that directory.
 - Status results land in `cache/git-status.json` for the Cairo renderer.
 - Repos are sorted by severity: conflict → error → behind → dirty → stash → ahead → clean.
+- After sort, only the first `GIT_MAX_REPOS` rows are kept (default **6**).
 - Missing pinned paths appear as error rows instead of being skipped.
 
 ## Configuration
@@ -36,12 +37,12 @@ GIT_OVERLAY_ENABLED=1
 | `GIT_GAP_Y` | Vertical gap from the top (default `40`; empty follows Linear’s per-monitor offset) |
 | `GIT_REFRESH_SECONDS` | Fetch interval (default `30`) |
 | `GIT_TIMEOUT_SECONDS` | Per-repo git command timeout (default `2`) |
-| `GIT_MAX_REPOS` | Cap on rows shown after sort (default `12`) |
+| `GIT_MAX_REPOS` | Cap on rows shown after sort (default `6`) |
 | `GIT_HIDE_CLEAN` | `1` hides fully clean repos |
 | `GIT_INCLUDE_STASH` | `0` skips stash counting |
 | `GIT_DEFAULT_BRANCHES` | Branches treated as default for muted styling |
-| `GIT_FUNFACT_ROTATE_SECONDS` | How long each header joke stays (default `300`) |
-| `GIT_FUNFACTS_REFRESH_SECONDS` | Fun-fact fetch loop interval (default `60`) |
+| `GIT_FUNFACT_ROTATE_SECONDS` | Fun-fact rotation interval if re-enabled in the renderer (default `300`) |
+| `GIT_FUNFACTS_REFRESH_SECONDS` | Fun-fact fetch loop interval (default `60`; still runs, not drawn) |
 
 See [Configuration](configuration.md) for the full variable table.
 

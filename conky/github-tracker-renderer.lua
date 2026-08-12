@@ -53,7 +53,9 @@ return function(shared, repo_root)
     local rows = math.ceil(#entries / columns)
     local grid_height = rows * square + math.max(0, rows - 1) * gap
     local start_x = math.floor((conky_window.width - grid_width) / 2)
-    local start_y = math.floor((conky_window.height - grid_height) / 2)
+    -- Anchor to the top of the window; vertical placement is controlled by
+    -- gap_y (auto-centered between git + Minecraft when GITHUB_GAP_Y is unset).
+    local start_y = 4
 
     for index, level in ipairs(entries) do
       local draw_index = #entries - index + 1

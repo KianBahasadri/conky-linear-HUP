@@ -68,9 +68,20 @@ MINECRAFT_GAP_Y="${MINECRAFT_GAP_Y:-12}"
 MINECRAFT_REFRESH_SECONDS="${MINECRAFT_REFRESH_SECONDS:-60}"
 MINECRAFT_OVERLAY_ENABLED="${MINECRAFT_OVERLAY_ENABLED:-1}"
 GITHUB_GAP_X="${GITHUB_GAP_X:-18}"
-GITHUB_GAP_Y="${GITHUB_GAP_Y:-0}"
+# Empty = auto-center the contribution rail between the git panel (top) and
+# Minecraft panel (bottom) on each monitor. Set an explicit pixel value to pin it.
+GITHUB_GAP_Y="${GITHUB_GAP_Y-}"
 GITHUB_REFRESH_SECONDS="${GITHUB_REFRESH_SECONDS:-1800}"
 GITHUB_OVERLAY_ENABLED="${GITHUB_OVERLAY_ENABLED:-1}"
+# Height estimates used only for github auto gap_y (keep in sync with renderers).
+# Git: top pad + 6 two-line rows + bottom pad + footer chip under the frame.
+GITHUB_AUTO_GIT_PANEL_H="${GITHUB_AUTO_GIT_PANEL_H:-300}"
+# Minecraft: panel + bottom clearance inside its bottom-aligned window.
+GITHUB_AUTO_MC_PANEL_H="${GITHUB_AUTO_MC_PANEL_H:-126}"
+# Contribution column: ~53 weeks × (7px + 4px gap) + top pad.
+GITHUB_AUTO_RAIL_H="${GITHUB_AUTO_RAIL_H:-590}"
+# Nudge the auto-centered rail upward a bit (pixels subtracted from gap_y).
+GITHUB_AUTO_GAP_NUDGE_UP="${GITHUB_AUTO_GAP_NUDGE_UP:-28}"
 WEATHER_GAP_X="${WEATHER_GAP_X:-18}"
 WEATHER_GAP_Y="${WEATHER_GAP_Y:-12}"
 WEATHER_REFRESH_SECONDS="${WEATHER_REFRESH_SECONDS:-600}"
@@ -520,15 +531,52 @@ overlay_gap_x() {
   esac
 }
 
+# Center the github rail in the free band between git (top) and Minecraft (bottom).
+github_auto_gap_y() {
+  local monitor_h="$1"
+  local git_gap_y="$2"
+  local git_bottom mc_top free gap
+
+  if [[ ! "$monitor_h" =~ ^[0-9]+$ ]] || (( monitor_h < 200 )); then
+    monitor_h=1080
+  fi
+  if [[ ! "$git_gap_y" =~ ^-?[0-9]+$ ]]; then
+    git_gap_y=1
+  fi
+
+  git_bottom=$((git_gap_y + GITHUB_AUTO_GIT_PANEL_H))
+  mc_top=$((monitor_h - MINECRAFT_GAP_Y - GITHUB_AUTO_MC_PANEL_H))
+  free=$((mc_top - git_bottom))
+  if (( free > GITHUB_AUTO_RAIL_H )); then
+    gap=$((git_bottom + (free - GITHUB_AUTO_RAIL_H) / 2))
+  else
+    gap=$((git_bottom + 8))
+  fi
+  if [[ "$GITHUB_AUTO_GAP_NUDGE_UP" =~ ^[0-9]+$ ]]; then
+    gap=$((gap - GITHUB_AUTO_GAP_NUDGE_UP))
+  fi
+  if (( gap < 0 )); then
+    gap=0
+  fi
+  printf "%s\n" "$gap"
+}
+
 overlay_gap_y() {
   local key="$1"
   local linear_gap_y="$2"
+  local monitor_h="${3:-1080}"
 
   case "$key" in
     linear) printf "%s\n" "$linear_gap_y" ;;
     rate-limit-panel) printf "%s\n" "$RATE_LIMIT_PANEL_GAP_Y" ;;
     minecraft) printf "%s\n" "$MINECRAFT_GAP_Y" ;;
-    github) printf "%s\n" "$GITHUB_GAP_Y" ;;
+    github)
+      if [[ -n "$GITHUB_GAP_Y" ]]; then
+        printf "%s\n" "$GITHUB_GAP_Y"
+      else
+        github_auto_gap_y "$monitor_h" "$(overlay_gap_y git "$linear_gap_y")"
+      fi
+      ;;
     weather) printf "%s\n" "$WEATHER_GAP_Y" ;;
     resource-monitor)
       if [[ -n "$RESOURCE_MONITOR_GAP_Y" ]]; then
@@ -566,7 +614,7 @@ log_generated_overlay() {
       log_overlay minecraft "generated monitor_index=$monitor_index width=$width gap_x=$MINECRAFT_GAP_X gap_y=$MINECRAFT_GAP_Y config=$config_path"
       ;;
     github)
-      log_overlay github "generated monitor_index=$monitor_index width=$width gap_x=$GITHUB_GAP_X gap_y=$GITHUB_GAP_Y config=$config_path"
+      log_overlay github "generated monitor_index=$monitor_index width=$width gap_x=$GITHUB_GAP_X gap_y=$(overlay_gap_y github "$linear_gap_y" 1080) config=$config_path"
       ;;
     weather)
       log_overlay weather "generated monitor_index=$monitor_index width=$width gap_x=$WEATHER_GAP_X gap_y=$WEATHER_GAP_Y config=$config_path"
@@ -601,7 +649,7 @@ launch_overlay() {
       log_overlay minecraft "launched monitor_index=$monitor_index width=$width gap_x=$MINECRAFT_GAP_X gap_y=$MINECRAFT_GAP_Y config=$config_path pid=$!"
       ;;
     github)
-      log_overlay github "launched monitor_index=$monitor_index width=$width gap_x=$GITHUB_GAP_X gap_y=$GITHUB_GAP_Y config=$config_path pid=$!"
+      log_overlay github "launched monitor_index=$monitor_index width=$width gap_x=$GITHUB_GAP_X gap_y=$(grep -E '^\s*gap_y\s*=' "$config_path" | head -1 | tr -dc '0-9-') config=$config_path pid=$!"
       ;;
     weather)
       log_overlay weather "launched monitor_index=$monitor_index width=$width gap_x=$WEATHER_GAP_X gap_y=$WEATHER_GAP_Y config=$config_path pid=$!"
@@ -640,6 +688,7 @@ for line in "${monitor_lines[@]}"; do
   fi
 
   width="${BASH_REMATCH[1]}"
+  monitor_height="${BASH_REMATCH[2]}"
   monitor_gap_x=$(((width - OVERLAY_WIDTH) / 2))
   linear_gap_y="$LINEAR_GAP_Y"
   if [[ "$line" =~ ^[[:space:]]*[0-9]+:[[:space:]]*[^[:space:]]*\* ]] || { [[ "$MONITOR_HAS_PRIMARY" -eq 0 ]] && [[ "$index" -eq "$LINEAR_PRIMARY_MONITOR_INDEX" ]]; }; then
@@ -653,7 +702,7 @@ for line in "${monitor_lines[@]}"; do
       if [[ "$key" == "linear" ]]; then
         extra_height="$LINEAR_MINIMUM_HEIGHT"
       fi
-      generate_config "${overlay_config[$key]}" "$config_path" "$index" "$(overlay_gap_x "$key" "$monitor_gap_x")" "$(overlay_gap_y "$key" "$linear_gap_y")" "$extra_height"
+      generate_config "${overlay_config[$key]}" "$config_path" "$index" "$(overlay_gap_x "$key" "$monitor_gap_x")" "$(overlay_gap_y "$key" "$linear_gap_y" "$monitor_height")" "$extra_height"
     fi
   done
 

@@ -89,8 +89,12 @@ Pioneer env vars (`PIONEER_API_KEY`, `PIONEER_USAGE_LABEL`, `PIONEER_MONTHLY_CRE
 | `GH_USERNAME` | Alias for `GITHUB_USERNAME` |
 | `GITHUB_TOKEN` | Optional token for authenticated contribution requests |
 | `GITHUB_OVERLAY_ENABLED` | Set to `0` to disable |
-| `GITHUB_GAP_X` | Horizontal gap from screen edge |
-| `GITHUB_GAP_Y` | Vertical gap from screen edge |
+| `GITHUB_GAP_X` | Horizontal gap from the left edge (default `18`) |
+| `GITHUB_GAP_Y` | Top offset in px; empty auto-centers the rail between git + Minecraft |
+| `GITHUB_AUTO_GIT_PANEL_H` | Auto-gap estimate for git panel height (default `300`) |
+| `GITHUB_AUTO_MC_PANEL_H` | Auto-gap estimate for Minecraft clearance (default `126`) |
+| `GITHUB_AUTO_RAIL_H` | Auto-gap estimate for contribution column height (default `590`) |
+| `GITHUB_AUTO_GAP_NUDGE_UP` | Pixels to shift auto-centered rail upward (default `28`) |
 | `GITHUB_REFRESH_SECONDS` | Fetch interval |
 | `GITHUB_TIMEOUT_SECONDS` | Request timeout |
 
@@ -138,7 +142,7 @@ The transparent HUD is generated on every monitor. It reads local Linux telemetr
 | `GIT_GAP_Y` | Vertical gap from the top screen edge |
 | `GIT_REFRESH_SECONDS` | Fetch interval (default `30`) |
 | `GIT_TIMEOUT_SECONDS` | Per-repo git command timeout (default `2`) |
-| `GIT_MAX_REPOS` | Max rows after severity sort (default `12`) |
+| `GIT_MAX_REPOS` | Max rows after severity sort (default `6`) |
 | `GIT_HIDE_CLEAN` | `1` hides clean repos |
 | `GIT_INCLUDE_STASH` | `0` skips stash list |
 | `GIT_DEFAULT_BRANCHES` | Default branch names for muted branch styling |

@@ -1,5 +1,7 @@
 conky.config = {
-  alignment = 'middle_left',
+  -- top_left so gap_y is distance from the top; start script centers the rail
+  -- between the git panel and the Minecraft panel when GITHUB_GAP_Y is unset.
+  alignment = 'top_left',
   background = true,
   border_width = 0,
   default_color = '000000',
@@ -13,8 +15,9 @@ conky.config = {
   extra_newline = false,
   font = 'JetBrains Mono:size=10',
   gap_x = 18,
-  gap_y = 0,
-  minimum_height = 680,
+  gap_y = 320,
+  -- Tall enough for a 53-week column (7px square + 4px gap) plus edge pad.
+  minimum_height = 600,
   minimum_width = 96,
   maximum_width = 96,
   no_buffers = true,
