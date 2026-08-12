@@ -122,3 +122,20 @@ Location resolution prefers exact coordinates, then `WEATHER_LOCATION`, then an 
 | `RESOURCE_NET_GAUGE_WINDOW` | Moving-average window (samples) for the NET gauge; defaults to `6` |
 
 The transparent HUD is generated on every monitor. It reads local Linux telemetry for CPU, memory, network throughput, `/` and `/home` disk usage, load average, and uptime. Each display retains its own recent samples for the active Conky session. NET sparkline scale uses the max IN/OUT rate recorded in the last 7 days (`cache/resource-net-peaks.tsv`). Bottom readouts fill a 3-column grid in column-major order under the gauges (LOAD/UP, `/`/`/home`, IN/OUT); see [Layout](README.md#layout).
+
+## Git status overlay
+
+| Variable | Purpose |
+| --- | --- |
+| `GIT_OVERLAY_ENABLED` | Set to `0` to disable |
+| `GIT_REPO_PATHS` | Colon-separated local repo paths (`~` expanded; commas/newlines also accepted) |
+| `GIT_GAP_X` | Horizontal gap from the left screen edge |
+| `GIT_GAP_Y` | Vertical gap from the top screen edge |
+| `GIT_REFRESH_SECONDS` | Fetch interval (default `30`) |
+| `GIT_TIMEOUT_SECONDS` | Per-repo git command timeout (default `2`) |
+| `GIT_MAX_REPOS` | Max rows after severity sort (default `12`) |
+| `GIT_HIDE_CLEAN` | `1` hides clean repos |
+| `GIT_INCLUDE_STASH` | `0` skips stash list |
+| `GIT_DEFAULT_BRANCHES` | Default branch names for muted branch styling |
+
+See [Git status overlay](git.md) for layout and severity rules.

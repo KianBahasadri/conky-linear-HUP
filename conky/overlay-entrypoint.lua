@@ -52,3 +52,10 @@ local resource_monitor = dofile(conky_dir .. '/resource-monitor-renderer.lua')(s
 function conky_draw_resource_monitor()
   resource_monitor.draw()
 end
+
+-- Local git status fleet
+local git_status = dofile(conky_dir .. '/git-status-renderer.lua')(shared, repo_root)
+
+function conky_draw_git_status()
+  git_status.draw()
+end

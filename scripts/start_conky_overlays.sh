@@ -33,6 +33,7 @@ MINECRAFT_CONFIG="$ROOT/conky/minecraft-overlay.conkyrc"
 GITHUB_CONFIG="$ROOT/conky/github-overlay.conkyrc"
 WEATHER_CONFIG="$ROOT/conky/weather-overlay.conkyrc"
 RESOURCE_MONITOR_CONFIG="$ROOT/conky/resource-monitor-overlay.conkyrc"
+GIT_CONFIG="$ROOT/conky/git-overlay.conkyrc"
 GENERATED_DIR="$ROOT/conky/generated"
 CACHE_DIR="$ROOT/cache"
 LINEAR_LOG_PATH="$CACHE_DIR/conky-linear.log"
@@ -41,6 +42,7 @@ MINECRAFT_LOG_PATH="$CACHE_DIR/conky-minecraft.log"
 GITHUB_LOG_PATH="$CACHE_DIR/conky-github.log"
 WEATHER_LOG_PATH="$CACHE_DIR/conky-weather.log"
 RESOURCE_MONITOR_LOG_PATH="$CACHE_DIR/conky-resource-monitor.log"
+GIT_LOG_PATH="$CACHE_DIR/conky-git.log"
 LINEAR_FETCH_PID="$CACHE_DIR/linear-fetch-loop.pid"
 CODEX_FETCH_PID="$CACHE_DIR/codex-fetch-loop.pid"
 CLAUDE_FETCH_PID="$CACHE_DIR/claude-fetch-loop.pid"
@@ -51,6 +53,7 @@ OPENCODE_FETCH_PID="$CACHE_DIR/opencode-fetch-loop.pid"
 MINECRAFT_FETCH_PID="$CACHE_DIR/minecraft-fetch-loop.pid"
 GITHUB_FETCH_PID="$CACHE_DIR/github-fetch-loop.pid"
 WEATHER_FETCH_PID="$CACHE_DIR/weather-fetch-loop.pid"
+GIT_FETCH_PID="$CACHE_DIR/git-fetch-loop.pid"
 OVERLAY_WIDTH=1540
 LINEAR_GAP_Y=4
 LINEAR_PRIMARY_GAP_Y=34
@@ -75,6 +78,11 @@ RESOURCE_MONITOR_GAP_X="${RESOURCE_MONITOR_GAP_X:-0}"
 # Empty means follow Linear's per-monitor gap_y so gauge tops stay flush with cards.
 RESOURCE_MONITOR_GAP_Y="${RESOURCE_MONITOR_GAP_Y:-}"
 RESOURCE_MONITOR_OVERLAY_ENABLED="${RESOURCE_MONITOR_OVERLAY_ENABLED:-1}"
+GIT_GAP_X="${GIT_GAP_X:-1}"
+# Empty means follow Linear's per-monitor gap_y (primary clears the GNOME top bar).
+GIT_GAP_Y="${GIT_GAP_Y-1}"
+GIT_REFRESH_SECONDS="${GIT_REFRESH_SECONDS:-30}"
+GIT_OVERLAY_ENABLED="${GIT_OVERLAY_ENABLED:-1}"
 # Adaptive rate-limit polling: repoll quickly for a while after any usage change,
 # then back off when idle. Applied to all rate-limit-panel fetchers
 # (codex/claude/cursor/gemini/grok/opencode).
@@ -85,8 +93,8 @@ RATE_LIMIT_RECENT_CHANGE_WINDOW="${RATE_LIMIT_RECENT_CHANGE_WINDOW:-600}"
 GENERATE_ONLY=0
 MONITOR_HAS_PRIMARY=0
 
-overlay_keys=(linear rate-limit-panel minecraft github weather resource-monitor)
-fetch_keys=(linear codex claude cursor gemini grok opencode minecraft github weather)
+overlay_keys=(linear rate-limit-panel minecraft github weather resource-monitor git)
+fetch_keys=(linear codex claude cursor gemini grok opencode minecraft github weather git)
 
 declare -A overlay_disabled_name=(
   [linear]="linear"
@@ -95,6 +103,7 @@ declare -A overlay_disabled_name=(
   [github]="github"
   [weather]="weather"
   [resource-monitor]="resource monitor"
+  [git]="git status"
 )
 declare -A overlay_config=(
   [linear]="$BASE_CONFIG"
@@ -103,6 +112,7 @@ declare -A overlay_config=(
   [github]="$GITHUB_CONFIG"
   [weather]="$WEATHER_CONFIG"
   [resource-monitor]="$RESOURCE_MONITOR_CONFIG"
+  [git]="$GIT_CONFIG"
 )
 declare -A overlay_log_path=(
   [linear]="$LINEAR_LOG_PATH"
@@ -111,6 +121,7 @@ declare -A overlay_log_path=(
   [github]="$GITHUB_LOG_PATH"
   [weather]="$WEATHER_LOG_PATH"
   [resource-monitor]="$RESOURCE_MONITOR_LOG_PATH"
+  [git]="$GIT_LOG_PATH"
 )
 declare -A overlay_enabled_var=(
   [linear]="LINEAR_OVERLAY_ENABLED"
@@ -119,6 +130,7 @@ declare -A overlay_enabled_var=(
   [github]="GITHUB_OVERLAY_ENABLED"
   [weather]="WEATHER_OVERLAY_ENABLED"
   [resource-monitor]="RESOURCE_MONITOR_OVERLAY_ENABLED"
+  [git]="GIT_OVERLAY_ENABLED"
 )
 
 declare -A fetch_label=(
@@ -132,6 +144,7 @@ declare -A fetch_label=(
   [minecraft]="Minecraft"
   [github]="GitHub"
   [weather]="Weather"
+  [git]="Git"
 )
 declare -A fetch_overlay_key=(
   [linear]="linear"
@@ -144,6 +157,7 @@ declare -A fetch_overlay_key=(
   [minecraft]="minecraft"
   [github]="github"
   [weather]="weather"
+  [git]="git"
 )
 # Interval for non-adaptive fetchers. Rate-limit keys (codex/claude/cursor/
 # gemini/grok/opencode) use adaptive polling via fetch_render_path; their
@@ -159,6 +173,7 @@ declare -A fetch_interval=(
   [minecraft]="$MINECRAFT_REFRESH_SECONDS"
   [github]="$GITHUB_REFRESH_SECONDS"
   [weather]="$WEATHER_REFRESH_SECONDS"
+  [git]="$GIT_REFRESH_SECONDS"
 )
 declare -A fetch_script=(
   [linear]="$ROOT/scripts/fetch_linear_tasks.py"
@@ -171,6 +186,7 @@ declare -A fetch_script=(
   [minecraft]="$ROOT/scripts/fetch_minecraft_status.py"
   [github]="$ROOT/scripts/fetch_github_contributions.py"
   [weather]="$ROOT/scripts/fetch_weather.py"
+  [git]="$ROOT/scripts/fetch_git_status.py"
 )
 declare -A fetch_pid_file=(
   [linear]="$LINEAR_FETCH_PID"
@@ -183,6 +199,7 @@ declare -A fetch_pid_file=(
   [minecraft]="$MINECRAFT_FETCH_PID"
   [github]="$GITHUB_FETCH_PID"
   [weather]="$WEATHER_FETCH_PID"
+  [git]="$GIT_FETCH_PID"
 )
 # Render TSV paths for rate-limit-panel fetchers that support adaptive polling.
 # Keys with an empty render path use the static fetch_interval instead.
@@ -197,6 +214,7 @@ declare -A fetch_render_path=(
   [minecraft]=""
   [github]=""
   [weather]=""
+  [git]=""
 )
 
 env_flag_disabled() {
@@ -376,6 +394,7 @@ done
 pkill -f "$ROOT/scripts/fetch_minecraft_status.py" 2>/dev/null || true
 pkill -f "$ROOT/scripts/fetch_github_contributions.py" 2>/dev/null || true
 pkill -f "$ROOT/scripts/fetch_weather.py" 2>/dev/null || true
+pkill -f "$ROOT/scripts/fetch_git_status.py" 2>/dev/null || true
 log_overlay linear "stopped existing matching Conky processes"
 
 if [[ "$GENERATE_ONLY" -eq 0 ]]; then
@@ -428,6 +447,7 @@ generate_config() {
       *"fetch_grok_usage.py"*) ;;
       *"fetch_opencode_usage.py"*) ;;
       *"fetch_weather.py"*) ;;
+      *"fetch_git_status.py"*) ;;
       *)
         printf "%s\n" "$config_line"
         ;;
@@ -486,6 +506,7 @@ overlay_gap_x() {
     github) printf "%s\n" "$GITHUB_GAP_X" ;;
     weather) printf "%s\n" "$WEATHER_GAP_X" ;;
     resource-monitor) printf "%s\n" "$RESOURCE_MONITOR_GAP_X" ;;
+    git) printf "%s\n" "$GIT_GAP_X" ;;
   esac
 }
 
@@ -502,6 +523,13 @@ overlay_gap_y() {
     resource-monitor)
       if [[ -n "$RESOURCE_MONITOR_GAP_Y" ]]; then
         printf "%s\n" "$RESOURCE_MONITOR_GAP_Y"
+      else
+        printf "%s\n" "$linear_gap_y"
+      fi
+      ;;
+    git)
+      if [[ -n "$GIT_GAP_Y" ]]; then
+        printf "%s\n" "$GIT_GAP_Y"
       else
         printf "%s\n" "$linear_gap_y"
       fi
@@ -536,6 +564,9 @@ log_generated_overlay() {
     resource-monitor)
       log_overlay resource-monitor "generated monitor_index=$monitor_index width=$width gap_x=$RESOURCE_MONITOR_GAP_X gap_y=$(overlay_gap_y resource-monitor "$linear_gap_y") config=$config_path"
       ;;
+    git)
+      log_overlay git "generated monitor_index=$monitor_index width=$width gap_x=$GIT_GAP_X gap_y=$(overlay_gap_y git "$linear_gap_y") config=$config_path"
+      ;;
   esac
 }
 
@@ -567,6 +598,9 @@ launch_overlay() {
       ;;
     resource-monitor)
       log_overlay resource-monitor "launched monitor_index=$monitor_index width=$width gap_x=$RESOURCE_MONITOR_GAP_X gap_y=$(overlay_gap_y resource-monitor "$linear_gap_y") config=$config_path pid=$!"
+      ;;
+    git)
+      log_overlay git "launched monitor_index=$monitor_index width=$width gap_x=$GIT_GAP_X gap_y=$(overlay_gap_y git "$linear_gap_y") config=$config_path pid=$!"
       ;;
   esac
 }

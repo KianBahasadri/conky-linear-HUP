@@ -1,0 +1,39 @@
+conky.config = {
+  alignment = 'top_left',
+  background = true,
+  border_width = 0,
+  default_color = '000000',
+  default_outline_color = '111827',
+  default_shade_color = '111827',
+  double_buffer = true,
+  draw_borders = false,
+  draw_graph_borders = false,
+  draw_outline = false,
+  draw_shades = false,
+  extra_newline = false,
+  font = 'JetBrains Mono:size=10',
+  gap_x = 1,
+  gap_y = 1,
+  -- Tall enough for ~8 two-line repo rows; lua draws the panel at the top.
+  minimum_height = 360,
+  minimum_width = 304,
+  maximum_width = 304,
+  no_buffers = true,
+  own_window = true,
+  own_window_argb_visual = true,
+  own_window_argb_value = 0,
+  own_window_class = 'Conky',
+  -- Use normal+below (not desktop): on GNOME/Xwayland the desktop layer can
+  -- fail to composite at the absolute left edge of the virtual desktop (head 2).
+  -- The solid test window used normal and was visible on that monitor.
+  own_window_hints = 'undecorated,below,sticky,skip_taskbar,skip_pager',
+  own_window_transparent = true,
+  own_window_type = 'normal',
+  update_interval = 15,
+  use_xft = true,
+  lua_load = './conky/overlay-entrypoint.lua',
+  lua_draw_hook_post = 'draw_git_status',
+}
+
+conky.text = [[
+]]

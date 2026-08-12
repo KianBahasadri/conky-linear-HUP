@@ -24,6 +24,7 @@
 - `cache/minecraft-status.json`: Minecraft Java server status consumed by the Cairo renderer. Includes `lastPlayerSeenAt` / `lastPlayerSeenAtEpoch` and `lastSuccessfulAt` / `lastSuccessfulAtEpoch` for empty-server idle display; last-seen is only trusted across continuous successful polls.
 - `cache/github-contributions.json`: GitHub contribution squares consumed by the Cairo renderer.
 - `cache/weather-status.json`: normalized weather, air quality, and running guidance consumed by the Cairo renderer.
+- `cache/git-status.json`: local git fleet status consumed by the Cairo renderer.
 - `cache/resource-net-peaks.tsv`: hourly max IN/OUT byte rates from the resource monitor; retained for 7 days and used as the NET sparkline scale.
 
 ## Logs
@@ -33,6 +34,7 @@
 - `cache/conky-minecraft.log`: Minecraft fetch, launcher, and Minecraft Conky output.
 - `cache/conky-github.log`: GitHub fetch, launcher, and GitHub Conky output.
 - `cache/conky-weather.log`: weather fetch, launcher, and weather Conky output.
+- `cache/conky-git.log`: git status fetch, launcher, and git Conky output.
 
 ## Fetch intervals
 
@@ -42,3 +44,4 @@
 - Minecraft: `60s`
 - GitHub: `1800s`
 - Weather and air quality: `600s`
+- Git status: `30s` (override with `GIT_REFRESH_SECONDS`)
