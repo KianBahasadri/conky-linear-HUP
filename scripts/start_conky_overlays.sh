@@ -82,6 +82,10 @@ GITHUB_AUTO_MC_PANEL_H="${GITHUB_AUTO_MC_PANEL_H:-126}"
 GITHUB_AUTO_RAIL_H="${GITHUB_AUTO_RAIL_H:-590}"
 # Nudge the auto-centered rail upward a bit (pixels subtracted from gap_y).
 GITHUB_AUTO_GAP_NUDGE_UP="${GITHUB_AUTO_GAP_NUDGE_UP:-28}"
+# On the primary monitor the git panel is a normal window, so GNOME's top bar
+# pushes it down; the github rail is a desktop window measured from screen top.
+# Empty = detect from _NET_WORKAREA (fallback 32). Set 0 to disable.
+GITHUB_AUTO_PRIMARY_GIT_EXTRA="${GITHUB_AUTO_PRIMARY_GIT_EXTRA-}"
 WEATHER_GAP_X="${WEATHER_GAP_X:-18}"
 WEATHER_GAP_Y="${WEATHER_GAP_Y:-12}"
 WEATHER_REFRESH_SECONDS="${WEATHER_REFRESH_SECONDS:-600}"
@@ -531,11 +535,32 @@ overlay_gap_x() {
   esac
 }
 
+# GNOME reports a single workarea inset (top bar) for the whole virtual
+# desktop. The bar itself only sits on the primary monitor.
+primary_top_inset() {
+  local wa
+  wa="$(xprop -root _NET_WORKAREA 2>/dev/null || true)"
+  if [[ "$wa" =~ =\ *([0-9]+),\ *([0-9]+), ]]; then
+    printf "%s\n" "${BASH_REMATCH[2]}"
+    return
+  fi
+  printf "%s\n" 32
+}
+
+if [[ -z "$GITHUB_AUTO_PRIMARY_GIT_EXTRA" ]]; then
+  GITHUB_AUTO_PRIMARY_GIT_EXTRA="$(primary_top_inset)"
+fi
+if [[ ! "$GITHUB_AUTO_PRIMARY_GIT_EXTRA" =~ ^[0-9]+$ ]]; then
+  log_overlay github "invalid GITHUB_AUTO_PRIMARY_GIT_EXTRA=$GITHUB_AUTO_PRIMARY_GIT_EXTRA; using 32"
+  GITHUB_AUTO_PRIMARY_GIT_EXTRA=32
+fi
+
 # Center the github rail in the free band between git (top) and Minecraft (bottom).
 github_auto_gap_y() {
   local monitor_h="$1"
   local git_gap_y="$2"
-  local git_bottom mc_top free gap
+  local is_primary="${3:-0}"
+  local git_bottom mc_top free gap min_top extra
 
   if [[ ! "$monitor_h" =~ ^[0-9]+$ ]] || (( monitor_h < 200 )); then
     monitor_h=1080
@@ -545,6 +570,14 @@ github_auto_gap_y() {
   fi
 
   git_bottom=$((git_gap_y + GITHUB_AUTO_GIT_PANEL_H))
+  # Primary: git (normal) is pushed below the top bar; github (desktop) is not.
+  extra=0
+  if [[ "$is_primary" == "1" ]]; then
+    extra="$GITHUB_AUTO_PRIMARY_GIT_EXTRA"
+    if (( extra > git_gap_y )); then
+      git_bottom=$((git_bottom + extra - git_gap_y))
+    fi
+  fi
   mc_top=$((monitor_h - MINECRAFT_GAP_Y - GITHUB_AUTO_MC_PANEL_H))
   free=$((mc_top - git_bottom))
   if (( free > GITHUB_AUTO_RAIL_H )); then
@@ -554,6 +587,15 @@ github_auto_gap_y() {
   fi
   if [[ "$GITHUB_AUTO_GAP_NUDGE_UP" =~ ^[0-9]+$ ]]; then
     gap=$((gap - GITHUB_AUTO_GAP_NUDGE_UP))
+  fi
+  # The upward nudge must not walk the rail back over the git panel. Only
+  # enforce this on primary, where the extra inset is what makes the nudge
+  # overlap; side monitors are already visually correct at the nudged value.
+  if [[ "$is_primary" == "1" ]]; then
+    min_top=$((git_bottom + 8))
+    if (( gap < min_top )); then
+      gap=$min_top
+    fi
   fi
   if (( gap < 0 )); then
     gap=0
@@ -565,6 +607,7 @@ overlay_gap_y() {
   local key="$1"
   local linear_gap_y="$2"
   local monitor_h="${3:-1080}"
+  local is_primary="${4:-0}"
 
   case "$key" in
     linear) printf "%s\n" "$linear_gap_y" ;;
@@ -574,7 +617,7 @@ overlay_gap_y() {
       if [[ -n "$GITHUB_GAP_Y" ]]; then
         printf "%s\n" "$GITHUB_GAP_Y"
       else
-        github_auto_gap_y "$monitor_h" "$(overlay_gap_y git "$linear_gap_y")"
+        github_auto_gap_y "$monitor_h" "$(overlay_gap_y git "$linear_gap_y")" "$is_primary"
       fi
       ;;
     weather) printf "%s\n" "$WEATHER_GAP_Y" ;;
@@ -614,7 +657,7 @@ log_generated_overlay() {
       log_overlay minecraft "generated monitor_index=$monitor_index width=$width gap_x=$MINECRAFT_GAP_X gap_y=$MINECRAFT_GAP_Y config=$config_path"
       ;;
     github)
-      log_overlay github "generated monitor_index=$monitor_index width=$width gap_x=$GITHUB_GAP_X gap_y=$(overlay_gap_y github "$linear_gap_y" 1080) config=$config_path"
+      log_overlay github "generated monitor_index=$monitor_index width=$width gap_x=$GITHUB_GAP_X gap_y=$(grep -E '^\s*gap_y\s*=' "$config_path" | head -1 | tr -dc '0-9-') config=$config_path"
       ;;
     weather)
       log_overlay weather "generated monitor_index=$monitor_index width=$width gap_x=$WEATHER_GAP_X gap_y=$WEATHER_GAP_Y config=$config_path"
@@ -691,8 +734,10 @@ for line in "${monitor_lines[@]}"; do
   monitor_height="${BASH_REMATCH[2]}"
   monitor_gap_x=$(((width - OVERLAY_WIDTH) / 2))
   linear_gap_y="$LINEAR_GAP_Y"
+  is_primary=0
   if [[ "$line" =~ ^[[:space:]]*[0-9]+:[[:space:]]*[^[:space:]]*\* ]] || { [[ "$MONITOR_HAS_PRIMARY" -eq 0 ]] && [[ "$index" -eq "$LINEAR_PRIMARY_MONITOR_INDEX" ]]; }; then
     linear_gap_y="$LINEAR_PRIMARY_GAP_Y"
+    is_primary=1
   fi
 
   for key in "${overlay_keys[@]}"; do
@@ -702,7 +747,7 @@ for line in "${monitor_lines[@]}"; do
       if [[ "$key" == "linear" ]]; then
         extra_height="$LINEAR_MINIMUM_HEIGHT"
       fi
-      generate_config "${overlay_config[$key]}" "$config_path" "$index" "$(overlay_gap_x "$key" "$monitor_gap_x")" "$(overlay_gap_y "$key" "$linear_gap_y" "$monitor_height")" "$extra_height"
+      generate_config "${overlay_config[$key]}" "$config_path" "$index" "$(overlay_gap_x "$key" "$monitor_gap_x")" "$(overlay_gap_y "$key" "$linear_gap_y" "$monitor_height" "$is_primary")" "$extra_height"
     fi
   done
 

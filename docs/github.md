@@ -17,6 +17,7 @@ Transparent left-side contribution rail (year of squares). No chrome — only th
   - the **Minecraft panel** (bottom),
   using each monitor’s pixel height from `xrandr --listmonitors`.
 - Auto placement estimates panel heights (git footer chip included) so the rail sits in the middle of that band, then subtracts `GITHUB_AUTO_GAP_NUDGE_UP` (default `28`) so it sits slightly high of pure center.
+- On the **primary** monitor the git panel is a `normal` window, so GNOME’s top bar pushes it down; the contribution rail is a `desktop` window measured from the top of the screen. Auto-gap adds `GITHUB_AUTO_PRIMARY_GIT_EXTRA` (detected from `_NET_WORKAREA`, typically `32`) to the git-panel bottom and will not nudge the rail back over that inset.
 - Set an explicit `GITHUB_GAP_Y` to pin the top of the rail; leave it empty to keep auto-centering.
 
 | Variable | Purpose |
@@ -32,6 +33,7 @@ Transparent left-side contribution rail (year of squares). No chrome — only th
 | `GITHUB_AUTO_MC_PANEL_H` | Estimated Minecraft clearance for auto gap (default `126`) |
 | `GITHUB_AUTO_RAIL_H` | Estimated contribution column height (default `590`) |
 | `GITHUB_AUTO_GAP_NUDGE_UP` | Pixels to shift auto gap upward (default `28`) |
+| `GITHUB_AUTO_PRIMARY_GIT_EXTRA` | Extra git-bottom inset on the primary monitor; empty detects the top bar from `_NET_WORKAREA` (fallback `32`); `0` disables |
 
 See [Configuration](configuration.md) for the full variable table.
 

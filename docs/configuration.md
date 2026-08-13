@@ -95,6 +95,7 @@ Pioneer env vars (`PIONEER_API_KEY`, `PIONEER_USAGE_LABEL`, `PIONEER_MONTHLY_CRE
 | `GITHUB_AUTO_MC_PANEL_H` | Auto-gap estimate for Minecraft clearance (default `126`) |
 | `GITHUB_AUTO_RAIL_H` | Auto-gap estimate for contribution column height (default `590`) |
 | `GITHUB_AUTO_GAP_NUDGE_UP` | Pixels to shift auto-centered rail upward (default `28`) |
+| `GITHUB_AUTO_PRIMARY_GIT_EXTRA` | Extra git-bottom inset on the primary monitor so the rail clears the GNOME-shifted git panel; empty detects `_NET_WORKAREA` (fallback `32`) |
 | `GITHUB_REFRESH_SECONDS` | Fetch interval |
 | `GITHUB_TIMEOUT_SECONDS` | Request timeout |
 
