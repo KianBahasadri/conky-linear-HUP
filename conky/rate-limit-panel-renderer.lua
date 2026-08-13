@@ -444,12 +444,23 @@ return function(shared, repo_root)
     return nil
   end
 
+  local function remaining_for_pace(window, window_seconds)
+    -- Unused sliding resets report remaining == full duration at fetch time.
+    -- Live epoch countdown would otherwise make expected > 0 a few seconds later
+    -- and draw a left-edge tick on a window that has not actually started.
+    local snapshot_remaining = tonumber(window.reset_after_seconds) or 0
+    if snapshot_remaining >= window_seconds then
+      return window_seconds
+    end
+    return seconds_until_reset(window)
+  end
+
   local function calculate_window_pace(window, window_seconds)
     if not window or window_seconds <= 0 then
       return nil
     end
 
-    local elapsed_seconds = window_seconds - seconds_until_reset(window)
+    local elapsed_seconds = window_seconds - remaining_for_pace(window, window_seconds)
     local expected = shared.clamp((elapsed_seconds / window_seconds) * 100, 0, 100)
     local actual = shared.clamp(window.used_percent, 0, 100)
     local delta = actual - expected
@@ -641,10 +652,9 @@ return function(shared, repo_root)
     if not pace then
       return
     end
-    -- INTENTION (see docs/rate-limit-panel.md § Pace markers): expected is
-    -- (windowSeconds - remaining) / windowSeconds * 100. Hide only when the
-    -- full window is still remaining (expected <= 0). Any elapsed time shows
-    -- the tick — even if the bar would still round that to 0% / left edge.
+    -- Hide while none of the reset window has elapsed (expected <= 0), including
+    -- unused sliding resets whose fetch remaining still equals the full duration.
+    -- Show as soon as any time has elapsed, even at 0% fill or the left edge.
     -- Do not gate on usedPercent or on pixel/rounded display position.
     if (pace.expected or 0) <= 0 then
       return

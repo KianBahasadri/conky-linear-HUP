@@ -62,7 +62,7 @@
 
 - Weekly and 5h pace markers are per paid account: each bar uses that window's own reset time.
 - The orange tick is **expected** usage for on-pace spend: `expected = (windowSeconds - remainingSeconds) / windowSeconds * 100` (elapsed time through the reset window, not `usedPercent`).
-- **Visibility (do not change):** hide the tick only while remaining time still equals the full window (`expected <= 0`, nothing elapsed). Show it as soon as any time has elapsed (`expected > 0`), even when that still rounds to 0% or the left edge of the bar. Do not gate on fill percentage, and do not hide based on pixel/rounded display position.
+- **Visibility:** hide the tick while none of the reset window has elapsed (`expected <= 0`). Unused sliding resets report remaining equal to the full duration at fetch time; treat those as not elapsed even after later wall-clock countdown. Show the tick as soon as any of the window has elapsed (`expected > 0`), even at 0% fill or the left edge. Do not gate on `usedPercent`, and do not hide based on pixel/rounded display position.
 - Combined usage is the average weekly `usedPercent` across paid accounts; free accounts are muted and excluded.
 - Under pace by at least `10%` shows an amber fast-mode chip, except during the first `10%` of the weekly cycle.
 - Over pace by at least `10%` shows a red warning chip, including early in the cycle.
