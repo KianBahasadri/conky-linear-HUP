@@ -2,7 +2,6 @@
 import json
 import os
 import re
-import signal
 import sys
 import textwrap
 import unicodedata
@@ -19,7 +18,6 @@ CACHE_DIR = ROOT / "cache"
 OUTPUT_PATH = CACHE_DIR / "linear-tasks.txt"
 CARDS_PATH = CACHE_DIR / "linear-cards.json"
 LOG_PATH = CACHE_DIR / "conky-linear.log"
-GENERATED_DIR = ROOT / "conky" / "generated"
 API_URL = "https://api.linear.app/graphql"
 
 # Keep in sync with conky/linear-card-renderer.lua layout constants.
@@ -448,8 +446,31 @@ def collect_tasks(response, state_names):
     )
 
 
+def load_cached_cards():
+    try:
+        payload = json.loads(CARDS_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+
+    if not isinstance(payload, dict):
+        return None
+    cards = payload.get("cards")
+    if not isinstance(cards, list) or not cards:
+        return None
+    return payload
+
+
 def write_error(message):
+    # Keep the last good cards so a timeout or DNS blip does not blank the overlay.
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    previous = load_cached_cards()
+    if previous:
+        previous["stale"] = True
+        previous["error"] = message
+        atomic_write_json(CARDS_PATH, previous)
+        log_event(f"error: {message} (kept {len(previous['cards'])} cached cards)")
+        return
+
     atomic_write_text(OUTPUT_PATH, f"Linear\n{message}\n")
     atomic_write_json(
         CARDS_PATH,
@@ -459,7 +480,6 @@ def write_error(message):
             "cards": [],
         },
     )
-    sync_linear_overlay_height(0)
     log_event(f"error: {message}")
 
 
@@ -486,66 +506,6 @@ def card_count_from_cache(cards_path=CARDS_PATH):
         return 0
     cards = payload.get("cards") if isinstance(payload, dict) else None
     return len(cards) if isinstance(cards, list) else 0
-
-
-def sync_linear_overlay_height(card_count):
-    """Write minimum_height into generated Linear configs and reload Conky."""
-    height = linear_overlay_height(card_count)
-    updated = 0
-
-    if GENERATED_DIR.is_dir():
-        pattern = re.compile(r"(minimum_height\s*=\s*)\d+")
-        for path in sorted(GENERATED_DIR.glob("linear-overlay-*.conkyrc")):
-            try:
-                text = path.read_text(encoding="utf-8")
-            except OSError:
-                continue
-            new_text, count = pattern.subn(rf"\g<1>{height}", text, count=1)
-            if count and new_text != text:
-                try:
-                    path.write_text(new_text, encoding="utf-8")
-                    updated += 1
-                except OSError as error:
-                    log_event(f"failed to update {path.name} minimum_height: {error}")
-
-    reloaded = 0
-    if updated:
-        reloaded = reload_linear_conky_processes()
-    log_event(
-        f"synced overlay height={height} cards={card_count} "
-        f"configs_updated={updated} conky_reloaded={reloaded}"
-    )
-    return height
-
-
-def reload_linear_conky_processes():
-    reloaded = 0
-    proc_root = Path("/proc")
-    if not proc_root.is_dir():
-        return reloaded
-
-    for entry in proc_root.iterdir():
-        if not entry.name.isdigit():
-            continue
-        try:
-            cmdline = (entry / "cmdline").read_bytes().replace(b"\0", b" ").decode()
-        except (OSError, UnicodeDecodeError):
-            continue
-        # Match real Conky processes only (not shells whose argv mentions paths).
-        parts = cmdline.split()
-        if not parts:
-            continue
-        argv0 = Path(parts[0]).name
-        if argv0 != "conky" or "linear-overlay" not in cmdline:
-            continue
-        if "-c" not in parts:
-            continue
-        try:
-            os.kill(int(entry.name), signal.SIGUSR1)
-            reloaded += 1
-        except OSError:
-            continue
-    return reloaded
 
 
 def main():
@@ -629,7 +589,9 @@ def main():
     atomic_write_text(OUTPUT_PATH, output)
     atomic_write_json(CARDS_PATH, cards_payload)
     card_count = len(cards_payload.get("cards") or [])
-    overlay_height = sync_linear_overlay_height(card_count)
+    # Height is ${lua_parse linear_height_spacer}. Do not rewrite generated
+    # configs or SIGUSR1 Conky: that destroys the window and the cards vanish.
+    overlay_height = linear_overlay_height(card_count)
     log_event(
         f"completed fetch workflow_states={workflow_state_count} collected_tasks={len(tasks)} "
         f"active={active_count} recently_done={done_count} due_now={due_now_count} "

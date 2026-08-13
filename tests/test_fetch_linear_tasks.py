@@ -1,3 +1,4 @@
+import json
 from datetime import date, timedelta
 
 import fetch_linear_tasks as linear
@@ -202,3 +203,44 @@ def test_render_cards_merges_to_first_available_icon():
 
     assert card["projectName"] == "Hangout Automator / Competitions"
     assert card["projectIcon"] == "🏆"
+
+
+def test_write_error_keeps_last_successful_cards(monkeypatch, tmp_path):
+    cards_path = tmp_path / "linear-cards.json"
+    cards_path.write_text(
+        json.dumps(
+            {
+                "updatedAt": "2026-01-01T00:00:00+00:00",
+                "cards": [{"identifier": "ABC-1", "title": "Keep me"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(linear, "CARDS_PATH", cards_path)
+    monkeypatch.setattr(linear, "OUTPUT_PATH", tmp_path / "linear-tasks.txt")
+    monkeypatch.setattr(linear, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(linear, "log_event", lambda _message: None)
+
+    linear.write_error("network down")
+
+    cached = json.loads(cards_path.read_text(encoding="utf-8"))
+    assert cached["cards"][0]["identifier"] == "ABC-1"
+    assert cached["stale"] is True
+    assert cached["error"] == "network down"
+
+
+def test_write_error_without_cache_writes_empty(monkeypatch, tmp_path):
+    cards_path = tmp_path / "linear-cards.json"
+    output_path = tmp_path / "linear-tasks.txt"
+    monkeypatch.setattr(linear, "CARDS_PATH", cards_path)
+    monkeypatch.setattr(linear, "OUTPUT_PATH", output_path)
+    monkeypatch.setattr(linear, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(linear, "log_event", lambda _message: None)
+
+    linear.write_error("Missing LINEAR_API_KEY in .env")
+
+    cached = json.loads(cards_path.read_text(encoding="utf-8"))
+    assert cached["cards"] == []
+    assert cached["error"] == "Missing LINEAR_API_KEY in .env"
+    assert "stale" not in cached
+    assert output_path.read_text(encoding="utf-8") == "Linear\nMissing LINEAR_API_KEY in .env\n"

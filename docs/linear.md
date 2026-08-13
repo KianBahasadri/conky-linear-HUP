@@ -10,5 +10,6 @@
 - Issues in the `Backlog` state with a due date in the next 3 days are also shown (including when urgent due-today filtering is active).
 - Cancelled and duplicate issues are never shown.
 - Recently completed cards remain visible for `LINEAR_DONE_LOOKBACK_HOURS`.
-- Overlay window height is computed from the card grid (rows × card size + gaps) on each Linear fetch and when overlays start, so any number of rows fits without clipping.
+- Overlay window height is computed from the card grid (rows × card size + gaps) by the Lua spacer on each Conky tick. Startup sets `minimum_height` from the current cache so the first frame is not clipped. The fetch loop updates `cache/linear-cards.json` only — it does not rewrite configs or reload Conky, which would tear down the overlay window.
+- A failed Linear fetch keeps the last successful cards instead of writing an empty cache.
 - Set `LINEAR_OVERLAY_ENABLED=0` to disable the Linear overlay and its refresh loop.

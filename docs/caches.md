@@ -2,7 +2,7 @@
 
 ## Data files
 
-- `cache/linear-cards.json`: Linear cards consumed by the Cairo renderer.
+- `cache/linear-cards.json`: Linear cards consumed by the Cairo renderer. A failed fetch keeps the last successful cards and sets `stale` / `error` instead of blanking the overlay.
 - `cache/codex-usage.json`: full Codex account/window usage for inspection.
 - `cache/codex-usage-render.tsv`: renderer-friendly Codex usage consumed by the Cairo renderer.
 - `cache/claude-usage.json`: normalized Claude Code account/window usage for inspection.
