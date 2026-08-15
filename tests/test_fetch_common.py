@@ -93,3 +93,29 @@ def test_load_env_strips_quotes_and_preserves_existing(monkeypatch, tmp_path):
     assert common.os.environ["DOUBLE"] == "quoted value"
     assert common.os.environ["SINGLE"] == "single quoted"
     assert common.os.environ["EXISTING"] == "from-env"
+
+
+def test_rate_limit_panel_window_height_grows_with_accounts():
+    assert common.rate_limit_panel_window_height(0) == 320
+    assert common.rate_limit_panel_window_height(1) == 320
+    assert common.rate_limit_panel_window_height(14) == 320
+    assert common.rate_limit_panel_window_height(15) == 339
+    assert common.rate_limit_panel_window_height(16) == 358
+    assert common.rate_limit_panel_window_height(20) == 434
+
+
+def test_rate_limit_account_count_from_cache_skips_removed_providers(tmp_path):
+    (tmp_path / "codex-usage-render.tsv").write_text(
+        "account\tkian\tfree\t1\t1\t\t0\naccount\tsepehr\tplus\t0\t1\t\t0\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "cursor-usage-render.tsv").write_text(
+        "account\tida\tPro\t1\t1\t\t0\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "pioneer-usage-render.tsv").write_text(
+        "account\tpioneer\t\t1\t1\t\t0\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "not-a-render.txt").write_text("account\tignored\n", encoding="utf-8")
+    assert common.rate_limit_account_count_from_cache(tmp_path) == 3

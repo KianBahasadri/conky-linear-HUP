@@ -22,7 +22,11 @@ return function(shared, repo_root)
   local bar_text_gap = 14
   local bar_countdown_width = 54
   local bar_pair_gap = 0
-  local bottom_padding = 4
+  -- Insets keep title chips (drawn at y-9) and the frame glow (y+7) inside the
+  -- Conky window. Must stay in sync with fetch_common.rate_limit_panel_window_height.
+  local panel_top_inset = 12
+  local panel_bottom_inset = 12
+  local panel_window_floor = 320
   local five_hour_window_seconds = 18000
   local weekly_window_seconds = 604800
   local pace_threshold = 10
@@ -1123,6 +1127,38 @@ return function(shared, repo_root)
     end
   end
 
+  local function account_count_from_usage(usage)
+    if usage and usage.accounts then
+      return math.max(1, #usage.accounts)
+    end
+    return 1
+  end
+
+  local function panel_height_for(account_count)
+    local count = math.max(1, tonumber(account_count) or 1)
+    if not panel_auto_height then
+      return panel_height
+    end
+    return math.max(panel_height, panel_dynamic_height_padding + count * account_row_gap)
+  end
+
+  local function window_height_for(account_count)
+    return math.max(
+      panel_window_floor,
+      panel_top_inset + panel_height_for(account_count) + panel_bottom_inset
+    )
+  end
+
+  local function needed_height()
+    return window_height_for(account_count_from_usage(read_ai_usage()))
+  end
+
+  -- Expand the Conky window to fit the current account list. Returned text is
+  -- re-parsed via ${lua_parse} so the voffset becomes real vertical space.
+  local function height_spacer()
+    return string.format('${voffset %d}', needed_height())
+  end
+
   local function draw()
     local surface, should_destroy_surface = shared.create_surface()
     if not surface then
@@ -1140,14 +1176,13 @@ return function(shared, repo_root)
       }
     end
 
-    local account_count = math.max(1, #(usage.accounts or {}))
-    local dynamic_height = panel_height
-    if panel_auto_height then
-      dynamic_height = math.max(panel_height, panel_dynamic_height_padding + account_count * account_row_gap)
-    end
+    local dynamic_height = panel_height_for(account_count_from_usage(usage))
     local render_width = math.min(panel_width, conky_window.width - 40)
     local x = (conky_window.width - render_width) / 2
-    local y = math.max(bottom_padding, conky_window.height - dynamic_height - bottom_padding)
+    local y = math.max(
+      panel_top_inset,
+      conky_window.height - dynamic_height - panel_bottom_inset
+    )
     local previous_width = panel_width
     local previous_height = panel_height
 
@@ -1165,5 +1200,6 @@ return function(shared, repo_root)
 
   return {
     draw = draw,
+    height_spacer = height_spacer,
   }
 end

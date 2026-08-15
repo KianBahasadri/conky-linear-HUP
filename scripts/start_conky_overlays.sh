@@ -433,6 +433,10 @@ linear_overlay_height() {
   python3 "$ROOT/scripts/fetch_linear_tasks.py" --print-overlay-height
 }
 
+rate_limit_panel_overlay_height() {
+  python3 "$ROOT/scripts/fetch_common.py" --print-rate-limit-panel-height
+}
+
 generate_config() {
   local source_config="$1"
   local output_config="$2"
@@ -724,6 +728,13 @@ if [[ ! "$LINEAR_MINIMUM_HEIGHT" =~ ^[0-9]+$ ]]; then
 fi
 log_overlay linear "linear overlay minimum_height=$LINEAR_MINIMUM_HEIGHT (from current cards)"
 
+RATE_LIMIT_PANEL_MINIMUM_HEIGHT="$(rate_limit_panel_overlay_height 2>>"$RATE_LIMIT_PANEL_LOG_PATH" || true)"
+if [[ ! "$RATE_LIMIT_PANEL_MINIMUM_HEIGHT" =~ ^[0-9]+$ ]]; then
+  log_overlay rate-limit-panel "could not compute rate limit panel height; using 320"
+  RATE_LIMIT_PANEL_MINIMUM_HEIGHT=320
+fi
+log_overlay rate-limit-panel "rate limit panel minimum_height=$RATE_LIMIT_PANEL_MINIMUM_HEIGHT (from current accounts)"
+
 index=0
 for line in "${monitor_lines[@]}"; do
   if [[ ! "$line" =~ ([0-9]+)\/[0-9]+x([0-9]+)\/[0-9]+\+(-?[0-9]+)\+(-?[0-9]+) ]]; then
@@ -746,6 +757,8 @@ for line in "${monitor_lines[@]}"; do
       extra_height=""
       if [[ "$key" == "linear" ]]; then
         extra_height="$LINEAR_MINIMUM_HEIGHT"
+      elif [[ "$key" == "rate-limit-panel" ]]; then
+        extra_height="$RATE_LIMIT_PANEL_MINIMUM_HEIGHT"
       fi
       generate_config "${overlay_config[$key]}" "$config_path" "$index" "$(overlay_gap_x "$key" "$monitor_gap_x")" "$(overlay_gap_y "$key" "$linear_gap_y" "$monitor_height" "$is_primary")" "$extra_height"
     fi
@@ -775,6 +788,11 @@ if [[ "$index" -eq 0 ]]; then
           generate_config "${overlay_config[$key]}" "$config_path" 0 350 "$LINEAR_PRIMARY_GAP_Y" "$LINEAR_MINIMUM_HEIGHT"
           setsid conky -c "$config_path" >> "${overlay_log_path[$key]}" 2>&1 < /dev/null &
           log_overlay linear "launched fallback config=$config_path height=$LINEAR_MINIMUM_HEIGHT pid=$!"
+        elif [[ "$key" == "rate-limit-panel" ]]; then
+          config_path="$GENERATED_DIR/rate-limit-panel-overlay-fallback.conkyrc"
+          generate_config "${overlay_config[$key]}" "$config_path" 0 350 "$RATE_LIMIT_PANEL_GAP_Y" "$RATE_LIMIT_PANEL_MINIMUM_HEIGHT"
+          setsid conky -c "$config_path" >> "${overlay_log_path[$key]}" 2>&1 < /dev/null &
+          log_overlay rate-limit-panel "launched fallback config=$config_path height=$RATE_LIMIT_PANEL_MINIMUM_HEIGHT pid=$!"
         else
           launch_fallback_overlay "$key"
         fi

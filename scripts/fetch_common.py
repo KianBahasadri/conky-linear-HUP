@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import json
 import os
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -156,3 +157,63 @@ def flatten_bars(accounts):
 def write_usage_outputs(output_path, render_path, output):
     atomic_write_json(output_path, output)
     atomic_write_text(render_path, usage_render_tsv(output))
+
+
+# Must match conky/rate-limit-panel-renderer.lua.
+RATE_LIMIT_PANEL_MIN_HEIGHT = 110
+RATE_LIMIT_PANEL_ROW_GAP = 19
+RATE_LIMIT_PANEL_DYNAMIC_PADDING = 30
+RATE_LIMIT_PANEL_TOP_INSET = 12
+RATE_LIMIT_PANEL_BOTTOM_INSET = 12
+RATE_LIMIT_PANEL_WINDOW_FLOOR = 320
+RATE_LIMIT_PANEL_RENDER_TSVS = (
+    "codex-usage-render.tsv",
+    "claude-usage-render.tsv",
+    "cursor-usage-render.tsv",
+    "gemini-usage-render.tsv",
+    "grok-usage-render.tsv",
+    "opencode-usage-render.tsv",
+)
+
+
+def rate_limit_account_count_from_cache(cache_dir=CACHE_DIR):
+    count = 0
+    for name in RATE_LIMIT_PANEL_RENDER_TSVS:
+        path = Path(cache_dir) / name
+        if not path.is_file():
+            continue
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            continue
+        for line in lines:
+            if line.startswith("account\t"):
+                count += 1
+    return count
+
+
+def rate_limit_panel_window_height(account_count):
+    """Return the Conky minimum_height needed for the account list.
+
+    Must match the layout math in conky/rate-limit-panel-renderer.lua.
+    """
+    count = max(1, int(account_count or 0))
+    panel = max(
+        RATE_LIMIT_PANEL_MIN_HEIGHT,
+        RATE_LIMIT_PANEL_DYNAMIC_PADDING + count * RATE_LIMIT_PANEL_ROW_GAP,
+    )
+    return max(
+        RATE_LIMIT_PANEL_WINDOW_FLOOR,
+        RATE_LIMIT_PANEL_TOP_INSET + panel + RATE_LIMIT_PANEL_BOTTOM_INSET,
+    )
+
+
+if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] == "--print-rate-limit-panel-height":
+        print(rate_limit_panel_window_height(rate_limit_account_count_from_cache()))
+    else:
+        print(
+            "usage: fetch_common.py --print-rate-limit-panel-height",
+            file=sys.stderr,
+        )
+        sys.exit(1)

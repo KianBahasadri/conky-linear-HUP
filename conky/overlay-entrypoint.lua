@@ -25,6 +25,10 @@ function conky_draw_rate_limit_panel()
   rate_limit_panel.draw()
 end
 
+function conky_rate_limit_panel_height_spacer()
+  return rate_limit_panel.height_spacer()
+end
+
 -- Minecraft
 local minecraft_status = dofile(conky_dir .. '/minecraft-status-renderer.lua')(shared, repo_root)
 
