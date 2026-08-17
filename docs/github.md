@@ -6,7 +6,7 @@ Transparent left-side contribution rail (year of squares). No chrome — only th
 
 - `scripts/fetch_github_contributions.py` → `cache/github-contributions.json`.
 - `GITHUB_USERNAME` controls the account (`GH_USERNAME` is also accepted). If both are missing, the fetcher tries `git config github.user` and then the GitHub remote owner.
-- `GITHUB_TOKEN` is optional; used only for authenticated requests to the public contributions endpoint.
+- `GITHUB_TOKEN` is optional; used only for authenticated requests to the public contributions endpoint. The git overlay's Actions pip uses `gh` instead (see [Git status overlay](git.md)).
 - Set `GITHUB_OVERLAY_ENABLED=0` to disable the overlay and its refresh loop.
 
 ## Layout and placement

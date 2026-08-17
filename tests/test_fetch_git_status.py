@@ -1,3 +1,4 @@
+import json
 import subprocess
 from pathlib import Path
 
@@ -230,3 +231,245 @@ def test_parse_blacklist_accepts_names_and_paths(tmp_path, monkeypatch):
     rules = git_status.parse_blacklist(f"noise:~/secret:{tmp_path / 'abs'}")
     assert "noise" in rules
     assert any(isinstance(rule, Path) for rule in rules)
+
+
+def test_gh_run_list_command_includes_branch_only_when_real():
+    assert git_status.gh_run_list_command("acme", "tools", "main") == [
+        "gh",
+        "run",
+        "list",
+        "--repo",
+        "acme/tools",
+        "--limit",
+        "10",
+        "--json",
+        "status,conclusion,headBranch,name",
+        "--branch",
+        "main",
+    ]
+    assert "--branch" not in git_status.gh_run_list_command("acme", "tools", "DETACHED")
+
+
+def test_parse_gh_run_list_accepts_array_payload():
+    raw = '[{"status":"completed","conclusion":"success","headBranch":"main","name":"CI"}]'
+    assert git_status.parse_gh_run_list(raw)[0]["conclusion"] == "success"
+    assert git_status.parse_gh_run_list("[]") == []
+    assert git_status.parse_gh_run_list("{}") == []
+
+
+def test_fetch_workflow_runs_falls_back_to_repo_latest(monkeypatch):
+    calls = []
+
+    def fake_list(owner, repo, branch, timeout):
+        calls.append(branch)
+        if branch:
+            return []
+        return [{"status": "completed", "conclusion": "failure"}]
+
+    monkeypatch.setattr(git_status, "_gh_run_list", fake_list)
+    runs = git_status.fetch_workflow_runs("acme", "tools", "feature", 4)
+    assert calls == ["feature", ""]
+    assert runs[0]["conclusion"] == "failure"
+
+
+def test_parse_github_remote_accepts_ssh_https_and_strips_git_suffix():
+    assert git_status.parse_github_remote("git@github.com:KianBahasadri/conky-linear-HUP.git") == (
+        "KianBahasadri",
+        "conky-linear-HUP",
+    )
+    assert git_status.parse_github_remote("https://github.com/KianBahasadri/linux-state-search") == (
+        "KianBahasadri",
+        "linux-state-search",
+    )
+    assert git_status.parse_github_remote("ssh://git@github.com/acme/tools.git") == ("acme", "tools")
+    assert git_status.parse_github_remote("git@gitlab.com:acme/tools.git") is None
+    assert git_status.parse_github_remote("") is None
+
+
+def test_classify_workflow_runs_prefers_active_then_latest_completed():
+    assert git_status.classify_workflow_runs([]) == ""
+    assert (
+        git_status.classify_workflow_runs(
+            [
+                {"status": "in_progress", "conclusion": None},
+                {"status": "completed", "conclusion": "failure"},
+            ]
+        )
+        == "run"
+    )
+    assert (
+        git_status.classify_workflow_runs(
+            [
+                {"status": "completed", "conclusion": "cancelled"},
+                {"status": "completed", "conclusion": "failure"},
+            ]
+        )
+        == "fail"
+    )
+    assert (
+        git_status.classify_workflow_runs(
+            [
+                {"status": "completed", "conclusion": "skipped"},
+                {"status": "completed", "conclusion": "success"},
+            ]
+        )
+        == "ok"
+    )
+    assert git_status.classify_workflow_runs([{"status": "completed", "conclusion": "cancelled"}]) == ""
+
+
+def test_actions_cache_fresh_uses_shorter_ttl_while_running(monkeypatch):
+    from datetime import datetime, timezone
+
+    monkeypatch.setenv("GIT_ACTIONS_TTL_SECONDS", "180")
+    monkeypatch.setenv("GIT_ACTIONS_RUNNING_TTL_SECONDS", "20")
+    now = datetime(2026, 8, 17, 1, 0, 0, tzinfo=timezone.utc)
+    running = {
+        "branch": "main",
+        "actions": "run",
+        "fetchedAtEpoch": int(now.timestamp()) - 25,
+    }
+    ok = {
+        "branch": "main",
+        "actions": "ok",
+        "fetchedAtEpoch": int(now.timestamp()) - 25,
+    }
+    assert git_status.actions_cache_fresh(running, "main", now) is False
+    assert git_status.actions_cache_fresh(ok, "main", now) is True
+    assert git_status.actions_cache_fresh(ok, "feature", now) is False
+
+
+def test_attach_actions_uses_cache_and_fetches_stale(tmp_path, monkeypatch):
+    from datetime import datetime, timezone
+
+    repo = init_repo(tmp_path / "with-origin")
+    subprocess.run(
+        ["git", "remote", "add", "origin", "git@github.com:acme/with-origin.git"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+    )
+    other = init_repo(tmp_path / "gitlab-only")
+    subprocess.run(
+        ["git", "remote", "add", "origin", "git@gitlab.com:acme/other.git"],
+        cwd=other,
+        check=True,
+        capture_output=True,
+    )
+
+    cache_path = tmp_path / "git-actions-cache.json"
+    monkeypatch.setattr(git_status, "ACTIONS_CACHE_PATH", cache_path)
+    monkeypatch.setenv("GIT_ACTIONS_ENABLED", "1")
+    monkeypatch.setenv("GIT_ACTIONS_TTL_SECONDS", "180")
+    monkeypatch.setenv("GIT_ACTIONS_RUNNING_TTL_SECONDS", "20")
+    monkeypatch.setattr(git_status, "log_event", lambda _message: None)
+
+    now = datetime(2026, 8, 17, 1, 0, 0, tzinfo=timezone.utc)
+    monkeypatch.setenv("GIT_ACTIONS_TIMEOUT_SECONDS", "6")
+    cache_path.write_text(
+        json.dumps(
+            {
+                "repos": {
+                    str(repo): {
+                        "owner": "acme",
+                        "repo": "with-origin",
+                        "branch": "main",
+                        "actions": "ok",
+                        "fetchedAtEpoch": int(now.timestamp()) - 10,
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    calls = []
+
+    def fake_fetch(owner, name, branch, timeout):
+        calls.append((owner, name, branch, timeout))
+        return [{"status": "in_progress", "conclusion": None}]
+
+    status = {
+        "ok": True,
+        "repos": [
+            {"name": "with-origin", "path": str(repo), "branch": "main", "ok": True},
+            {"name": "gitlab-only", "path": str(other), "branch": "main", "ok": True},
+        ],
+    }
+    attached = git_status.attach_actions(status, now=now, fetch_runs=fake_fetch)
+    assert attached["repos"][0]["actions"] == "ok"
+    assert attached["repos"][1]["actions"] == ""
+    assert calls == []
+
+    # Stale running cache should refetch.
+    cache_path.write_text(
+        json.dumps(
+            {
+                "repos": {
+                    str(repo): {
+                        "owner": "acme",
+                        "repo": "with-origin",
+                        "branch": "main",
+                        "actions": "run",
+                        "fetchedAtEpoch": int(now.timestamp()) - 40,
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    attached = git_status.attach_actions(status, now=now, fetch_runs=fake_fetch)
+    assert attached["repos"][0]["actions"] == "run"
+    assert calls == [("acme", "with-origin", "main", 6.0)]
+
+
+def test_attach_actions_keeps_stale_pip_when_fetch_fails(tmp_path, monkeypatch):
+    from datetime import datetime, timezone
+
+    repo = init_repo(tmp_path / "flaky")
+    subprocess.run(
+        ["git", "remote", "add", "origin", "https://github.com/acme/flaky.git"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+    )
+    cache_path = tmp_path / "git-actions-cache.json"
+    monkeypatch.setattr(git_status, "ACTIONS_CACHE_PATH", cache_path)
+    monkeypatch.setenv("GIT_ACTIONS_ENABLED", "1")
+    monkeypatch.setenv("GIT_ACTIONS_TTL_SECONDS", "1")
+    monkeypatch.setattr(git_status, "log_event", lambda _message: None)
+
+    now = datetime(2026, 8, 17, 1, 0, 0, tzinfo=timezone.utc)
+    cache_path.write_text(
+        json.dumps(
+            {
+                "repos": {
+                    str(repo): {
+                        "owner": "acme",
+                        "repo": "flaky",
+                        "branch": "main",
+                        "actions": "fail",
+                        "fetchedAtEpoch": int(now.timestamp()) - 60,
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def boom(_owner, _name, _branch, _timeout):
+        raise TimeoutError("github down")
+
+    status = {
+        "ok": True,
+        "repos": [{"name": "flaky", "path": str(repo), "branch": "main", "ok": True}],
+    }
+    attached = git_status.attach_actions(status, now=now, fetch_runs=boom)
+    assert attached["repos"][0]["actions"] == "fail"
+
+
+def test_attach_actions_disabled_clears_pips(monkeypatch):
+    monkeypatch.setenv("GIT_ACTIONS_ENABLED", "0")
+    status = {"ok": True, "repos": [{"name": "x", "path": "/tmp/x", "actions": "run"}]}
+    attached = git_status.attach_actions(status)
+    assert attached["repos"][0]["actions"] == ""

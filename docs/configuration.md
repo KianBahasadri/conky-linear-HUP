@@ -149,5 +149,10 @@ The transparent HUD is generated on every monitor. It reads local Linux telemetr
 | `GIT_DEFAULT_BRANCHES` | Default branch names for muted branch styling |
 | `GIT_FUNFACT_ROTATE_SECONDS` | Header fun-fact rotation interval (default `300`) |
 | `GIT_FUNFACTS_REFRESH_SECONDS` | Fun-fact fetch loop interval (default `60`) |
+| `GIT_ACTIONS_ENABLED` | `0` disables the per-row GitHub Actions pip |
+| `GIT_ACTIONS_TTL_SECONDS` | Cache TTL for completed Actions pips (default `180`) |
+| `GIT_ACTIONS_RUNNING_TTL_SECONDS` | Cache TTL while a workflow is running (default `20`) |
+| `GIT_ACTIONS_EMPTY_TTL_SECONDS` | Cache TTL when a GitHub repo has no recent runs (default `300`) |
+| `GIT_ACTIONS_TIMEOUT_SECONDS` | `gh run list` timeout (falls back to `GITHUB_TIMEOUT_SECONDS`) |
 
 See [Git status overlay](git.md) for layout, severity rules, and the rotating ticker.

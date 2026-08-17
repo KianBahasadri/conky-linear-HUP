@@ -1,6 +1,6 @@
 # Git status overlay
 
-Top-left fleet panel for local repository health. Each configured repo shows branch, dirty/clean state, staged/modified/untracked/conflict counts, ahead/behind vs upstream, and stash count.
+Top-left fleet panel for local repository health. Each configured repo shows branch, dirty/clean state, staged/modified/untracked/conflict counts, ahead/behind vs upstream, stash count, and a GitHub Actions pip when the remote is on GitHub.
 
 ## Data
 
@@ -9,6 +9,7 @@ Top-left fleet panel for local repository health. Each configured repo shows bra
 - Scan root defaults to `$HOME` (`GIT_SCAN_ROOT`); discovery is cached in `cache/git-repo-discovery.json` for `GIT_SCAN_TTL_SECONDS` (default `300`).
 - Blacklist matches directory basenames (`dev-box`) or paths (`~/old-project`); path rules also drop repos nested under that directory.
 - Status results land in `cache/git-status.json` for the Cairo renderer.
+- After the local inspect, each GitHub-remote row is enriched with an `actions` pip (`run` / `fail` / `ok` / empty) via `gh run list` (uses your existing `gh auth` login, including private remotes). If the current branch has no runs, the fetcher falls back to the repo's latest run. Results are cached in `cache/git-actions-cache.json` so the 30s git poll stays local. Running repos refresh every `GIT_ACTIONS_RUNNING_TTL_SECONDS` (default `20`); completed pips every `GIT_ACTIONS_TTL_SECONDS` (default `180`); no-run remotes every `GIT_ACTIONS_EMPTY_TTL_SECONDS` (default `300`). Set `GIT_ACTIONS_ENABLED=0` to skip.
 - Repos are sorted by severity: conflict → error → behind → dirty → stash → ahead → clean.
 - After sort, only the first `GIT_MAX_REPOS` rows are kept (default **6**).
 - Missing pinned paths appear as error rows instead of being skipped.
@@ -43,6 +44,11 @@ GIT_OVERLAY_ENABLED=1
 | `GIT_DEFAULT_BRANCHES` | Branches treated as default for muted styling |
 | `GIT_FUNFACT_ROTATE_SECONDS` | Fun-fact rotation interval if re-enabled in the renderer (default `300`) |
 | `GIT_FUNFACTS_REFRESH_SECONDS` | Fun-fact fetch loop interval (default `60`; still runs, not drawn) |
+| `GIT_ACTIONS_ENABLED` | `0` disables the per-row Actions pip |
+| `GIT_ACTIONS_TTL_SECONDS` | Cache TTL for `ok` / `fail` pips (default `180`) |
+| `GIT_ACTIONS_RUNNING_TTL_SECONDS` | Cache TTL while a run is `in_progress` / queued (default `20`) |
+| `GIT_ACTIONS_EMPTY_TTL_SECONDS` | Cache TTL when a GitHub repo has no recent runs (default `300`) |
+| `GIT_ACTIONS_TIMEOUT_SECONDS` | `gh run list` timeout (falls back to `GITHUB_TIMEOUT_SECONDS`, then `6`) |
 
 See [Configuration](configuration.md) for the full variable table.
 
@@ -52,3 +58,4 @@ See [Configuration](configuration.md) for the full variable table.
 - Each row is two lines: repo name on top, branch underneath. Left accent bar encodes state; clean rows are dimmed.
 - Compact badges sit on the **branch line** (right side): `S` staged, `M` modified, `U` untracked, `C` conflicted, plus tags like `STASH×n` / `CONFLICT`.
 - Sync: `^n` ahead, `vn` behind when nonzero.
+- A 7px pip on the **name line** (far right) is GitHub Actions for the current branch: amber = running/queued, red = last completed failed, green = last completed succeeded. No pip if the remote is not GitHub or there is no recent run. Pips stay full-brightness on dimmed clean rows.

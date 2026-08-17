@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CACHE_DIR = ROOT / "cache"
 STATUS_PATH = CACHE_DIR / "git-status.json"
 DISCOVERY_PATH = CACHE_DIR / "git-repo-discovery.json"
+ACTIONS_CACHE_PATH = CACHE_DIR / "git-actions-cache.json"
 LOG_PATH = CACHE_DIR / "conky-git.log"
 
 # Severity tiers used for sorting (higher = more urgent).
@@ -33,6 +34,21 @@ DEFAULT_BRANCHES = ("main", "master")
 DEFAULT_SCAN_DAYS = 14
 DEFAULT_SCAN_MAX_DEPTH = 3
 DEFAULT_SCAN_TTL_SECONDS = 300
+DEFAULT_ACTIONS_TTL_SECONDS = 180
+DEFAULT_ACTIONS_RUNNING_TTL_SECONDS = 20
+DEFAULT_ACTIONS_EMPTY_TTL_SECONDS = 300
+
+GITHUB_REMOTE_RE = re.compile(
+    r"github\.com[:/](?P<owner>[^/]+)/(?P<repo>[^/#?\s]+)",
+    re.IGNORECASE,
+)
+ACTIONS_ACTIVE_STATUSES = frozenset(
+    {"in_progress", "queued", "waiting", "requested", "pending"}
+)
+ACTIONS_FAIL_CONCLUSIONS = frozenset(
+    {"failure", "timed_out", "action_required", "startup_failure"}
+)
+ACTIONS_OK_CONCLUSIONS = frozenset({"success"})
 
 # Directories we never descend into while discovering repos under $HOME.
 SKIP_DIR_NAMES = frozenset(
@@ -654,6 +670,290 @@ def build_summary(repos):
     return summary
 
 
+def parse_github_remote(url):
+    """Return (owner, repo) for a GitHub remote URL, else None."""
+    if not url:
+        return None
+    match = GITHUB_REMOTE_RE.search(str(url).strip())
+    if not match:
+        return None
+    owner = match.group("owner").strip()
+    repo = match.group("repo").strip()
+    repo = re.sub(r"\.git$", "", repo, flags=re.IGNORECASE).rstrip("/")
+    if not owner or not repo or owner == "github.com":
+        return None
+    return owner, repo
+
+
+def github_remote_for_repo(repo_path, timeout):
+    """Resolve the first GitHub remote on a local repo, preferring origin."""
+    path = Path(repo_path)
+    timeout = max(0.4, min(float(timeout), 1.5))
+    candidates = ["origin"]
+    try:
+        remotes = [
+            line.strip()
+            for line in run_git(path, ["remote"], timeout=timeout).splitlines()
+            if line.strip()
+        ]
+    except (RuntimeError, TimeoutError):
+        remotes = []
+    for name in remotes:
+        if name not in candidates:
+            candidates.append(name)
+
+    for name in candidates:
+        try:
+            url = run_git(path, ["remote", "get-url", name], timeout=timeout).strip()
+        except (RuntimeError, TimeoutError):
+            continue
+        parsed = parse_github_remote(url)
+        if parsed:
+            return parsed
+    return None
+
+
+def classify_workflow_runs(runs):
+    """Map GitHub workflow runs to a pip state: run, fail, ok, or empty."""
+    if not runs:
+        return ""
+    for run in runs:
+        if not isinstance(run, dict):
+            continue
+        if (run.get("status") or "") in ACTIONS_ACTIVE_STATUSES:
+            return "run"
+    for run in runs:
+        if not isinstance(run, dict):
+            continue
+        if (run.get("status") or "") != "completed":
+            continue
+        conclusion = run.get("conclusion") or ""
+        if conclusion in ACTIONS_FAIL_CONCLUSIONS:
+            return "fail"
+        if conclusion in ACTIONS_OK_CONCLUSIONS:
+            return "ok"
+    return ""
+
+
+def gh_run_list_command(owner, repo, branch, limit=10):
+    command = [
+        "gh",
+        "run",
+        "list",
+        "--repo",
+        f"{owner}/{repo}",
+        "--limit",
+        str(limit),
+        "--json",
+        "status,conclusion,headBranch,name",
+    ]
+    if branch and branch not in {"DETACHED", "HEAD"}:
+        command.extend(["--branch", branch])
+    return command
+
+
+def parse_gh_run_list(stdout):
+    payload = json.loads(stdout or "[]")
+    return payload if isinstance(payload, list) else []
+
+
+def _gh_run_list(owner, repo, branch, timeout):
+    command = gh_run_list_command(owner, repo, branch)
+    env = os.environ.copy()
+    env["GH_PROMPT_DISABLED"] = "1"
+    env["GH_NO_UPDATE_NOTIFIER"] = "1"
+    try:
+        completed = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+            env=env,
+        )
+    except FileNotFoundError as error:
+        raise RuntimeError("gh executable not found on PATH") from error
+    except subprocess.TimeoutExpired as error:
+        raise TimeoutError(f"gh timed out after {timeout}s") from error
+
+    if completed.returncode != 0:
+        stderr = (completed.stderr or completed.stdout or "").strip()
+        lowered = stderr.lower()
+        if "404" in lowered or "not found" in lowered or "could not resolve" in lowered:
+            return []
+        raise RuntimeError(stderr or f"gh exited {completed.returncode}")
+    return parse_gh_run_list(completed.stdout)
+
+
+def fetch_workflow_runs(owner, repo, branch, timeout):
+    """List recent Actions via the authenticated `gh` CLI."""
+    runs = _gh_run_list(owner, repo, branch, timeout)
+    if runs:
+        return runs
+    # Feature branches often have no workflow yet; fall back to the repo's latest.
+    if branch and branch not in {"DETACHED", "HEAD"}:
+        return _gh_run_list(owner, repo, "", timeout)
+    return []
+
+
+def load_actions_cache():
+    try:
+        payload = json.loads(ACTIONS_CACHE_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {"repos": {}}
+    repos = payload.get("repos")
+    if not isinstance(repos, dict):
+        return {"repos": {}}
+    return payload
+
+
+def save_actions_cache(entries):
+    payload = {
+        "updatedAt": datetime.now(timezone.utc).isoformat(),
+        "updatedAtEpoch": int(datetime.now(timezone.utc).timestamp()),
+        "repos": entries,
+    }
+    atomic_write_json(ACTIONS_CACHE_PATH, payload)
+
+
+def actions_cache_ttl(actions):
+    if actions == "run":
+        return env_int("GIT_ACTIONS_RUNNING_TTL_SECONDS", DEFAULT_ACTIONS_RUNNING_TTL_SECONDS)
+    if actions in {"fail", "ok"}:
+        return env_int("GIT_ACTIONS_TTL_SECONDS", DEFAULT_ACTIONS_TTL_SECONDS)
+    return env_int("GIT_ACTIONS_EMPTY_TTL_SECONDS", DEFAULT_ACTIONS_EMPTY_TTL_SECONDS)
+
+
+def actions_cache_fresh(cached, branch, now):
+    if not cached:
+        return False
+    if (cached.get("branch") or "") != (branch or ""):
+        return False
+    fetched = int(cached.get("fetchedAtEpoch") or 0)
+    if fetched <= 0:
+        return False
+    age = int(now.timestamp()) - fetched
+    return age < max(5, actions_cache_ttl(cached.get("actions") or ""))
+
+
+def _actions_entry(owner, repo_name, branch, actions, now, stale=False):
+    return {
+        "owner": owner,
+        "repo": repo_name,
+        "branch": branch,
+        "actions": actions,
+        "fetchedAt": now.isoformat(),
+        "fetchedAtEpoch": int(now.timestamp()),
+        "stale": bool(stale),
+    }
+
+
+def refresh_repo_actions(repo, timeout, now, fetch_runs):
+    """Fetch Actions for one fleet repo. Returns (path, entry)."""
+    path = repo.get("path") or ""
+    branch = repo.get("branch") or ""
+    empty = _actions_entry("", "", branch, "", now)
+    if not path:
+        return path, empty
+    remote = github_remote_for_repo(path, timeout=min(timeout, 1.5))
+    if not remote:
+        return path, empty
+    owner, repo_name = remote
+    try:
+        runs = fetch_runs(owner, repo_name, branch, timeout)
+        actions = classify_workflow_runs(runs)
+        return path, _actions_entry(owner, repo_name, branch, actions, now)
+    except (
+        OSError,
+        TimeoutError,
+        RuntimeError,
+        ValueError,
+        TypeError,
+        json.JSONDecodeError,
+    ):
+        return path, None
+
+
+def attach_actions(status, now=None, fetch_runs=None):
+    """
+    Attach a per-repo `actions` pip state (run / fail / ok / "") to fleet rows.
+
+    Uses cache/git-actions-cache.json so the local git poll stays cheap. Running
+    repos refresh faster than idle ones. Failures keep the last known pip.
+    """
+    repos = status.get("repos") or []
+    if not env_flag("GIT_ACTIONS_ENABLED", True):
+        for repo in repos:
+            repo["actions"] = ""
+        return status
+
+    now = now or datetime.now(timezone.utc)
+    fetch_runs = fetch_runs or fetch_workflow_runs
+    timeout = env_float(
+        "GIT_ACTIONS_TIMEOUT_SECONDS",
+        env_float("GITHUB_TIMEOUT_SECONDS", 6.0),
+    )
+    timeout = max(1.0, float(timeout))
+
+    cache = load_actions_cache()
+    entries = dict(cache.get("repos") or {})
+    stale_repos = []
+
+    for repo in repos:
+        key = repo.get("path") or ""
+        branch = repo.get("branch") or ""
+        cached = entries.get(key) or {}
+        if actions_cache_fresh(cached, branch, now):
+            repo["actions"] = cached.get("actions") or ""
+        else:
+            stale_repos.append(repo)
+
+    if stale_repos:
+        workers = min(6, max(1, len(stale_repos)))
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = {
+                pool.submit(refresh_repo_actions, repo, timeout, now, fetch_runs): repo
+                for repo in stale_repos
+            }
+            for future in as_completed(futures):
+                repo = futures[future]
+                key = repo.get("path") or ""
+                try:
+                    path, entry = future.result()
+                except Exception as error:
+                    log_event(f"actions refresh failed path={key}: {error}")
+                    repo["actions"] = (entries.get(key) or {}).get("actions") or ""
+                    continue
+                if entry is None:
+                    cached = entries.get(key) or {}
+                    repo["actions"] = cached.get("actions") or ""
+                    if cached:
+                        cached = dict(cached)
+                        cached["stale"] = True
+                        entries[key] = cached
+                    continue
+                entries[path or key] = entry
+                repo["actions"] = entry.get("actions") or ""
+
+    keep = {repo.get("path") for repo in repos if repo.get("path")}
+    entries = {key: value for key, value in entries.items() if key in keep}
+    try:
+        save_actions_cache(entries)
+    except OSError as error:
+        log_event(f"actions cache write failed: {error}")
+
+    counts = {"run": 0, "fail": 0, "ok": 0, "empty": 0}
+    for repo in repos:
+        state = repo.get("actions") or ""
+        counts[state if state in counts else "empty"] += 1
+    log_event(
+        "actions "
+        f"run={counts['run']} fail={counts['fail']} ok={counts['ok']} "
+        f"empty={counts['empty']} fetched={len(stale_repos)} cached={len(repos) - len(stale_repos)}"
+    )
+    return status
+
+
 def collect_status(repo_paths=None, timeout=None, hide_clean=None, max_repos=None):
     common.load_env()
     if timeout is None:
@@ -747,6 +1047,13 @@ def main():
     except Exception as error:
         write_error(f"Git status fetch failed: {error}")
         return 1
+
+    try:
+        status = attach_actions(status)
+    except Exception as error:
+        log_event(f"actions attach failed: {error}")
+        for repo in status.get("repos") or []:
+            repo.setdefault("actions", "")
 
     atomic_write_json(STATUS_PATH, status)
     summary = status.get("summary") or {}

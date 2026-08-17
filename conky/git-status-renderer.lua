@@ -117,6 +117,7 @@ return function(shared, repo_root)
       clean = json_bool(object, 'clean'),
       state = json_string(object, 'state', 'error'),
       severity = json_number(object, 'severity', 0),
+      actions = json_string(object, 'actions', ''),
     }
   end
 
@@ -439,6 +440,39 @@ return function(shared, repo_root)
     return total + 10
   end
 
+  local function actions_pip_color(actions)
+    if actions == 'run' then
+      return colors.dirty, 1.0
+    end
+    if actions == 'fail' then
+      return colors.error, 1.0
+    end
+    if actions == 'ok' then
+      return colors.clean, 0.70
+    end
+    return nil, 0
+  end
+
+  local function draw_actions_pip(cr, actions, right_x, center_y)
+    local color, alpha = actions_pip_color(actions)
+    if not color then
+      return
+    end
+    local radius = 3.5
+    local cx = right_x - radius
+    local cy = center_y
+    if actions == 'run' then
+      cairo_new_path(cr)
+      cairo_arc(cr, cx, cy, radius + 2.5, 0, 2 * math.pi)
+      shared.set_hex(cr, color, 0.28)
+      cairo_fill(cr)
+    end
+    cairo_new_path(cr)
+    cairo_arc(cr, cx, cy, radius, 0, 2 * math.pi)
+    shared.set_hex(cr, color, alpha)
+    cairo_fill(cr)
+  end
+
   local function draw_row(cr, repo, x, y, width)
     local style = state_style(repo.state)
     local alpha = style.alpha
@@ -461,8 +495,15 @@ return function(shared, repo_root)
     -- Text starts just after the left accent bar (no status glyph/icon).
     local name_x = x + 22
     local right_edge = x + width - side_padding - 6
-    -- Repo name uses the full row; badges share the branch line only.
-    local name_max = right_edge - name_x
+    local pip_size = 7
+    local pip_gap = 8
+    local actions = repo.actions or ''
+    local name_right = right_edge
+    if actions == 'run' or actions == 'fail' or actions == 'ok' then
+      name_right = right_edge - pip_size - pip_gap
+    end
+    -- Repo name uses the name line; Actions pip sits on the far right of that line.
+    local name_max = name_right - name_x
     if name_max < 48 then
       name_max = 48
     end
@@ -477,6 +518,8 @@ return function(shared, repo_root)
     local name = shared.truncate_title(cr, repo.name, name_max)
     cairo_move_to(cr, name_x, name_y)
     cairo_show_text(cr, name)
+    -- Full-alpha pip so a fail/run still reads on a dimmed clean row.
+    draw_actions_pip(cr, actions, right_edge, row_y + 12)
 
     local branch_color = colors.muted
     if repo.state == 'detached' or repo.branch == 'DETACHED' then

@@ -10,7 +10,7 @@
 - [Minecraft overlay](minecraft.md) — server status and PebbleHost integration
 - [GitHub overlay](github.md) — contribution tracker
 - [Weather and running overlay](weather.md) — current conditions, air quality, and run guidance
-- [Git status overlay](git.md) — local repo fleet (branch, dirty, ahead/behind)
+- [Git status overlay](git.md) — local repo fleet (branch, dirty, ahead/behind, Actions pip)
 - [Testing](testing.md) — run the Python test suite
 
 ## Layout
