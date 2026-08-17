@@ -436,6 +436,44 @@ def classify_xy(xy):
     return staged, modified
 
 
+def porcelain_v2_path(line):
+    """Return the worktree path from a porcelain v2 entry, or None."""
+    if not line:
+        return None
+    if line.startswith("? ") or line.startswith("! "):
+        path = line[2:].strip()
+        return path or None
+    if line[0] not in {"1", "2", "u"} or len(line) < 3 or line[1] != " ":
+        return None
+    rest = line[2:]
+    if line.startswith("2 "):
+        rest = rest.split("\t", 1)[0]
+    parts = rest.split()
+    return parts[-1] if parts else None
+
+
+def newest_worktree_mtime(repo_path, rel_paths):
+    """Newest mtime among relative worktree paths, or 0 if none are readable."""
+    latest = 0
+    try:
+        repo_root = Path(repo_path).resolve()
+    except OSError:
+        repo_root = Path(repo_path)
+    for rel in rel_paths or []:
+        if not rel or rel.startswith("/"):
+            continue
+        candidate = repo_root / rel
+        try:
+            resolved = candidate.resolve()
+            resolved.relative_to(repo_root)
+            mtime = int(resolved.stat().st_mtime)
+        except (OSError, ValueError):
+            continue
+        if mtime > latest:
+            latest = mtime
+    return latest
+
+
 def parse_porcelain_v2(output):
     branch = "HEAD"
     upstream = ""
@@ -446,6 +484,7 @@ def parse_porcelain_v2(output):
     modified = 0
     untracked = 0
     conflicted = 0
+    changed_paths = []
 
     for raw_line in output.splitlines():
         line = raw_line.rstrip("\n")
@@ -471,12 +510,18 @@ def parse_porcelain_v2(output):
 
         if line.startswith("? "):
             untracked += 1
+            path = porcelain_v2_path(line)
+            if path:
+                changed_paths.append(path)
             continue
         if line.startswith("! "):
             continue
         if line.startswith("u "):
             conflicted += 1
             # Unmerged entries also often show in worktree; count conflict only.
+            path = porcelain_v2_path(line)
+            if path:
+                changed_paths.append(path)
             continue
 
         # Ordinary (1) or rename/copy (2) entries: "1 XY ..." / "2 XY ..."
@@ -490,6 +535,9 @@ def parse_porcelain_v2(output):
             # Conflict-ish ordinary codes (rare with v2, but cheap to catch)
             if "U" in xy or xy in {"DD", "AU", "UA", "DU", "UD", "AA"}:
                 conflicted += 1
+            path = porcelain_v2_path(line)
+            if path:
+                changed_paths.append(path)
 
     return {
         "branch": branch,
@@ -501,6 +549,7 @@ def parse_porcelain_v2(output):
         "modified": modified,
         "untracked": untracked,
         "conflicted": conflicted,
+        "changed_paths": changed_paths,
     }
 
 
@@ -578,6 +627,7 @@ def inspect_repo(repo_path, timeout, include_stash=True):
         "clean": False,
         "state": "error",
         "severity": SEVERITY_ERROR,
+        "lastModifiedEpoch": 0,
     }
 
     if not repo_path.exists():
@@ -608,7 +658,13 @@ def inspect_repo(repo_path, timeout, include_stash=True):
         stash = count_stashes(repo_path, timeout=timeout) if include_stash else 0
     except (RuntimeError, TimeoutError) as error:
         base["error"] = str(error)[:160] or "git status failed"
+        base["lastModifiedEpoch"] = last_commit_epoch(repo_path, timeout=timeout) or 0
         return base
+
+    changed_paths = parsed.pop("changed_paths", [])
+    commit_epoch = last_commit_epoch(repo_path, timeout=timeout) or 0
+    worktree_epoch = newest_worktree_mtime(repo_path, changed_paths)
+    last_modified = max(commit_epoch, worktree_epoch)
 
     clean = (
         parsed["staged"] == 0
@@ -628,6 +684,7 @@ def inspect_repo(repo_path, timeout, include_stash=True):
         **parsed,
         "stash": stash,
         "clean": clean,
+        "lastModifiedEpoch": last_modified,
     }
     repo["state"] = compute_state(repo)
     # Clean only when truly idle; "ahead" is not clean for display purposes
@@ -643,6 +700,7 @@ def sort_repos(repos):
         repos,
         key=lambda repo: (
             -int(repo.get("severity") or 0),
+            -int(repo.get("lastModifiedEpoch") or 0),
             (repo.get("name") or "").lower(),
         ),
     )

@@ -10,7 +10,7 @@ Top-left fleet panel for local repository health. Each configured repo shows bra
 - Blacklist matches directory basenames (`dev-box`) or paths (`~/old-project`); path rules also drop repos nested under that directory.
 - Status results land in `cache/git-status.json` for the Cairo renderer.
 - After the local inspect, each GitHub-remote row is enriched with an `actions` pip (`run` / `fail` / `ok` / empty) via `gh run list` (uses your existing `gh auth` login, including private remotes). If the current branch has no runs, the fetcher falls back to the repo's latest run. Results are cached in `cache/git-actions-cache.json` so the 30s git poll stays local. Running repos refresh every `GIT_ACTIONS_RUNNING_TTL_SECONDS` (default `20`); completed pips every `GIT_ACTIONS_TTL_SECONDS` (default `180`); no-run remotes every `GIT_ACTIONS_EMPTY_TTL_SECONDS` (default `300`). Set `GIT_ACTIONS_ENABLED=0` to skip.
-- Repos are sorted by severity: conflict → error → behind → dirty → stash → ahead → clean.
+- Repos are sorted by severity: conflict → error → behind → dirty → stash → ahead → clean. Within a tier, higher counts rank first (capped), then last modified (HEAD commit or newest dirty/untracked file), then A–Z by name.
 - After sort, only the first `GIT_MAX_REPOS` rows are kept (default **6**).
 - Missing pinned paths appear as error rows instead of being skipped.
 

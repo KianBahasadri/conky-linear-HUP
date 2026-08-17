@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -59,6 +60,18 @@ def test_parse_porcelain_v2_counts_and_branch():
     assert parsed["untracked"] == 1
     assert parsed["conflicted"] == 1
     assert parsed["detached"] is False
+    assert parsed["changed_paths"] == [
+        "staged.txt",
+        "dirty.txt",
+        "both.txt",
+        "conflict.txt",
+        "untracked.txt",
+    ]
+
+
+def test_porcelain_v2_path_reads_rename_dest():
+    line = "2 R. N... 100644 100644 100644 aaa bbb R100 new.txt\told.txt"
+    assert git_status.porcelain_v2_path(line) == "new.txt"
 
 
 def test_parse_porcelain_detached():
@@ -75,6 +88,7 @@ def test_inspect_repo_clean(tmp_path):
     assert status["clean"] is True
     assert status["branch"] == "main"
     assert status["name"] == "clean-repo"
+    assert status["lastModifiedEpoch"] > 0
 
 
 def test_inspect_repo_dirty_and_untracked(tmp_path):
@@ -87,6 +101,18 @@ def test_inspect_repo_dirty_and_untracked(tmp_path):
     assert status["modified"] >= 1
     assert status["untracked"] >= 1
     assert status["severity"] >= git_status.SEVERITY_DIRTY
+
+
+def test_inspect_repo_last_modified_uses_dirty_file_mtime(tmp_path):
+    repo = init_repo(tmp_path / "touched")
+    _rewrite_head_date(repo, 1_700_000_000)
+    target = repo / "README.md"
+    target.write_text("changed\n", encoding="utf-8")
+    later = 1_800_000_000
+    os.utime(target, (later, later))
+    status = git_status.inspect_repo(repo, timeout=5)
+    assert status["ok"] is True
+    assert status["lastModifiedEpoch"] == later
 
 
 def test_inspect_repo_missing_path(tmp_path):
@@ -113,6 +139,32 @@ def test_collect_status_sorts_by_severity(tmp_path, monkeypatch):
     assert status["summary"]["clean"] == 1
     assert status["repos"][0]["name"] == "zzz-dirty"
     assert status["repos"][1]["name"] == "aaa-clean"
+
+
+def test_sort_repos_uses_last_modified_before_name():
+    repos = [
+        {"name": "aaa-old", "severity": 40, "lastModifiedEpoch": 100},
+        {"name": "zzz-new", "severity": 40, "lastModifiedEpoch": 200},
+        {"name": "mid-new", "severity": 40, "lastModifiedEpoch": 200},
+        {"name": "clean-newest", "severity": 0, "lastModifiedEpoch": 999},
+    ]
+    names = [repo["name"] for repo in git_status.sort_repos(repos)]
+    assert names == ["mid-new", "zzz-new", "aaa-old", "clean-newest"]
+
+
+def test_collect_status_sorts_same_severity_by_last_modified(tmp_path, monkeypatch):
+    older = init_repo(tmp_path / "zzz-older")
+    newer = init_repo(tmp_path / "aaa-newer")
+    _rewrite_head_date(older, 1_700_000_000)
+    _rewrite_head_date(newer, 1_800_000_000)
+
+    monkeypatch.setenv("GIT_INCLUDE_STASH", "0")
+    status = git_status.collect_status(
+        repo_paths=[older, newer], timeout=5, hide_clean=False, max_repos=10
+    )
+    names = [repo["name"] for repo in status["repos"]]
+    assert names == ["aaa-newer", "zzz-older"]
+    assert status["repos"][0]["lastModifiedEpoch"] > status["repos"][1]["lastModifiedEpoch"]
 
 
 def test_collect_status_hide_clean(tmp_path, monkeypatch):

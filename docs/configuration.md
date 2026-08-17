@@ -143,7 +143,7 @@ The transparent HUD is generated on every monitor. It reads local Linux telemetr
 | `GIT_GAP_Y` | Vertical gap from the top screen edge |
 | `GIT_REFRESH_SECONDS` | Fetch interval (default `30`) |
 | `GIT_TIMEOUT_SECONDS` | Per-repo git command timeout (default `2`) |
-| `GIT_MAX_REPOS` | Max rows after severity sort (default `6`) |
+| `GIT_MAX_REPOS` | Max rows after severity / last-modified sort (default `6`) |
 | `GIT_HIDE_CLEAN` | `1` hides clean repos |
 | `GIT_INCLUDE_STASH` | `0` skips stash list |
 | `GIT_DEFAULT_BRANCHES` | Default branch names for muted branch styling |
