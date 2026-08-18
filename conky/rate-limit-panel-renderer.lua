@@ -309,6 +309,25 @@ return function(shared, repo_root)
     return string.lower(account.plan_type or '') == 'free'
   end
 
+  -- Pace is normally a paid-account signal, but a provider with no paid plan at
+  -- all (Antigravity today) would lose its chip percentage and bar ticks
+  -- permanently. Keep pace for the free accounts of such a provider.
+  local function provider_is_free_only(accounts, provider)
+    local provider_lower = string.lower(provider or '')
+    local seen = false
+
+    for _, account in ipairs(accounts or {}) do
+      if string.lower(account.provider or '') == provider_lower then
+        seen = true
+        if not is_free_account(account) then
+          return false
+        end
+      end
+    end
+
+    return seen
+  end
+
   local function sort_accounts(accounts)
     for index, account in ipairs(accounts or {}) do
       account.original_index = index
@@ -538,12 +557,13 @@ return function(shared, repo_root)
 
   local function calculate_provider_average_pace(accounts, provider)
     local provider_lower = string.lower(provider)
+    local include_free = provider_is_free_only(accounts, provider_lower)
     local delta_total = 0
     local delta_count = 0
 
     for _, account in ipairs(accounts or {}) do
       if string.lower(account.provider or '') == provider_lower then
-        if not is_free_account(account) then
+        if include_free or not is_free_account(account) then
           if provider_lower == 'cursor' or provider_lower == 'gemini' or provider_lower == 'grok' then
             for _, window in ipairs(account.windows or {}) do
               local pace = calculate_window_pace(window, window_duration(window))
@@ -944,7 +964,7 @@ return function(shared, repo_root)
     return result
   end
 
-  local function draw_account_row(cr, account, x, y)
+  local function draw_account_row(cr, account, x, y, pace_includes_free)
     local name = string.upper(account.label)
     local label_x = x + 22
     local is_free = is_free_account(account)
@@ -1006,7 +1026,7 @@ return function(shared, repo_root)
     local num_bars = #row_windows
     if num_bars == 0 then return end
 
-    local show_bar_pace = not is_free
+    local show_bar_pace = not is_free or pace_includes_free == true
     local bar_y = y + 15
     local layout = make_bar_layout(num_bars)
     local bar_unit_width = layout.bar_width + layout.text_total
@@ -1167,7 +1187,13 @@ return function(shared, repo_root)
     end
 
     for index, account in ipairs(usage.accounts) do
-      draw_account_row(cr, account, x + account_row_x, y + account_row_y + (index - 1) * account_row_gap)
+      draw_account_row(
+        cr,
+        account,
+        x + account_row_x,
+        y + account_row_y + (index - 1) * account_row_gap,
+        provider_is_free_only(usage.accounts, account.provider)
+      )
     end
   end
 

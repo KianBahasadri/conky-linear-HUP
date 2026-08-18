@@ -73,6 +73,7 @@
 - The orange tick is **expected** usage for on-pace spend: `expected = (windowSeconds - remainingSeconds) / windowSeconds * 100` (elapsed time through the reset window, not `usedPercent`).
 - **Visibility:** hide the tick while none of the reset window has elapsed (`expected <= 0`). Unused sliding resets report remaining equal to the full duration at fetch time; treat those as not elapsed even after later wall-clock countdown. Show the tick as soon as any of the window has elapsed (`expected > 0`), even at 0% fill or the left edge. Do not gate on `usedPercent`, and do not hide based on pixel/rounded display position.
 - Combined usage is the average weekly `usedPercent` across paid accounts; free accounts are muted and excluded.
+- Per-provider chip percentages and per-bar ticks also cover paid accounts only, except when a provider has no paid account at all (Antigravity today): then its free accounts carry the pace instead, so the chip percentage and ticks stay live. The combined pace chip still counts paid accounts only.
 - Under pace by at least `10%` shows an amber fast-mode chip, except during the first `10%` of the weekly cycle.
 - Over pace by at least `10%` shows a red warning chip, including early in the cycle.
 - The pace chip is centered across the whole rate limit panel and uses the combined weekly pace state.
