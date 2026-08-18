@@ -543,7 +543,7 @@ return function(shared, repo_root)
 
     for _, account in ipairs(accounts or {}) do
       if string.lower(account.provider or '') == provider_lower then
-        if not (provider_lower == 'codex' and is_free_account(account)) then
+        if not is_free_account(account) then
           if provider_lower == 'cursor' or provider_lower == 'gemini' or provider_lower == 'grok' then
             for _, window in ipairs(account.windows or {}) do
               local pace = calculate_window_pace(window, window_duration(window))
@@ -823,6 +823,9 @@ return function(shared, repo_root)
 
   local function provider_accents(account, is_free)
     if provider_name(account) == 'cursor' then
+      if is_free then
+        return '475569', '334155', '475569', '334155'
+      end
       return '94a3b8', '64748b', '475569', '334155'
     end
 
@@ -1003,7 +1006,7 @@ return function(shared, repo_root)
     local num_bars = #row_windows
     if num_bars == 0 then return end
 
-    local show_bar_pace = not (provider_name(account) == 'codex' and is_free)
+    local show_bar_pace = not is_free
     local bar_y = y + 15
     local layout = make_bar_layout(num_bars)
     local bar_unit_width = layout.bar_width + layout.text_total
@@ -1013,7 +1016,11 @@ return function(shared, repo_root)
     local accent_secondary_list = { first_accent_secondary, second_accent_secondary, third_accent_secondary or second_accent_secondary }
     local overlay_labels = {}
     if provider_name(account) == 'cursor' then
-      overlay_labels = { 'AUTO', 'API' }
+      if is_free then
+        overlay_labels = { 'AUTO (Free)', 'API (Free)' }
+      else
+        overlay_labels = { 'AUTO', 'API' }
+      end
     elseif provider_name(account) == 'gemini' then
       overlay_labels = { 'Gemini', 'Other' }
     end
