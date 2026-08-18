@@ -261,6 +261,31 @@ def last_commit_epoch(repo_path: Path, timeout: float) -> int | None:
         return None
 
 
+def is_dirty_repo(repo_path: Path, timeout: float) -> bool:
+    """True if the repo has uncommitted activity: staged/modified/untracked
+    changes, conflicts, a stash, ahead/behind, or detached HEAD."""
+    try:
+        porcelain = run_git(
+            repo_path,
+            ["status", "--porcelain=v2", "--branch", "--untracked-files=normal"],
+            timeout=timeout,
+        )
+    except (RuntimeError, TimeoutError):
+        return False
+    parsed = parse_porcelain_v2(porcelain)
+    if (
+        parsed["staged"] > 0
+        or parsed["modified"] > 0
+        or parsed["untracked"] > 0
+        or parsed["conflicted"] > 0
+        or parsed["ahead"] > 0
+        or parsed["behind"] > 0
+        or parsed["detached"]
+    ):
+        return True
+    return count_stashes(repo_path, timeout) > 0
+
+
 def scan_home_for_recent_repos(
     root: Path | None = None,
     since_days: int | None = None,
@@ -269,6 +294,11 @@ def scan_home_for_recent_repos(
 ):
     """
     Walk root (default $HOME) for git repos with a commit in the last since_days.
+
+    A repo is included if its latest commit is within the cutoff OR if it is
+    currently dirty (untracked/modified/staged/conflicted changes, a stash,
+    ahead/behind, or detached HEAD) — dirty repos are surfaced regardless of
+    commit age.
 
     Skips heavy/hidden directories. Does not descend into a found repo.
     Returns paths sorted by most-recent commit first.
@@ -315,8 +345,8 @@ def scan_home_for_recent_repos(
 
             if is_git_repo(entry):
                 epoch = last_commit_epoch(entry, timeout=timeout)
-                if epoch is not None and epoch >= cutoff:
-                    found.append((epoch, entry.resolve()))
+                if (epoch is not None and epoch >= cutoff) or is_dirty_repo(entry, timeout=timeout):
+                    found.append((epoch or 0, entry.resolve()))
                 # Never walk into a git work tree.
                 continue
 
@@ -375,8 +405,8 @@ def discover_scanned_repos(timeout=None):
         },
     )
     log_event(
-        f"discovered {len(paths)} recent repo(s) under home "
-        f"(last {env_int('GIT_SCAN_DAYS', DEFAULT_SCAN_DAYS)}d)"
+        f"discovered {len(paths)} repo(s) under home "
+        f"(last {env_int('GIT_SCAN_DAYS', DEFAULT_SCAN_DAYS)}d or dirty)"
     )
     return paths
 
@@ -402,7 +432,9 @@ def resolve_repo_paths(repo_paths=None, timeout=None):
     Build the fleet list: GIT_REPO_PATHS (pinned) ∪ home scan, minus blacklist.
 
     - Pinned paths are always included first (even without a recent commit).
-    - Scan adds any other home repos with a commit in the last GIT_SCAN_DAYS.
+    - Scan adds any other home repos with a commit in the last GIT_SCAN_DAYS,
+      or any repo that is currently dirty (uncommitted changes/stash/etc.)
+      regardless of commit age.
     - GIT_REPO_BLACKLIST drops matches by basename or path (always applied).
     - Discovery is cached for GIT_SCAN_TTL_SECONDS (default 300).
 

@@ -221,6 +221,33 @@ def test_scan_home_for_recent_repos_filters_by_commit_age(tmp_path):
     assert "notes" not in names
 
 
+def test_scan_home_includes_dirty_repo_regardless_of_commit_age(tmp_path):
+    recent = init_repo(tmp_path / "recent-app")
+    old = init_repo(tmp_path / "old-app")
+    # Two months ago — outside the 14-day window.
+    _rewrite_head_date(old, 1_700_000_000)
+    # But old-app has an untracked file, so it is dirty and should be surfaced.
+    (old / "scratch.txt").write_text("wip\n", encoding="utf-8")
+
+    paths = git_status.scan_home_for_recent_repos(
+        root=tmp_path, since_days=14, max_depth=2, timeout=5
+    )
+    names = {path.name for path in paths}
+    assert "recent-app" in names
+    assert "old-app" in names
+
+
+def test_scan_home_excludes_clean_old_repo(tmp_path):
+    clean_old = init_repo(tmp_path / "stale-clean")
+    _rewrite_head_date(clean_old, 1_700_000_000)
+
+    paths = git_status.scan_home_for_recent_repos(
+        root=tmp_path, since_days=14, max_depth=2, timeout=5
+    )
+    names = {path.name for path in paths}
+    assert "stale-clean" not in names
+
+
 def test_resolve_repo_paths_merges_pinned_and_scanned(tmp_path, monkeypatch):
     pinned = init_repo(tmp_path / "pinned")
     scanned = init_repo(tmp_path / "scanned")
