@@ -751,23 +751,54 @@ return function(shared, repo_root)
   local text_cap_height = 0.70
   local text_baseline_overshoot = 0.06
 
+  -- Each profile is a shade curve down the glyph, plus how much of the shadow
+  -- to repeat a second pixel lower. `soft` is a sheen for labels that already
+  -- sit on a lit surface. `raised` packs a specular band into the top eighth
+  -- and digs the base out further, which needs the full cap height to land:
+  -- the all-caps account names have it, and at 10px the countdowns would only
+  -- smear.
+  local text_relief = {
+    soft = {
+      contact = 0,
+      { 0.00, 0.50 },
+      { 0.30, 0.26 },
+      { 0.62, 0.02 },
+      { 1.00, -0.22 },
+    },
+    raised = {
+      contact = 0.55,
+      { 0.00, 0.85 },
+      { 0.13, 0.60 },
+      { 0.40, 0.14 },
+      { 0.70, -0.06 },
+      { 1.00, -0.40 },
+    },
+  }
+
   local function draw_lit_text(cr, label, x, y, size, color, opts)
     opts = opts or {}
     local alpha = opts.alpha or 1
+    local shadow = opts.shadow or 0.5
+    local relief = text_relief[opts.relief or 'soft']
 
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, opts.weight or CAIRO_FONT_WEIGHT_BOLD)
     cairo_set_font_size(cr, size)
 
-    shared.set_hex(cr, '000000', opts.shadow or 0.5)
+    if relief.contact > 0 then
+      shared.set_hex(cr, '000000', shadow * relief.contact)
+      cairo_move_to(cr, x, y + 2)
+      cairo_show_text(cr, label)
+    end
+    shared.set_hex(cr, '000000', shadow)
     cairo_move_to(cr, x, y + 1)
     cairo_show_text(cr, label)
 
-    paint_gradient(cr, x, y - size * text_cap_height, x, y + size * text_baseline_overshoot, {
-      { 0.00, color, alpha, 0.50 },
-      { 0.30, color, alpha, 0.26 },
-      { 0.62, color, alpha, 0.02 },
-      { 1.00, color, alpha, -0.22 },
-    }, function(target)
+    local stops = {}
+    for i, stop in ipairs(relief) do
+      stops[i] = { stop[1], color, alpha, stop[2] }
+    end
+
+    paint_gradient(cr, x, y - size * text_cap_height, x, y + size * text_baseline_overshoot, stops, function(target)
       cairo_move_to(target, x, y)
       cairo_show_text(target, label)
     end)
@@ -1240,6 +1271,8 @@ return function(shared, repo_root)
     local row_label = shared.truncate_title(cr, name, 120)
     draw_lit_text(cr, row_label, label_x, y + 23, 14, is_active and 'ffffff' or 'f8fafc', {
       alpha = is_active and 1 or 0.72,
+      relief = 'raised',
+      shadow = 0.62,
     })
 
     local num_bars = #row_windows
