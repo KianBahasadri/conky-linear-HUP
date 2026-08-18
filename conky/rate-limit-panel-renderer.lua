@@ -461,12 +461,31 @@ return function(shared, repo_root)
     return string.format('%dm', minutes)
   end
 
-  local function format_window_countdown(window)
-    local seconds = seconds_until_reset(window)
-    if seconds <= 0 and (window.used_percent or 0) <= 0 then
-      return 'ready'
+  local function format_window_span(seconds)
+    if seconds >= 86400 then
+      return string.format('%dd', math.floor(seconds / 86400))
     end
-    return format_reset(seconds)
+    if seconds >= 3600 then
+      return string.format('%dh', math.floor(seconds / 3600))
+    end
+    return string.format('%dm', math.floor(seconds / 60))
+  end
+
+  -- Nothing used and no countdown left means the window has not started rather
+  -- than run out: a rolling window nobody has touched carries no reset at all,
+  -- so its remaining seconds read zero from the very beginning.
+  local function window_has_not_started(window)
+    if not window or (window.used_percent or 0) > 0 then
+      return false
+    end
+    return seconds_until_reset(window) <= 0
+  end
+
+  local function format_window_countdown(window)
+    if window_has_not_started(window) then
+      return format_window_span(window_duration(window)) .. ' left'
+    end
+    return format_reset(seconds_until_reset(window))
   end
 
   local function find_weekly_window(account)
@@ -488,6 +507,13 @@ return function(shared, repo_root)
   end
 
   local function remaining_for_pace(window, window_seconds)
+    -- A window that has not started has its whole span still ahead of it, so
+    -- its zero countdown must not read as fully elapsed and pin the tick to
+    -- the right edge.
+    if window_has_not_started(window) then
+      return window_seconds
+    end
+
     -- Unused sliding resets report remaining == full duration at fetch time.
     -- Live epoch countdown would otherwise make expected > 0 a few seconds later
     -- and draw a left-edge tick on a window that has not actually started.
