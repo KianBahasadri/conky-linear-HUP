@@ -731,6 +731,10 @@ return function(shared, repo_root)
     paint_gradient(cr, x0, y0, x1, y1, stops, cairo_stroke)
   end
 
+  local function fill_preserve_gradient(cr, x0, y0, x1, y1, stops)
+    paint_gradient(cr, x0, y0, x1, y1, stops, cairo_fill_preserve)
+  end
+
   local function draw_panel_frame(cr, x, y)
     shared.rounded_rect(cr, x + 4, y + 7, panel_width, panel_height, panel_radius)
     shared.set_hex(cr, '00e5ff', 0.10)
@@ -746,17 +750,32 @@ return function(shared, repo_root)
     cairo_set_line_width(cr, 4)
     cairo_stroke(cr)
 
+    -- The slab catches light along its top edge and sinks toward the bottom,
+    -- so the panel reads as a pane standing off the desktop rather than a hole
+    -- cut in it.
     shared.rounded_rect(cr, x, y, panel_width, panel_height, panel_radius)
-    shared.set_hex(cr, '020617', 0.80)
-    cairo_fill_preserve(cr)
-    shared.set_hex(cr, '00e5ff', 0.95)
+    fill_preserve_gradient(cr, x, y, x, y + panel_height, {
+      { 0.00, '0d1a30', 0.88 },
+      { 0.06, '050d1c', 0.82 },
+      { 0.80, '020617', 0.80 },
+      { 1.00, '08111f', 0.85 },
+    })
     cairo_set_line_width(cr, 2)
-    cairo_stroke(cr)
+    stroke_gradient(cr, x, y, x, y + panel_height, {
+      { 0.00, '00e5ff', 1.00, 0.40 },
+      { 0.40, '00e5ff', 0.80 },
+      { 1.00, '00e5ff', 0.95, 0.08 },
+    })
 
+    -- Inner bevel: the lit lip sits just inside the top edge, the violet rail
+    -- fades as it comes around the bottom.
     shared.rounded_rect(cr, x + 8, y + 8, panel_width - 16, panel_height - 16, panel_radius - 6)
-    shared.set_hex(cr, '8b5cf6', 0.24)
     cairo_set_line_width(cr, 1)
-    cairo_stroke(cr)
+    stroke_gradient(cr, x, y + 8, x, y + panel_height - 8, {
+      { 0.00, 'c4b5fd', 0.42 },
+      { 0.35, '8b5cf6', 0.24 },
+      { 1.00, '8b5cf6', 0.10 },
+    })
 
   end
 
@@ -1159,23 +1178,39 @@ return function(shared, repo_root)
       cairo_line_to(cr, label_x - 20, y + 25)
       cairo_stroke(cr)
 
-      shared.set_hex(cr, selection_color, 0.94)
+      -- The chevron drops onto the panel before it lights up, and its stroke
+      -- catches the same overhead light as the bars and chips.
+      shared.set_hex(cr, '000000', 0.45)
+      cairo_set_line_width(cr, 2)
+      cairo_move_to(cr, label_x - 19, y + 12)
+      cairo_line_to(cr, label_x - 11, y + 19)
+      cairo_line_to(cr, label_x - 19, y + 26)
+      cairo_stroke(cr)
+
       cairo_set_line_width(cr, 2)
       cairo_move_to(cr, label_x - 20, y + 11)
       cairo_line_to(cr, label_x - 12, y + 18)
       cairo_line_to(cr, label_x - 20, y + 25)
-      cairo_stroke(cr)
+      stroke_gradient(cr, label_x, y + 11, label_x, y + 25, {
+        { 0.00, selection_color, 1.00, 0.45 },
+        { 0.45, selection_color, 0.94 },
+        { 1.00, selection_color, 0.85, 0.05 },
+      })
     end
 
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
     cairo_set_font_size(cr, 14)
+    local row_label = shared.truncate_title(cr, name, 120)
+    shared.set_hex(cr, '000000', 0.50)
+    cairo_move_to(cr, label_x + 1, y + 24)
+    cairo_show_text(cr, row_label)
     if is_active then
       shared.set_hex(cr, 'ffffff', 1)
     else
       shared.set_hex(cr, 'f8fafc', 0.72)
     end
     cairo_move_to(cr, label_x, y + 23)
-    cairo_show_text(cr, shared.truncate_title(cr, name, 120))
+    cairo_show_text(cr, row_label)
 
     local num_bars = #row_windows
     if num_bars == 0 then return end
@@ -1212,6 +1247,61 @@ return function(shared, repo_root)
     end
   end
 
+  -- Chips are lit the same way as the bars: a shadow underneath, a face that
+  -- runs from a lit top edge down to a dark base, a reflection across the top
+  -- half, and a rim that is brightest where the light lands.
+  local function draw_chip(cr, label, color, x, y, chip_width)
+    local chip_height = 20
+    local radius = 6
+
+    shared.rounded_rect(cr, x + 0.5, y + 2, chip_width, chip_height, radius)
+    shared.set_hex(cr, '000000', 0.34)
+    cairo_fill(cr)
+    shared.rounded_rect(cr, x, y + 1, chip_width, chip_height, radius)
+    shared.set_hex(cr, '000000', 0.28)
+    cairo_fill(cr)
+
+    -- The face is tinted with the chip's own color so each provider keeps its
+    -- hue even in shadow.
+    shared.rounded_rect(cr, x, y, chip_width, chip_height, radius)
+    fill_gradient(cr, x, y, x, y + chip_height, {
+      { 0.00, color, 0.94, -0.58 },
+      { 0.20, color, 0.95, -0.86 },
+      { 0.66, '020617', 0.95 },
+      { 1.00, color, 0.94, -0.76 },
+    })
+
+    cairo_save(cr)
+    shared.rounded_rect(cr, x, y, chip_width, chip_height, radius)
+    cairo_clip(cr)
+    shared.rounded_rect(cr, x + 3, y + 2, chip_width - 6, chip_height * 0.42, 4)
+    fill_gradient(cr, x, y, x + chip_width, y, {
+      { 0.00, 'ffffff', 0.00 },
+      { 0.12, 'ffffff', 0.11 },
+      { 0.62, 'ffffff', 0.05 },
+      { 1.00, 'ffffff', 0.00 },
+    })
+    cairo_restore(cr)
+
+    shared.rounded_rect(cr, x, y, chip_width, chip_height, radius)
+    cairo_set_line_width(cr, 1.5)
+    stroke_gradient(cr, x, y, x, y + chip_height, {
+      { 0.00, color, 0.95, 0.45 },
+      { 0.50, color, 0.74 },
+      { 1.00, color, 0.88, 0.12 },
+    })
+
+    cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
+    cairo_set_font_size(cr, 15)
+    -- The label sits on the face, so it drops its own shadow onto it.
+    shared.set_hex(cr, '000000', 0.55)
+    cairo_move_to(cr, x + 12, y + 16)
+    cairo_show_text(cr, label)
+    shared.set_hex(cr, color, 1)
+    cairo_move_to(cr, x + 12, y + 15)
+    cairo_show_text(cr, label)
+  end
+
   local function title_chip_width(cr, label)
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
     cairo_set_font_size(cr, 15)
@@ -1223,18 +1313,7 @@ return function(shared, repo_root)
 
   local function draw_title_chip(cr, label, color, x, y)
     local chip_width = title_chip_width(cr, label)
-
-    shared.rounded_rect(cr, x, y - 9, chip_width, 20, 6)
-    shared.set_hex(cr, '020617', 0.94)
-    cairo_fill_preserve(cr)
-    shared.set_hex(cr, color, 0.82)
-    cairo_set_line_width(cr, 1.5)
-    cairo_stroke(cr)
-
-    shared.set_hex(cr, color, 1)
-    cairo_move_to(cr, x + 12, y + 6)
-    cairo_show_text(cr, label)
-
+    draw_chip(cr, label, color, x, y - 9, chip_width)
     return chip_width
   end
 
@@ -1272,20 +1351,10 @@ return function(shared, repo_root)
     local extents = cairo_text_extents_t:create()
     cairo_text_extents(cr, label, extents)
     local chip_width = extents.width + 24
-    local chip_height = 20
     local chip_x = x + (panel_width - chip_width) / 2
     local chip_y = y - 9
 
-    shared.rounded_rect(cr, chip_x, chip_y, chip_width, chip_height, 6)
-    shared.set_hex(cr, '020617', 0.94)
-    cairo_fill_preserve(cr)
-    shared.set_hex(cr, color, 0.82)
-    cairo_set_line_width(cr, 1.5)
-    cairo_stroke(cr)
-
-    shared.set_hex(cr, color, 1)
-    cairo_move_to(cr, chip_x + 12, chip_y + 15)
-    cairo_show_text(cr, label)
+    draw_chip(cr, label, color, chip_x, chip_y, chip_width)
   end
 
   local function draw_rate_limit_panel(cr, usage, x, y)
