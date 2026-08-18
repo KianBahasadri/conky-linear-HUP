@@ -27,6 +27,7 @@ return function(shared, repo_root)
   -- Conky window. Must stay in sync with fetch_common.rate_limit_panel_window_height.
   local panel_top_inset = 12
   local panel_bottom_inset = 12
+  local title_chip_gap = 8
   local panel_window_floor = 320
   local five_hour_window_seconds = 18000
   local weekly_window_seconds = 604800
@@ -1030,13 +1031,17 @@ return function(shared, repo_root)
     end
   end
 
-  local function draw_title_chip(cr, label, color, x, y)
+  local function title_chip_width(cr, label)
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
     cairo_set_font_size(cr, 15)
 
     local extents = cairo_text_extents_t:create()
     cairo_text_extents(cr, label, extents)
-    local chip_width = extents.width + 24
+    return extents.width + 24
+  end
+
+  local function draw_title_chip(cr, label, color, x, y)
+    local chip_width = title_chip_width(cr, label)
 
     shared.rounded_rect(cr, x, y - 9, chip_width, 20, 6)
     shared.set_hex(cr, '020617', 0.94)
@@ -1050,6 +1055,25 @@ return function(shared, repo_root)
     cairo_show_text(cr, label)
 
     return chip_width
+  end
+
+  local function draw_title_chips(cr, chips, x, y)
+    local widths = {}
+    local total_width = 0
+
+    for i, chip in ipairs(chips) do
+      widths[i] = title_chip_width(cr, chip.label)
+      total_width = total_width + widths[i]
+      if i > 1 then
+        total_width = total_width + title_chip_gap
+      end
+    end
+
+    local chip_x = x + (panel_width - total_width) / 2
+    for i, chip in ipairs(chips) do
+      draw_title_chip(cr, chip.label, chip.color, chip_x, y)
+      chip_x = chip_x + widths[i] + title_chip_gap
+    end
   end
 
   local function draw_pace_chip(cr, pace, x, y)
@@ -1120,38 +1144,15 @@ return function(shared, repo_root)
       commandcode_label = get_provider_label_from_delta('CMD', commandcode_avg_delta)
     end
 
-    local chip_x = x + 48
-    local codex_chip_width = draw_title_chip(cr, codex_label, codex_color, chip_x, y)
-    local claude_chip_width = draw_title_chip(cr, claude_label, claude_color, chip_x + codex_chip_width + 8, y)
-    local cursor_chip_width = draw_title_chip(cr, cursor_label, cursor_color, chip_x + codex_chip_width + claude_chip_width + 16, y)
-    local gemini_chip_width = draw_title_chip(
-      cr,
-      gemini_label,
-      gemini_color,
-      chip_x + codex_chip_width + claude_chip_width + cursor_chip_width + 24,
-      y
-    )
-    local grok_chip_width = draw_title_chip(
-      cr,
-      grok_label,
-      grok_color,
-      chip_x + codex_chip_width + claude_chip_width + cursor_chip_width + gemini_chip_width + 32,
-      y
-    )
-    local opencode_chip_width = draw_title_chip(
-      cr,
-      opencode_label,
-      opencode_color,
-      chip_x + codex_chip_width + claude_chip_width + cursor_chip_width + gemini_chip_width + grok_chip_width + 40,
-      y
-    )
-    draw_title_chip(
-      cr,
-      commandcode_label,
-      commandcode_color,
-      chip_x + codex_chip_width + claude_chip_width + cursor_chip_width + gemini_chip_width + grok_chip_width + opencode_chip_width + 48,
-      y
-    )
+    draw_title_chips(cr, {
+      { label = codex_label, color = codex_color },
+      { label = claude_label, color = claude_color },
+      { label = cursor_label, color = cursor_color },
+      { label = gemini_label, color = gemini_color },
+      { label = grok_label, color = grok_color },
+      { label = opencode_label, color = opencode_color },
+      { label = commandcode_label, color = commandcode_color },
+    }, x, y)
 
     if not usage.ok or #usage.accounts == 0 then
       draw_panel_error(cr, usage, x, y)
