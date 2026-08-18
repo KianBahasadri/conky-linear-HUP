@@ -1082,12 +1082,12 @@ return function(shared, repo_root)
   local function provider_accents(account, is_free)
     if provider_name(account) == 'cursor' then
       if is_free then
-        -- Free rows sit two shades further down the slate ramp than paid ones.
+        -- Free rows sit two shades further down the bronze ramp than paid ones.
         -- The second bar already starts deep, so reusing the paid pair for it
         -- would leave it undimmed next to a dimmed first bar.
-        return '475569', '334155', '1e293b', '0f172a'
+        return '574a29', '433720', '352b17', '272011'
       end
-      return '94a3b8', '64748b', '475569', '334155'
+      return '938354', '756642', '574a29', '433720'
     end
 
     if provider_name(account) == 'gemini' then
@@ -1096,7 +1096,8 @@ return function(shared, repo_root)
     end
 
     if provider_name(account) == 'grok' then
-      return '8b7ab0', 'a899c9', '5d4f78', '4a3f63'
+      -- Graphite black 5h, lighter charcoal weekly, deep black monthly.
+      return '52525b', '71717a', '3f3f46', '27272a'
     end
 
     if provider_name(account) == 'opencode' then
@@ -1105,8 +1106,8 @@ return function(shared, repo_root)
     end
 
     if provider_name(account) == 'commandcode' then
-      -- Lime 5h, brighter lime weekly, forest monthly.
-      return 'a3e635', 'd9f99d', '84cc16', 'bef264', '4d7c0f', '65a30d'
+      -- Indigo 5h, brighter periwinkle weekly, deep indigo monthly.
+      return '6e52d6', '9d88e8', '2e1b9c', '8a74e0', '241575', '3a28a8'
     end
 
     if is_free then
@@ -1233,10 +1234,10 @@ return function(shared, repo_root)
 
     if account.is_selected then
       local selection_color = provider_name(account) == 'codex' and '00e5ff'
-        or provider_name(account) == 'cursor' and '94a3b8'
-        or provider_name(account) == 'grok' and '9a86b3'
+        or provider_name(account) == 'cursor' and '938354'
+        or provider_name(account) == 'grok' and '71717a'
         or provider_name(account) == 'opencode' and 'ef4444'
-        or provider_name(account) == 'commandcode' and 'a3e635'
+        or provider_name(account) == 'commandcode' and '5543c9'
         or first_accent
 
       shared.set_hex(cr, selection_color, 0.20)
@@ -1426,11 +1427,11 @@ return function(shared, repo_root)
 
     local codex_color = '00e5ff'
     local claude_color = 'ff7a59'
-    local cursor_color = '94a3b8'
+    local cursor_color = '938354'
     local gemini_color = '4ade80'
-    local grok_color = '9a86b3'
+    local grok_color = '71717a'
     local opencode_color = 'ef4444'
-    local commandcode_color = 'a3e635'
+    local commandcode_color = '5543c9'
 
     if usage.ok and #usage.accounts > 0 then
       local codex_avg_delta = calculate_provider_average_pace(usage.accounts, 'Codex')
