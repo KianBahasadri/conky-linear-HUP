@@ -2,7 +2,7 @@ return function(shared, repo_root)
   local weather_path = repo_root .. '/cache/weather-status.json'
   local font = 'JetBrains Mono'
   local panel_width = 424
-  local panel_height = 240
+  local panel_height = 205
   local radius = 18
 
   local function json_string(content, key, fallback)
@@ -179,6 +179,15 @@ return function(shared, repo_root)
     cairo_show_text(cr, value)
   end
 
+  local function short_uv_label(label)
+    local compact = {
+      ['Moderate'] = 'Med',
+      ['Very high'] = 'V.High',
+      ['Extreme'] = 'Xtreme',
+    }
+    return compact[label] or label
+  end
+
   local function wrap_text(cr, value, max_width, max_lines)
     local words = {}
     for word in value:gmatch('%S+') do
@@ -311,19 +320,16 @@ return function(shared, repo_root)
     cairo_stroke(cr)
 
     draw_metric(cr, 'FEELS', string.format('%d°%s', status.apparent_temperature, status.temperature_unit), x + 25, y + 143)
-    draw_metric(cr, 'RAIN', string.format('%d%%', status.rain), x + 102, y + 143, status.rain >= 60 and 'facc15' or '00e5ff')
-    draw_metric(cr, 'WIND', string.format('%s %d', status.wind_direction, status.wind_speed), x + 166, y + 143)
-    draw_metric(cr, 'GUST', string.format('%d %s', status.wind_gust, status.wind_unit), x + 244, y + 143)
-    draw_metric(cr, 'HUMID', string.format('%d%%', status.humidity), x + 337, y + 143)
-
-    draw_metric(cr, 'UV', string.format('%.1f %s', status.uv_index, status.uv_label), x + 25, y + 180, status.uv_index >= 8 and 'facc15' or 'f8fafc')
-    draw_metric(cr, 'VIS', string.format('%.1f %s', status.visibility, status.visibility_unit), x + 137, y + 180)
-    draw_metric(cr, 'SUNSET', status.sunset, x + 244, y + 180)
+    draw_metric(cr, 'RAIN', string.format('%d%%', status.rain), x + 78, y + 143, status.rain >= 60 and 'facc15' or '00e5ff')
+    draw_metric(cr, 'GUST', string.format('%d %s', status.wind_gust, status.wind_unit), x + 117, y + 143)
+    draw_metric(cr, 'HUMID', string.format('%d%%', status.humidity), x + 176, y + 143)
+    draw_metric(cr, 'UV', string.format('%.1f %s', status.uv_index, short_uv_label(status.uv_label)), x + 219, y + 143, status.uv_index >= 8 and 'facc15' or 'f8fafc')
+    draw_metric(cr, 'SUNSET', status.sunset, x + 302, y + 143)
 
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
     cairo_set_font_size(cr, 10)
     shared.set_hex(cr, accent, 0.92)
-    cairo_move_to(cr, x + 25, y + 224)
+    cairo_move_to(cr, x + 25, y + 189)
     cairo_show_text(cr, 'BEST  ' .. status.best_window)
     shared.set_hex(cr, 'f8fafc', 0.52)
     cairo_show_text(cr, '  ' .. shared.truncate_title(cr, status.best_detail, 155))
@@ -333,7 +339,7 @@ return function(shared, repo_root)
     local attribution_extents = cairo_text_extents_t:create()
     cairo_text_extents(cr, status.attribution, attribution_extents)
     shared.set_hex(cr, 'f8fafc', 0.48)
-    cairo_move_to(cr, x + panel_width - 24 - attribution_extents.width, y + 224)
+    cairo_move_to(cr, x + panel_width - 24 - attribution_extents.width, y + 189)
     cairo_show_text(cr, status.attribution)
   end
 
