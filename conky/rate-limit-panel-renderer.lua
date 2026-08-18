@@ -870,7 +870,10 @@ return function(shared, repo_root)
   local function provider_accents(account, is_free)
     if provider_name(account) == 'cursor' then
       if is_free then
-        return '475569', '334155', '475569', '334155'
+        -- Free rows sit two shades further down the slate ramp than paid ones.
+        -- The second bar already starts deep, so reusing the paid pair for it
+        -- would leave it undimmed next to a dimmed first bar.
+        return '475569', '334155', '1e293b', '0f172a'
       end
       return '94a3b8', '64748b', '475569', '334155'
     end
