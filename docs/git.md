@@ -10,8 +10,9 @@ Top-left fleet panel for local repository health. Each configured repo shows bra
 - Blacklist matches directory basenames (`dev-box`) or paths (`~/old-project`); path rules also drop repos nested under that directory.
 - Status results land in `cache/git-status.json` for the Cairo renderer.
 - After the local inspect, each GitHub-remote row is enriched with an `actions` pip (`run` / `fail` / `ok` / empty) via `gh run list` (uses your existing `gh auth` login, including private remotes). If the current branch has no runs, the fetcher falls back to the repo's latest run. Results are cached in `cache/git-actions-cache.json` so the 30s git poll stays local. Running repos refresh every `GIT_ACTIONS_RUNNING_TTL_SECONDS` (default `20`); completed pips every `GIT_ACTIONS_TTL_SECONDS` (default `180`); no-run remotes every `GIT_ACTIONS_EMPTY_TTL_SECONDS` (default `300`). Set `GIT_ACTIONS_ENABLED=0` to skip.
+- Clean repos with no Actions pip are hidden: a green row that has no workflow run says nothing the panel needs a line for. Rows with any pip (`run` / `fail` / `ok`) stay, as does anything not clean. Nothing is hidden when the pips are unavailable (`GIT_ACTIONS_ENABLED=0`, or the whole Actions pass failed), since every row would look idle.
 - Repos are sorted by severity: conflict → error → behind → dirty → stash → ahead → clean. Within a tier, higher counts rank first (capped), then last modified (HEAD commit or newest dirty/untracked file), then A–Z by name.
-- After sort, only the first `GIT_MAX_REPOS` rows are kept (default **6**).
+- After sort, Actions pips are resolved for up to 3× `GIT_MAX_REPOS` rows, the idle rows above drop out, and only the first `GIT_MAX_REPOS` survivors are kept (default **6**). Hidden rows do not spend a slot — repos below the cut move up to fill the panel.
 - Missing pinned paths appear as error rows instead of being skipped.
 
 ## Configuration
@@ -38,7 +39,7 @@ GIT_OVERLAY_ENABLED=1
 | `GIT_GAP_Y` | Vertical gap from the top (default `40`; empty follows Linear’s per-monitor offset) |
 | `GIT_REFRESH_SECONDS` | Fetch interval (default `30`) |
 | `GIT_TIMEOUT_SECONDS` | Per-repo git command timeout (default `2`) |
-| `GIT_MAX_REPOS` | Cap on rows shown after sort (default `6`) |
+| `GIT_MAX_REPOS` | Cap on rows shown after sort and the idle-row filter (default `6`) |
 | `GIT_HIDE_CLEAN` | `1` hides fully clean repos |
 | `GIT_INCLUDE_STASH` | `0` skips stash counting |
 | `GIT_DEFAULT_BRANCHES` | Branches treated as default for muted styling |

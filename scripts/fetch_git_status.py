@@ -38,6 +38,12 @@ DEFAULT_ACTIONS_TTL_SECONDS = 180
 DEFAULT_ACTIONS_RUNNING_TTL_SECONDS = 20
 DEFAULT_ACTIONS_EMPTY_TTL_SECONDS = 300
 
+# A clean repo is only hidden once we know it has no Actions run, so pips have to
+# be resolved for more rows than the panel shows. Probe this multiple of
+# GIT_MAX_REPOS instead of the whole fleet so a large $HOME scan cannot fan out
+# into dozens of `gh` calls per refresh.
+ACTIONS_PROBE_ROWS_MULTIPLIER = 3
+
 GITHUB_REMOTE_RE = re.compile(
     r"github\.com[:/](?P<owner>[^/]+)/(?P<repo>[^/#?\s]+)",
     re.IGNORECASE,
@@ -1087,8 +1093,11 @@ def collect_status(repo_paths=None, timeout=None, hide_clean=None, max_repos=Non
     repos = sort_repos(repos)
     if hide_clean:
         repos = [repo for repo in repos if repo.get("state") != "clean"]
-    if len(repos) > max_repos:
-        repos = repos[:max_repos]
+    # Keep a pool wider than the panel: limit_repos() drops idle rows once the
+    # Actions pips land, and the survivors below the cut backfill the panel.
+    pool = max_repos * ACTIONS_PROBE_ROWS_MULTIPLIER
+    if len(repos) > pool:
+        repos = repos[:pool]
 
     summary = build_summary(repos)
     now = datetime.now(timezone.utc)
@@ -1097,9 +1106,45 @@ def collect_status(repo_paths=None, timeout=None, hide_clean=None, max_repos=Non
         "updatedAt": now.isoformat(),
         "updatedAtEpoch": int(now.timestamp()),
         "error": "",
+        "maxRepos": max_repos,
         "summary": summary,
         "repos": repos,
     }
+
+
+def is_idle_row(repo):
+    """A clean repo with no Actions run carries no signal worth a panel row."""
+    return repo.get("state") == "clean" and not (repo.get("actions") or "")
+
+
+def limit_repos(status, max_repos=None, actions_ready=True):
+    """
+    Trim the fleet down to the rows the panel actually shows.
+
+    Runs after attach_actions(): idle repos (clean *and* without an Actions pip)
+    drop out first so the GIT_MAX_REPOS cap is spent on rows that say something.
+    When the pips are unavailable — Actions disabled, or the whole enrichment
+    pass failed — nothing is hidden, since every row would look idle.
+    """
+    repos = status.get("repos") or []
+    if max_repos is None:
+        max_repos = int(status.get("maxRepos") or 0) or env_int("GIT_MAX_REPOS", 6)
+    if max_repos < 1:
+        max_repos = 6
+
+    if actions_ready and env_flag("GIT_ACTIONS_ENABLED", True):
+        kept = [repo for repo in repos if not is_idle_row(repo)]
+        hidden = len(repos) - len(kept)
+        if hidden:
+            log_event(f"hid idle rows without actions hidden={hidden}")
+        if hidden and not kept and status.get("ok"):
+            # Otherwise the empty panel blames discovery ("set GIT_REPO_PATHS").
+            status["error"] = "Every repo is clean with no Actions runs"
+        repos = kept
+
+    status["repos"] = repos[:max_repos]
+    status["summary"] = build_summary(status["repos"])
+    return status
 
 
 def write_error(message):
@@ -1138,13 +1183,16 @@ def main():
         write_error(f"Git status fetch failed: {error}")
         return 1
 
+    actions_ready = True
     try:
         status = attach_actions(status)
     except Exception as error:
         log_event(f"actions attach failed: {error}")
+        actions_ready = False
         for repo in status.get("repos") or []:
             repo.setdefault("actions", "")
 
+    status = limit_repos(status, actions_ready=actions_ready)
     atomic_write_json(STATUS_PATH, status)
     summary = status.get("summary") or {}
     log_event(

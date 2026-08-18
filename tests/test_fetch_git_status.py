@@ -552,3 +552,79 @@ def test_attach_actions_disabled_clears_pips(monkeypatch):
     status = {"ok": True, "repos": [{"name": "x", "path": "/tmp/x", "actions": "run"}]}
     attached = git_status.attach_actions(status)
     assert attached["repos"][0]["actions"] == ""
+
+
+def _row(name, state, actions="", severity=0):
+    return {
+        "name": name,
+        "path": f"/tmp/{name}",
+        "state": state,
+        "severity": severity,
+        "actions": actions,
+    }
+
+
+def test_limit_repos_hides_clean_rows_without_actions(monkeypatch):
+    monkeypatch.setenv("GIT_ACTIONS_ENABLED", "1")
+    monkeypatch.setattr(git_status, "log_event", lambda _message: None)
+    status = {
+        "ok": True,
+        "maxRepos": 3,
+        "repos": [
+            _row("dirty", "dirty", severity=40),
+            _row("idle", "clean"),
+            _row("built", "clean", actions="ok"),
+            _row("broken-ci", "clean", actions="fail"),
+            _row("also-idle", "clean"),
+        ],
+    }
+
+    limited = git_status.limit_repos(status)
+    names = [repo["name"] for repo in limited["repos"]]
+    # Idle rows drop out, and the rows below the cap move up to take their slots.
+    assert names == ["dirty", "built", "broken-ci"]
+    assert limited["summary"]["total"] == 3
+    assert limited["summary"]["clean"] == 2
+
+
+def test_limit_repos_explains_an_entirely_hidden_fleet(monkeypatch):
+    monkeypatch.setenv("GIT_ACTIONS_ENABLED", "1")
+    monkeypatch.setattr(git_status, "log_event", lambda _message: None)
+    status = {"ok": True, "error": "", "maxRepos": 6, "repos": [_row("idle", "clean")]}
+
+    limited = git_status.limit_repos(status)
+    assert limited["repos"] == []
+    assert "Actions" in limited["error"]
+
+
+def test_limit_repos_keeps_clean_rows_when_actions_unavailable(monkeypatch):
+    monkeypatch.setattr(git_status, "log_event", lambda _message: None)
+    repos = [_row("dirty", "dirty", severity=40), _row("idle", "clean")]
+
+    monkeypatch.setenv("GIT_ACTIONS_ENABLED", "0")
+    disabled = git_status.limit_repos(
+        {"ok": True, "maxRepos": 6, "repos": [dict(repo) for repo in repos]}
+    )
+    assert [repo["name"] for repo in disabled["repos"]] == ["dirty", "idle"]
+
+    monkeypatch.setenv("GIT_ACTIONS_ENABLED", "1")
+    failed = git_status.limit_repos(
+        {"ok": True, "maxRepos": 6, "repos": [dict(repo) for repo in repos]},
+        actions_ready=False,
+    )
+    assert [repo["name"] for repo in failed["repos"]] == ["dirty", "idle"]
+
+
+def test_collect_status_keeps_a_pool_wider_than_the_cap(tmp_path, monkeypatch):
+    monkeypatch.setenv("GIT_INCLUDE_STASH", "0")
+    paths = [init_repo(tmp_path / f"repo-{index}") for index in range(5)]
+
+    status = git_status.collect_status(
+        repo_paths=paths, timeout=5, hide_clean=False, max_repos=2
+    )
+
+    # Rows past GIT_MAX_REPOS survive so limit_repos() can backfill with them.
+    assert status["maxRepos"] == 2
+    assert len(status["repos"]) == 5
+    capped = git_status.limit_repos(status, actions_ready=False)
+    assert len(capped["repos"]) == 2
