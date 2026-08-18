@@ -5,6 +5,7 @@
 - Issue titles keep the normal font size for up to two lines; longer titles shrink slightly to fit up to three lines before truncating with an ellipsis.
 - Card colors are stateful: green is recently completed, red is due today, cyan is normal active work.
 - Non-red, non-green cards show their due date when one is available.
+- Issues with Linear's `Urgent` priority carry Linear's urgent marker in the bottom-right corner: an orange rounded square with the exclamation mark cut out of it. The due date shifts left to make room.
 - If any unfinished card is due today, non-due unfinished cards are hidden so urgent work dominates the overlay.
 - Unfinished issues in the `Competitions` project due in the next 3 days are always shown, with their due date beside the issue id.
 - Issues in the `Backlog` state with a due date in the next 3 days are also shown (including when urgent due-today filtering is active).

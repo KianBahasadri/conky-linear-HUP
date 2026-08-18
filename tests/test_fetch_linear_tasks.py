@@ -32,13 +32,14 @@ def _issue(
     project=None,
     project_icon=None,
     state_type="unstarted",
+    priority="No priority",
 ):
     return {
         "identifier": identifier,
         "title": title,
         "completedAt": None,
         "dueDate": due_date,
-        "priorityLabel": "No priority",
+        "priorityLabel": priority,
         "url": f"https://linear.app/issue/{identifier}",
         "project": {"name": project, "icon": project_icon} if project else None,
         "state": {"name": state_name, "type": state_type},
@@ -154,6 +155,32 @@ def test_render_cards_includes_backlog_due_soon_flag():
     assert cards_by_id["ABC-2"]["projectName"] == "Core"
     assert cards_by_id["ABC-3"]["backlogDueSoon"] is True
     assert cards_by_id["ABC-3"]["dueToday"] is True
+
+
+def test_render_cards_flags_urgent_issues():
+    tasks = [
+        _issue("ABC-1", "Urgent work", "Todo", priority="Urgent"),
+        _issue("ABC-2", "Calm work", "Todo", priority="High"),
+        _issue("ABC-3", "Unset", "Todo"),
+    ]
+
+    payload = linear.render_cards(tasks, {"Todo", "In Progress"}, lookback_hours=18)
+    cards_by_id = {card["identifier"]: card for card in payload["cards"]}
+
+    assert cards_by_id["ABC-1"]["urgent"] is True
+    assert cards_by_id["ABC-2"]["urgent"] is False
+    assert cards_by_id["ABC-3"]["urgent"] is False
+
+
+def test_render_cards_merged_card_is_urgent_if_any_issue_is():
+    tasks = [
+        _issue("ABC-1", "Shared", "Todo", project="Core"),
+        _issue("ABC-2", "Shared", "Todo", project="Competitions", priority="Urgent"),
+    ]
+
+    payload = linear.render_cards(tasks, {"Todo", "In Progress"}, lookback_hours=18)
+
+    assert payload["cards"][0]["urgent"] is True
 
 
 def test_emoji_from_project_icon_resolves_shortcodes():

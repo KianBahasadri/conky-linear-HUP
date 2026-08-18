@@ -241,6 +241,10 @@ def is_due_within_days(task, days=3, now_date=None):
     return today <= due_date <= today + timedelta(days=days)
 
 
+def is_urgent(task):
+    return (task.get("priorityLabel") or "").strip() == "Urgent"
+
+
 def is_upcoming_competition(task, now_date=None):
     project_name = (task.get("project") or {}).get("name", "")
     if project_name != "Competitions":
@@ -349,6 +353,7 @@ def render_cards(tasks, state_names, lookback_hours):
         project_name = project.get("name", "")
         project_icon = emoji_from_project_icon(project.get("icon"))
         task_done = task in recently_done
+        urgent = is_urgent(task)
         competition_upcoming = is_upcoming_competition(task, today)
         backlog_due_soon = is_due_soon_backlog(task, today)
         group_key = (title, task_done)
@@ -362,6 +367,7 @@ def render_cards(tasks, state_names, lookback_hours):
                 "projectNames": [],
                 "projectIcon": project_icon,
                 "state": task.get("state", {}).get("name", ""),
+                "urgent": urgent,
                 "title": title,
                 "done": task_done,
                 "dueToday": is_due_now(task),
@@ -391,6 +397,7 @@ def render_cards(tasks, state_names, lookback_hours):
                 card["projectIcon"] = project_icon
 
         card["done"] = card["done"] and task_done
+        card["urgent"] = card["urgent"] or urgent
         card["dueToday"] = card["dueToday"] or is_due_now(task)
         current_due_date = parse_linear_date(card["dueIso"])
         task_due_date = parse_linear_date(task.get("dueDate"))

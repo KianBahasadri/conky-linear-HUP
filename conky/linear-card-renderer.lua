@@ -27,6 +27,11 @@ return function(shared, repo_root)
   -- Identifier and due date share a footer row, mirroring the project row's inset.
   local meta_font_size = 9
   local meta_offset_y = card_height - 15
+  -- Linear marks urgent issues with an orange rounded square carrying a knocked
+  -- out exclamation mark; it rides the footer row's right edge.
+  local urgent_color = 'ff7236'
+  local urgent_badge_size = 14
+  local urgent_badge_gap = 8
   -- The header baseline and the footer row are inset by roughly the same amount
   -- from their edges, so centring the title on the card leaves even gaps either
   -- side. Retune this if project_offset_y or meta_offset_y moves.
@@ -53,6 +58,7 @@ return function(shared, repo_root)
       local competition_upcoming = object:match('"competitionUpcoming"%s*:%s*(true)') ~= nil
       local competition_due_date = shared.match_json_string(object, 'competitionDueDate')
       local backlog_due_soon = object:match('"backlogDueSoon"%s*:%s*(true)') ~= nil
+      local urgent = object:match('"urgent"%s*:%s*(true)') ~= nil
 
       if title then
         table.insert(cards, {
@@ -67,6 +73,7 @@ return function(shared, repo_root)
           competition_upcoming = competition_upcoming,
           competition_due_date = competition_due_date and shared.unescape_json_string(competition_due_date) or '',
           backlog_due_soon = backlog_due_soon,
+          urgent = urgent,
         })
       end
     end
@@ -164,6 +171,21 @@ return function(shared, repo_root)
     shared.set_hex(cr, 'f8fafc', 0.88)
     cairo_move_to(cr, x + 24, y + 58)
     cairo_show_text(cr, shared.truncate_title(cr, message, width - 48))
+  end
+
+  local function draw_urgent_badge(cr, x, y)
+    shared.rounded_rect(cr, x, y, urgent_badge_size, urgent_badge_size, 3)
+    shared.set_hex(cr, urgent_color, 0.96)
+    cairo_fill(cr)
+
+    -- Bar and dot are cut in the card's body color, the way Linear's icon shows
+    -- the surface through the mark.
+    local stem_width = 2.4
+    local stem_x = x + (urgent_badge_size - stem_width) / 2
+    shared.set_hex(cr, '020617', 0.92)
+    cairo_rectangle(cr, stem_x, y + 2.6, stem_width, 5.2)
+    cairo_rectangle(cr, stem_x, y + 9.2, stem_width, 2.4)
+    cairo_fill(cr)
   end
 
   local function draw_card(cr, card, x, y)
@@ -264,7 +286,16 @@ return function(shared, repo_root)
       cairo_show_text(cr, card.project_icon)
     end
 
-    local identifier_max_width = card_width - 44
+    -- The badge claims the footer's right edge; the due date falls in beside it.
+    local footer_right = x + card_width - 22
+    local footer_reserved = 0
+    if card.urgent then
+      draw_urgent_badge(cr, footer_right - urgent_badge_size, y + meta_offset_y - 11)
+      footer_reserved = urgent_badge_size + urgent_badge_gap
+      footer_right = footer_right - footer_reserved
+    end
+
+    local identifier_max_width = card_width - 44 - footer_reserved
     local visible_due_date = ''
     if not card.done and not card.due_today then
       visible_due_date = card.due_date ~= '' and card.due_date or card.competition_due_date
@@ -277,9 +308,9 @@ return function(shared, repo_root)
       local due_extents = cairo_text_extents_t:create()
       cairo_text_extents(cr, visible_due_date, due_extents)
       shared.set_hex(cr, accent, 0.88)
-      cairo_move_to(cr, x + card_width - 22 - due_extents.width - due_extents.x_bearing, y + meta_offset_y)
+      cairo_move_to(cr, footer_right - due_extents.width - due_extents.x_bearing, y + meta_offset_y)
       cairo_show_text(cr, visible_due_date)
-      identifier_max_width = math.max(40, card_width - 62 - due_extents.width)
+      identifier_max_width = math.max(40, card_width - 62 - footer_reserved - due_extents.width)
     end
 
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL)
