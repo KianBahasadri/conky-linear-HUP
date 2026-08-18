@@ -689,6 +689,48 @@ return function(shared, repo_root)
     return '00e5ff'
   end
 
+  local function hex_rgb(hex)
+    return tonumber(hex:sub(1, 2), 16) / 255,
+           tonumber(hex:sub(3, 4), 16) / 255,
+           tonumber(hex:sub(5, 6), 16) / 255
+  end
+
+  -- A gradient stop is { offset, hex, alpha, shade }, where shade mixes the
+  -- color toward white (positive) or black (negative) so one accent can supply
+  -- the whole lit-to-shadowed run of a curved surface.
+  local function add_gradient_stop(pattern, stop)
+    local r, g, b = hex_rgb(stop[2])
+    local shade = stop[4] or 0
+    if shade > 0 then
+      r, g, b = r + (1 - r) * shade, g + (1 - g) * shade, b + (1 - b) * shade
+    elseif shade < 0 then
+      local amount = 1 + shade
+      r, g, b = r * amount, g * amount, b * amount
+    end
+    cairo_pattern_add_color_stop_rgba(pattern, stop[1], r, g, b, stop[3])
+  end
+
+  -- Cairo patterns are refcounted objects rather than values, and the panel
+  -- redraws every tick, so each one has to be destroyed here or the overlay
+  -- leaks a dozen per bar per frame for as long as it stays up.
+  local function paint_gradient(cr, x0, y0, x1, y1, stops, paint)
+    local pattern = cairo_pattern_create_linear(x0, y0, x1, y1)
+    for _, stop in ipairs(stops) do
+      add_gradient_stop(pattern, stop)
+    end
+    cairo_set_source(cr, pattern)
+    paint(cr)
+    cairo_pattern_destroy(pattern)
+  end
+
+  local function fill_gradient(cr, x0, y0, x1, y1, stops)
+    paint_gradient(cr, x0, y0, x1, y1, stops, cairo_fill)
+  end
+
+  local function stroke_gradient(cr, x0, y0, x1, y1, stops)
+    paint_gradient(cr, x0, y0, x1, y1, stops, cairo_stroke)
+  end
+
   local function draw_panel_frame(cr, x, y)
     shared.rounded_rect(cr, x + 4, y + 7, panel_width, panel_height, panel_radius)
     shared.set_hex(cr, '00e5ff', 0.10)
@@ -733,11 +775,17 @@ return function(shared, repo_root)
     local marker_x = math.floor(x + bar_w * (shared.clamp(pace.expected, 0, 100) / 100) + 0.5)
     local marker_left = marker_x - math.floor(pace_marker_width / 2)
     local is_neutral = pace.state == 'neutral'
+    local opacity = is_neutral and pace_marker_opacity_neutral or pace_marker_opacity
 
+    -- Fade the ends so the tick sits on the tube's curve instead of cutting
+    -- straight across it; the position itself is unchanged.
     cairo_set_antialias(cr, CAIRO_ANTIALIAS_NONE)
-    shared.set_hex(cr, pace_marker_color, is_neutral and pace_marker_opacity_neutral or pace_marker_opacity)
     cairo_rectangle(cr, marker_left, bar_y, pace_marker_width, bar_height)
-    cairo_fill(cr)
+    fill_gradient(cr, marker_left, bar_y, marker_left, bar_y + bar_height, {
+      { 0.00, pace_marker_color, opacity * 0.36 },
+      { 0.45, pace_marker_color, opacity },
+      { 1.00, pace_marker_color, opacity * 0.36 },
+    })
     cairo_set_antialias(cr, CAIRO_ANTIALIAS_DEFAULT)
 
   end
@@ -772,51 +820,128 @@ return function(shared, repo_root)
     end
 
     local bar_y = y
-    shared.rounded_rect(cr, x, bar_y, bw, bar_height, 4)
-    shared.set_hex(cr, '020617', 0.68)
-    cairo_fill_preserve(cr)
-    shared.set_hex(cr, accent, 0.52)
-    cairo_set_line_width(cr, 1)
-    cairo_stroke(cr)
+    -- Half the height makes the outline a capsule, which is the silhouette of a
+    -- tube seen side on; every layer below shades that silhouette.
+    local radius = bar_height / 2
+
+    -- Contact shadow. Nothing else lifts the tube off the panel background.
+    shared.rounded_rect(cr, x + 0.5, bar_y + 2, bw, bar_height, radius)
+    shared.set_hex(cr, '000000', 0.38)
+    cairo_fill(cr)
+    shared.rounded_rect(cr, x, bar_y + 1, bw, bar_height, radius)
+    shared.set_hex(cr, '000000', 0.30)
+    cairo_fill(cr)
+
+    -- The tube body itself: lit slate along the top rim, near black through the
+    -- middle, a faint bounce underneath. This vertical roll is the illusion;
+    -- everything after it is refinement.
+    shared.rounded_rect(cr, x, bar_y, bw, bar_height, radius)
+    fill_gradient(cr, x, bar_y, x, bar_y + bar_height, {
+      { 0.00, '32415c', 0.95 },
+      { 0.16, '0b1424', 0.96 },
+      { 0.55, '01040c', 0.97 },
+      { 0.86, '060d1a', 0.96 },
+      { 1.00, '1b2942', 0.95 },
+    })
+
+    cairo_save(cr)
+    shared.rounded_rect(cr, x, bar_y, bw, bar_height, radius)
+    cairo_clip(cr)
+
+    -- Empty glass sits in the shadow of its own rim.
+    cairo_rectangle(cr, x, bar_y, bw, bar_height * 0.55)
+    fill_gradient(cr, x, bar_y, x, bar_y + bar_height * 0.55, {
+      { 0.00, '000000', 0.45 },
+      { 1.00, '000000', 0.00 },
+    })
 
     if fill_width > 0 then
-      local active_width = math.max(6, fill_width)
+      -- A sliver of fill still has to read as a rounded end, so never draw the
+      -- liquid narrower than the tube is tall.
+      local active_width = math.max(bar_height, fill_width)
 
-      shared.rounded_rect(cr, x - 1, bar_y - 2, active_width + 2, bar_height + 4, 5)
-      shared.set_hex(cr, accent, 0.22)
-      cairo_fill(cr)
+      shared.rounded_rect(cr, x, bar_y, active_width, bar_height, radius)
+      fill_gradient(cr, x, bar_y, x, bar_y + bar_height, {
+        { 0.00, accent, 1, -0.38 },
+        { 0.18, accent, 1, 0.46 },
+        { 0.34, accent, 1, 0.10 },
+        { 0.52, accent, 1 },
+        { 0.84, accent, 1, -0.52 },
+        { 0.94, accent, 1, -0.56 },
+        { 1.00, accent, 1, -0.18 },
+      })
 
-      shared.rounded_rect(cr, x + 1, bar_y + 1, math.max(4, active_width - 2), bar_height - 2, 3)
-      shared.set_hex(cr, accent, 0.92)
-      cairo_fill(cr)
+      -- Meniscus: a bright leading edge plus the shadow the liquid throws down
+      -- the empty tube. Skipped once the fill reaches either end, where there is
+      -- no edge left to catch light.
+      if fill_width > bar_height and fill_width < bw - 1 then
+        cairo_set_line_width(cr, 1)
+        cairo_move_to(cr, x + active_width - 1, bar_y)
+        cairo_line_to(cr, x + active_width - 1, bar_y + bar_height)
+        stroke_gradient(cr, x, bar_y, x, bar_y + bar_height, {
+          { 0.00, accent, 0.00, 0.70 },
+          { 0.35, accent, 0.90, 0.85 },
+          { 1.00, accent, 0.10, 0.40 },
+        })
 
-      shared.set_hex(cr, 'f8fafc', 0.20)
-      cairo_set_line_width(cr, 1)
-      if active_width > 10 then
-        cairo_move_to(cr, x + 4, bar_y + 2)
-        cairo_line_to(cr, x + active_width - 4, bar_y + 2)
-        cairo_stroke(cr)
+        cairo_rectangle(cr, x + active_width, bar_y, 5, bar_height)
+        fill_gradient(cr, x + active_width, bar_y, x + active_width + 5, bar_y, {
+          { 0.00, '000000', 0.50 },
+          { 1.00, '000000', 0.00 },
+        })
       end
     end
 
-    shared.set_hex(cr, accent_secondary, 0.34)
+    -- Quarter dividers, faded top and bottom so they look painted onto the
+    -- curve rather than cut through a flat face.
     cairo_set_line_width(cr, 1)
     local tick_gap = bw / 4
     for tick = 1, 3 do
       local tick_x = x + tick * tick_gap
-      cairo_move_to(cr, tick_x, bar_y + 1)
-      cairo_line_to(cr, tick_x, bar_y + bar_height - 1)
+      cairo_move_to(cr, tick_x, bar_y)
+      cairo_line_to(cr, tick_x, bar_y + bar_height)
+      stroke_gradient(cr, x, bar_y, x, bar_y + bar_height, {
+        { 0.00, accent_secondary, 0.04 },
+        { 0.45, accent_secondary, 0.30 },
+        { 1.00, accent_secondary, 0.04 },
+      })
     end
-    cairo_stroke(cr)
 
-    shared.set_hex(cr, 'f8fafc', 0.18)
-    cairo_move_to(cr, x + 8, bar_y + 4)
-    cairo_line_to(cr, x + bw - 8, bar_y + 4)
-    cairo_stroke(cr)
+    -- One reflection running the length of the glass, tapered at both ends.
+    local streak_height = math.max(1.2, bar_height * 0.17)
+    shared.rounded_rect(cr, x + radius * 0.8, bar_y + bar_height * 0.13,
+      bw - radius * 1.6, streak_height, streak_height / 2)
+    fill_gradient(cr, x, bar_y, x + bw, bar_y, {
+      { 0.00, 'ffffff', 0.00 },
+      { 0.09, 'ffffff', 0.13 },
+      { 0.55, 'ffffff', 0.08 },
+      { 0.92, 'ffffff', 0.03 },
+      { 1.00, 'ffffff', 0.00 },
+    })
+
+    -- The ends of a cylinder curve away from the light.
+    shared.rounded_rect(cr, x, bar_y, bw, bar_height, radius)
+    fill_gradient(cr, x, bar_y, x + bw, bar_y, {
+      { 0.00, '000000', 0.34 },
+      { 0.05, '000000', 0.00 },
+      { 0.95, '000000', 0.00 },
+      { 1.00, '000000', 0.30 },
+    })
 
     if show_pace and not refresh_mode then
       draw_pace_marker(cr, calculate_window_pace(window, window_duration(window)), x, bar_y, bw)
     end
+
+    cairo_restore(cr)
+
+    -- Rim: bright along the top, dim at the equator, half bright underneath.
+    shared.rounded_rect(cr, x, bar_y, bw, bar_height, radius)
+    cairo_set_line_width(cr, 1)
+    stroke_gradient(cr, x, bar_y, x, bar_y + bar_height, {
+      { 0.00, accent, 0.62, 0.45 },
+      { 0.45, accent, 0.20 },
+      { 1.00, accent, 0.45, 0.20 },
+    })
 
     local text_x = x + bw + btg
     local font_size = 10
