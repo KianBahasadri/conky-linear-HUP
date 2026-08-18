@@ -42,8 +42,6 @@ GIT_OVERLAY_ENABLED=1
 | `GIT_HIDE_CLEAN` | `1` hides fully clean repos |
 | `GIT_INCLUDE_STASH` | `0` skips stash counting |
 | `GIT_DEFAULT_BRANCHES` | Branches treated as default for muted styling |
-| `GIT_FUNFACT_ROTATE_SECONDS` | Fun-fact rotation interval if re-enabled in the renderer (default `300`) |
-| `GIT_FUNFACTS_REFRESH_SECONDS` | Fun-fact fetch loop interval (default `60`; still runs, not drawn) |
 | `GIT_ACTIONS_ENABLED` | `0` disables the per-row Actions pip |
 | `GIT_ACTIONS_TTL_SECONDS` | Cache TTL for `ok` / `fail` pips (default `180`) |
 | `GIT_ACTIONS_RUNNING_TTL_SECONDS` | Cache TTL while a run is `in_progress` / queued (default `20`) |
@@ -54,7 +52,7 @@ See [Configuration](configuration.md) for the full variable table.
 
 ## Reading the panel
 
-- Frame is repo rows only (no header bar). Under the box, bottom-right: a chip with the GitHub mark and git-status refresh age (fun-fact ticker is not drawn).
+- Frame is repo rows only (no header bar). Under the box, bottom-right: a chip with the GitHub mark and git-status refresh age.
 - Each row is two lines: repo name on top, branch underneath. Left accent bar encodes state; clean rows are dimmed.
 - Compact badges sit on the **branch line** (right side): `S` staged, `M` modified, `U` untracked, `C` conflicted, plus tags like `STASH×n` / `CONFLICT`.
 - Sync: `^n` ahead, `vn` behind when nonzero.

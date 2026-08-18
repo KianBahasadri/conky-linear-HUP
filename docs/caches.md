@@ -29,9 +29,7 @@
 - `cache/weather-status.json`: normalized weather, air quality, and running guidance consumed by the Cairo renderer.
 - `cache/git-status.json`: local git fleet status consumed by the Cairo renderer. Each repo may include `actions` (`run` / `fail` / `ok` / empty) for the name-line pip.
 - `cache/git-repo-discovery.json`: auto-discovered home repos with recent commits (TTL `GIT_SCAN_TTL_SECONDS`).
-- `cache/git-funfacts.json`: current rotating header fun-fact for the git overlay.
 - `cache/git-actions-cache.json`: per-path GitHub Actions pip state from `gh run list`; running TTL `GIT_ACTIONS_RUNNING_TTL_SECONDS`, completed TTL `GIT_ACTIONS_TTL_SECONDS`.
-- `cache/github-account-cache.json`: GitHub user/repos snapshot used by fun-facts (TTL ~1h).
 - `cache/resource-net-peaks.tsv`: hourly max IN/OUT byte rates from the resource monitor; retained for 7 days and used as the NET sparkline scale.
 
 ## Logs
@@ -54,4 +52,3 @@
 - Weather and air quality: `600s`
 - Git status: `30s` (override with `GIT_REFRESH_SECONDS`)
 - Git Actions pips: on the git fetch; cache `20s` while running, `180s` when completed, `300s` when empty
-- Git fun-facts: poll `60s`, rotate line every `GIT_FUNFACT_ROTATE_SECONDS` (default `300`)
