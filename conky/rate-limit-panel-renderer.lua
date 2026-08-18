@@ -735,6 +735,44 @@ return function(shared, repo_root)
     paint_gradient(cr, x0, y0, x1, y1, stops, cairo_fill_preserve)
   end
 
+  -- Labels are lit the same way as the surfaces under them: a dark pass one
+  -- pixel below drops the glyphs onto their background, then the glyphs
+  -- themselves run from a bright top edge down to a deepened base. The light
+  -- on this panel comes from straight overhead, so the shadow is offset in y
+  -- only -- a diagonal one would imply a second light source that nothing else
+  -- here is lit by.
+  --
+  -- The lit pass shows the text with the gradient as its source rather than
+  -- filling a text path: an outline fill loses the hinting that keeps the 10px
+  -- countdowns crisp, and at that size the loss is worse than the lighting is
+  -- worth. Cap height is 0.70 em and the run reaches just past the baseline, so
+  -- lowercase still catches the top of the highlight instead of sitting
+  -- entirely in the flat middle.
+  local text_cap_height = 0.70
+  local text_baseline_overshoot = 0.06
+
+  local function draw_lit_text(cr, label, x, y, size, color, opts)
+    opts = opts or {}
+    local alpha = opts.alpha or 1
+
+    cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, opts.weight or CAIRO_FONT_WEIGHT_BOLD)
+    cairo_set_font_size(cr, size)
+
+    shared.set_hex(cr, '000000', opts.shadow or 0.5)
+    cairo_move_to(cr, x, y + 1)
+    cairo_show_text(cr, label)
+
+    paint_gradient(cr, x, y - size * text_cap_height, x, y + size * text_baseline_overshoot, {
+      { 0.00, color, alpha, 0.50 },
+      { 0.30, color, alpha, 0.26 },
+      { 0.62, color, alpha, 0.02 },
+      { 1.00, color, alpha, -0.22 },
+    }, function(target)
+      cairo_move_to(target, x, y)
+      cairo_show_text(target, label)
+    end)
+  end
+
   local function draw_panel_frame(cr, x, y)
     shared.rounded_rect(cr, x + 4, y + 7, panel_width, panel_height, panel_radius)
     shared.set_hex(cr, '00e5ff', 0.10)
@@ -809,6 +847,9 @@ return function(shared, repo_root)
 
   end
 
+  -- Left flat on purpose. These are 8px inside an 8px tube, so neither a
+  -- gradient across the glyphs nor a contrast pass under them has the room to
+  -- read as depth -- both just cost the crispness the label needs at that size.
   local function draw_bar_overlay_label(cr, label, x, bar_y, color)
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
     cairo_set_font_size(cr, 8)
@@ -969,23 +1010,19 @@ return function(shared, repo_root)
     cairo_set_font_size(cr, font_size)
     countdown_label = shared.truncate_title(cr, countdown_label, bcw)
 
-    shared.set_hex(cr, accent, 0.95)
-    cairo_move_to(cr, text_x, y + 8)
-    cairo_show_text(cr, countdown_label)
+    draw_lit_text(cr, countdown_label, text_x, y + 8, font_size, accent, { alpha = 0.95, shadow = 0.55 })
   end
 
   local function draw_panel_error(cr, usage, x, y)
-    cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
-    cairo_set_font_size(cr, 15)
-    shared.set_hex(cr, 'f87171', 1)
-    cairo_move_to(cr, x + 34, y + 58)
-    cairo_show_text(cr, 'AI QUOTA SIGNAL LOST')
+    draw_lit_text(cr, 'AI QUOTA SIGNAL LOST', x + 34, y + 58, 15, 'f87171')
 
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL)
     cairo_set_font_size(cr, 12)
-    shared.set_hex(cr, 'f8fafc', 0.88)
-    cairo_move_to(cr, x + 34, y + 82)
-    cairo_show_text(cr, shared.truncate_title(cr, usage and usage.error or 'No usage cache found.', panel_width - 68))
+    local detail = shared.truncate_title(cr, usage and usage.error or 'No usage cache found.', panel_width - 68)
+    draw_lit_text(cr, detail, x + 34, y + 82, 12, 'f8fafc', {
+      alpha = 0.88,
+      weight = CAIRO_FONT_WEIGHT_NORMAL,
+    })
   end
 
   local function provider_name(account)
@@ -1201,16 +1238,9 @@ return function(shared, repo_root)
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
     cairo_set_font_size(cr, 14)
     local row_label = shared.truncate_title(cr, name, 120)
-    shared.set_hex(cr, '000000', 0.50)
-    cairo_move_to(cr, label_x + 1, y + 24)
-    cairo_show_text(cr, row_label)
-    if is_active then
-      shared.set_hex(cr, 'ffffff', 1)
-    else
-      shared.set_hex(cr, 'f8fafc', 0.72)
-    end
-    cairo_move_to(cr, label_x, y + 23)
-    cairo_show_text(cr, row_label)
+    draw_lit_text(cr, row_label, label_x, y + 23, 14, is_active and 'ffffff' or 'f8fafc', {
+      alpha = is_active and 1 or 0.72,
+    })
 
     local num_bars = #row_windows
     if num_bars == 0 then return end
@@ -1291,15 +1321,8 @@ return function(shared, repo_root)
       { 1.00, color, 0.88, 0.12 },
     })
 
-    cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
-    cairo_set_font_size(cr, 15)
     -- The label sits on the face, so it drops its own shadow onto it.
-    shared.set_hex(cr, '000000', 0.55)
-    cairo_move_to(cr, x + 12, y + 16)
-    cairo_show_text(cr, label)
-    shared.set_hex(cr, color, 1)
-    cairo_move_to(cr, x + 12, y + 15)
-    cairo_show_text(cr, label)
+    draw_lit_text(cr, label, x + 12, y + 15, 15, color, { shadow = 0.55 })
   end
 
   local function title_chip_width(cr, label)
