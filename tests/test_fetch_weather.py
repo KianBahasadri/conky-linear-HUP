@@ -63,7 +63,8 @@ def test_score_run_marks_good_and_dangerous_conditions():
     assert "Thunderstorms" in dangerous["advice"]
 
 
-def test_normalize_status_combines_weather_air_and_best_window():
+def test_normalize_status_combines_weather_air_and_best_window(monkeypatch):
+    monkeypatch.setenv("WEATHER_UNITS", "imperial")
     location = {
         "latitude": 40.7,
         "longitude": -74.0,
