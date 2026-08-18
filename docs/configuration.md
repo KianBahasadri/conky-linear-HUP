@@ -54,6 +54,13 @@ Copy `.env.example` to `.env` and fill in the overlays you use.
 | `OPENCODE_COOKIE` | Optional Cookie header override; when unset, the fetcher reads `opencode.ai` cookies from Firefox |
 | `OPENCODE_AUTH_COOKIE` | Backward-compatible alias for `OPENCODE_COOKIE` |
 | `OPENCODE_USAGE_LABEL` | Label shown for the dashboard workspace |
+| `COMMAND_CODE_API_KEY` | Optional API key; when set, it overrides `~/.commandcode/auth.json` (same as the CLI) |
+| `COMMAND_CODE_USAGE_LABEL` | Row label when using `COMMAND_CODE_API_KEY` |
+| `COMMAND_CODE_HOME` | Override the Command Code config directory (`~/.commandcode`) |
+| `COMMANDCODE_HOME` | Alias for `COMMAND_CODE_HOME` |
+| `COMMAND_CODE_AUTH_PATH` | Force a single Command Code auth file |
+| `COMMANDCODE_AUTH_PATH` | Alias for `COMMAND_CODE_AUTH_PATH` |
+| `COMMANDCODE_API_URL` | Override the Command Code API base URL |
 
 Pioneer env vars (`PIONEER_API_KEY`, `PIONEER_USAGE_LABEL`, `PIONEER_MONTHLY_CREDIT_LIMIT`) were removed with the Pioneer rate-limit panel integration.
 

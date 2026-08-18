@@ -2,9 +2,9 @@
 
 ## Layout and colors
 
-- The quota panel shows separate `CODEX`, `CLAUDE`, `CURSOR`, `GEMINI`, `GROK`, and `OPENCODE` chips. Codex rows use cyan/navy bars; Claude rows use coral/gold bars; Cursor rows use grey bars; Gemini rows use Google blue/green and yellow/red bars; Grok rows use regal purple bars; OpenCode Go rows use amber/gold bars.
+- The quota panel shows separate `CODEX`, `CLAUDE`, `CURSOR`, `GEMINI`, `GROK`, `OPENCODE`, and `CMD` chips. Codex rows use cyan/navy bars; Claude rows use coral/gold bars; Cursor rows use grey bars; Gemini rows use Google blue/green and yellow/red bars; Grok rows use regal purple bars; OpenCode Go rows use rose-crimson bars; Command Code rows use lime bars.
 - Overlay window height is computed from the account list (rows × row gap + padding) by the Lua spacer on each Conky tick. Startup sets `minimum_height` from the current usage caches so the first frame is not clipped. The fetch loops update `cache/*-usage-render.tsv` only — they do not rewrite configs or reload Conky.
-- The selection chevron marks selected auth profiles: Codex rows whose path resolves to `~/.local/share/clusterfork-auth/codex/current`, Cursor rows whose path resolves to `~/.local/share/clusterfork-auth/cursor/current`, Claude rows whose path resolves to `~/.claude/.credentials.json` or whose access token equals the one in that file, Gemini rows matching Antigravity's `current` profile, Grok rows whose path resolves to `~/.grok/auth.json`, and the configured OpenCode Go dashboard workspace. Codex uses a blue chevron, Claude uses orange, Cursor uses grey, Gemini uses Google blue, Grok uses purple, and OpenCode Go uses amber. Token comparison is required for Claude because Claude Code replaces `~/.claude/.credentials.json` with a new regular file on login and on every OAuth refresh, so a symlink there does not survive.
+- The selection chevron marks selected auth profiles: Codex rows whose path resolves to `~/.local/share/clusterfork-auth/codex/current`, Cursor rows whose path resolves to `~/.local/share/clusterfork-auth/cursor/current`, Claude rows whose path resolves to `~/.claude/.credentials.json` or whose access token equals the one in that file, Gemini rows matching Antigravity's `current` profile, Grok rows whose path resolves to `~/.grok/auth.json`, the configured OpenCode Go dashboard workspace, and Command Code rows whose path resolves to `~/.commandcode/auth.json` (or the `COMMAND_CODE_API_KEY` account). Codex uses a blue chevron, Claude uses orange, Cursor uses grey, Gemini uses Google blue, Grok uses purple, OpenCode Go uses red, and Command Code uses lime. Token comparison is required for Claude because Claude Code replaces `~/.claude/.credentials.json` with a new regular file on login and on every OAuth refresh, so a symlink there does not survive.
 - When any account expires, the panel should keep the last cached fill and reset time until that window's reset has already passed; only then should the bar show `refresh`. See [Expired credentials and stale cache](expired-credentials.md).
 - All account-rotation tooling is stored in `~/.config/clusterfork`. Shared auth profiles for Codex and Cursor are stored in `~/.local/share/clusterfork-auth/`.
 
@@ -48,13 +48,21 @@
 - `cache/opencode-web-cache.json` stores the last successful dashboard response. If the next request fails, that response is shown as stale until a fresh dashboard request succeeds. The workspace URL is stored with the cache so data from a different workspace cannot be reused. If no matching cache exists, the panel keeps the OpenCode row with empty bars instead of hiding it. Expired-session display follows the general rule in [Expired credentials and stale cache](expired-credentials.md).
 - `OPENCODE_USAGE_LABEL` controls the row label; the dashboard is represented as one selected workspace row rather than local auth profiles.
 
+## Command Code
+
+- Multiple accounts are discovered from `~/.commandcode/auth.json.*`; `COMMAND_CODE_AUTH_PATH` forces a single auth file. `COMMAND_CODE_API_KEY` takes precedence over local auth files, matching the CLI.
+- Usage is fetched from Command Code's Studio API: `GET /alpha/whoami`, `GET /alpha/billing/credits`, `GET /alpha/billing/subscriptions`, and `GET /alpha/usage/summary`. Auth is a bearer API key from `~/.commandcode/auth.json` (written by `cmd login`) or `COMMAND_CODE_API_KEY`.
+- It renders the rolling 5-hour and weekly credit windows plus the monthly included-credit pool as three bars. Window caps and remaining monthly credits come from `/alpha/billing/credits`; the monthly reset comes from the subscription period. The `CMD` title chip's percentage uses the monthly window.
+- `COMMAND_CODE_HOME` overrides the config directory, `COMMANDCODE_API_URL` overrides the API base URL (`https://api.commandcode.ai`), and `COMMAND_CODE_USAGE_LABEL` labels the env-key account.
+- On fetch errors, the panel serves the last successful usage from `cache/commandcode-usage-cache-<label>.json`. If no cache exists, it keeps the Command Code row with empty 5h/weekly/monthly bars. Expired-key display follows the general rule in [Expired credentials and stale cache](expired-credentials.md).
+
 ## Removed providers
 
 - **Pioneer** was removed from the rate limit panel. The Pioneer fetch script, cache files, env vars, and panel chip are no longer used.
 
 ## Adaptive polling
 
-- Each rate-limit fetcher (Codex, Claude, Cursor, Gemini, Grok, OpenCode Go) repolls adaptively instead of on a fixed cadence.
+- Each rate-limit fetcher (Codex, Claude, Cursor, Gemini, Grok, OpenCode Go, Command Code) repolls adaptively instead of on a fixed cadence.
 - After every fetch the loop fingerprints the meaningful usage state in that fetcher's `cache/*-usage-render.tsv`: the `meta`/`updatedAt` row is dropped, and time-derived bar columns (`resetsAt`, `resetAtEpoch`, `resetAfterSeconds`) are blanked so the fingerprint only changes when actual usage numbers or account/window structure change.
 - When the fingerprint changes, the loop records the change time in `cache/*-usage-render.tsv.last_change` and uses `RATE_LIMIT_CHANGED_INTERVAL` (default `60`s). It keeps that short interval for any subsequent poll whose last change is still within `RATE_LIMIT_RECENT_CHANGE_WINDOW` (default `600`s / 10 minutes), even if the latest poll itself was unchanged. After the window expires with no further changes, it backs off to `RATE_LIMIT_UNCHANGED_INTERVAL` (default `300`s).
 - The fingerprint is stored as `cache/*-usage-render.tsv.fingerprint`. Both the fingerprint and last-change files persist across overlay restarts; a restart does not force a short interval unless usage actually changed or a prior change is still inside the recent-change window.

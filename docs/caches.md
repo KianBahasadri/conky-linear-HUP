@@ -19,6 +19,9 @@
 - `cache/opencode-usage.json`: normalized OpenCode Go account/window usage for inspection.
 - `cache/opencode-usage-render.tsv`: renderer-friendly OpenCode Go usage consumed by the Cairo renderer.
 - `cache/opencode-web-cache.json`: last successful OpenCode Go dashboard response used when the dashboard request fails.
+- `cache/commandcode-usage.json`: normalized Command Code account/window usage for inspection.
+- `cache/commandcode-usage-render.tsv`: renderer-friendly Command Code usage consumed by the Cairo renderer.
+- `cache/commandcode-usage-cache-*.json`: last successful Command Code usage per account.
 - `cache/*-usage-render.tsv.fingerprint`: SHA-256 of the meaningful usage state from the matching render TSV, used by the adaptive rate-limit fetch loops to detect usage changes.
 - `cache/*-usage-render.tsv.last_change`: Unix epoch of the last fingerprint change for that fetcher; keeps the short poll interval active for `RATE_LIMIT_RECENT_CHANGE_WINDOW` seconds after any change.
 - `cache/minecraft-status.json`: Minecraft Java server status consumed by the Cairo renderer. Includes `lastPlayerSeenAt` / `lastPlayerSeenAtEpoch` and `lastSuccessfulAt` / `lastSuccessfulAtEpoch` for empty-server idle display; last-seen is only trusted across continuous successful polls.
@@ -43,8 +46,9 @@
 ## Fetch intervals
 
 - Linear: `60s`
-- Codex, Claude, Cursor, Gemini, Grok, OpenCode: adaptive — `RATE_LIMIT_CHANGED_INTERVAL` (default `60s`) while any usage change has been seen in the last `RATE_LIMIT_RECENT_CHANGE_WINDOW` (default `600s`), otherwise `RATE_LIMIT_UNCHANGED_INTERVAL` (default `300s`). Claude also keeps a per-account API cache.
+- Codex, Claude, Cursor, Gemini, Grok, OpenCode, Command Code: adaptive — `RATE_LIMIT_CHANGED_INTERVAL` (default `60s`) while any usage change has been seen in the last `RATE_LIMIT_RECENT_CHANGE_WINDOW` (default `600s`), otherwise `RATE_LIMIT_UNCHANGED_INTERVAL` (default `300s`). Claude also keeps a per-account API cache.
 - OpenCode: dashboard response is retained as a stale fallback when the latest request fails
+- Command Code: last successful usage is retained as a stale fallback when the latest request fails
 - Minecraft: `60s`
 - GitHub: `1800s`
 - Weather and air quality: `600s`

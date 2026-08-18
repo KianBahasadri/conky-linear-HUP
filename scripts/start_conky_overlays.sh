@@ -50,6 +50,7 @@ CURSOR_FETCH_PID="$CACHE_DIR/cursor-fetch-loop.pid"
 GEMINI_FETCH_PID="$CACHE_DIR/gemini-fetch-loop.pid"
 GROK_FETCH_PID="$CACHE_DIR/grok-fetch-loop.pid"
 OPENCODE_FETCH_PID="$CACHE_DIR/opencode-fetch-loop.pid"
+COMMANDCODE_FETCH_PID="$CACHE_DIR/commandcode-fetch-loop.pid"
 MINECRAFT_FETCH_PID="$CACHE_DIR/minecraft-fetch-loop.pid"
 GITHUB_FETCH_PID="$CACHE_DIR/github-fetch-loop.pid"
 WEATHER_FETCH_PID="$CACHE_DIR/weather-fetch-loop.pid"
@@ -103,7 +104,7 @@ GIT_FUNFACTS_REFRESH_SECONDS="${GIT_FUNFACTS_REFRESH_SECONDS:-60}"
 GIT_OVERLAY_ENABLED="${GIT_OVERLAY_ENABLED:-1}"
 # Adaptive rate-limit polling: repoll quickly for a while after any usage change,
 # then back off when idle. Applied to all rate-limit-panel fetchers
-# (codex/claude/cursor/gemini/grok/opencode).
+# (codex/claude/cursor/gemini/grok/opencode/commandcode).
 RATE_LIMIT_CHANGED_INTERVAL="${RATE_LIMIT_CHANGED_INTERVAL:-60}"
 RATE_LIMIT_UNCHANGED_INTERVAL="${RATE_LIMIT_UNCHANGED_INTERVAL:-300}"
 # Keep using the short interval for this many seconds after any detected change.
@@ -112,7 +113,7 @@ GENERATE_ONLY=0
 MONITOR_HAS_PRIMARY=0
 
 overlay_keys=(linear rate-limit-panel minecraft github weather resource-monitor git)
-fetch_keys=(linear codex claude cursor gemini grok opencode minecraft github weather git git-funfacts)
+fetch_keys=(linear codex claude cursor gemini grok opencode commandcode minecraft github weather git git-funfacts)
 
 declare -A overlay_disabled_name=(
   [linear]="linear"
@@ -159,6 +160,7 @@ declare -A fetch_label=(
   [gemini]="Gemini"
   [grok]="Grok"
   [opencode]="OpenCode Go"
+  [commandcode]="Command Code"
   [minecraft]="Minecraft"
   [github]="GitHub"
   [weather]="Weather"
@@ -173,6 +175,7 @@ declare -A fetch_overlay_key=(
   [gemini]="rate-limit-panel"
   [grok]="rate-limit-panel"
   [opencode]="rate-limit-panel"
+  [commandcode]="rate-limit-panel"
   [minecraft]="minecraft"
   [github]="github"
   [weather]="weather"
@@ -180,7 +183,7 @@ declare -A fetch_overlay_key=(
   [git-funfacts]="git"
 )
 # Interval for non-adaptive fetchers. Rate-limit keys (codex/claude/cursor/
-# gemini/grok/opencode) use adaptive polling via fetch_render_path; their
+# gemini/grok/opencode/commandcode) use adaptive polling via fetch_render_path; their
 # fetch_interval values are unused fallbacks only.
 declare -A fetch_interval=(
   [linear]="60"
@@ -190,6 +193,7 @@ declare -A fetch_interval=(
   [gemini]="$RATE_LIMIT_UNCHANGED_INTERVAL"
   [grok]="$RATE_LIMIT_UNCHANGED_INTERVAL"
   [opencode]="$RATE_LIMIT_UNCHANGED_INTERVAL"
+  [commandcode]="$RATE_LIMIT_UNCHANGED_INTERVAL"
   [minecraft]="$MINECRAFT_REFRESH_SECONDS"
   [github]="$GITHUB_REFRESH_SECONDS"
   [weather]="$WEATHER_REFRESH_SECONDS"
@@ -204,6 +208,7 @@ declare -A fetch_script=(
   [gemini]="$ROOT/scripts/fetch_gemini_usage.py"
   [grok]="$ROOT/scripts/fetch_grok_usage.py"
   [opencode]="$ROOT/scripts/fetch_opencode_usage.py"
+  [commandcode]="$ROOT/scripts/fetch_commandcode_usage.py"
   [minecraft]="$ROOT/scripts/fetch_minecraft_status.py"
   [github]="$ROOT/scripts/fetch_github_contributions.py"
   [weather]="$ROOT/scripts/fetch_weather.py"
@@ -218,6 +223,7 @@ declare -A fetch_pid_file=(
   [gemini]="$GEMINI_FETCH_PID"
   [grok]="$GROK_FETCH_PID"
   [opencode]="$OPENCODE_FETCH_PID"
+  [commandcode]="$COMMANDCODE_FETCH_PID"
   [minecraft]="$MINECRAFT_FETCH_PID"
   [github]="$GITHUB_FETCH_PID"
   [weather]="$WEATHER_FETCH_PID"
@@ -234,6 +240,7 @@ declare -A fetch_render_path=(
   [gemini]="$CACHE_DIR/gemini-usage-render.tsv"
   [grok]="$CACHE_DIR/grok-usage-render.tsv"
   [opencode]="$CACHE_DIR/opencode-usage-render.tsv"
+  [commandcode]="$CACHE_DIR/commandcode-usage-render.tsv"
   [minecraft]=""
   [github]=""
   [weather]=""
@@ -474,6 +481,7 @@ generate_config() {
       *"fetch_gemini_usage.py"*) ;;
       *"fetch_grok_usage.py"*) ;;
       *"fetch_opencode_usage.py"*) ;;
+      *"fetch_commandcode_usage.py"*) ;;
       *"fetch_weather.py"*) ;;
       *"fetch_git_status.py"*) ;;
       *"fetch_git_funfacts.py"*) ;;

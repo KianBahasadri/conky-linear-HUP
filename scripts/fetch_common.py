@@ -173,6 +173,7 @@ RATE_LIMIT_PANEL_RENDER_TSVS = (
     "gemini-usage-render.tsv",
     "grok-usage-render.tsv",
     "opencode-usage-render.tsv",
+    "commandcode-usage-render.tsv",
 )
 
 

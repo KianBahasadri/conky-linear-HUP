@@ -7,3 +7,4 @@ conky-linear.log
 conky/generated/
 __pycache__/
 *.pyc
+.commandcode/

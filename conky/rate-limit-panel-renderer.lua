@@ -6,6 +6,7 @@ return function(shared, repo_root)
   local gemini_usage_tsv_path = repo_root .. '/cache/gemini-usage-render.tsv'
   local grok_usage_tsv_path = repo_root .. '/cache/grok-usage-render.tsv'
   local opencode_usage_tsv_path = repo_root .. '/cache/opencode-usage-render.tsv'
+  local commandcode_usage_tsv_path = repo_root .. '/cache/commandcode-usage-render.tsv'
   local font = 'JetBrains Mono'
   local panel_width = 1000
   local panel_height = 110
@@ -208,6 +209,10 @@ return function(shared, repo_root)
     return read_usage_tsv(opencode_usage_tsv_path, 'OpenCode')
   end
 
+  local function read_commandcode_usage_tsv()
+    return read_usage_tsv(commandcode_usage_tsv_path, 'CommandCode')
+  end
+
   local function read_codex_usage_json()
     local content = shared.read_file(codex_usage_path)
     if not content then
@@ -282,6 +287,8 @@ return function(shared, repo_root)
       return 35
     elseif provider == 'opencode' then
       return 38
+    elseif provider == 'commandcode' then
+      return 39
     end
 
     return 40
@@ -328,6 +335,7 @@ return function(shared, repo_root)
     local gemini_usage = read_gemini_usage_tsv()
     local grok_usage = read_grok_usage_tsv()
     local opencode_usage = read_opencode_usage_tsv()
+    local commandcode_usage = read_commandcode_usage_tsv()
     local usage = {
       ok = false,
       error = '',
@@ -394,6 +402,17 @@ return function(shared, repo_root)
       end
       for _, account in ipairs(opencode_usage.accounts or {}) do
         account.provider = account.provider or 'OpenCode'
+        table.insert(usage.accounts, account)
+      end
+    end
+
+    if commandcode_usage then
+      usage.ok = usage.ok or commandcode_usage.ok
+      if usage.error == '' then
+        usage.error = commandcode_usage.error or ''
+      end
+      for _, account in ipairs(commandcode_usage.accounts or {}) do
+        account.provider = account.provider or 'CommandCode'
         table.insert(usage.accounts, account)
       end
     end
@@ -532,7 +551,7 @@ return function(shared, repo_root)
                 delta_count = delta_count + 1
               end
             end
-          elseif provider_lower == 'opencode' then
+          elseif provider_lower == 'opencode' or provider_lower == 'commandcode' then
             local monthly = find_monthly_window(account)
             if monthly then
               local pace = calculate_window_pace(monthly, window_duration(monthly))
@@ -820,6 +839,11 @@ return function(shared, repo_root)
       return 'f43f5e', 'fb7185', 'be123c', '881337', 'e11d48', 'be123c'
     end
 
+    if provider_name(account) == 'commandcode' then
+      -- Lime 5h, brighter lime weekly, forest monthly.
+      return 'a3e635', 'd9f99d', '84cc16', 'bef264', '4d7c0f', '65a30d'
+    end
+
     if is_free then
       if provider_name(account) == 'codex' then
         return '2563eb', '1e3a8a', '2563eb', '1e3a8a'
@@ -878,7 +902,7 @@ return function(shared, repo_root)
       return {}
     end
 
-    if provider == 'opencode' then
+    if provider == 'opencode' or provider == 'commandcode' then
       local result = {}
       for _, w in ipairs(windows) do
         if normalized_window_label(w) == '5h' then table.insert(result, w) end
@@ -947,6 +971,7 @@ return function(shared, repo_root)
         or provider_name(account) == 'cursor' and '94a3b8'
         or provider_name(account) == 'grok' and '9a86b3'
         or provider_name(account) == 'opencode' and 'ef4444'
+        or provider_name(account) == 'commandcode' and 'a3e635'
         or first_accent
 
       shared.set_hex(cr, selection_color, 0.20)
@@ -1067,6 +1092,7 @@ return function(shared, repo_root)
     local gemini_label = 'ANTIGRAVITY'
     local grok_label = 'GROK'
     local opencode_label = 'OPENCODE'
+    local commandcode_label = 'CMD'
 
     local codex_color = '00e5ff'
     local claude_color = 'ff7a59'
@@ -1074,6 +1100,7 @@ return function(shared, repo_root)
     local gemini_color = '4ade80'
     local grok_color = '9a86b3'
     local opencode_color = 'ef4444'
+    local commandcode_color = 'a3e635'
 
     if usage.ok and #usage.accounts > 0 then
       local codex_avg_delta = calculate_provider_average_pace(usage.accounts, 'Codex')
@@ -1082,6 +1109,7 @@ return function(shared, repo_root)
       local gemini_avg_delta = calculate_provider_average_pace(usage.accounts, 'Gemini')
       local grok_avg_delta = calculate_provider_average_pace(usage.accounts, 'Grok')
       local opencode_avg_delta = calculate_provider_average_pace(usage.accounts, 'OpenCode')
+      local commandcode_avg_delta = calculate_provider_average_pace(usage.accounts, 'CommandCode')
 
       codex_label = get_provider_label_from_delta('Codex', codex_avg_delta)
       claude_label = get_provider_label_from_delta('Claude', claude_avg_delta)
@@ -1089,6 +1117,7 @@ return function(shared, repo_root)
       gemini_label = get_provider_label_from_delta('Antigravity', gemini_avg_delta)
       grok_label = get_provider_label_from_delta('Grok', grok_avg_delta)
       opencode_label = get_provider_label_from_delta('OpenCode', opencode_avg_delta)
+      commandcode_label = get_provider_label_from_delta('CMD', commandcode_avg_delta)
     end
 
     local chip_x = x + 48
@@ -1109,11 +1138,18 @@ return function(shared, repo_root)
       chip_x + codex_chip_width + claude_chip_width + cursor_chip_width + gemini_chip_width + 32,
       y
     )
-    draw_title_chip(
+    local opencode_chip_width = draw_title_chip(
       cr,
       opencode_label,
       opencode_color,
       chip_x + codex_chip_width + claude_chip_width + cursor_chip_width + gemini_chip_width + grok_chip_width + 40,
+      y
+    )
+    draw_title_chip(
+      cr,
+      commandcode_label,
+      commandcode_color,
+      chip_x + codex_chip_width + claude_chip_width + cursor_chip_width + gemini_chip_width + grok_chip_width + opencode_chip_width + 48,
       y
     )
 
