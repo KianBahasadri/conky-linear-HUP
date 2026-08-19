@@ -774,10 +774,10 @@ return function(shared, repo_root)
 
   -- Each profile is a shade curve down the glyph, plus how much of the shadow
   -- to repeat a second pixel lower. `soft` is a sheen for labels that already
-  -- sit on a lit surface. `raised` packs a specular band into the top eighth
-  -- and digs the base out further, which needs the full cap height to land:
-  -- the all-caps account names have it, and at 10px the countdowns would only
-  -- smear.
+  -- sit on a lit surface. `lifted` keeps inherently dark countdown hues above
+  -- a readable floor. `raised` packs a specular band into the top eighth and
+  -- digs the base out further, which needs the full cap height to land: the
+  -- all-caps account names have it, and at 10px the countdowns would only smear.
   local text_relief = {
     soft = {
       contact = 0,
@@ -785,6 +785,13 @@ return function(shared, repo_root)
       { 0.30, 0.26 },
       { 0.62, 0.02 },
       { 1.00, -0.22 },
+    },
+    lifted = {
+      contact = 0,
+      { 0.00, 0.72 },
+      { 0.30, 0.50 },
+      { 0.62, 0.32 },
+      { 1.00, 0.22 },
     },
     raised = {
       contact = 0.55,
@@ -1062,7 +1069,11 @@ return function(shared, repo_root)
     cairo_set_font_size(cr, font_size)
     countdown_label = shared.truncate_title(cr, countdown_label, bcw)
 
-    draw_lit_text(cr, countdown_label, text_x, y + 8, font_size, accent, { alpha = 0.95, shadow = 0.55 })
+    draw_lit_text(cr, countdown_label, text_x, y + 8, font_size, accent, {
+      alpha = 0.95,
+      shadow = 0.55,
+      relief = 'lifted',
+    })
   end
 
   local function draw_panel_error(cr, usage, x, y)
