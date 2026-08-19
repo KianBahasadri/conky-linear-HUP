@@ -2,7 +2,7 @@ return function(shared, repo_root)
   local weather_path = repo_root .. '/cache/weather-status.json'
   local font = 'JetBrains Mono'
   local panel_width = 424
-  local panel_height = 205
+  local panel_height = 181
   local radius = 18
 
   local function json_string(content, key, fallback)
@@ -258,89 +258,85 @@ return function(shared, repo_root)
       status.stale and 'facc15' or accent
     )
 
-    cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
-    cairo_set_font_size(cr, 11)
-    shared.set_hex(cr, 'f8fafc', 0.68)
-    cairo_move_to(cr, x + 25, y + 31)
     local location_suffix = status.location_source == 'ip' and '  ~' or ''
-    cairo_show_text(cr, shared.truncate_title(cr, status.location .. location_suffix, 258))
+    local location_text = status.location .. location_suffix
 
-    draw_weather_icon(cr, x + 25, y + 42, status, secondary)
+    draw_weather_icon(cr, x + 25, y + 26, status, secondary)
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
     cairo_set_font_size(cr, 43)
     shared.set_hex(cr, 'f8fafc', 0.98)
-    cairo_move_to(cr, x + 67, y + 82)
+    cairo_move_to(cr, x + 67, y + 66)
     cairo_show_text(cr, string.format('%d', status.temperature))
 
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
     cairo_set_font_size(cr, 10)
     shared.set_hex(cr, secondary, 0.82)
-    cairo_move_to(cr, x + 119, y + 61)
+    cairo_move_to(cr, x + 119, y + 45)
     cairo_show_text(cr, '°' .. status.temperature_unit)
 
     cairo_set_font_size(cr, 10)
     shared.set_hex(cr, 'f8fafc', 0.66)
-    cairo_move_to(cr, x + 26, y + 108)
+    cairo_move_to(cr, x + 26, y + 92)
     cairo_show_text(cr, shared.truncate_title(cr, status.condition, 128))
 
     shared.set_hex(cr, secondary, 0.30)
     cairo_set_line_width(cr, 1)
-    cairo_move_to(cr, x + 151, y + 38)
-    cairo_line_to(cr, x + 151, y + 117)
+    cairo_move_to(cr, x + 151, y + 22)
+    cairo_line_to(cr, x + 151, y + 101)
     cairo_stroke(cr)
 
-    draw_label(cr, 'US AQI', x + 172, y + 48)
+    draw_label(cr, 'US AQI', x + 172, y + 32)
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
     cairo_set_font_size(cr, 28)
     shared.set_hex(cr, status.aqi_color, 1)
-    cairo_move_to(cr, x + 171, y + 79)
+    cairo_move_to(cr, x + 171, y + 63)
     cairo_show_text(cr, string.format('%d', status.aqi))
     cairo_set_font_size(cr, 10)
-    cairo_move_to(cr, x + 172, y + 99)
+    cairo_move_to(cr, x + 172, y + 83)
     cairo_show_text(cr, shared.truncate_title(cr, status.aqi_label, 95))
 
-    draw_label(cr, 'RUN SCORE', x + 292, y + 48)
+    draw_label(cr, 'RUN SCORE', x + 292, y + 32)
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
     cairo_set_font_size(cr, 28)
     shared.set_hex(cr, status.run_color, 1)
-    cairo_move_to(cr, x + 291, y + 79)
+    cairo_move_to(cr, x + 291, y + 63)
     cairo_show_text(cr, string.format('%d', status.run_score))
     cairo_set_font_size(cr, 9)
     shared.set_hex(cr, 'f8fafc', 0.64)
     local advice_lines = wrap_text(cr, status.run_advice, 108, 3)
     for index, line in ipairs(advice_lines) do
-      cairo_move_to(cr, x + 292, y + 97 + (index - 1) * 10)
+      cairo_move_to(cr, x + 292, y + 81 + (index - 1) * 10)
       cairo_show_text(cr, line)
     end
 
     shared.set_hex(cr, secondary, 0.26)
     cairo_set_line_width(cr, 1)
-    cairo_move_to(cr, x + 18, y + 124)
-    cairo_line_to(cr, x + panel_width - 18, y + 124)
+    cairo_move_to(cr, x + 18, y + 108)
+    cairo_line_to(cr, x + panel_width - 18, y + 108)
     cairo_stroke(cr)
 
-    draw_metric(cr, 'FEELS', string.format('%d°%s', status.apparent_temperature, status.temperature_unit), x + 25, y + 143)
-    draw_metric(cr, 'RAIN', string.format('%d%%', status.rain), x + 78, y + 143, status.rain >= 60 and 'facc15' or '00e5ff')
-    draw_metric(cr, 'GUST', string.format('%d %s', status.wind_gust, status.wind_unit), x + 117, y + 143)
-    draw_metric(cr, 'HUMID', string.format('%d%%', status.humidity), x + 176, y + 143)
-    draw_metric(cr, 'UV', string.format('%.1f %s', status.uv_index, short_uv_label(status.uv_label)), x + 219, y + 143, status.uv_index >= 8 and 'facc15' or 'f8fafc')
-    draw_metric(cr, 'SUNSET', status.sunset, x + 302, y + 143)
+    draw_metric(cr, 'FEELS', string.format('%d°%s', status.apparent_temperature, status.temperature_unit), x + 25, y + 127)
+    draw_metric(cr, 'RAIN', string.format('%d%%', status.rain), x + 78, y + 127, status.rain >= 60 and 'facc15' or '00e5ff')
+    draw_metric(cr, 'GUST', string.format('%d %s', status.wind_gust, status.wind_unit), x + 117, y + 127)
+    draw_metric(cr, 'HUMID', string.format('%d%%', status.humidity), x + 176, y + 127)
+    draw_metric(cr, 'UV', string.format('%.1f %s', status.uv_index, short_uv_label(status.uv_label)), x + 219, y + 127, status.uv_index >= 8 and 'facc15' or 'f8fafc')
+    draw_metric(cr, 'SUNSET', status.sunset, x + 302, y + 127)
 
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
     cairo_set_font_size(cr, 10)
     shared.set_hex(cr, accent, 0.92)
-    cairo_move_to(cr, x + 25, y + 189)
+    cairo_move_to(cr, x + 25, y + 165)
     cairo_show_text(cr, 'BEST  ' .. status.best_window)
     shared.set_hex(cr, 'f8fafc', 0.52)
     cairo_show_text(cr, '  ' .. shared.truncate_title(cr, status.best_detail, 155))
 
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL)
     cairo_set_font_size(cr, 8)
-    local attribution_extents = cairo_text_extents_t:create()
-    cairo_text_extents(cr, status.attribution, attribution_extents)
+    local location_extents = cairo_text_extents_t:create()
+    cairo_text_extents(cr, location_text, location_extents)
     shared.set_hex(cr, 'f8fafc', 0.48)
-    cairo_move_to(cr, x + panel_width - 24 - attribution_extents.width, y + 189)
-    cairo_show_text(cr, status.attribution)
+    cairo_move_to(cr, x + panel_width - 24 - location_extents.width, y + 165)
+    cairo_show_text(cr, location_text)
   end
 
   local function draw()
