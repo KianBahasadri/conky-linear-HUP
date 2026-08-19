@@ -14,7 +14,7 @@ return function(shared, repo_root)
   local panel_radius = 18
   local account_row_x = 34
   local account_row_y = 8
-  local account_row_gap = 17
+  local account_row_gap = 16
   local panel_dynamic_height_padding = 24
   local panel_first_bar_x = 90
   -- Width of each usage progress bar.

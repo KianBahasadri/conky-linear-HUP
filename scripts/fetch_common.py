@@ -161,7 +161,7 @@ def write_usage_outputs(output_path, render_path, output):
 
 # Must match conky/rate-limit-panel-renderer.lua.
 RATE_LIMIT_PANEL_MIN_HEIGHT = 110
-RATE_LIMIT_PANEL_ROW_GAP = 17
+RATE_LIMIT_PANEL_ROW_GAP = 16
 RATE_LIMIT_PANEL_DYNAMIC_PADDING = 24
 RATE_LIMIT_PANEL_TOP_INSET = 12
 RATE_LIMIT_PANEL_BOTTOM_INSET = 12
