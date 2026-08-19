@@ -13,7 +13,7 @@ conky.config = {
   extra_newline = false,
   font = 'JetBrains Mono:size=10',
   gap_x = 350,
-  gap_y = 24,
+  gap_y = 6,
   -- Floor only; actual height is driven by ${lua_parse rate_limit_panel_height_spacer}
   -- so the window grows with the account list.
   minimum_height = 320,

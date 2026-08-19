@@ -99,9 +99,10 @@ def test_rate_limit_panel_window_height_grows_with_accounts():
     assert common.rate_limit_panel_window_height(0) == 320
     assert common.rate_limit_panel_window_height(1) == 320
     assert common.rate_limit_panel_window_height(14) == 320
-    assert common.rate_limit_panel_window_height(15) == 339
-    assert common.rate_limit_panel_window_height(16) == 358
-    assert common.rate_limit_panel_window_height(20) == 434
+    assert common.rate_limit_panel_window_height(15) == 320
+    assert common.rate_limit_panel_window_height(16) == 320
+    assert common.rate_limit_panel_window_height(17) == 337
+    assert common.rate_limit_panel_window_height(20) == 388
 
 
 def test_rate_limit_account_count_from_cache_skips_removed_providers(tmp_path):

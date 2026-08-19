@@ -21,6 +21,7 @@ Copy `.env.example` to `.env` and fill in the overlays you use.
 | Variable | Purpose |
 | --- | --- |
 | `RATE_LIMIT_PANEL_ENABLED` | Set to `0` to disable |
+| `RATE_LIMIT_PANEL_GAP_Y` | Vertical gap from the bottom screen edge (default `6`) |
 | `RATE_LIMIT_CHANGED_INTERVAL` | Short repoll delay while usage is active (default `60`) |
 | `RATE_LIMIT_UNCHANGED_INTERVAL` | Long repoll delay after idle past the recent-change window (default `300`) |
 | `RATE_LIMIT_RECENT_CHANGE_WINDOW` | Seconds after any usage change to keep using the short interval (default `600`) |
@@ -74,7 +75,7 @@ Pioneer env vars (`PIONEER_API_KEY`, `PIONEER_USAGE_LABEL`, `PIONEER_MONTHLY_CRE
 | `MINECRAFT_SERVER_LABEL` | Panel label |
 | `MINECRAFT_OVERLAY_ENABLED` | Set to `0` to disable |
 | `MINECRAFT_GAP_X` | Horizontal gap from screen edge |
-| `MINECRAFT_GAP_Y` | Vertical gap from screen edge |
+| `MINECRAFT_GAP_Y` | Vertical gap from screen edge (default `6`) |
 | `MINECRAFT_REFRESH_SECONDS` | Fetch interval |
 | `MINECRAFT_STATUS_TIMEOUT_SECONDS` | TCP status probe timeout |
 | `MINECRAFT_PROTOCOL_VERSION` | Protocol version for status negotiation |
@@ -117,7 +118,7 @@ Pioneer env vars (`PIONEER_API_KEY`, `PIONEER_USAGE_LABEL`, `PIONEER_MONTHLY_CRE
 | `WEATHER_LOCATION_LABEL` | Override the displayed location name |
 | `WEATHER_UNITS` | `imperial`, `metric`, or `auto` (IP country only); defaults to `imperial` |
 | `WEATHER_GAP_X` | Horizontal gap from the right screen edge |
-| `WEATHER_GAP_Y` | Vertical gap from the bottom screen edge |
+| `WEATHER_GAP_Y` | Vertical gap from the bottom screen edge (default `6`) |
 | `WEATHER_REFRESH_SECONDS` | Weather and air-quality refresh interval |
 | `WEATHER_TIMEOUT_SECONDS` | Timeout for each provider request |
 
