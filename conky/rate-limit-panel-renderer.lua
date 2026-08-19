@@ -845,16 +845,16 @@ return function(shared, repo_root)
     -- cut in it.
     shared.rounded_rect(cr, x, y, panel_width, panel_height, panel_radius)
     fill_preserve_gradient(cr, x, y, x, y + panel_height, {
-      { 0.00, '0d1a30', 0.88 },
-      { 0.06, '050d1c', 0.82 },
-      { 0.80, '020617', 0.80 },
-      { 1.00, '08111f', 0.85 },
+      { 0.00, '0d1a30', 0.63 },
+      { 0.06, '050d1c', 0.57 },
+      { 0.80, '020617', 0.55 },
+      { 1.00, '08111f', 0.60 },
     })
     cairo_set_line_width(cr, 2)
     stroke_gradient(cr, x, y, x, y + panel_height, {
-      { 0.00, '00e5ff', 1.00, 0.40 },
-      { 0.40, '00e5ff', 0.80 },
-      { 1.00, '00e5ff', 0.95, 0.08 },
+      { 0.00, '00e5ff', 0.75, 0.40 },
+      { 0.40, '00e5ff', 0.55 },
+      { 1.00, '00e5ff', 0.70, 0.08 },
     })
 
     -- Inner bevel: the lit lip sits just inside the top edge, the violet rail

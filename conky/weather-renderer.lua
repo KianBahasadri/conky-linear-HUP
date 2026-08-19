@@ -78,9 +78,9 @@ return function(shared, repo_root)
     cairo_stroke(cr)
 
     shared.rounded_rect(cr, x, y, panel_width, panel_height, radius)
-    shared.set_hex(cr, '020617', 0.84)
+    shared.set_hex(cr, '020617', 0.59)
     cairo_fill_preserve(cr)
-    shared.set_hex(cr, accent, 0.94)
+    shared.set_hex(cr, accent, 0.70)
     cairo_set_line_width(cr, 2)
     cairo_stroke(cr)
 

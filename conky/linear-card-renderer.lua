@@ -154,9 +154,9 @@ return function(shared, repo_root)
     local y = top_padding
 
     shared.rounded_rect(cr, x, y, width, height, radius)
-    shared.set_hex(cr, '020617', 0.82)
+    shared.set_hex(cr, '020617', 0.59)
     cairo_fill_preserve(cr)
-    shared.set_hex(cr, 'f87171', 0.92)
+    shared.set_hex(cr, 'f87171', 0.70)
     cairo_set_line_width(cr, 2)
     cairo_stroke(cr)
 
@@ -207,9 +207,9 @@ return function(shared, repo_root)
     cairo_stroke(cr)
 
     shared.rounded_rect(cr, x, y, card_width, card_height, radius)
-    shared.set_hex(cr, '020617', 0.78)
+    shared.set_hex(cr, '020617', 0.59)
     cairo_fill_preserve(cr)
-    shared.set_hex(cr, accent, 0.95)
+    shared.set_hex(cr, accent, 0.70)
     cairo_set_line_width(cr, 2)
     cairo_stroke(cr)
 
