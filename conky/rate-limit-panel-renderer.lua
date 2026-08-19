@@ -506,6 +506,15 @@ return function(shared, repo_root)
     return nil
   end
 
+  local function find_five_hour_window(account)
+    for _, window in ipairs(account.windows or {}) do
+      if normalized_window_label(window) == '5h' then
+        return window
+      end
+    end
+    return nil
+  end
+
   local function remaining_for_pace(window, window_seconds)
     -- A window that has not started has its whole span still ahead of it, so
     -- its zero countdown must not read as fully elapsed and pin the tick to
@@ -592,6 +601,18 @@ return function(shared, repo_root)
         if include_free or not is_free_account(account) then
           if provider_lower == 'cursor' or provider_lower == 'gemini' or provider_lower == 'grok' then
             for _, window in ipairs(account.windows or {}) do
+              local pace = calculate_window_pace(window, window_duration(window))
+              if pace then
+                delta_total = delta_total + pace.delta
+                delta_count = delta_count + 1
+              end
+            end
+          elseif provider_lower == 'codex' then
+            -- Codex renamed the window this pace reads: the span that used to
+            -- arrive as the weekly window now comes through as 5h. Weekly is
+            -- still the fallback for accounts the rename has not reached.
+            local window = find_five_hour_window(account) or find_weekly_window(account)
+            if window then
               local pace = calculate_window_pace(window, window_duration(window))
               if pace then
                 delta_total = delta_total + pace.delta
