@@ -308,6 +308,7 @@ def test_collect_live_providers_share_one_period_end(monkeypatch, tmp_path):
             "spent": Decimal("24.46"),
         },
     )
+    monkeypatch.setattr(billing, "fetch_azure_daily_usd", lambda *_args: {})
     monkeypatch.setattr(
         billing, "fetch_anthropic_current", lambda *_args: Decimal("6.04")
     )
@@ -464,6 +465,46 @@ def test_azure_credit_balance_uses_estimated_usd(monkeypatch):
     assert credits["spent"] == Decimal("24.46")
 
 
+def test_azure_history_pressures_fill_past_days_only():
+    period = billing.month_period(date(2026, 8, 19))
+    points = billing.azure_history_pressures(
+        {
+            date(2026, 8, 1): Decimal("4"),
+            date(2026, 8, 3): Decimal("6"),
+        },
+        period,
+        Decimal("100"),
+    )
+
+    assert points[0] == {"day": 1, "pressure": 0.04}
+    assert points[1] == {"day": 2, "pressure": 0.04}
+    assert points[2] == {"day": 3, "pressure": 0.1}
+    assert points[-1]["day"] == 18
+    assert len(points) == 18
+
+
+def test_parse_azure_daily_cost_query_groups_cad_days():
+    daily, currency = billing.parse_azure_daily_cost_query(
+        {
+            "properties": {
+                "columns": [
+                    {"name": "PreTaxCost"},
+                    {"name": "UsageDate"},
+                    {"name": "Currency"},
+                ],
+                "rows": [
+                    [4.0, 20260801, "CAD"],
+                    [6.0, 20260803, "CAD"],
+                ],
+            }
+        }
+    )
+
+    assert currency == "CAD"
+    assert daily[date(2026, 8, 1)] == Decimal("4.0")
+    assert daily[date(2026, 8, 3)] == Decimal("6.0")
+
+
 def test_azure_plots_month_spend_against_starting_credits(monkeypatch, tmp_path):
     isolate_cache(monkeypatch, tmp_path)
     monkeypatch.setattr(
@@ -473,6 +514,14 @@ def test_azure_plots_month_spend_against_starting_credits(monkeypatch, tmp_path)
             "remaining": Decimal("74.26"),
             "starting": Decimal("98.72"),
             "spent": Decimal("24.46"),
+        },
+    )
+    monkeypatch.setattr(
+        billing,
+        "fetch_azure_daily_usd",
+        lambda *_args: {
+            date(2026, 8, 1): Decimal("4.00"),
+            date(2026, 8, 3): Decimal("6.00"),
         },
     )
 
@@ -490,6 +539,11 @@ def test_azure_plots_month_spend_against_starting_credits(monkeypatch, tmp_path)
     assert provider["forecastUsd"] == round(float(forecast), 2)
     assert provider["forecastPressure"] == round(float(forecast / starting), 4)
     assert provider["source"] == "azure-credits"
+    assert provider["history"][0] == {"day": 1, "pressure": round(4.00 / 98.72, 4)}
+    assert provider["history"][1]["day"] == 2
+    assert provider["history"][1]["pressure"] == round(4.00 / 98.72, 4)
+    assert provider["history"][2] == {"day": 3, "pressure": round(10.00 / 98.72, 4)}
+    assert provider["history"][-1]["day"] == 18
 
 
 def test_render_tsv_contains_only_renderer_fields():
@@ -516,7 +570,24 @@ def test_render_tsv_contains_only_renderer_fields():
                 "forecastAvailable": True,
                 "source": "openrouter-credits",
                 "detail": "$12.44 left",
-            }
+            },
+            {
+                "id": "azure",
+                "code": "AZR",
+                "color": billing.AZURE_COLOR,
+                "kind": "prepaid",
+                "ok": True,
+                "stale": False,
+                "currentPressure": 0.2478,
+                "forecastPressure": 0.4042,
+                "forecastAvailable": True,
+                "source": "azure-credits",
+                "detail": "$24.46 now",
+                "history": [
+                    {"day": 1, "pressure": 0.0405},
+                    {"day": 3, "pressure": 0.1013},
+                ],
+            },
         ],
     }
 
@@ -524,4 +595,6 @@ def test_render_tsv_contains_only_renderer_fields():
 
     assert "periodEnd\t2026-08-31" in rendered
     assert "provider\topenrouter\tOR\ta78bfa\tprepaid\t1\t0\t0\t0.4148\t1" in rendered
+    assert "history\tazure\t1\t0.0405" in rendered
+    assert "history\tazure\t3\t0.1013" in rendered
     assert "OPENROUTER_API_KEY" not in rendered

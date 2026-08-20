@@ -144,6 +144,7 @@ return function(shared, repo_root)
     end
 
     local status = fallback_status()
+    local history_by_id = {}
     for line in content:gmatch('[^\r\n]+') do
       local fields = split_tsv(line)
       if fields[1] == 'meta' then
@@ -169,8 +170,19 @@ return function(shared, repo_root)
           forecast_available = fields[10] == '1',
           source = unescape_tsv(fields[11]),
           detail = unescape_tsv(fields[12]),
+          history = {},
+        })
+      elseif fields[1] == 'history' then
+        local id = unescape_tsv(fields[2])
+        history_by_id[id] = history_by_id[id] or {}
+        table.insert(history_by_id[id], {
+          day = tonumber(fields[3]),
+          pressure = tonumber(fields[4]) or 0,
         })
       end
+    end
+    for _, provider in ipairs(status.providers) do
+      provider.history = history_by_id[provider.id] or provider.history
     end
     return status
   end
@@ -215,23 +227,57 @@ return function(shared, repo_root)
     cairo_show_text(cr, value)
   end
 
-  local function glow_line(cr, x1, y1, x2, y2, color, width, alpha)
+  local function glow_segments(cr, segments, color, width, alpha)
+    if #segments == 0 then
+      return
+    end
     cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND)
-    for _, layer in ipairs({ { width + 7, 0.08 }, { width + 3, 0.15 } }) do
+    local function add_path()
       cairo_new_path(cr)
-      cairo_move_to(cr, x1, y1)
-      cairo_line_to(cr, x2, y2)
+      for _, segment in ipairs(segments) do
+        cairo_move_to(cr, segment[1], segment[2])
+        cairo_line_to(cr, segment[3], segment[4])
+      end
+    end
+    for _, layer in ipairs({ { width + 7, 0.08 }, { width + 3, 0.15 } }) do
+      add_path()
       cairo_set_line_width(cr, layer[1])
       set_hex(cr, color, layer[2])
       cairo_stroke(cr)
     end
-    cairo_new_path(cr)
-    cairo_move_to(cr, x1, y1)
-    cairo_line_to(cr, x2, y2)
+    add_path()
     cairo_set_line_width(cr, width)
     set_hex(cr, color, alpha)
     cairo_stroke(cr)
     cairo_set_line_cap(cr, CAIRO_LINE_CAP_BUTT)
+  end
+
+  local function glow_line(cr, x1, y1, x2, y2, color, width, alpha)
+    glow_segments(cr, { { x1, y1, x2, y2 } }, color, width, alpha)
+  end
+
+  local function dotted_glow_line(cr, x1, y1, x2, y2, color, width, alpha)
+    local dx, dy = x2 - x1, y2 - y1
+    local distance = math.sqrt(dx * dx + dy * dy)
+    if distance <= 0 then
+      return
+    end
+    local dash, gap = 2.4, 3.8
+    local segments = {}
+    local t = 0
+    while t < distance do
+      local t2 = math.min(t + dash, distance)
+      local start_ratio = t / distance
+      local end_ratio = t2 / distance
+      table.insert(segments, {
+        x1 + dx * start_ratio,
+        y1 + dy * start_ratio,
+        x1 + dx * end_ratio,
+        y1 + dy * end_ratio,
+      })
+      t = t + dash + gap
+    end
+    glow_segments(cr, segments, color, width, alpha)
   end
 
   local function add_mark_path(cr, ops, x, y, size, view_width, view_height)
@@ -310,19 +356,24 @@ return function(shared, repo_root)
     end
   end
 
+  local function mark_clearance(provider)
+    if provider.id == 'github_actions' then
+      return 7.5
+    elseif provider.id == 'openrouter' then
+      return 8.8
+    elseif provider.id == 'azure' then
+      -- The A is wide at the base, which is the side the past trail approaches.
+      return 10.5
+    end
+    return 5.5
+  end
+
   local function trajectory_start_after_mark(provider, x1, y1, x2, y2)
     -- Inset the centerline by the glyph body plus the solid line's round cap.
     -- The solid trajectory then just meets the mark edge, while its wider glow
     -- blends behind the mark instead of creating either a gap or a piercing
     -- line through the logo.
-    local clearance = 5.5
-    if provider.id == 'github_actions' then
-      clearance = 7.5
-    elseif provider.id == 'openrouter' then
-      clearance = 8.8
-    elseif provider.id == 'azure' then
-      clearance = 7.5
-    end
+    local clearance = mark_clearance(provider)
     local dx, dy = x2 - x1, y2 - y1
     local distance = math.sqrt(dx * dx + dy * dy)
     if distance <= clearance then
@@ -330,6 +381,57 @@ return function(shared, repo_root)
     end
     local ratio = clearance / distance
     return x1 + dx * ratio, y1 + dy * ratio
+  end
+
+  local function clip_segment_outside_mark(x1, y1, x2, y2, mx, my, clearance)
+    local r2 = clearance * clearance
+    local function dist2(x, y)
+      local dx, dy = x - mx, y - my
+      return dx * dx + dy * dy
+    end
+    local d1 = dist2(x1, y1)
+    local d2 = dist2(x2, y2)
+    if d1 <= r2 and d2 <= r2 then
+      return nil
+    end
+    if d1 > r2 and d2 > r2 then
+      return x1, y1, x2, y2
+    end
+    local dx, dy = x2 - x1, y2 - y1
+    local fx, fy = x1 - mx, y1 - my
+    local a = dx * dx + dy * dy
+    if a < 1e-9 then
+      return nil
+    end
+    local b = 2 * (fx * dx + fy * dy)
+    local c = fx * fx + fy * fy - r2
+    local disc = b * b - 4 * a * c
+    if disc < 0 then
+      if d1 > r2 then
+        return x1, y1, x2, y2
+      end
+      return nil
+    end
+    local root = math.sqrt(disc)
+    local t_hit
+    local t_a = (-b - root) / (2 * a)
+    local t_b = (-b + root) / (2 * a)
+    if t_a >= 0 and t_a <= 1 then
+      t_hit = t_a
+    elseif t_b >= 0 and t_b <= 1 then
+      t_hit = t_b
+    end
+    if not t_hit then
+      if d1 > r2 then
+        return x1, y1, x2, y2
+      end
+      return nil
+    end
+    local ix, iy = x1 + dx * t_hit, y1 + dy * t_hit
+    if d1 > r2 then
+      return x1, y1, ix, iy
+    end
+    return ix, iy, x2, y2
   end
 
   local function diamond(cr, x, y, radius, color, alpha)
@@ -494,12 +596,59 @@ return function(shared, repo_root)
         local alpha = provider.stale and 0.50 or 1
         local current_x, current_y = point(status.elapsed, provider.current_pressure)
         local forecast_x, forecast_y = point(1, provider.forecast_pressure)
+        local trail = {}
+        local origin_x, origin_y = point(0, 0)
+        table.insert(trail, { origin_x, origin_y })
+        for _, sample in ipairs(provider.history or {}) do
+          local day = sample.day or 0
+          if day > 0 and day < status.day then
+            local past_x, past_y = point(day / status.days_in_month, sample.pressure)
+            table.insert(trail, { past_x, past_y })
+          end
+        end
+        table.insert(trail, { current_x, current_y })
+        local past_segments = {}
+        local clearance = mark_clearance(provider)
+        local entered_mark = false
+        if #trail >= 2 then
+          for index = 1, #trail - 1 do
+            if entered_mark then
+              break
+            end
+            local x1, y1 = trail[index][1], trail[index][2]
+            local x2, y2 = trail[index + 1][1], trail[index + 1][2]
+            local cx1, cy1, cx2, cy2 = clip_segment_outside_mark(
+              x1, y1, x2, y2, current_x, current_y, clearance
+            )
+            if cx1 then
+              table.insert(past_segments, { cx1, cy1, cx2, cy2 })
+              local dx = x2 - current_x
+              local dy = y2 - current_y
+              if dx * dx + dy * dy <= clearance * clearance then
+                entered_mark = true
+              end
+            else
+              entered_mark = true
+            end
+          end
+        end
+        -- Only draw a past trail when there is observed history, not a lone
+        -- origin-to-now diagonal for providers without daily samples.
+        if #(provider.history or {}) > 0 then
+          glow_segments(
+            cr,
+            past_segments,
+            provider.color,
+            provider.kind == 'prepaid' and 2.0 or 1.9,
+            0.96 * alpha
+          )
+        end
         if provider.forecast_available then
           local line_x, line_y = trajectory_start_after_mark(
             provider, current_x, current_y, forecast_x, forecast_y
           )
           if line_x then
-            glow_line(
+            dotted_glow_line(
               cr,
               line_x,
               line_y,

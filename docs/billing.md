@@ -18,12 +18,13 @@ geometry is unusual, but the underlying axes are conventional:
   beyond it makes an over-cap forecast cross a real boundary instead of merely
   changing color. Neither boundary carries a text label.
 - The dashed diagonal is calendar pace: 50% of the month against 50% of cap.
-- A provider glyph marks the current observation, the colored segment is the
-  now-to-EOM forecast, and the hollow diamond is the EOM landing. GitHub,
-  OpenRouter, and Azure use their recognizable Octocat, geometric `OR`, and
-  Azure `A` marks; providers without a compact vector mark retain the filled
-  bead. The trajectory meets the marker edge without continuing underneath the
-  service glyph. Diamonds carry no text labels or leader lines.
+- A provider glyph marks the current observation. A solid trail through
+  observed daily spend sits on the past side of the yellow now-line. A dotted
+  segment is the now-to-EOM forecast, and the hollow diamond is the EOM
+  landing. GitHub, OpenRouter, and Azure use their recognizable Octocat,
+  geometric `OR`, and Azure `A` marks; providers without a compact vector mark
+  retain the filled bead. Trails meet the marker edge without continuing
+  underneath the service glyph. Diamonds carry no text labels or leader lines.
 - A dimmed trajectory means its last successful value is being retained after
   a failed refresh. A bead with no forecast line or diamond means there is not
   yet enough real history to calculate a forecast.
@@ -84,6 +85,11 @@ runway:
 The glyph therefore sits on the current-day line at `Y / X`, and the hollow
 diamond is the EOM landing against that same `X`. Remaining credit is kept
 as a diagnostic, not as the map's 100% ceiling.
+
+Daily Cost Management rows (usage-detail `costInUSD` if that query is
+throttled) become a solid trail of cumulative `Y_d / X` for each past day of
+the month. That trail stays left of the now-line; the dotted forecast is the
+prediction.
 
 If the credit summary omits spend, month-to-date Cost Management (or usage
 `costInUSD` when Cost Management is throttled) fills `Y`.

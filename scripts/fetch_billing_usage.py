@@ -335,34 +335,43 @@ def parse_azure_cost_query(payload):
     return total, currency
 
 
-def fetch_azure_cost_management(subscription_id, timeout):
+def azure_cost_query_body(granularity="None"):
+    return {
+        "type": "ActualCost",
+        "timeframe": "MonthToDate",
+        "dataset": {
+            "granularity": granularity,
+            "aggregation": {"totalCost": {"name": "PreTaxCost", "function": "Sum"}},
+        },
+    }
+
+
+def azure_cost_management_payload(subscription_id, timeout, granularity="None"):
     configured = os.environ.get("BILLING_AZURE_API_VERSION", "2025-03-01").strip()
     versions = [configured or "2025-03-01"]
     if "2023-11-01" not in versions:
         versions.append("2023-11-01")
-    body = {
-        "type": "ActualCost",
-        "timeframe": "MonthToDate",
-        "dataset": {
-            "granularity": "None",
-            "aggregation": {"totalCost": {"name": "PreTaxCost", "function": "Sum"}},
-        },
-    }
+    body = azure_cost_query_body(granularity)
     last_error = None
     for api_version in versions:
         try:
-            payload = azure_rest(
+            return azure_rest(
                 "post",
                 azure_cost_query_url(subscription_id, api_version),
                 timeout,
                 body,
             )
-            return parse_azure_cost_query(payload)
         except ProviderError as error:
             last_error = error
             if not azure_throttled(error):
                 raise
     raise last_error
+
+
+def fetch_azure_cost_management(subscription_id, timeout):
+    return parse_azure_cost_query(
+        azure_cost_management_payload(subscription_id, timeout, "None")
+    )
 
 
 def azure_usage_properties(item):
@@ -382,9 +391,8 @@ def azure_pricing_to_billing_rate(subscription_id, timeout):
     return value
 
 
-def fetch_azure_usage_usd(subscription_id, timeout):
+def iter_azure_usage_details(subscription_id, timeout):
     url = azure_usage_details_url(subscription_id, top=100)
-    total = Decimal(0)
     pages = 0
     while url:
         pages += 1
@@ -392,12 +400,118 @@ def fetch_azure_usage_usd(subscription_id, timeout):
             raise ProviderError("Azure usage details pagination exceeded the page limit")
         payload = azure_rest("get", url, timeout)
         for item in payload.get("value") or []:
-            usd = azure_usage_properties(item).get("costInUSD")
-            if usd is None:
-                continue
-            total += as_decimal(usd, "Azure costInUSD")
+            yield azure_usage_properties(item)
         url = payload.get("nextLink")
+
+
+def fetch_azure_usage_usd(subscription_id, timeout):
+    total = Decimal(0)
+    for props in iter_azure_usage_details(subscription_id, timeout):
+        usd = props.get("costInUSD")
+        if usd is None:
+            continue
+        total += as_decimal(usd, "Azure costInUSD")
     return total
+
+
+def azure_query_date(value):
+    text = str(value or "").strip()
+    if len(text) >= 8 and text[:8].isdigit() and "-" not in text[:8]:
+        return date(int(text[:4]), int(text[4:6]), int(text[6:8]))
+    try:
+        return date.fromisoformat(text[:10])
+    except ValueError as error:
+        raise ProviderError("Azure daily cost row omitted a usable date") from error
+
+
+def azure_usage_detail_date(props):
+    raw = props.get("date") or props.get("usageStart") or props.get("usageDate")
+    if not raw:
+        return None
+    try:
+        return date.fromisoformat(str(raw)[:10])
+    except ValueError:
+        return None
+
+
+def parse_azure_daily_cost_query(payload):
+    properties = payload.get("properties") or {}
+    columns = [str(item.get("name") or "") for item in properties.get("columns") or []]
+    rows = properties.get("rows") or []
+    try:
+        cost_index = next(
+            index
+            for index, name in enumerate(columns)
+            if name.lower() in {"pretaxcost", "cost"}
+        )
+    except StopIteration as error:
+        raise ProviderError("Azure daily response did not include a cost column") from error
+    try:
+        date_index = next(
+            index for index, name in enumerate(columns) if "date" in name.lower()
+        )
+    except StopIteration as error:
+        raise ProviderError("Azure daily response did not include a date column") from error
+    currency_index = next(
+        (index for index, name in enumerate(columns) if name.lower() == "currency"),
+        None,
+    )
+    daily = {}
+    currency = "USD"
+    for row in rows:
+        if currency_index is not None and len(row) > currency_index:
+            currency = str(row[currency_index] or "USD").upper()
+        day = azure_query_date(row[date_index])
+        daily[day] = daily.get(day, Decimal(0)) + as_decimal(
+            row[cost_index], "Azure daily cost"
+        )
+    return daily, currency
+
+
+def fetch_azure_usage_by_day(subscription_id, timeout, period):
+    daily = {}
+    start = period["periodStart"]
+    end = period["today"]
+    for props in iter_azure_usage_details(subscription_id, timeout):
+        day = azure_usage_detail_date(props)
+        if day is None or day < start or day > end:
+            continue
+        usd = props.get("costInUSD")
+        if usd is None:
+            continue
+        daily[day] = daily.get(day, Decimal(0)) + as_decimal(usd, "Azure costInUSD")
+    return daily
+
+
+def fetch_azure_daily_usd(period, timeout):
+    subscription_id = azure_subscription_id(timeout)
+    try:
+        payload = azure_cost_management_payload(subscription_id, timeout, "Daily")
+        daily, currency = parse_azure_daily_cost_query(payload)
+        if currency != "USD" and daily:
+            rate = azure_pricing_to_billing_rate(subscription_id, timeout)
+            daily = {day: amount / rate for day, amount in daily.items()}
+        if daily:
+            return daily
+    except ProviderError as error:
+        log_event(f"Azure daily Cost Management unavailable: {clean_error(error)}")
+    return fetch_azure_usage_by_day(subscription_id, timeout, period)
+
+
+def azure_history_pressures(daily, period, starting):
+    """Cumulative spend through each past day, as pressure against month-start credit.
+
+    Today's glyph already sits on the now line, so samples stop at yesterday.
+    """
+    if not daily or starting is None or starting <= 0:
+        return []
+    points = []
+    cumulative = Decimal(0)
+    for offset in range(1, period["day"]):
+        day_date = period["periodStart"] + timedelta(days=offset - 1)
+        cumulative += daily.get(day_date, Decimal(0))
+        points.append({"day": offset, "pressure": rounded(cumulative / starting)})
+    return points
 
 
 def fetch_azure_current(timeout):
@@ -551,6 +665,14 @@ def azure_provider(period, timeout):
     if spent is None or starting is None or starting <= 0:
         raise ProviderError("Azure credit summary omitted starting balance or spend")
 
+    history = []
+    try:
+        history = azure_history_pressures(
+            fetch_azure_daily_usd(period, timeout), period, starting
+        )
+    except ProviderError as error:
+        log_event(f"Azure daily spend unavailable: {clean_error(error)}")
+
     forecast = linear_month_forecast(spent, period)
     forecast = max(spent, forecast)
     projected = max(Decimal(0), starting - forecast)
@@ -573,6 +695,7 @@ def azure_provider(period, timeout):
         "forecastAvailable": True,
         "source": "azure-credits",
         "forecastSource": burn_source,
+        "history": history,
         "detail": (
             f"${float(spent):.2f} now · ${float(forecast):.2f} EOM · "
             f"${float(starting):.2f} at month start"
@@ -1155,6 +1278,17 @@ def render_tsv(output):
                 ]
             )
         )
+        for sample in item.get("history") or []:
+            lines.append(
+                "\t".join(
+                    [
+                        "history",
+                        common.escape_tsv(item.get("id", "")),
+                        str(sample.get("day", "")),
+                        str(sample.get("pressure", 0)),
+                    ]
+                )
+            )
     return "\n".join(lines) + "\n"
 
 
