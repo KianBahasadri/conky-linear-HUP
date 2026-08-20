@@ -1,6 +1,7 @@
 # Documentation
 
 - [Getting started](getting-started.md) — start and stop overlays
+- [Desktop render](desktop-render.md) — draw every overlay to a PNG without screenshotting
 - [Conky windows and input](conky-windows-and-input.md) — overlapping windows, click stacking, and why Conky is not interactive
 - [Configuration](configuration.md) — `.env` setup and environment variables
 - [Caches](caches.md) — cache files, logs, and fetch intervals

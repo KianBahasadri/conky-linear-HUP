@@ -2,6 +2,12 @@
 
 This project provides multi-monitor Conky desktop overlays backed by Python data fetchers and Lua/Cairo renderers.
 
+## Seeing the overlays
+
+Do not ask for a screenshot to check how a change looks. Run
+`./scripts/render_desktop.py` and read the PNG it writes; see
+[docs/desktop-render.md](docs/desktop-render.md) for its options.
+
 ## Documentation (read/write)
 
 - **Read first:** For how this repo works, start at `docs/README.md`, then

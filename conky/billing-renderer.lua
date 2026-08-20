@@ -797,20 +797,17 @@ return function(shared, repo_root)
   local renderer = {}
 
   function renderer.draw()
-    if conky_window == nil then
+    local surface, should_destroy_surface = shared.create_surface()
+    if not surface then
       return
     end
-    local surface = cairo_xlib_surface_create(
-      conky_window.display,
-      conky_window.drawable,
-      conky_window.visual,
-      conky_window.width,
-      conky_window.height
-    )
+
     local cr = cairo_create(surface)
     draw_map(cr, read_status())
     cairo_destroy(cr)
-    cairo_surface_destroy(surface)
+    if should_destroy_surface and cairo_surface_destroy then
+      cairo_surface_destroy(surface)
+    end
   end
 
   return renderer
