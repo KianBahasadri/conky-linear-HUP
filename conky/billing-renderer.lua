@@ -466,13 +466,6 @@ return function(shared, repo_root)
     cairo_stroke(cr)
     dashed_pace_line(cr)
 
-    local label_rows = {
-      aws = 91,
-      anthropic = 108,
-      openrouter = 125,
-      github_actions = 142,
-      azure = 159,
-    }
     local drawn = 0
     table.sort(status.providers, function(left, right)
       return left.forecast_pressure < right.forecast_pressure
@@ -504,25 +497,6 @@ return function(shared, repo_root)
         if provider.forecast_available then
           diamond(cr, forecast_x, forecast_y, provider.kind == 'prepaid' and 5.2 or 5.0, provider.color, alpha)
         end
-
-        local label_y = label_rows[provider.id] or (88 + drawn * 17)
-        local anchor_x = provider.forecast_available and forecast_x or current_x
-        local anchor_y = provider.forecast_available and forecast_y or current_y
-        set_hex(cr, provider.color, 0.42 * alpha)
-        cairo_set_line_width(cr, 0.8)
-        cairo_move_to(cr, anchor_x + 5, anchor_y)
-        cairo_line_to(cr, 235, label_y - 3)
-        cairo_stroke(cr)
-        local label
-        if provider.forecast_available then
-          label = string.format('%s %.0f%%', provider.code, provider.forecast_pressure * 100)
-        else
-          label = provider.code .. ' --'
-        end
-        if provider.stale then
-          label = label .. ' ~'
-        end
-        text(cr, label, 241, label_y, 7.0, provider.color, 0.92 * alpha, 'left', true)
       end
     end
 

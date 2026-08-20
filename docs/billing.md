@@ -22,10 +22,11 @@ geometry is unusual, but the underlying axes are conventional:
   now-to-EOM forecast, and the hollow diamond is the EOM landing. GitHub and
   OpenRouter use their recognizable Octocat and geometric `OR` marks; providers
   without a compact vector mark retain the filled bead. The trajectory meets
-  the marker edge without continuing underneath the service glyph.
-- `~` after a provider label means its last successful value is being retained
-  after a failed refresh. `--` means there is not yet enough real history to
-  calculate a forecast.
+  the marker edge without continuing underneath the service glyph. Diamonds
+  carry no text labels or leader lines.
+- A dimmed trajectory means its last successful value is being retained after
+  a failed refresh. A bead with no forecast line or diamond means there is not
+  yet enough real history to calculate a forecast.
 
 AWS, Azure, and Anthropic are normalized separately. The component never adds
 their dollar values together. Their current pressure is month-to-date spend
@@ -40,9 +41,8 @@ cross-provider total.
 
 When no provider has usable billing data, the map is dimmed and a solid red
 `NO BILLING DATA` popup is drawn over its center with a prompt to check the
-billing log. Valid stale values still render normally with the `~` marker;
-the popup is reserved for the state where there is nothing trustworthy to
-plot.
+billing log. Valid stale values still render, dimmed. The popup is reserved
+for the state where there is nothing trustworthy to plot.
 
 ## OpenRouter
 
@@ -61,7 +61,7 @@ while sharing the same visual EOM edge:
 
 If the analytics endpoint is unavailable, the fetcher derives burn from its
 own dated total-usage observations. It does not invent history: until two dates
-exist, OpenRouter renders its current bead with `OR --` and no forecast line.
+exist, OpenRouter renders its current bead with no forecast line or diamond.
 Top-ups do not distort this fallback because it uses cumulative total usage,
 not changes in remaining balance.
 
