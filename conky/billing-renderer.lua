@@ -127,15 +127,15 @@ return function(shared, repo_root)
     { 'Z' },
   }
 
-  -- Blacksmith C-block from the 32×32 favicon, inner quarter-circle as a cubic.
-  -- The live mark is this charcoal path on the yellow plate, not a yellow C.
+  -- Official Blacksmith C-block in its 144×96 brand viewBox. The inner
+  -- quarter-circle is the same cubic as the wordmark icon.
   local blacksmith_mark_ops = {
-    { 'M', 24.82, 10.16 },
-    { 'L', 7.18, 10.16 },
-    { 'L', 7.18, 16.04 },
-    { 'C', 7.18, 19.287, 9.813, 21.92, 13.06, 21.92 },
-    { 'L', 24.82, 21.92 },
-    { 'L', 24.82, 10.16 },
+    { 'M', 144.00000, 0.00000 },
+    { 'L', 0.00000, 0.00000 },
+    { 'L', 0.00000, 48.00000 },
+    { 'C', 26.50970, 48.00000, 48.00000, 69.49030, 48.00000, 96.00000 },
+    { 'L', 144.00000, 96.00000 },
+    { 'L', 144.00000, 0.00000 },
     { 'Z' },
   }
 
@@ -429,22 +429,13 @@ return function(shared, repo_root)
   end
 
   local function blacksmith_mark(cr, x, y, alpha)
-    local size = 14.0
-    local left, top = x - size / 2, y - size / 2
-    cairo_new_path(cr)
-    cairo_rectangle(cr, left, top, size, size)
-    set_hex(cr, 'f0fb29', 0.18 * alpha)
-    cairo_set_line_width(cr, 3.6)
-    cairo_stroke(cr)
-
-    cairo_new_path(cr)
-    cairo_rectangle(cr, left, top, size, size)
-    set_hex(cr, 'f0fb29', 0.98 * alpha)
-    cairo_fill(cr)
-
-    add_mark_path(cr, blacksmith_mark_ops, x, y, size, 32, 32)
+    add_mark_path(cr, blacksmith_mark_ops, x, y, 14.0, 144, 96)
     set_hex(cr, '202020', 0.98 * alpha)
     cairo_fill(cr)
+    add_mark_path(cr, blacksmith_mark_ops, x, y, 14.0, 144, 96)
+    set_hex(cr, 'f0fb29', 0.98 * alpha)
+    cairo_set_line_width(cr, 1.0)
+    cairo_stroke(cr)
   end
 
   local function bead(cr, x, y, radius, color, alpha)
@@ -494,8 +485,7 @@ return function(shared, repo_root)
       -- The A is wide at the base, which is the side the past trail approaches.
       return 11.0
     elseif provider.id == 'blacksmith' then
-      -- Yellow plate is a square; the past trail meets a corner, not a bead.
-      return 10.0
+      return 8.5
     end
     return 5.5
   end
