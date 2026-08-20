@@ -72,21 +72,63 @@ return function(shared, repo_root)
     { 'Z' },
   }
 
-  -- Compact Azure "A" in a 50×50 viewBox. The crossbar is part of the outline
-  -- so a winding fill stays solid at rail-marker size.
-  local azure_mark_ops = {
-    { 'M', 4, 44 },
-    { 'L', 22, 8 },
-    { 'L', 28, 8 },
-    { 'L', 46, 44 },
-    { 'L', 38, 44 },
-    { 'L', 32, 30 },
-    { 'L', 18, 30 },
-    { 'L', 12, 44 },
+  -- Official Microsoft Azure folded A from the 96×96 brand SVG. Left ribbon,
+  -- center arrow, fold shadow, then the light right ribbon.
+  local azure_left_ops = {
+    { 'M', 33.33800, 6.54400 },
+    { 'L', 59.37600, 6.54400 },
+    { 'L', 32.34600, 86.63100 },
+    { 'C', 31.77636, 88.31843, 30.19399, 89.45462, 28.41300, 89.45500 },
+    { 'L', 8.14900, 89.45500 },
+    { 'C', 6.81388, 89.45516, 5.56043, 88.81220, 4.78168, 87.72773 },
+    { 'C', 4.00292, 86.64326, 3.79421, 85.25006, 4.22100, 83.98500 },
+    { 'L', 29.40400, 9.36800 },
+    { 'C', 29.97341, 7.67982, 31.55638, 6.54310, 33.33800, 6.54300 },
+    { 'Z' },
+  }
+  local azure_arrow_ops = {
+    { 'M', 71.17500, 60.26100 },
+    { 'L', 29.88500, 60.26100 },
+    { 'C', 29.09943, 60.26013, 28.39335, 60.74010, 28.10514, 61.47089 },
+    { 'C', 27.81693, 62.20169, 28.00531, 63.03441, 28.58000, 63.57000 },
+    { 'L', 55.11200, 88.33400 },
+    { 'C', 55.88448, 89.05459, 56.90160, 89.45522, 57.95800, 89.45500 },
+    { 'L', 81.33800, 89.45500 },
+    { 'Z' },
+  }
+  local azure_shadow_ops = {
+    { 'M', 33.33800, 6.54400 },
+    { 'C', 31.53516, 6.53708, 29.93742, 7.70368, 29.39500, 9.42300 },
+    { 'L', 4.25200, 83.91700 },
+    { 'C', 3.79635, 85.18708, 3.98824, 86.59953, 4.76623, 87.70200 },
+    { 'C', 5.54421, 88.80448, 6.81066, 89.45865, 8.16000, 89.45500 },
+    { 'L', 28.94700, 89.45500 },
+    { 'C', 30.52317, 89.17338, 31.82591, 88.06549, 32.35700, 86.55500 },
+    { 'L', 37.37100, 71.77800 },
+    { 'L', 55.28100, 88.48300 },
+    { 'C', 56.03153, 89.10380, 56.97303, 89.44706, 57.94700, 89.45500 },
+    { 'L', 81.24000, 89.45500 },
+    { 'L', 71.02400, 60.26100 },
+    { 'L', 41.24300, 60.26800 },
+    { 'L', 59.47000, 6.54400 },
+    { 'Z' },
+  }
+  local azure_right_ops = {
+    { 'M', 66.59500, 9.36400 },
+    { 'C', 66.02639, 7.67854, 64.44579, 6.54379, 62.66700, 6.54400 },
+    { 'L', 33.64800, 6.54400 },
+    { 'C', 35.42669, 6.54410, 37.00713, 7.67874, 37.57600, 9.36400 },
+    { 'L', 62.76000, 83.98400 },
+    { 'C', 63.18711, 85.24930, 62.97859, 86.64286, 62.19984, 87.72773 },
+    { 'C', 61.42108, 88.81259, 60.16744, 89.45592, 58.83200, 89.45600 },
+    { 'L', 87.85200, 89.45600 },
+    { 'C', 89.18726, 89.45560, 90.44061, 88.81214, 91.21913, 87.72732 },
+    { 'C', 91.99765, 86.64250, 92.20605, 85.24913, 91.77900, 83.98400 },
     { 'Z' },
   }
 
   -- Blacksmith C-block from the 32×32 favicon, inner quarter-circle as a cubic.
+  -- The live mark is this charcoal path on the yellow plate, not a yellow C.
   local blacksmith_mark_ops = {
     { 'M', 24.82, 10.16 },
     { 'L', 7.18, 10.16 },
@@ -331,6 +373,80 @@ return function(shared, repo_root)
     cairo_stroke(cr)
   end
 
+  local function azure_mark(cr, x, y, alpha)
+    local size, view = 14.0, 96
+    local function mapped(vx, vy)
+      local scale = size / view
+      return x - view * scale / 2 + vx * scale,
+        y - view * scale / 2 + vy * scale
+    end
+    local function glow_piece(ops)
+      add_mark_path(cr, ops, x, y, size, view, view)
+      set_hex(cr, '2892df', 0.18 * alpha)
+      cairo_set_line_width(cr, 3.6)
+      cairo_stroke(cr)
+    end
+    glow_piece(azure_left_ops)
+    glow_piece(azure_arrow_ops)
+    glow_piece(azure_right_ops)
+
+    add_mark_path(cr, azure_left_ops, x, y, size, view, view)
+    local lx0, ly0 = mapped(42.828, 12.688)
+    local lx1, ly1 = mapped(15.787, 92.574)
+    local left_g = cairo_pattern_create_linear(lx0, ly0, lx1, ly1)
+    add_stop(left_g, 0, '114a8b', alpha)
+    add_stop(left_g, 1, '0669bc', alpha)
+    cairo_set_source(cr, left_g)
+    cairo_fill(cr)
+    cairo_pattern_destroy(left_g)
+
+    add_mark_path(cr, azure_arrow_ops, x, y, size, view, view)
+    set_hex(cr, '0078d4', alpha)
+    cairo_fill(cr)
+
+    add_mark_path(cr, azure_shadow_ops, x, y, size, view, view)
+    local sx0, sy0 = mapped(51.275, 49.917)
+    local sx1, sy1 = mapped(45.020, 52.032)
+    local shadow_g = cairo_pattern_create_linear(sx0, sy0, sx1, sy1)
+    add_stop(shadow_g, 0.000, '000000', 0.30 * alpha)
+    add_stop(shadow_g, 0.071, '000000', 0.20 * alpha)
+    add_stop(shadow_g, 0.321, '000000', 0.10 * alpha)
+    add_stop(shadow_g, 0.623, '000000', 0.05 * alpha)
+    add_stop(shadow_g, 1.000, '000000', 0)
+    cairo_set_source(cr, shadow_g)
+    cairo_fill(cr)
+    cairo_pattern_destroy(shadow_g)
+
+    add_mark_path(cr, azure_right_ops, x, y, size, view, view)
+    local rx0, ry0 = mapped(47.835, 10.358)
+    local rx1, ry1 = mapped(77.518, 89.439)
+    local right_g = cairo_pattern_create_linear(rx0, ry0, rx1, ry1)
+    add_stop(right_g, 0, '3ccbf4', alpha)
+    add_stop(right_g, 1, '2892df', alpha)
+    cairo_set_source(cr, right_g)
+    cairo_fill(cr)
+    cairo_pattern_destroy(right_g)
+  end
+
+  local function blacksmith_mark(cr, x, y, alpha)
+    local size = 14.0
+    local left, top = x - size / 2, y - size / 2
+    cairo_new_path(cr)
+    cairo_rectangle(cr, left, top, size, size)
+    set_hex(cr, 'f0fb29', 0.18 * alpha)
+    cairo_set_line_width(cr, 3.6)
+    cairo_stroke(cr)
+
+    cairo_new_path(cr)
+    cairo_rectangle(cr, left, top, size, size)
+    set_hex(cr, 'f0fb29', 0.98 * alpha)
+    cairo_fill(cr)
+
+    add_mark_path(cr, blacksmith_mark_ops, x, y, size, 32, 32)
+    set_hex(cr, '202020', 0.98 * alpha)
+    cairo_fill(cr)
+  end
+
   local function bead(cr, x, y, radius, color, alpha)
     cairo_new_path(cr)
     cairo_arc(cr, x, y, radius + 4, 0, math.pi * 2)
@@ -361,9 +477,9 @@ return function(shared, repo_root)
         alpha
       )
     elseif provider.id == 'azure' then
-      vector_mark(cr, azure_mark_ops, x, y, 13.0, 50, 50, provider.color, alpha)
+      azure_mark(cr, x, y, alpha)
     elseif provider.id == 'blacksmith' then
-      vector_mark(cr, blacksmith_mark_ops, x, y, 13.0, 32, 32, provider.color, alpha)
+      blacksmith_mark(cr, x, y, alpha)
     else
       bead(cr, x, y, 4.3, provider.color, alpha)
     end
@@ -376,9 +492,10 @@ return function(shared, repo_root)
       return 8.8
     elseif provider.id == 'azure' then
       -- The A is wide at the base, which is the side the past trail approaches.
-      return 10.5
+      return 11.0
     elseif provider.id == 'blacksmith' then
-      return 8.2
+      -- Yellow plate is a square; the past trail meets a corner, not a bead.
+      return 10.0
     end
     return 5.5
   end
