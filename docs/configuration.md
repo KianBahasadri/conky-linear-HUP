@@ -135,6 +135,30 @@ Location resolution prefers exact coordinates, then `WEATHER_LOCATION`, then an 
 
 The transparent HUD is generated on every monitor. It reads local Linux telemetry for CPU, memory, network throughput, `/` and `/home` disk usage, load average, and uptime. Each display retains its own recent samples for the active Conky session. NET sparkline scale uses the max IN/OUT rate recorded in the last 7 days (`cache/resource-net-peaks.tsv`). Bottom readouts fill a 3-column grid in column-major order under the gauges (LOAD/UP, `/`/`/home`, IN/OUT); see [Layout](README.md#layout).
 
+## Affine billing map
+
+| Variable | Purpose |
+| --- | --- |
+| `BILLING_OVERLAY_ENABLED` | Set to `0` to disable |
+| `BILLING_GAP_X` | Optional right-edge gap; empty follows `RESOURCE_MONITOR_GAP_X` so panel centers align |
+| `BILLING_GAP_Y` | Optional top offset; empty auto-centers between resources and weather |
+| `BILLING_REFRESH_SECONDS` | Provider refresh interval (default `900`) |
+| `BILLING_TIMEOUT_SECONDS` | Per-provider command/request timeout (default `30`) |
+| `BILLING_AWS_CAP_USD` | AWS monthly surprise-bill threshold; enables AWS |
+| `BILLING_AWS_PROFILE` | Optional AWS CLI profile; otherwise normal AWS CLI resolution applies |
+| `BILLING_AZURE_CAP_USD` | Azure monthly surprise-bill threshold; enables Azure |
+| `BILLING_AZURE_SUBSCRIPTION_ID` | Optional subscription; otherwise the Azure CLI active subscription is used |
+| `BILLING_AZURE_API_VERSION` | Cost Management API version override (default `2025-03-01`) |
+| `BILLING_ANTHROPIC_CAP_USD` | Anthropic monthly surprise-bill threshold; enables Anthropic |
+| `ANTHROPIC_ADMIN_KEY` | Anthropic organization Admin API key for the Cost Report endpoint |
+| `ANTHROPIC_ADMIN_API_KEY` | Alias for `ANTHROPIC_ADMIN_KEY` |
+| `OPENROUTER_API_KEY` | OpenRouter management key for live credits and trailing usage |
+
+Only configured providers are fetched. AWS and Azure use their authenticated
+CLIs; Anthropic and OpenRouter use their official APIs. Live monetary values do
+not have environment-variable overrides. See [Affine billing map](billing.md)
+for the normalization and forecast semantics.
+
 ## Git status overlay
 
 | Variable | Purpose |

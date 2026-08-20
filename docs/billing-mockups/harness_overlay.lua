@@ -1,6 +1,7 @@
 -- Generic op dump for the existing right-rail renderers.
 local root = arg[1]
 local overlay = arg[2]
+local data_root = arg[3] or root
 local out = {}
 local function emit(...)
   local parts = {}
@@ -37,6 +38,19 @@ function cairo_show_text(cr, label) emit('show_text', label) end
 function cairo_save(cr) emit('save') end
 function cairo_restore(cr) emit('restore') end
 function cairo_clip(cr) emit('clip') end
+function cairo_xlib_surface_create() return {} end
+
+local pattern_id = 0
+function cairo_pattern_create_linear(x0, y0, x1, y1)
+  pattern_id = pattern_id + 1
+  emit('pattern', pattern_id, x0, y0, x1, y1)
+  return pattern_id
+end
+function cairo_pattern_add_color_stop_rgba(pattern, offset, r, g, b, a)
+  emit('stop', pattern, offset, r, g, b, a)
+end
+function cairo_set_source(cr, pattern) emit('source_pattern', pattern) end
+function cairo_pattern_destroy(pattern) emit('pattern_destroy', pattern) end
 
 cairo_text_extents_t = {
   create = function()
@@ -54,12 +68,13 @@ end
 local specs = {
   resource = { width = 280, height = 258, file = 'resource-monitor-renderer.lua' },
   weather = { width = 456, height = 276, file = 'weather-renderer.lua' },
+  billing = { width = 280, height = 300, file = 'billing-renderer.lua' },
 }
 local spec = assert(specs[overlay], 'unknown overlay: ' .. tostring(overlay))
 conky_window = { width = spec.width, height = spec.height }
 package.path = root .. '/conky/?.lua;' .. package.path
 local shared = dofile(root .. '/conky/renderer-shared.lua')
 shared.create_surface = function() return {}, false end
-local renderer = dofile(root .. '/conky/' .. spec.file)(shared, root)
+local renderer = dofile(root .. '/conky/' .. spec.file)(shared, data_root)
 renderer.draw()
 print(table.concat(out, '\n'))

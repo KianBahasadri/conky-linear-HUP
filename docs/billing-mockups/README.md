@@ -1,6 +1,6 @@
 # Billing panel design archive
 
-This directory preserves the complete useful output of the August 19, 2026 billing-panel design study. It is a design prototype, not a shipped overlay: no billing fetcher, cache schema, Conky config, or production Lua renderer was added as part of this work.
+This directory preserves the complete useful output of the August 19, 2026 billing-panel design study. The study remains a prototype archive; its selected Affine Month Map is now implemented as the shipped [billing overlay](../billing.md) with a live fetcher, cache schema, Conky config, and production Lua renderer.
 
 ## Open the mockup
 
@@ -107,6 +107,10 @@ python3 docs/billing-mockups/replay_transparent.py \
 lua docs/billing-mockups/harness_overlay.lua "$PWD" weather > docs/billing-mockups/weather.ops
 python3 docs/billing-mockups/replay_transparent.py \
   docs/billing-mockups/weather.ops docs/billing-mockups/weather.png 456 276
+
+lua docs/billing-mockups/harness_overlay.lua "$PWD" billing > /tmp/billing.ops
+python3 docs/billing-mockups/replay_transparent.py \
+  /tmp/billing.ops /tmp/billing.png 280 300
 ```
 
 Those harnesses load the repository's current Lua renderers and cached data, so rerunning them later is a regression check rather than a reproduction of the exact 2026 snapshot.

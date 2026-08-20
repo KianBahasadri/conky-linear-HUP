@@ -10,6 +10,7 @@
 - [Minecraft overlay](minecraft.md) — server status and PebbleHost integration
 - [GitHub overlay](github.md) — contribution tracker
 - [Weather and running overlay](weather.md) — current conditions, air quality, and run guidance
+- [Affine billing map](billing.md) — live provider spend, prepaid runway, and common EOM forecasts
 - [Git status overlay](git.md) — local repo fleet (branch, dirty, ahead/behind, Actions pip)
 - [Billing panel design archive](billing-mockups/README.md) — preserved Affine Month Map mockup, alternatives, and Cairo sources
   - [Trajectory concept notes](billing-mockups/trajectory_variants/NOTES.md) — four time-and-cap transformations

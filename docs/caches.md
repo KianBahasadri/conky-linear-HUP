@@ -31,6 +31,9 @@
 - `cache/git-repo-discovery.json`: auto-discovered home repos with recent commits (TTL `GIT_SCAN_TTL_SECONDS`).
 - `cache/git-actions-cache.json`: per-path GitHub Actions pip state from `gh run list`; running TTL `GIT_ACTIONS_RUNNING_TTL_SECONDS`, completed TTL `GIT_ACTIONS_TTL_SECONDS`.
 - `cache/resource-net-peaks.tsv`: hourly max IN/OUT byte rates from the resource monitor; retained for 7 days and used as the NET sparkline scale.
+- `cache/billing-usage.json`: full billing observations, normalized pressures, forecast details, data sources, and per-provider errors.
+- `cache/billing-usage-render.tsv`: compact affine-map input consumed by the Lua renderer; it contains no credentials.
+- `cache/billing-history.json`: dated OpenRouter total-usage observations retained for 30 days as a burn-rate fallback when live analytics is unavailable.
 
 ## Logs
 
@@ -39,6 +42,7 @@
 - `cache/conky-minecraft.log`: Minecraft fetch, launcher, and Minecraft Conky output.
 - `cache/conky-github.log`: GitHub fetch, launcher, and GitHub Conky output.
 - `cache/conky-weather.log`: weather fetch, launcher, and weather Conky output.
+- `cache/conky-billing.log`: billing provider fetches, launcher placement, fallback notices, and billing Conky output.
 - `cache/conky-git.log`: git status fetch, launcher, and git Conky output.
 
 ## Fetch intervals
@@ -50,5 +54,6 @@
 - Minecraft: `60s`
 - GitHub: `1800s`
 - Weather and air quality: `600s`
+- Billing: `900s` (override with `BILLING_REFRESH_SECONDS`)
 - Git status: `30s` (override with `GIT_REFRESH_SECONDS`)
 - Git Actions pips: on the git fetch; cache `20s` while running, `180s` when completed, `300s` when empty

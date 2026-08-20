@@ -33,6 +33,7 @@ MINECRAFT_CONFIG="$ROOT/conky/minecraft-overlay.conkyrc"
 GITHUB_CONFIG="$ROOT/conky/github-overlay.conkyrc"
 WEATHER_CONFIG="$ROOT/conky/weather-overlay.conkyrc"
 RESOURCE_MONITOR_CONFIG="$ROOT/conky/resource-monitor-overlay.conkyrc"
+BILLING_CONFIG="$ROOT/conky/billing-overlay.conkyrc"
 GIT_CONFIG="$ROOT/conky/git-overlay.conkyrc"
 GENERATED_DIR="$ROOT/conky/generated"
 CACHE_DIR="$ROOT/cache"
@@ -42,6 +43,7 @@ MINECRAFT_LOG_PATH="$CACHE_DIR/conky-minecraft.log"
 GITHUB_LOG_PATH="$CACHE_DIR/conky-github.log"
 WEATHER_LOG_PATH="$CACHE_DIR/conky-weather.log"
 RESOURCE_MONITOR_LOG_PATH="$CACHE_DIR/conky-resource-monitor.log"
+BILLING_LOG_PATH="$CACHE_DIR/conky-billing.log"
 GIT_LOG_PATH="$CACHE_DIR/conky-git.log"
 LINEAR_FETCH_PID="$CACHE_DIR/linear-fetch-loop.pid"
 CODEX_FETCH_PID="$CACHE_DIR/codex-fetch-loop.pid"
@@ -54,6 +56,7 @@ COMMANDCODE_FETCH_PID="$CACHE_DIR/commandcode-fetch-loop.pid"
 MINECRAFT_FETCH_PID="$CACHE_DIR/minecraft-fetch-loop.pid"
 GITHUB_FETCH_PID="$CACHE_DIR/github-fetch-loop.pid"
 WEATHER_FETCH_PID="$CACHE_DIR/weather-fetch-loop.pid"
+BILLING_FETCH_PID="$CACHE_DIR/billing-fetch-loop.pid"
 GIT_FETCH_PID="$CACHE_DIR/git-fetch-loop.pid"
 OVERLAY_WIDTH=1540
 LINEAR_GAP_Y=4
@@ -95,6 +98,12 @@ RESOURCE_MONITOR_GAP_X="${RESOURCE_MONITOR_GAP_X:-0}"
 # Empty means follow Linear's per-monitor gap_y so gauge tops stay flush with cards.
 RESOURCE_MONITOR_GAP_Y="${RESOURCE_MONITOR_GAP_Y:-}"
 RESOURCE_MONITOR_OVERLAY_ENABLED="${RESOURCE_MONITOR_OVERLAY_ENABLED:-1}"
+# Empty = follow RESOURCE_MONITOR_GAP_X so both right-side centers align.
+BILLING_GAP_X="${BILLING_GAP_X-}"
+# Empty = auto-center between the resource HUD above and weather below.
+BILLING_GAP_Y="${BILLING_GAP_Y-}"
+BILLING_REFRESH_SECONDS="${BILLING_REFRESH_SECONDS:-900}"
+BILLING_OVERLAY_ENABLED="${BILLING_OVERLAY_ENABLED:-1}"
 GIT_GAP_X="${GIT_GAP_X:-1}"
 # Empty means follow Linear's per-monitor gap_y (primary clears the GNOME top bar).
 GIT_GAP_Y="${GIT_GAP_Y-1}"
@@ -110,8 +119,8 @@ RATE_LIMIT_RECENT_CHANGE_WINDOW="${RATE_LIMIT_RECENT_CHANGE_WINDOW:-600}"
 GENERATE_ONLY=0
 MONITOR_HAS_PRIMARY=0
 
-overlay_keys=(linear rate-limit-panel minecraft github weather resource-monitor git)
-fetch_keys=(linear codex claude cursor gemini grok opencode commandcode minecraft github weather git)
+overlay_keys=(linear rate-limit-panel minecraft github weather resource-monitor billing git)
+fetch_keys=(linear codex claude cursor gemini grok opencode commandcode minecraft github weather billing git)
 
 declare -A overlay_disabled_name=(
   [linear]="linear"
@@ -120,6 +129,7 @@ declare -A overlay_disabled_name=(
   [github]="github"
   [weather]="weather"
   [resource-monitor]="resource monitor"
+  [billing]="billing"
   [git]="git status"
 )
 declare -A overlay_config=(
@@ -129,6 +139,7 @@ declare -A overlay_config=(
   [github]="$GITHUB_CONFIG"
   [weather]="$WEATHER_CONFIG"
   [resource-monitor]="$RESOURCE_MONITOR_CONFIG"
+  [billing]="$BILLING_CONFIG"
   [git]="$GIT_CONFIG"
 )
 declare -A overlay_log_path=(
@@ -138,6 +149,7 @@ declare -A overlay_log_path=(
   [github]="$GITHUB_LOG_PATH"
   [weather]="$WEATHER_LOG_PATH"
   [resource-monitor]="$RESOURCE_MONITOR_LOG_PATH"
+  [billing]="$BILLING_LOG_PATH"
   [git]="$GIT_LOG_PATH"
 )
 declare -A overlay_enabled_var=(
@@ -147,6 +159,7 @@ declare -A overlay_enabled_var=(
   [github]="GITHUB_OVERLAY_ENABLED"
   [weather]="WEATHER_OVERLAY_ENABLED"
   [resource-monitor]="RESOURCE_MONITOR_OVERLAY_ENABLED"
+  [billing]="BILLING_OVERLAY_ENABLED"
   [git]="GIT_OVERLAY_ENABLED"
 )
 
@@ -162,6 +175,7 @@ declare -A fetch_label=(
   [minecraft]="Minecraft"
   [github]="GitHub"
   [weather]="Weather"
+  [billing]="Billing"
   [git]="Git"
 )
 declare -A fetch_overlay_key=(
@@ -176,6 +190,7 @@ declare -A fetch_overlay_key=(
   [minecraft]="minecraft"
   [github]="github"
   [weather]="weather"
+  [billing]="billing"
   [git]="git"
 )
 # Interval for non-adaptive fetchers. Rate-limit keys (codex/claude/cursor/
@@ -193,6 +208,7 @@ declare -A fetch_interval=(
   [minecraft]="$MINECRAFT_REFRESH_SECONDS"
   [github]="$GITHUB_REFRESH_SECONDS"
   [weather]="$WEATHER_REFRESH_SECONDS"
+  [billing]="$BILLING_REFRESH_SECONDS"
   [git]="$GIT_REFRESH_SECONDS"
 )
 declare -A fetch_script=(
@@ -207,6 +223,7 @@ declare -A fetch_script=(
   [minecraft]="$ROOT/scripts/fetch_minecraft_status.py"
   [github]="$ROOT/scripts/fetch_github_contributions.py"
   [weather]="$ROOT/scripts/fetch_weather.py"
+  [billing]="$ROOT/scripts/fetch_billing_usage.py"
   [git]="$ROOT/scripts/fetch_git_status.py"
 )
 declare -A fetch_pid_file=(
@@ -221,6 +238,7 @@ declare -A fetch_pid_file=(
   [minecraft]="$MINECRAFT_FETCH_PID"
   [github]="$GITHUB_FETCH_PID"
   [weather]="$WEATHER_FETCH_PID"
+  [billing]="$BILLING_FETCH_PID"
   [git]="$GIT_FETCH_PID"
 )
 # Render TSV paths for rate-limit-panel fetchers that support adaptive polling.
@@ -237,6 +255,7 @@ declare -A fetch_render_path=(
   [minecraft]=""
   [github]=""
   [weather]=""
+  [billing]=""
   [git]=""
 )
 
@@ -395,6 +414,22 @@ if [[ ! "$RATE_LIMIT_RECENT_CHANGE_WINDOW" =~ ^[1-9][0-9]*$ ]]; then
   RATE_LIMIT_RECENT_CHANGE_WINDOW=600
 fi
 
+if [[ -n "$BILLING_GAP_X" && ! "$BILLING_GAP_X" =~ ^-?[0-9]+$ ]]; then
+  log_overlay billing "invalid BILLING_GAP_X=$BILLING_GAP_X; following resource monitor"
+  BILLING_GAP_X=""
+fi
+
+if [[ -n "$BILLING_GAP_Y" && ! "$BILLING_GAP_Y" =~ ^-?[0-9]+$ ]]; then
+  log_overlay billing "invalid BILLING_GAP_Y=$BILLING_GAP_Y; using automatic placement"
+  BILLING_GAP_Y=""
+fi
+
+if [[ ! "$BILLING_REFRESH_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
+  log_overlay billing "invalid BILLING_REFRESH_SECONDS=$BILLING_REFRESH_SECONDS; using 900"
+  BILLING_REFRESH_SECONDS=900
+  fetch_interval[billing]="$BILLING_REFRESH_SECONDS"
+fi
+
 log_overlay linear "starting; root=$ROOT generate_only=$GENERATE_ONLY"
 for key in "${overlay_keys[@]}"; do
   enabled_var="${overlay_enabled_var[$key]}"
@@ -417,6 +452,7 @@ done
 pkill -f "$ROOT/scripts/fetch_minecraft_status.py" 2>/dev/null || true
 pkill -f "$ROOT/scripts/fetch_github_contributions.py" 2>/dev/null || true
 pkill -f "$ROOT/scripts/fetch_weather.py" 2>/dev/null || true
+pkill -f "$ROOT/scripts/fetch_billing_usage.py" 2>/dev/null || true
 pkill -f "$ROOT/scripts/fetch_git_status.py" 2>/dev/null || true
 log_overlay linear "stopped existing matching Conky processes"
 
@@ -443,6 +479,11 @@ generate_config() {
   local monitor_gap_x="$4"
   local monitor_gap_y="$5"
   local minimum_height="${6:-}"
+  local lua_entrypoint="$ROOT/conky/overlay-entrypoint.lua"
+
+  if [[ "$source_config" == "$BILLING_CONFIG" ]]; then
+    lua_entrypoint="$ROOT/conky/billing-entrypoint.lua"
+  fi
 
   while IFS= read -r config_line; do
     case "$config_line" in
@@ -464,7 +505,7 @@ generate_config() {
         fi
         ;;
       "  lua_load = "*)
-        printf "  lua_load = '%s/conky/overlay-entrypoint.lua',\n" "$ROOT"
+        printf "  lua_load = '%s',\n" "$lua_entrypoint"
         ;;
       *"fetch_linear_tasks.py"*) ;;
       *"fetch_codex_usage.py"*) ;;
@@ -475,6 +516,7 @@ generate_config() {
       *"fetch_opencode_usage.py"*) ;;
       *"fetch_commandcode_usage.py"*) ;;
       *"fetch_weather.py"*) ;;
+      *"fetch_billing_usage.py"*) ;;
       *"fetch_git_status.py"*) ;;
       *)
         printf "%s\n" "$config_line"
@@ -534,6 +576,13 @@ overlay_gap_x() {
     github) printf "%s\n" "$GITHUB_GAP_X" ;;
     weather) printf "%s\n" "$WEATHER_GAP_X" ;;
     resource-monitor) printf "%s\n" "$RESOURCE_MONITOR_GAP_X" ;;
+    billing)
+      if [[ -n "$BILLING_GAP_X" ]]; then
+        printf "%s\n" "$BILLING_GAP_X"
+      else
+        printf "%s\n" "$RESOURCE_MONITOR_GAP_X"
+      fi
+      ;;
     git) printf "%s\n" "$GIT_GAP_X" ;;
   esac
 }
@@ -618,6 +667,50 @@ github_placement_note() {
   fi
 }
 
+# Keep the 300px map centered in the right-side lane that remains between the
+# top resource HUD and bottom weather panel. The explicit BILLING_GAP_Y escape
+# hatch is useful on unusual monitor layouts.
+BILLING_RESOLVED_GAP_Y=350
+
+billing_placement_for_monitor() {
+  local monitor_h="$1"
+  local linear_gap_y="$2"
+  local band_top=0
+  local band_bottom
+  local available
+  local resource_gap
+  local weather_gap="$WEATHER_GAP_Y"
+
+  if [[ ! "$monitor_h" =~ ^[0-9]+$ ]] || (( monitor_h < 300 )); then
+    monitor_h=1080
+  fi
+  band_bottom="$monitor_h"
+  if overlay_enabled resource-monitor; then
+    resource_gap="$(overlay_gap_y resource-monitor "$linear_gap_y")"
+    [[ "$resource_gap" =~ ^-?[0-9]+$ ]] || resource_gap=0
+    band_top=$(( resource_gap + 258 ))
+  fi
+  if overlay_enabled weather; then
+    [[ "$weather_gap" =~ ^-?[0-9]+$ ]] || weather_gap=6
+    band_bottom=$(( monitor_h - weather_gap - 276 ))
+  fi
+  available=$(( band_bottom - band_top ))
+  if (( available >= 300 )); then
+    BILLING_RESOLVED_GAP_Y=$(( band_top + (available - 300) / 2 ))
+  else
+    BILLING_RESOLVED_GAP_Y=$(( (monitor_h - 300) / 2 ))
+    (( BILLING_RESOLVED_GAP_Y < 0 )) && BILLING_RESOLVED_GAP_Y=0
+  fi
+}
+
+billing_placement_note() {
+  if [[ -n "$BILLING_GAP_Y" ]]; then
+    printf "pinned gap_y=%s\n" "$BILLING_GAP_Y"
+  else
+    printf "auto gap_y=%s\n" "$BILLING_RESOLVED_GAP_Y"
+  fi
+}
+
 overlay_gap_y() {
   local key="$1"
   local linear_gap_y="$2"
@@ -639,6 +732,13 @@ overlay_gap_y() {
         printf "%s\n" "$RESOURCE_MONITOR_GAP_Y"
       else
         printf "%s\n" "$linear_gap_y"
+      fi
+      ;;
+    billing)
+      if [[ -n "$BILLING_GAP_Y" ]]; then
+        printf "%s\n" "$BILLING_GAP_Y"
+      else
+        printf "%s\n" "$BILLING_RESOLVED_GAP_Y"
       fi
       ;;
     git)
@@ -677,6 +777,9 @@ log_generated_overlay() {
       ;;
     resource-monitor)
       log_overlay resource-monitor "generated monitor_index=$monitor_index width=$width gap_x=$RESOURCE_MONITOR_GAP_X gap_y=$(overlay_gap_y resource-monitor "$linear_gap_y") config=$config_path"
+      ;;
+    billing)
+      log_overlay billing "generated monitor_index=$monitor_index width=$width gap_x=$(overlay_gap_x billing "$monitor_gap_x") $(billing_placement_note) config=$config_path"
       ;;
     git)
       log_overlay git "generated monitor_index=$monitor_index width=$width gap_x=$GIT_GAP_X gap_y=$(overlay_gap_y git "$linear_gap_y") config=$config_path"
@@ -723,6 +826,9 @@ launch_overlay() {
       ;;
     resource-monitor)
       log_overlay resource-monitor "launched monitor_index=$monitor_index width=$width gap_x=$RESOURCE_MONITOR_GAP_X gap_y=$(overlay_gap_y resource-monitor "$linear_gap_y") config=$config_path pid=$!"
+      ;;
+    billing)
+      log_overlay billing "launched monitor_index=$monitor_index width=$width gap_x=$(overlay_gap_x billing "$monitor_gap_x") $(billing_placement_note) config=$config_path pid=$!"
       ;;
     git)
       log_overlay git "launched monitor_index=$monitor_index width=$width gap_x=$GIT_GAP_X gap_y=$(overlay_gap_y git "$linear_gap_y") config=$config_path pid=$!"
@@ -772,6 +878,7 @@ for line in "${monitor_lines[@]}"; do
   fi
 
   github_band_for_monitor "$monitor_height" "$(overlay_gap_y git "$linear_gap_y")" "$is_primary"
+  billing_placement_for_monitor "$monitor_height" "$linear_gap_y"
 
   for key in "${overlay_keys[@]}"; do
     if overlay_enabled "$key"; then

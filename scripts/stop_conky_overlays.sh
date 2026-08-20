@@ -10,6 +10,7 @@ MINECRAFT_LOG_PATH="$CACHE_DIR/conky-minecraft.log"
 GITHUB_LOG_PATH="$CACHE_DIR/conky-github.log"
 WEATHER_LOG_PATH="$CACHE_DIR/conky-weather.log"
 RESOURCE_MONITOR_LOG_PATH="$CACHE_DIR/conky-resource-monitor.log"
+BILLING_LOG_PATH="$CACHE_DIR/conky-billing.log"
 GIT_LOG_PATH="$CACHE_DIR/conky-git.log"
 LINEAR_FETCH_PID="$CACHE_DIR/linear-fetch-loop.pid"
 CODEX_FETCH_PID="$CACHE_DIR/codex-fetch-loop.pid"
@@ -22,12 +23,13 @@ COMMANDCODE_FETCH_PID="$CACHE_DIR/commandcode-fetch-loop.pid"
 MINECRAFT_FETCH_PID="$CACHE_DIR/minecraft-fetch-loop.pid"
 GITHUB_FETCH_PID="$CACHE_DIR/github-fetch-loop.pid"
 WEATHER_FETCH_PID="$CACHE_DIR/weather-fetch-loop.pid"
+BILLING_FETCH_PID="$CACHE_DIR/billing-fetch-loop.pid"
 GIT_FETCH_PID="$CACHE_DIR/git-fetch-loop.pid"
 
 mkdir -p "$CACHE_DIR"
 
-overlay_keys=(linear rate-limit-panel minecraft github weather resource-monitor git)
-fetch_keys=(linear codex claude cursor gemini grok opencode commandcode minecraft github weather git)
+overlay_keys=(linear rate-limit-panel minecraft github weather resource-monitor billing git)
+fetch_keys=(linear codex claude cursor gemini grok opencode commandcode minecraft github weather billing git)
 
 declare -A overlay_config=(
   [linear]="$ROOT/conky/linear-overlay.conkyrc"
@@ -36,6 +38,7 @@ declare -A overlay_config=(
   [github]="$ROOT/conky/github-overlay.conkyrc"
   [weather]="$ROOT/conky/weather-overlay.conkyrc"
   [resource-monitor]="$ROOT/conky/resource-monitor-overlay.conkyrc"
+  [billing]="$ROOT/conky/billing-overlay.conkyrc"
   [git]="$ROOT/conky/git-overlay.conkyrc"
 )
 declare -A overlay_log_path=(
@@ -45,6 +48,7 @@ declare -A overlay_log_path=(
   [github]="$GITHUB_LOG_PATH"
   [weather]="$WEATHER_LOG_PATH"
   [resource-monitor]="$RESOURCE_MONITOR_LOG_PATH"
+  [billing]="$BILLING_LOG_PATH"
   [git]="$GIT_LOG_PATH"
 )
 declare -A fetch_label=(
@@ -59,6 +63,7 @@ declare -A fetch_label=(
   [minecraft]="Minecraft"
   [github]="GitHub"
   [weather]="Weather"
+  [billing]="Billing"
   [git]="Git"
 )
 declare -A fetch_overlay_key=(
@@ -73,6 +78,7 @@ declare -A fetch_overlay_key=(
   [minecraft]="minecraft"
   [github]="github"
   [weather]="weather"
+  [billing]="billing"
   [git]="git"
 )
 declare -A fetch_pid_file=(
@@ -87,6 +93,7 @@ declare -A fetch_pid_file=(
   [minecraft]="$MINECRAFT_FETCH_PID"
   [github]="$GITHUB_FETCH_PID"
   [weather]="$WEATHER_FETCH_PID"
+  [billing]="$BILLING_FETCH_PID"
   [git]="$GIT_FETCH_PID"
 )
 
