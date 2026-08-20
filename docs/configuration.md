@@ -154,12 +154,18 @@ The transparent HUD is generated on every monitor. It reads local Linux telemetr
 | `ANTHROPIC_ADMIN_API_KEY` | Alias for `ANTHROPIC_ADMIN_KEY` |
 | `OPENROUTER_API_KEY` | OpenRouter management key for live credits and trailing usage |
 | `BILLING_GITHUB_ACTIONS_ENABLED` | Set to `1` to plot the authenticated `gh` user's private-repository standard-runner minutes against the plan allowance; the token needs `user` scope |
+| `BILLING_BLACKSMITH_ENABLED` | Set to `1` to plot Blacksmith x64 2vCPU minutes against the live free allowance from the dashboard session |
+| `BILLING_BLACKSMITH_ORG` | Optional GitHub org login; otherwise the session's active org is used |
+| `BILLING_BLACKSMITH_COOKIE` | Optional Cookie header override; when unset, the fetcher reads `blacksmith.sh` cookies from Firefox |
+| `BILLING_BLACKSMITH_FIREFOX_HOME` | Override `~/.mozilla/firefox` when reading the dashboard session |
+| `BILLING_BLACKSMITH_FIREFOX_PROFILE` | Firefox profile path or profile directory name under the Firefox home |
 
 Only configured providers are fetched. AWS and Azure use their authenticated
 CLIs; Anthropic and OpenRouter use their official APIs; GitHub Actions uses the
-official API through `gh`. Live usage and monetary values do not have
-environment-variable overrides. See [Affine billing map](billing.md) for the
-normalization and forecast semantics.
+official API through `gh`; Blacksmith uses the Firefox `app.blacksmith.sh`
+session. Live usage and monetary values do not have environment-variable
+overrides. See [Affine billing map](billing.md) for the normalization and
+forecast semantics.
 
 ## Git status overlay
 

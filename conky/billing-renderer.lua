@@ -86,6 +86,17 @@ return function(shared, repo_root)
     { 'Z' },
   }
 
+  -- Blacksmith C-block from the 32×32 favicon, inner quarter-circle as a cubic.
+  local blacksmith_mark_ops = {
+    { 'M', 24.82, 10.16 },
+    { 'L', 7.18, 10.16 },
+    { 'L', 7.18, 16.04 },
+    { 'C', 7.18, 19.287, 9.813, 21.92, 13.06, 21.92 },
+    { 'L', 24.82, 21.92 },
+    { 'L', 24.82, 10.16 },
+    { 'Z' },
+  }
+
   local function hex_rgb(hex)
     return tonumber(hex:sub(1, 2), 16) / 255,
       tonumber(hex:sub(3, 4), 16) / 255,
@@ -351,6 +362,8 @@ return function(shared, repo_root)
       )
     elseif provider.id == 'azure' then
       vector_mark(cr, azure_mark_ops, x, y, 13.0, 50, 50, provider.color, alpha)
+    elseif provider.id == 'blacksmith' then
+      vector_mark(cr, blacksmith_mark_ops, x, y, 13.0, 32, 32, provider.color, alpha)
     else
       bead(cr, x, y, 4.3, provider.color, alpha)
     end
@@ -364,6 +377,8 @@ return function(shared, repo_root)
     elseif provider.id == 'azure' then
       -- The A is wide at the base, which is the side the past trail approaches.
       return 10.5
+    elseif provider.id == 'blacksmith' then
+      return 8.2
     end
     return 5.5
   end

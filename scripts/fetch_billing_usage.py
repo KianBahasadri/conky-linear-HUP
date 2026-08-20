@@ -11,7 +11,11 @@ import calendar
 import json
 import os
 import re
+import shutil
+import sqlite3
 import subprocess
+import tempfile
+import time as pytime
 import urllib.parse
 import urllib.request
 from datetime import date, datetime, time, timedelta, timezone
@@ -33,6 +37,11 @@ AZURE_COLOR = "38bdf8"
 ANTHROPIC_COLOR = "ff8f73"
 OPENROUTER_COLOR = "c8ff00"
 GITHUB_ACTIONS_COLOR = "3fb950"
+BLACKSMITH_COLOR = "f0fb29"
+BLACKSMITH_API_BASE = "https://dashboardbackend.blacksmith.sh/api"
+BLACKSMITH_USER_AGENT = (
+    "Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0"
+)
 GITHUB_API_VERSION = "2026-03-10"
 GITHUB_ACTIONS_PLAN_MINUTES = {
     "free": Decimal("2000"),
@@ -1064,6 +1073,185 @@ def github_actions_provider(period, timeout):
     }
 
 
+def firefox_home_dir():
+    configured = os.environ.get("BILLING_BLACKSMITH_FIREFOX_HOME", "").strip()
+    if configured:
+        return Path(configured).expanduser()
+    return Path.home() / ".mozilla" / "firefox"
+
+
+def iter_firefox_cookie_dbs():
+    home = firefox_home_dir()
+    configured = os.environ.get("BILLING_BLACKSMITH_FIREFOX_PROFILE", "").strip()
+    if configured:
+        path = Path(configured).expanduser()
+        if not path.is_absolute():
+            path = home / configured
+        db_path = path if path.name == "cookies.sqlite" else path / "cookies.sqlite"
+        if not db_path.is_file():
+            raise ProviderError(f"Firefox cookies.sqlite missing: {db_path}")
+        yield db_path
+        return
+    found = False
+    dbs = sorted(
+        home.glob("*/cookies.sqlite"),
+        key=lambda path: ("default" not in path.parent.name.lower(), path.parent.name),
+    )
+    for db_path in dbs:
+        found = True
+        yield db_path
+    if not found:
+        raise ProviderError(f"no Firefox cookies.sqlite under {home}")
+
+
+def read_firefox_blacksmith_cookies():
+    now = int(pytime.time())
+    for db_path in iter_firefox_cookie_dbs():
+        with tempfile.TemporaryDirectory(prefix="blacksmith-ff-cookies-") as tmp_dir:
+            tmp_db = Path(tmp_dir) / "cookies.sqlite"
+            shutil.copy2(db_path, tmp_db)
+            for suffix in ("-wal", "-shm"):
+                sibling = Path(str(db_path) + suffix)
+                if sibling.is_file():
+                    shutil.copy2(sibling, Path(str(tmp_db) + suffix))
+            connection = sqlite3.connect(f"file:{tmp_db}?mode=ro", uri=True)
+            try:
+                rows = connection.execute(
+                    """
+                    SELECT name, value, expiry
+                    FROM moz_cookies
+                    WHERE host LIKE '%blacksmith.sh'
+                    ORDER BY name COLLATE NOCASE
+                    """
+                ).fetchall()
+            finally:
+                connection.close()
+        cookies = {}
+        for name, value, expiry in rows:
+            if not name or value is None:
+                continue
+            try:
+                expiry_seconds = int(expiry or 0)
+            except (TypeError, ValueError):
+                expiry_seconds = 0
+            if expiry_seconds > 10_000_000_000:
+                expiry_seconds //= 1000
+            if expiry_seconds and expiry_seconds < now:
+                continue
+            cookies[str(name)] = str(value)
+        if cookies.get("blacksmith_session"):
+            return cookies
+    raise ProviderError(
+        "Firefox has no live Blacksmith session; log into app.blacksmith.sh"
+    )
+
+
+def blacksmith_cookie_header():
+    configured = os.environ.get("BILLING_BLACKSMITH_COOKIE", "").strip()
+    if configured:
+        return configured
+    cookies = read_firefox_blacksmith_cookies()
+    preferred = ["blacksmith_session", "XSRF-TOKEN"]
+    names = [name for name in preferred if name in cookies] + sorted(
+        name for name in cookies if name not in preferred
+    )
+    return "; ".join(f"{name}={cookies[name]}" for name in names)
+
+
+def blacksmith_xsrf_token(cookie_header):
+    for part in cookie_header.split(";"):
+        name, separator, value = part.strip().partition("=")
+        if separator and name == "XSRF-TOKEN":
+            return urllib.parse.unquote(value)
+    return ""
+
+
+def blacksmith_api(path, timeout):
+    cookie_header = blacksmith_cookie_header()
+    headers = {
+        "Accept": "application/json",
+        "User-Agent": BLACKSMITH_USER_AGENT,
+        "Cookie": cookie_header,
+        "Origin": "https://app.blacksmith.sh",
+        "Referer": "https://app.blacksmith.sh/",
+        "X-Requested-With": "XMLHttpRequest",
+    }
+    xsrf = blacksmith_xsrf_token(cookie_header)
+    if xsrf:
+        headers["X-XSRF-TOKEN"] = xsrf
+    url = BLACKSMITH_API_BASE + path
+    return request_json(url, headers=headers, timeout=timeout)
+
+
+def blacksmith_org_name(timeout):
+    configured = os.environ.get("BILLING_BLACKSMITH_ORG", "").strip()
+    if configured:
+        return configured
+    identity = blacksmith_api("/user", timeout)
+    org = str(identity.get("active_org_name") or "").strip()
+    if org:
+        return org
+    payload = blacksmith_api("/user/github/orgs", timeout)
+    org = str(payload.get("active_org_name") or "").strip()
+    if org:
+        return org
+    installations = payload.get("installations") or []
+    if len(installations) == 1:
+        login = str(
+            ((installations[0].get("account") or {}).get("login") or "")
+        ).strip()
+        if login:
+            return login
+    raise ProviderError("Blacksmith session has no active GitHub organization")
+
+
+def blacksmith_provider(period, timeout):
+    org = blacksmith_org_name(timeout)
+    query = urllib.parse.urlencode({"date": period["today"].isoformat()})
+    path = "/user/github/orgs/{}/usage?{}".format(
+        urllib.parse.quote(org, safe=""),
+        query,
+    )
+    payload = blacksmith_api(path, timeout)
+    billable = max(
+        Decimal(0),
+        as_decimal(payload.get("billable_minutes", 0), "Blacksmith billable minutes"),
+    )
+    allowance = as_decimal(
+        payload.get("free_minutes"), "Blacksmith free minutes"
+    )
+    if allowance is None or allowance <= 0:
+        raise ProviderError("Blacksmith omitted a free-minute allowance")
+    # Dashboard stores 1-vCPU weighted minutes and the advertised free
+    # allowance as x64 2vCPU minutes; divide billable by 2 to plot the same
+    # unit the 3,000-minute free tier is denominated in.
+    consumed = billable / Decimal(2)
+    forecast = max(consumed, linear_month_forecast(consumed, period))
+    return {
+        "id": "blacksmith",
+        "code": "BSM",
+        "name": "Blacksmith",
+        "color": BLACKSMITH_COLOR,
+        "kind": "allowance",
+        "ok": True,
+        "stale": False,
+        "org": org,
+        "currentMinutes": rounded(consumed, 2),
+        "includedMinutes": rounded(allowance, 2),
+        "forecastMinutes": rounded(forecast, 2),
+        "billableWeightedMinutes": rounded(billable, 2),
+        "currentPressure": rounded(consumed / allowance),
+        "forecastPressure": rounded(forecast / allowance),
+        "forecastAvailable": True,
+        "source": "blacksmith-usage",
+        "forecastSource": "linear-month-pace",
+        "detail": (
+            f"{float(consumed):,.0f} / {float(allowance):,.0f} min · "
+            f"{float(forecast):,.0f} EOM"
+        ),
+    }
+
+
 def configured(*names):
     return any(os.environ.get(name, "").strip() for name in names)
 
@@ -1199,12 +1387,22 @@ def collect(reference=None):
             if "github_actions" in old:
                 providers.append(stale_provider(old["github_actions"], error))
 
+    if env_flag("BILLING_BLACKSMITH_ENABLED"):
+        try:
+            providers.append(blacksmith_provider(period, timeout))
+        except Exception as error:
+            message = clean_error(error)
+            errors.append({"provider": "blacksmith", "error": message})
+            if "blacksmith" in old:
+                providers.append(stale_provider(old["blacksmith"], error))
+
     provider_order = {
         "aws": 0,
         "anthropic": 1,
         "openrouter": 2,
         "github_actions": 3,
-        "azure": 4,
+        "blacksmith": 4,
+        "azure": 5,
     }
     providers.sort(key=lambda item: provider_order.get(item.get("id"), 99))
     if not providers and not errors:
@@ -1213,7 +1411,7 @@ def collect(reference=None):
                 "provider": "configuration",
                 "error": (
                     "No billing providers configured; set a provider cap, OpenRouter key, "
-                    "or enable Azure / GitHub Actions"
+                    "or enable Azure / GitHub Actions / Blacksmith"
                 ),
             }
         )

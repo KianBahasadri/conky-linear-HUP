@@ -21,11 +21,12 @@ geometry is unusual, but the underlying axes are conventional:
 - A provider glyph marks the current observation. A solid trail through
   observed daily spend sits on the past side of the yellow now-line. A dotted
   segment is the now-to-EOM forecast, and the hollow diamond is the EOM
-  landing. GitHub, OpenRouter, and Azure use their recognizable Octocat,
-  geometric `OR`, and Azure `A` marks; providers without a compact vector mark
-  retain the filled bead. OpenRouter is `#c8ff00`; the other providers keep
-  the mockup palette. Trails meet the marker edge without continuing
-  underneath the service glyph. Diamonds carry no text labels or leader lines.
+  landing. GitHub, OpenRouter, Azure, and Blacksmith use their recognizable
+  Octocat, geometric `OR`, Azure `A`, and C-block marks; providers without a
+  compact vector mark retain the filled bead. OpenRouter is `#c8ff00`;
+  Blacksmith is `#f0fb29`; the other providers keep the mockup palette. Trails
+  meet the marker edge without continuing underneath the service glyph.
+  Diamonds carry no text labels or leader lines.
 - A dimmed trajectory means its last successful value is being retained after
   a failed refresh. A bead with no forecast line or diamond means there is not
   yet enough real history to calculate a forecast.
@@ -112,6 +113,23 @@ and storage are excluded from the minutes percentage because they have separate
 billing rules. The JSON cache retains GitHub's reported net Actions charge as a
 separate `currentPayableUsd` diagnostic.
 
+## Blacksmith
+
+Blacksmith is an included-minutes allowance for the GitHub organization that
+the Firefox `app.blacksmith.sh` session is using. Enable it with
+`BILLING_BLACKSMITH_ENABLED`; do not set a cap. The dashboard
+[usage](https://app.blacksmith.sh) API returns `billable_minutes` as 1-vCPU
+weighted minutes and `free_minutes` as the advertised x64 2vCPU allowance
+(3,000 on the current free tier). The map divides billable by two so the
+current point is 2vCPU minutes consumed divided by that live allowance, then
+projects calendar pace through the common EOM. There is no daily history
+endpoint, so Blacksmith renders the current bead and dotted forecast without a
+past trail.
+
+Org login follows `BILLING_BLACKSMITH_ORG` when set, otherwise the session's
+`active_org_name`. Auth is the Firefox `blacksmith_session` cookie, or
+`BILLING_BLACKSMITH_COOKIE` when that is set.
+
 ## Live sources
 
 - AWS uses the authenticated [AWS CLI Cost Explorer](https://docs.aws.amazon.com/cli/latest/reference/ce/get-cost-and-usage.html) `UnblendedCost` total.
@@ -130,6 +148,9 @@ separate `currentPayableUsd` diagnostic.
   repository visibility. The token needs the `user` scope. Plan allowances and
   free public-repository behavior follow GitHub's
   [Actions billing rules](https://docs.github.com/en/billing/concepts/product-billing/github-actions).
+- Blacksmith uses the Firefox `app.blacksmith.sh` session against the dashboard
+  usage API for the active GitHub organization. Spend and the free-minute
+  ceiling come from that response; they are not configured in `.env`.
 
 Current spend, current balance, burn rate, and forecasts are always fetched or
 derived. They are never configured in `.env`. The complete setup variables are

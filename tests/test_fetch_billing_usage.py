@@ -13,6 +13,7 @@ def isolate_cache(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(billing, "HISTORY_PATH", tmp_path / "billing-history.json")
     monkeypatch.setattr(billing, "log_event", lambda _message: None)
+    monkeypatch.setenv("BILLING_BLACKSMITH_ENABLED", "0")
 
 
 def test_month_period_uses_one_inclusive_calendar_eom():
@@ -286,6 +287,32 @@ def test_github_actions_uses_private_standard_runner_minutes(monkeypatch):
     assert provider["currentPressure"] == 0.4123
     assert provider["forecastPressure"] == 0.6728
     assert provider["forecastSource"] == "linear-month-pace"
+
+
+def test_blacksmith_plots_2vcpu_minutes_against_live_free_allowance(monkeypatch):
+    def fake_blacksmith_api(path, _timeout):
+        if path == "/user":
+            return {"active_org_name": "klever-lab"}
+        if path.startswith("/user/github/orgs/klever-lab/usage?"):
+            return {"billable_minutes": 1050, "free_minutes": 3000}
+        raise AssertionError(f"unexpected Blacksmith API path: {path}")
+
+    monkeypatch.setattr(billing, "blacksmith_api", fake_blacksmith_api)
+
+    provider = billing.blacksmith_provider(
+        billing.month_period(date(2026, 8, 19)), 5
+    )
+
+    assert provider["id"] == "blacksmith"
+    assert provider["kind"] == "allowance"
+    assert provider["org"] == "klever-lab"
+    assert provider["currentMinutes"] == 525
+    assert provider["includedMinutes"] == 3000
+    assert provider["forecastMinutes"] == 856.58
+    assert provider["currentPressure"] == 0.175
+    assert provider["forecastPressure"] == 0.2855
+    assert provider["forecastSource"] == "linear-month-pace"
+    assert provider["source"] == "blacksmith-usage"
 
 
 def test_collect_live_providers_share_one_period_end(monkeypatch, tmp_path):
