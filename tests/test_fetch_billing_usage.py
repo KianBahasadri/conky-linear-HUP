@@ -373,6 +373,152 @@ def test_collect_live_providers_share_one_period_end(monkeypatch, tmp_path):
     assert azure["currentPressure"] == round(24.46 / 98.72, 4)
 
 
+def _stub_collect_providers(monkeypatch, tmp_path, *, azure_daily=None):
+    isolate_cache(monkeypatch, tmp_path)
+    monkeypatch.setenv("BILLING_AWS_CAP_USD", "25")
+    monkeypatch.setenv("BILLING_AZURE_ENABLED", "1")
+    monkeypatch.setenv("BILLING_ANTHROPIC_CAP_USD", "20")
+    monkeypatch.setenv("ANTHROPIC_ADMIN_KEY", "admin-key")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "management-key")
+    monkeypatch.setenv("BILLING_GITHUB_ACTIONS_ENABLED", "0")
+    monkeypatch.setattr(
+        billing, "fetch_aws_current", lambda *_args: Decimal("8.41")
+    )
+    monkeypatch.setattr(
+        billing,
+        "fetch_azure_credit_balance",
+        lambda *_args: {
+            "remaining": Decimal("74.26"),
+            "starting": Decimal("98.72"),
+            "spent": Decimal("24.46"),
+        },
+    )
+    monkeypatch.setattr(
+        billing, "fetch_azure_daily_usd", lambda *_args: azure_daily or {}
+    )
+    monkeypatch.setattr(
+        billing, "fetch_anthropic_current", lambda *_args: Decimal("6.04")
+    )
+    monkeypatch.setattr(
+        billing,
+        "fetch_openrouter_credits",
+        lambda *_args: {
+            "balance": Decimal("12.44"),
+            "totalUsage": Decimal("25.75"),
+            "totalCredits": Decimal("38.19"),
+        },
+    )
+    monkeypatch.setattr(
+        billing, "fetch_openrouter_daily_burn", lambda *_args: Decimal("0.43")
+    )
+
+
+def test_collect_stores_each_observation_and_plots_it_the_next_day(
+    monkeypatch, tmp_path
+):
+    _stub_collect_providers(monkeypatch, tmp_path)
+
+    first = billing.collect(date(2026, 8, 18))
+    stored = json.loads((tmp_path / "billing-history.json").read_text(encoding="utf-8"))
+
+    assert stored["version"] == 2
+    by_id = {item["id"]: item for item in first["providers"]}
+    for provider_id, provider in by_id.items():
+        samples = stored["providers"][provider_id]
+        assert samples[-1]["date"] == "2026-08-18"
+        assert samples[-1]["pressure"] == provider["currentPressure"]
+        assert provider["history"] == []
+
+    second = billing.collect(date(2026, 8, 19))
+    for provider in second["providers"]:
+        assert provider["history"] == [
+            {"day": 18, "pressure": by_id[provider["id"]]["currentPressure"]}
+        ]
+
+
+def test_collect_does_not_store_stale_observations(monkeypatch, tmp_path):
+    _stub_collect_providers(monkeypatch, tmp_path)
+    billing.write_output(billing.collect(date(2026, 8, 18)))
+
+    def fail_aws(*_args):
+        raise billing.ProviderError("aws unavailable")
+
+    monkeypatch.setattr(billing, "fetch_aws_current", fail_aws)
+    second = billing.collect(date(2026, 8, 19))
+    aws = next(item for item in second["providers"] if item["id"] == "aws")
+    stored = json.loads((tmp_path / "billing-history.json").read_text(encoding="utf-8"))
+
+    assert aws["stale"] is True
+    assert [sample["date"] for sample in stored["providers"]["aws"]] == ["2026-08-18"]
+    assert aws["history"] == [
+        {"day": 18, "pressure": 0.3364}
+    ]
+
+
+def test_collect_seeds_azure_store_from_daily_api(monkeypatch, tmp_path):
+    _stub_collect_providers(
+        monkeypatch,
+        tmp_path,
+        azure_daily={
+            date(2026, 8, 1): Decimal("4.00"),
+            date(2026, 8, 3): Decimal("6.00"),
+        },
+    )
+
+    output = billing.collect(date(2026, 8, 19))
+    azure = next(item for item in output["providers"] if item["id"] == "azure")
+    stored = json.loads((tmp_path / "billing-history.json").read_text(encoding="utf-8"))
+    azure_dates = [sample["date"] for sample in stored["providers"]["azure"]]
+
+    assert azure["history"][0] == {"day": 1, "pressure": round(4.00 / 98.72, 4)}
+    assert azure["history"][2] == {"day": 3, "pressure": round(10.00 / 98.72, 4)}
+    assert azure["history"][-1]["day"] == 18
+    assert "2026-08-01" in azure_dates
+    assert "2026-08-03" in azure_dates
+    assert "2026-08-19" in azure_dates
+
+
+def test_collect_keeps_openrouter_v1_samples_when_migrating_the_store(
+    monkeypatch, tmp_path
+):
+    isolate_cache(monkeypatch, tmp_path)
+    (tmp_path / "billing-history.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "openrouter": [
+                    {
+                        "date": "2026-08-09",
+                        "observedAt": "2026-08-09T12:00:00Z",
+                        "totalUsageUsd": 21.0,
+                        "balanceUsd": 16.0,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("BILLING_AWS_CAP_USD", "25")
+    monkeypatch.setenv("BILLING_AZURE_ENABLED", "0")
+    monkeypatch.setenv("BILLING_AZURE_SUBSCRIPTION_ID", "")
+    monkeypatch.setenv("BILLING_GITHUB_ACTIONS_ENABLED", "0")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "")
+    monkeypatch.setenv("ANTHROPIC_ADMIN_KEY", "")
+    monkeypatch.setenv("ANTHROPIC_ADMIN_API_KEY", "")
+    monkeypatch.setenv("BILLING_ANTHROPIC_CAP_USD", "")
+    monkeypatch.setattr(
+        billing, "fetch_aws_current", lambda *_args: Decimal("8.41")
+    )
+
+    billing.collect(date(2026, 8, 19))
+    stored = json.loads((tmp_path / "billing-history.json").read_text(encoding="utf-8"))
+
+    assert stored["version"] == 2
+    assert stored["providers"]["openrouter"][0]["date"] == "2026-08-09"
+    assert stored["providers"]["openrouter"][0]["totalUsageUsd"] == 21.0
+    assert stored["providers"]["aws"][-1]["date"] == "2026-08-19"
+
+
 def _azure_url(command):
     return command[command.index("--url") + 1]
 

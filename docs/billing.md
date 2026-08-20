@@ -18,8 +18,8 @@ geometry is unusual, but the underlying axes are conventional:
   beyond it makes an over-cap forecast cross a real boundary instead of merely
   changing color. Neither boundary carries a text label.
 - The dashed diagonal is calendar pace: 50% of the month against 50% of cap.
-- A provider glyph marks the current observation. A solid trail through
-  observed daily spend sits on the past side of the yellow now-line. A dotted
+- A provider glyph marks the current observation. A solid trail of stored
+  daily observations sits on the past side of the yellow now-line. A dotted
   segment is the now-to-EOM forecast, and the hollow diamond is the EOM
   landing. GitHub, OpenRouter, Azure, and Blacksmith use their recognizable
   Octocat, geometric `OR`, official folded Azure `A`, and C-block marks;
@@ -49,6 +49,29 @@ When no provider has usable billing data, the map is dimmed and a solid red
 `NO BILLING DATA` popup is drawn over its center with a prompt to check the
 billing log. Valid stale values still render, dimmed. The popup is reserved
 for the state where there is nothing trustworthy to plot.
+
+## Observation history
+
+Every successful collect stores that day's observation for every live
+provider. The solid past trail is that series growing over time: one sample
+per provider per local calendar date, overwritten by later fetches on the
+same day. The map plots stored days in the current month that are before
+today. It does not invent missing days, interpolate across gaps, or write a
+sample when a refresh failed and the previous value is only being retained as
+stale.
+
+This is independent of whether a provider exposes a daily API. AWS, Anthropic,
+GitHub Actions, and Blacksmith therefore gain a trail only on days the fetcher
+actually ran. Azure still seeds the same store from Cost Management daily rows
+when those are available, so its trail can be complete even if the overlay was
+not running on those days. OpenRouter's plotted pressure is remaining-runway
+future draw (the bead stays on the now-line at zero), so its stored trail sits
+on the baseline; the same file still keeps dated total-usage samples for the
+burn-rate fallback.
+
+Do not drop this store in favor of “current bead plus forecast only.” The
+intention is that history accumulates from collection and is what draws the
+historical line.
 
 ## OpenRouter
 
@@ -91,9 +114,9 @@ diamond is the EOM landing against that same `X`. Remaining credit is kept
 as a diagnostic, not as the map's 100% ceiling.
 
 Daily Cost Management rows (usage-detail `costInUSD` if that query is
-throttled) become a solid trail of cumulative `Y_d / X` for each past day of
-the month. That trail stays left of the now-line; the dotted forecast is the
-prediction.
+throttled) are written into the shared observation store as cumulative
+`Y_d / X` for each past day of the month, alongside today's collect. That
+trail stays left of the now-line; the dotted forecast is the prediction.
 
 If the credit summary omits spend, month-to-date Cost Management (or usage
 `costInUSD` when Cost Management is throttled) fills `Y`.
@@ -124,9 +147,9 @@ the Firefox `app.blacksmith.sh` session is using. Enable it with
 weighted minutes and `free_minutes` as the advertised x64 2vCPU allowance
 (3,000 on the current free tier). The map divides billable by two so the
 current point is 2vCPU minutes consumed divided by that live allowance, then
-projects calendar pace through the common EOM. There is no daily history
-endpoint, so Blacksmith renders the current bead and dotted forecast without a
-past trail.
+projects calendar pace through the common EOM. There is no provider daily
+history endpoint; the past trail is the local collection store, the same as
+AWS, Anthropic, and GitHub Actions.
 
 Org login follows `BILLING_BLACKSMITH_ORG` when set, otherwise the session's
 `active_org_name`. Auth is the Firefox `blacksmith_session` cookie, or

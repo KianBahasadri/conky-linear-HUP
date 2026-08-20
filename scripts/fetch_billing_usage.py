@@ -5,6 +5,9 @@ Metered services are normalized against user-defined monthly caps. OpenRouter
 is prepaid against remaining credit. Azure is prepaid against the credit
 pool the current month started with: month-to-date spend is the current
 point, and calendar pace projects that spend through the same month end.
+
+Every successful collect stores that day's observation. The map's solid past
+trail is that growing series; missing days are not invented.
 """
 
 import calendar
@@ -807,31 +810,152 @@ def load_json(path, fallback):
         return fallback
 
 
-def update_openrouter_history(today, observed_at, credits):
-    history = load_json(HISTORY_PATH, {"version": 1, "openrouter": []})
-    samples = history.get("openrouter") or []
-    cutoff = today - timedelta(days=30)
-    kept = []
+def history_retention_cutoff(today):
+    return min(today.replace(day=1), today - timedelta(days=30))
+
+
+def load_observation_history():
+    raw = load_json(HISTORY_PATH, {})
+    providers = {}
+    stored = raw.get("providers")
+    if isinstance(stored, dict):
+        for provider_id, samples in stored.items():
+            if isinstance(samples, list):
+                providers[str(provider_id)] = [
+                    dict(sample)
+                    for sample in samples
+                    if isinstance(sample, dict)
+                ]
+    # v1 files kept OpenRouter samples at the top level.
+    if "openrouter" not in providers and isinstance(raw.get("openrouter"), list):
+        providers["openrouter"] = [
+            dict(sample) for sample in raw["openrouter"] if isinstance(sample, dict)
+        ]
+    return providers
+
+
+def upsert_observation(store, provider_id, sample_date, observed_at, fields):
+    samples = store.setdefault(provider_id, [])
+    iso = sample_date.isoformat()
+    existing = None
     for sample in samples:
+        if str(sample.get("date") or "") == iso:
+            existing = sample
+            break
+    if existing is None:
+        existing = {"date": iso}
+        samples.append(existing)
+    existing["observedAt"] = observed_at
+    existing.update(fields)
+    return existing
+
+
+def save_observation_history(store, today):
+    cutoff = history_retention_cutoff(today)
+    cleaned = {}
+    for provider_id, samples in store.items():
+        by_date = {}
+        for sample in samples:
+            if not isinstance(sample, dict):
+                continue
+            try:
+                sample_date = date.fromisoformat(str(sample.get("date") or ""))
+            except ValueError:
+                continue
+            if sample_date < cutoff:
+                continue
+            kept = dict(sample)
+            kept["date"] = sample_date.isoformat()
+            by_date[kept["date"]] = kept
+        if by_date:
+            cleaned[str(provider_id)] = [by_date[key] for key in sorted(by_date)]
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    common.atomic_write_json(
+        HISTORY_PATH, {"version": 2, "providers": cleaned}
+    )
+    return cleaned
+
+
+def map_history_from_store(store, provider_id, period):
+    points = []
+    for sample in store.get(provider_id) or []:
         try:
             sample_date = date.fromisoformat(str(sample.get("date") or ""))
         except ValueError:
             continue
-        if sample_date >= cutoff and sample_date != today:
-            kept.append(sample)
-    kept.append(
+        if sample_date < period["periodStart"] or sample_date >= period["today"]:
+            continue
+        if "pressure" not in sample:
+            continue
+        try:
+            pressure = float(sample["pressure"])
+        except (TypeError, ValueError):
+            continue
+        day_number = (sample_date - period["periodStart"]).days + 1
+        points.append({"day": day_number, "pressure": pressure})
+    points.sort(key=lambda item: item["day"])
+    return points
+
+
+def record_collected_observations(period, observed_at, providers):
+    store = load_observation_history()
+    today = period["today"]
+    for provider in providers:
+        if not provider.get("ok") or provider.get("stale"):
+            continue
+        provider_id = str(provider.get("id") or "")
+        if not provider_id:
+            continue
+        upsert_observation(
+            store,
+            provider_id,
+            today,
+            observed_at,
+            {"pressure": provider.get("currentPressure", 0)},
+        )
+        if provider_id != "azure":
+            continue
+        for sample in provider.get("history") or []:
+            try:
+                day_number = int(sample.get("day") or 0)
+            except (TypeError, ValueError):
+                continue
+            if day_number < 1:
+                continue
+            sample_date = period["periodStart"] + timedelta(days=day_number - 1)
+            if sample_date >= today:
+                continue
+            upsert_observation(
+                store,
+                "azure",
+                sample_date,
+                observed_at,
+                {"pressure": sample.get("pressure", 0)},
+            )
+    return save_observation_history(store, today)
+
+
+def attach_map_history(providers, store, period):
+    for provider in providers:
+        provider["history"] = map_history_from_store(
+            store, str(provider.get("id") or ""), period
+        )
+
+
+def update_openrouter_history(today, observed_at, credits):
+    store = load_observation_history()
+    upsert_observation(
+        store,
+        "openrouter",
+        today,
+        observed_at,
         {
-            "date": today.isoformat(),
-            "observedAt": observed_at,
             "totalUsageUsd": rounded(credits.get("totalUsage"), 6),
             "balanceUsd": rounded(credits.get("balance"), 6),
-        }
+        },
     )
-    kept.sort(key=lambda sample: sample["date"])
-    output = {"version": 1, "openrouter": kept}
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    common.atomic_write_json(HISTORY_PATH, output)
-    return kept
+    store = save_observation_history(store, today)
+    return store.get("openrouter") or []
 
 
 def burn_from_local_history(samples):
@@ -1415,6 +1539,9 @@ def collect(reference=None):
                 ),
             }
         )
+
+    store = record_collected_observations(period, observed_at, providers)
+    attach_map_history(providers, store, period)
 
     return {
         "ok": bool(providers),

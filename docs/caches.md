@@ -33,7 +33,7 @@
 - `cache/resource-net-peaks.tsv`: hourly max IN/OUT byte rates from the resource monitor; retained for 7 days and used as the NET sparkline scale.
 - `cache/billing-usage.json`: full billing observations, normalized pressures, forecast details, data sources, and per-provider errors.
 - `cache/billing-usage-render.tsv`: compact affine-map input consumed by the Lua renderer; it contains no credentials.
-- `cache/billing-history.json`: dated OpenRouter total-usage observations retained for 30 days as a burn-rate fallback when live analytics is unavailable.
+- `cache/billing-history.json`: dated observations for every billing provider. Each successful collect upserts that day's pressure (the affine map's past trail). OpenRouter samples also keep total-usage / balance for the burn-rate fallback. Retained from the earlier of month-start and 30 days ago.
 
 ## Logs
 
