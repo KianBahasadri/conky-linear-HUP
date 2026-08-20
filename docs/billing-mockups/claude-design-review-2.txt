@@ -1,0 +1,116 @@
+I read the brief, inspected both PNGs, and skimmed `rate-limit-panel-renderer.lua` / `weather-renderer.lua` for the lighting language (shadow ladder, gradient stops, lit-text double pass). Nothing modified.
+
+---
+
+# 1. Why forecast-first is the best of three and still feels gimmicky
+
+Concept C is strongest because it finally asks the right question — *where does this end up* — instead of *where is it now*. But three things sabotage it.
+
+**It speaks five grammars at once.** In 424 px it uses: chip row, hero number pair, a novel three-marker rail, a 2×2 card grid with sparklines, and a footer verdict. Each is a separate parsing convention. An ambient object should have **one** grammar and one skeleton your eye learns in a week and then never re-reads.
+
+**The sparklines are garnish, not data.** At ~90×36 px with no shared axis, no zero line, and no common scale, four little diagonal strokes carry almost no recoverable information. They *look* like insight. Worse, each tile has its own implicit y-scale, so the four lines are mutually incomparable — a chart crime the eye can't detect, which is exactly the kind of dishonesty an anti-surprise-bill tool must not commit.
+
+**Risk is stored as arithmetic, not as shape.** To answer "should I care?", you read four forecast numbers, recall four caps, and compare four pairs. The verdict line at the bottom (`NO PROVIDER PROJECTED OVER CAP`) proves it: the panel had to *compute the answer in text* because the graphics couldn't show it. When the picture needs a sentence to explain itself, the picture is decorative.
+
+Two smaller costs: every element is at similar brightness, so there is no rest state (a calm month should look nearly blank, not fully lit); and two-decimal currency at 22 px invites precision reading that never changes a decision.
+
+# 2. Three genuinely different systems
+
+## System A — **The Horizon** (shared time axis, depletion trajectories)
+
+One plot. X is the billing period, day 1 → reset. Y is a **dimensionless depletion fraction**, 0 = nothing used, 1.0 = the ceiling. A single horizontal **horizon line** at 1.0 spans the panel. Each provider is a thin colored thread: solid polyline for actuals up to today, dashed ray extrapolating to period end. If a ray crosses the horizon, you get a small triangle at the crossing — and its **x position is the date you get hurt**.
+
+Mapping:
+- *MTD spend* → thread height today.
+- *Budget* → the horizon, shared by all, never moves.
+- *Forecast* → dashed ray endpoint at right edge.
+- *Pace* → the ray's slope, read directly against neighbours.
+- *Prepaid balance* → same axis, defined as `1 − balance/pool_at_period_start`; a shrinking pool also climbs toward the horizon. Crossing = pool empty.
+- *Currency* → never summed; y is a ratio, x is time. Both are currency-free by construction.
+
+Peripheral readability: it uses **position along a common scale**, the highest-fidelity visual channel there is, and reduces the whole question to *is anything poking above the line?* The skeleton (horizon + today hairline) is static, so only thin threads move — no relayout, no reshuffling. A calm month is a few low flat threads on a dark field; risk literally rises.
+
+## System B — **The Runway Comb** (breach-date spine)
+
+Collapse each provider to one datum: projected breach date. A single horizontal axis, compressed toward the right (today at left, "90d+ / never" as a wide safe zone at the right). Each provider is a vertical tick at its breach date; tick **height** = money at stake, so a $400 AWS breach towers over a $5 OpenRouter pool. Uncapped providers leave the axis entirely and sit as hollow diamonds in a gutter above it — "no ceiling, no forecast."
+
+Extremely calm; the silhouette is "how far right is the cluster." Honest weakness: it discards magnitude-over-time entirely, and log-ish time compression is a second convention to learn. Best as a *strip* inside another system, not a whole panel.
+
+## System C — **The Pace Field** (2D phase portrait)
+
+Scatter: x = fraction of budget consumed, y = burn-rate ratio (actual rate ÷ budgeted rate). Dot area = absolute money. A diagonal safe corridor runs bottom-left → top-right; above the corridor means you're outrunning your budget. Everything fits in ~200×140 px and it is genuinely information-dense.
+
+I'm including it to reject it honestly in §4: a 2D phase portrait is a *thinking* chart. It rewards study and punishes glances, which is the opposite of the requirement.
+
+# 3. Two tempting ideas to reject
+
+**Spend treemap / mosaic by provider.** Looks gorgeous in a screenshot. Fails for three reasons: area is a weak, systematically-underestimated channel; comparing areas across USD/CAD/credit pools is exactly the dishonest summation the brief forbids; and worst, the tiles **reshuffle** as values change, so the panel's silhouette is unstable. A peripheral display that re-arranges itself steals attention every repaint.
+
+**Radial budget clock / sunburst month dial.** The seduction is obvious — the month is cyclic, so a dial feels inevitable. But angular position is poorly read peripherally, concentric arcs at different radii are not length-comparable, and over-budget has nowhere to go past 360°: the one state that most needs a loud visual has no room. Also rejected: **per-provider sparklines** (unscaled, uncomparable) and any **grand-total odometer** across mixed currencies.
+
+# 4. Chosen concept and Cairo recipe — **The Horizon**
+
+Panel **424 × 308**, radius 18. Reuse the existing shell verbatim: shadow ladder at offsets (+4,+7), (+2,+3), (+1,+2), body fill vertical gradient, 1 px outer stroke, inner hairline inset 8, title chips at `y = −9`. Font JetBrains Mono throughout.
+
+### Coordinate frame
+
+```
+plot_x0 = 62   plot_x1 = 396      (width 334)
+plot_y0 = 74   plot_y1 = 214      (height 140)
+y(p)   = 214 − 140 * clamp(p, 0, 1.30) / 1.30      -- p = depletion fraction
+y_horizon = y(1.0) = 106.5        -- 32 px of overshoot headroom above it
+x(day) = 62 + 334 * (day / days_in_period)
+x_today = x(elapsed_days)
+```
+
+### Bands, back to front
+
+1. **Danger wash** — rect `62,74 → 396,106.5`, flat `#ff5d5d @ 0.05`.
+2. **Week gridlines** — vertical 1 px at day 7/14/21/28, `#ffffff @ 0.05`.
+3. **Horizon line** — 1 px solid across full plot width, `#ff5d5d @ 0.50`; 7 px label `CAP` right-aligned at `x=396, y=y_horizon−5`, alpha 0.4.
+4. **Today hairline** — 1 px vertical at `x_today`, `#ffffff @ 0.16`, with 5 px brighter tick stubs at both plot edges; 7 px day number centered below at `y=222`.
+5. **Threads** (per provider, up to 6):
+   - *glow pass*: same path, 4 px wide, hue @ 0.16.
+   - *actual*: polyline of daily samples, 2 px, hue @ 0.95, round joins.
+   - *forecast ray*: `(x_today, y_now) → (396, y_forecast)`, 1.5 px, dash `[3,3]`, hue @ 0.55.
+   - *endpoint*: 2.5 px filled dot at `(396, y_forecast)`.
+6. **Breach glyph** — if the ray crosses `y_horizon` at `x_c ≤ 396`: filled triangle, apex up, 5 px base, centered at `(x_c, y_horizon)`, hue @ 1.0; redraw the ray from `x_c` → `396` at 2 px, alpha 0.9. **This triangle is the only triangle in the panel.** Nothing else earns it.
+7. **Over-budget flood** — where the *actual* line is already above the horizon, fill the region between line and horizon with hue @ 0.12 and redraw that segment in `#ff5d5d`. Reads as a red sliver sitting on the horizon.
+
+### Header (y 12–62)
+
+- `y=24`: 8 px label `DEPLETION · AUG`, `#8892a6`.
+- `y=48`: **22 px hero = the nearest breach date**, e.g. `AWS · 22 AUG`, in that provider's hue with the lit double-pass. If none: `NO BREACH` in `#35e08d`.
+- Right-aligned, two 8 px lines at `y=40 / y=52`: `EOM $31.40` and `CAP $70 · 45%`, `#8892a6`.
+
+The hero is a **date**, not a dollar amount, because the panel's thesis is *when*.
+
+### Uncapped gutter (y 62–74)
+
+A 12 px band above the plot. Providers with no budget get a 3 px hollow ring at `x_today` on the gutter midline, plus a flat dotted trace at `#ffffff @ 0.22`. Nonverbal message: *no ceiling exists, so I cannot forecast risk for this one.*
+
+### Legend (y 232–292) — 2 columns × 3 rows, cell 167 × 20
+
+Strictly **one line per provider**: 6×6 rounded swatch in hue, 9 px 3–4 char code, then the single decisive value right-aligned in the cell — metered → `$31.40`, prepaid → `29d`. No bars, no sparklines, no secondary numbers. Value color = that provider's state color.
+
+### Footer (y 300)
+
+7 px @ 0.45: left `4/4 LIVE`, right `OLDEST 9H · NEXT 30M`.
+
+### State treatments (all nonverbal, all on the thread)
+
+| State | Treatment |
+|---|---|
+| Safe (`forecast < 0.85`) | thread @ 0.95, filled endpoint dot, nothing else |
+| Watch (`0.85–1.0`) | endpoint dot gains a 5 px hollow ring |
+| Breach forecast (`> 1.0`) | triangle at crossing + hot ray beyond it |
+| Over budget now | red flood wedge above horizon |
+| Stale (data older than 2× fetch interval) | whole thread alpha → 0.45, post-last-sample segment 1 px dotted gray, endpoint becomes hollow ring |
+| Unavailable | no thread at all; legend swatch @ 0.25, value replaced by a 12 px dim dash; footer count drops |
+| Uncapped | leaves the plot for the gutter ring |
+
+Chip row: `BURN` · `AUG` · worst-of state chip (`SAFE` green / `WATCH` amber / `OVER` red), reusing the existing chip geometry.
+
+### Why this survives all day
+
+The skeleton — horizon, today hairline, week grid — is **fixed pixels that never move**, so nothing in the panel relayouts between repaints. Only six thin threads change, and they change slowly. Encoding is a single channel (vertical position against one shared line) plus one reserved alarm glyph. A calm month renders as a mostly-dark field with low flat threads: peripherally, near-invisible. A bad month grows something that pokes through a red line — the one shape you'll notice from across the room without ever choosing to look.

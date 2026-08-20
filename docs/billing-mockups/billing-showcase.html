@@ -1,0 +1,615 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Conky Billing Panel — Cairo Mockups</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #080b14;
+      --panel: rgba(7, 14, 29, 0.82);
+      --panel-strong: rgba(5, 10, 22, 0.94);
+      --line: rgba(148, 163, 184, 0.16);
+      --line-bright: rgba(0, 229, 255, 0.34);
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --cyan: #00e5ff;
+      --violet: #a78bfa;
+      --green: #39ff88;
+      --amber: #ffb454;
+      --coral: #ff8f73;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      min-width: 1080px;
+      background:
+        radial-gradient(circle at 74% 13%, rgba(139, 92, 246, 0.17), transparent 34rem),
+        radial-gradient(circle at 23% 30%, rgba(0, 229, 255, 0.06), transparent 30rem),
+        linear-gradient(135deg, #080b14 0%, #161426 47%, #2d242d 100%);
+      color: var(--text);
+      font-family: "JetBrains Mono", "DejaVu Sans Mono", monospace;
+      min-height: 100vh;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      opacity: 0.22;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
+      background-size: 64px 64px;
+      mask-image: linear-gradient(to bottom, black, transparent 88%);
+    }
+
+    a { color: inherit; }
+
+    .shell {
+      width: min(1680px, calc(100vw - 64px));
+      margin: 0 auto;
+      padding: 58px 0 90px;
+      position: relative;
+    }
+
+    .eyebrow {
+      color: var(--cyan);
+      font-size: 11px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      margin-bottom: 14px;
+      text-shadow: 0 0 16px rgba(0, 229, 255, 0.38);
+    }
+
+    h1 {
+      font-size: clamp(32px, 4vw, 62px);
+      line-height: 1.02;
+      letter-spacing: -0.045em;
+      margin: 0;
+      max-width: 1050px;
+    }
+
+    h1 span {
+      color: var(--violet);
+      text-shadow: 0 0 28px rgba(167, 139, 250, 0.24);
+    }
+
+    .lead {
+      color: #cbd5e1;
+      font-size: 15px;
+      line-height: 1.75;
+      max-width: 880px;
+      margin: 24px 0 0;
+    }
+
+    .badges {
+      display: flex;
+      gap: 9px;
+      flex-wrap: wrap;
+      margin-top: 25px;
+    }
+
+    .badge {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 7px 11px;
+      color: var(--muted);
+      font-size: 10px;
+      background: rgba(2, 6, 23, 0.55);
+    }
+
+    .badge.live {
+      border-color: rgba(57, 255, 136, 0.38);
+      color: var(--green);
+      box-shadow: inset 0 1px rgba(255,255,255,0.06), 0 0 22px rgba(57,255,136,0.08);
+    }
+
+    section { margin-top: 72px; }
+
+    .section-head {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 30px;
+      margin-bottom: 20px;
+    }
+
+    h2 {
+      margin: 0;
+      font-size: 21px;
+      letter-spacing: -0.025em;
+    }
+
+    .section-note {
+      color: var(--muted);
+      font-size: 10px;
+      text-align: right;
+      line-height: 1.6;
+    }
+
+    .frame {
+      border: 1px solid var(--line);
+      border-top-color: var(--line-bright);
+      background: linear-gradient(180deg, rgba(13, 26, 48, 0.68), rgba(2, 6, 23, 0.72));
+      border-radius: 20px;
+      overflow: hidden;
+      box-shadow:
+        0 24px 80px rgba(0, 0, 0, 0.36),
+        0 0 0 1px rgba(139, 92, 246, 0.10),
+        inset 0 1px rgba(255,255,255,0.04);
+    }
+
+    .desktop-frame {
+      padding: 12px;
+      background: rgba(2, 6, 23, 0.76);
+    }
+
+    .desktop-frame img {
+      display: block;
+      width: 100%;
+      height: auto;
+      border-radius: 11px;
+    }
+
+    .placement-caption {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1px;
+      border-top: 1px solid var(--line);
+      background: var(--line);
+    }
+
+    .placement-caption > div {
+      padding: 18px 20px;
+      background: var(--panel-strong);
+    }
+
+    .label {
+      display: block;
+      color: var(--muted);
+      font-size: 8px;
+      letter-spacing: 0.14em;
+      margin-bottom: 8px;
+    }
+
+    .value {
+      font-size: 12px;
+      color: var(--text);
+    }
+
+    .switcher {
+      display: grid;
+      grid-template-columns: 292px 1fr;
+      min-height: 590px;
+    }
+
+    .variant-nav {
+      background: rgba(2, 6, 23, 0.72);
+      border-right: 1px solid var(--line);
+      padding: 20px;
+    }
+
+    .variant-button {
+      appearance: none;
+      width: 100%;
+      border: 1px solid transparent;
+      border-radius: 12px;
+      text-align: left;
+      padding: 16px;
+      margin: 0 0 9px;
+      color: var(--text);
+      background: transparent;
+      font: inherit;
+      cursor: pointer;
+      transition: 140ms ease;
+    }
+
+    .variant-button:hover {
+      border-color: rgba(0,229,255,0.20);
+      background: rgba(0,229,255,0.035);
+    }
+
+    .variant-button.active {
+      border-color: rgba(0,229,255,0.46);
+      background: linear-gradient(135deg, rgba(0,229,255,0.10), rgba(139,92,246,0.08));
+      box-shadow: inset 0 1px rgba(255,255,255,0.05), 0 0 28px rgba(0,229,255,0.06);
+    }
+
+    .variant-letter {
+      display: inline-grid;
+      place-items: center;
+      width: 24px;
+      height: 24px;
+      border: 1px solid currentColor;
+      border-radius: 7px;
+      color: var(--cyan);
+      margin-right: 9px;
+      font-size: 11px;
+    }
+
+    .variant-title {
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .variant-summary {
+      display: block;
+      color: var(--muted);
+      font-size: 9px;
+      line-height: 1.55;
+      margin: 10px 0 0 35px;
+    }
+
+    .recommendation {
+      margin-top: 26px;
+      padding: 14px;
+      border-left: 2px solid var(--green);
+      background: rgba(57,255,136,0.045);
+      color: #cbd5e1;
+      font-size: 9px;
+      line-height: 1.7;
+    }
+
+    .recommendation strong { color: var(--green); }
+
+    .viewer {
+      min-width: 0;
+      padding: 24px 30px 30px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .viewer-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      min-height: 42px;
+      margin-bottom: 18px;
+    }
+
+    .viewer-title {
+      font-size: 13px;
+      color: var(--text);
+    }
+
+    .viewer-meta {
+      color: var(--muted);
+      font-size: 9px;
+      margin-top: 6px;
+    }
+
+    .zoom-controls {
+      display: flex;
+      gap: 6px;
+    }
+
+    .zoom-button {
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      padding: 7px 10px;
+      background: rgba(2,6,23,0.52);
+      color: var(--muted);
+      font: 9px/1 "JetBrains Mono", monospace;
+      cursor: pointer;
+    }
+
+    .zoom-button.active {
+      color: var(--cyan);
+      border-color: rgba(0,229,255,0.44);
+    }
+
+    .canvas {
+      flex: 1;
+      min-height: 435px;
+      border: 1px solid rgba(148,163,184,0.10);
+      border-radius: 14px;
+      overflow: auto;
+      display: grid;
+      place-items: center;
+      padding: 34px;
+      background:
+        radial-gradient(circle at 65% 23%, rgba(139,92,246,0.13), transparent 25rem),
+        linear-gradient(135deg, #211b2c, #4a3c43);
+    }
+
+    .canvas img {
+      display: block;
+      width: auto;
+      height: auto;
+      max-width: none;
+      transform-origin: center;
+      transition: width 160ms ease;
+      filter: drop-shadow(0 22px 34px rgba(0,0,0,0.28));
+    }
+
+    .canvas img.zoom-125 { width: 570px; }
+    .canvas img.zoom-150 { width: 684px; }
+    .canvas img.zoom-100 { width: 456px; }
+
+    .viewer-copy {
+      display: grid;
+      grid-template-columns: 1.3fr 1fr;
+      gap: 18px;
+      border-top: 1px solid var(--line);
+      padding-top: 20px;
+      margin-top: 22px;
+    }
+
+    .viewer-copy p {
+      margin: 0;
+      color: #cbd5e1;
+      font-size: 10px;
+      line-height: 1.75;
+    }
+
+    .spec-list {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 7px 14px;
+      font-size: 9px;
+    }
+
+    .spec-list dt { color: var(--muted); }
+    .spec-list dd { margin: 0; color: var(--text); }
+
+    .comparison {
+      padding: 12px;
+      background: rgba(2, 6, 23, 0.76);
+    }
+
+    .comparison img {
+      width: 100%;
+      display: block;
+      border-radius: 10px;
+    }
+
+    .legend-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-top: 20px;
+    }
+
+    .legend-card {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 16px;
+      background: rgba(2, 6, 23, 0.50);
+    }
+
+    .swatch {
+      height: 7px;
+      border-radius: 999px;
+      margin-bottom: 14px;
+      box-shadow: 0 0 14px currentColor;
+    }
+
+    .legend-card h3 {
+      margin: 0 0 8px;
+      font-size: 10px;
+    }
+
+    .legend-card p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 8px;
+      line-height: 1.6;
+    }
+
+    .footnote {
+      border-top: 1px solid var(--line);
+      margin-top: 72px;
+      padding-top: 20px;
+      color: var(--muted);
+      font-size: 9px;
+      line-height: 1.7;
+      display: flex;
+      justify-content: space-between;
+      gap: 30px;
+    }
+
+    code { color: var(--cyan); }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <div class="eyebrow">Conky right rail / visual study</div>
+      <h1>Billing visibility without turning the desktop into <span>a finance dashboard.</span></h1>
+      <p class="lead">
+        Three deterministic Cairo concepts for AWS, Azure, OpenRouter, and Anthropic billing.
+        The frame, tubes, chips, type relief, and transparency come from the same drawing
+        language as the live quota panel. Values below are illustrative.
+      </p>
+      <div class="badges">
+        <span class="badge live">CAIRO REPLAY VERIFIED</span>
+        <span class="badge">424 PX RIGHT RAIL</span>
+        <span class="badge">JETBRAINS MONO</span>
+        <span class="badge">NO REPO CHANGES</span>
+      </div>
+    </header>
+
+    <section>
+      <div class="section-head">
+        <h2>Placement in context</h2>
+        <div class="section-note">1920 × 1080 primary monitor<br>balanced concept shown at true geometry</div>
+      </div>
+      <div class="frame desktop-frame">
+        <img src="billing-desktop-placement.png" alt="Balanced billing panel positioned between resource and weather overlays">
+        <div class="placement-caption">
+          <div><span class="label">TOP ANCHOR</span><span class="value">Resource HUD clears naturally</span></div>
+          <div><span class="label">BILLING PANEL</span><span class="value">424 × 328 px, auto-centered</span></div>
+          <div><span class="label">BOTTOM ANCHOR</span><span class="value">Weather card keeps its breathing room</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <h2>Explore the three treatments</h2>
+        <div class="section-note">Switch variants and zoom without scaling the source PNG<br>1× is the proposed physical desktop size</div>
+      </div>
+
+      <div class="frame switcher">
+        <nav class="variant-nav" aria-label="Billing mockup variants">
+          <button class="variant-button active" data-variant="balanced">
+            <span class="variant-letter">A</span><span class="variant-title">Balanced</span>
+            <span class="variant-summary">MTD, forecast, budget pace, and credit runway in one scan.</span>
+          </button>
+          <button class="variant-button" data-variant="compact">
+            <span class="variant-letter">B</span><span class="variant-title">Compact</span>
+            <span class="variant-summary">The same safety signal with much less visual mass.</span>
+          </button>
+          <button class="variant-button" data-variant="forecast">
+            <span class="variant-letter">C</span><span class="variant-title">Forecast-first</span>
+            <span class="variant-summary">End-of-month exposure dominates; providers become drill-down cards.</span>
+          </button>
+          <div class="recommendation"><strong>RECOMMENDATION A</strong><br>Best fit with the current desktop. It is detailed enough to prevent surprises without competing with the quota panel.</div>
+        </nav>
+
+        <div class="viewer">
+          <div class="viewer-toolbar">
+            <div>
+              <div class="viewer-title" id="viewer-title">A · Balanced</div>
+              <div class="viewer-meta" id="viewer-meta">424 × 328 px panel · budget and credit row modes</div>
+            </div>
+            <div class="zoom-controls" aria-label="Preview zoom">
+              <button class="zoom-button active" data-zoom="100">1×</button>
+              <button class="zoom-button" data-zoom="125">1.25×</button>
+              <button class="zoom-button" data-zoom="150">1.5×</button>
+            </div>
+          </div>
+
+          <div class="canvas">
+            <img id="variant-image" class="zoom-100" src="billing-balanced.png" alt="Balanced billing panel concept">
+          </div>
+
+          <div class="viewer-copy">
+            <p id="variant-copy">A stable overview with one row per provider. Metered services show actual spend, calendar pace, and a ghosted forecast endpoint; OpenRouter switches to a credit-reserve row with burn and runway.</p>
+            <dl class="spec-list">
+              <dt>Strength</dt><dd id="variant-strength">Best information hierarchy</dd>
+              <dt>Tradeoff</dt><dd id="variant-tradeoff">Tallest everyday footprint</dd>
+              <dt>Best for</dt><dd id="variant-best">Always-on primary monitor</dd>
+            </dl>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <h2>All three at true size</h2>
+        <div class="section-note">No browser interpolation in the source asset<br>open the PNG directly for pixel inspection</div>
+      </div>
+      <a class="frame comparison" href="billing-comparison.png" title="Open the true-size comparison PNG">
+        <img src="billing-comparison.png" alt="True-size comparison of balanced, compact, and forecast-first billing panels">
+      </a>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <h2>Reading the signal</h2>
+        <div class="section-note">Provider hue identifies the source<br>semantic colors remain consistent across providers</div>
+      </div>
+      <div class="legend-grid">
+        <article class="legend-card">
+          <div class="swatch" style="color: var(--cyan); background: var(--cyan)"></div>
+          <h3>Actual spend</h3>
+          <p>Solid cylindrical fill. It is the amount already incurred in the current period.</p>
+        </article>
+        <article class="legend-card">
+          <div class="swatch" style="color: var(--violet); background: linear-gradient(90deg,var(--violet),transparent)"></div>
+          <h3>Forecast extension</h3>
+          <p>Low-opacity continuation with a bright endpoint: where the provider expects the month to land.</p>
+        </article>
+        <article class="legend-card">
+          <div class="swatch" style="color: #ff9f1c; background: #ff9f1c"></div>
+          <h3>Calendar pace</h3>
+          <p>Thin orange marker. Spend to its right is running ahead of a linear monthly budget.</p>
+        </article>
+        <article class="legend-card">
+          <div class="swatch" style="color: var(--green); background: var(--green)"></div>
+          <h3>Safety state</h3>
+          <p>Green, amber, and red are reserved for risk—not provider branding—so warnings stay unambiguous.</p>
+        </article>
+      </div>
+    </section>
+
+    <footer class="footnote">
+      <span>Generated with a recovered Lua Cairo op-dump and Pycairo replay pipeline.</span>
+      <span>Preview directory: <code>/tmp/conky-billing-mockups.8nu5tO</code></span>
+    </footer>
+  </main>
+
+  <script>
+    const variants = {
+      balanced: {
+        title: 'A · Balanced',
+        meta: '424 × 328 px panel · budget and credit row modes',
+        image: 'billing-balanced.png',
+        alt: 'Balanced billing panel concept',
+        copy: 'A stable overview with one row per provider. Metered services show actual spend, calendar pace, and a ghosted forecast endpoint; OpenRouter switches to a credit-reserve row with burn and runway.',
+        strength: 'Best information hierarchy',
+        tradeoff: 'Tallest everyday footprint',
+        best: 'Always-on primary monitor'
+      },
+      compact: {
+        title: 'B · Compact',
+        meta: '424 × 242 px panel · one-line provider rows',
+        image: 'billing-compact.png',
+        alt: 'Compact billing panel concept',
+        copy: 'A quieter rail that preserves the current amount, actual bar, pace marker, forecast endpoint, and short provider note. It gives up the explicit budget context and larger numerical hierarchy.',
+        strength: 'Smallest visual footprint',
+        tradeoff: 'More interpretation required',
+        best: 'Mirroring across all monitors'
+      },
+      forecast: {
+        title: 'C · Forecast-first',
+        meta: '424 × 338 px panel · large EOM signal and provider cards',
+        image: 'billing-forecast.png',
+        alt: 'Forecast-first billing panel concept',
+        copy: 'The headline is projected end-of-month exposure and remaining headroom. Provider cards become supporting evidence with tiny spend histories. It is the strongest warning surface but also the most dashboard-like.',
+        strength: 'Fastest surprise-bill read',
+        tradeoff: 'Visually busiest treatment',
+        best: 'FinOps-heavy or warning-first use'
+      }
+    };
+
+    const buttons = document.querySelectorAll('.variant-button');
+    const image = document.getElementById('variant-image');
+
+    buttons.forEach(button => {
+      button.addEventListener('click', () => {
+        buttons.forEach(item => item.classList.remove('active'));
+        button.classList.add('active');
+        const variant = variants[button.dataset.variant];
+        document.getElementById('viewer-title').textContent = variant.title;
+        document.getElementById('viewer-meta').textContent = variant.meta;
+        document.getElementById('variant-copy').textContent = variant.copy;
+        document.getElementById('variant-strength').textContent = variant.strength;
+        document.getElementById('variant-tradeoff').textContent = variant.tradeoff;
+        document.getElementById('variant-best').textContent = variant.best;
+        image.src = variant.image;
+        image.alt = variant.alt;
+      });
+    });
+
+    document.querySelectorAll('.zoom-button').forEach(button => {
+      button.addEventListener('click', () => {
+        document.querySelectorAll('.zoom-button').forEach(item => item.classList.remove('active'));
+        button.classList.add('active');
+        image.classList.remove('zoom-100', 'zoom-125', 'zoom-150');
+        image.classList.add(`zoom-${button.dataset.zoom}`);
+      });
+    });
+  </script>
+</body>
+</html>

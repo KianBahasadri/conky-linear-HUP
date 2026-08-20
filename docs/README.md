@@ -11,8 +11,18 @@
 - [GitHub overlay](github.md) — contribution tracker
 - [Weather and running overlay](weather.md) — current conditions, air quality, and run guidance
 - [Git status overlay](git.md) — local repo fleet (branch, dirty, ahead/behind, Actions pip)
+- [Billing panel design archive](billing-mockups/README.md) — preserved Affine Month Map mockup, alternatives, and Cairo sources
+  - [Trajectory concept notes](billing-mockups/trajectory_variants/NOTES.md) — four time-and-cap transformations
+  - [Ambient concept notes](billing-mockups/ambient_variants/NOTES.md) — four calm and breach signal systems
+  - [Geometric concept notes](billing-mockups/geometric_variants/NOTES.md) — four shape-based budget studies
 - [Testing](testing.md) — run the Python test suite
 
 ## Layout
 
 Vertical alignment matters for every overlay: columns of labels and values, gauge tops vs Linear cards, and stacked readouts should share x-positions (and matching baselines) whenever they form a visual column. Keep text and displays vertically aligned across rows; do not leave near-miss offsets.
+
+## Notes
+
+- These docs are AI-generated after the fact. They record the implementation accurately, but they are not a statement of the original design intent.
+- Information should not be repeated elsewhere. Each topic belongs in exactly one file, with links used when another topic needs it.
+- Experiments and dead ends should be preserved in their own topic files rather than mixed into shipped-feature documentation.

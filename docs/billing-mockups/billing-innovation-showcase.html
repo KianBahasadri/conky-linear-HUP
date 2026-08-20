@@ -1,0 +1,593 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Billing Instruments — Cairo Concept Lab</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --ink: #f8fafc;
+      --muted: #929caf;
+      --bg0: #060914;
+      --bg1: #161426;
+      --glass: rgba(7, 13, 28, .82);
+      --glass2: rgba(11, 17, 34, .94);
+      --line: rgba(151, 163, 184, .16);
+      --cyan: #22e8ff;
+      --violet: #b79aff;
+      --green: #42ff91;
+      --amber: #ffb247;
+      --red: #ff667c;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      min-width: 860px;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 82% 4%, rgba(139, 92, 246, .20), transparent 32rem),
+        radial-gradient(circle at 13% 26%, rgba(0, 229, 255, .07), transparent 31rem),
+        linear-gradient(138deg, var(--bg0), var(--bg1) 49%, #31252e);
+      font-family: "JetBrains Mono", "DejaVu Sans Mono", monospace;
+      min-height: 100vh;
+    }
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      opacity: .27;
+      background-image:
+        linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px);
+      background-size: 64px 64px;
+      mask-image: linear-gradient(to bottom, black, transparent 92%);
+    }
+    button { font: inherit; }
+    a { color: inherit; }
+
+    .shell {
+      width: min(1550px, calc(100vw - 64px));
+      margin: 0 auto;
+      padding: 52px 0 96px;
+      position: relative;
+    }
+    .quicknav {
+      position: sticky;
+      z-index: 10;
+      top: 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 18px;
+      padding: 10px 12px 10px 16px;
+      margin-bottom: 58px;
+      border: 1px solid rgba(255,255,255,.10);
+      border-top-color: rgba(34,232,255,.38);
+      border-radius: 13px;
+      background: rgba(4, 8, 20, .78);
+      backdrop-filter: blur(18px);
+      box-shadow: 0 18px 50px rgba(0,0,0,.30);
+    }
+    .quicknav .mark { font-size: 10px; color: var(--cyan); letter-spacing: .12em; }
+    .navlinks { display: flex; gap: 4px; }
+    .navlinks a {
+      text-decoration: none;
+      color: var(--muted);
+      font-size: 9px;
+      padding: 7px 10px;
+      border-radius: 8px;
+    }
+    .navlinks a:hover { color: var(--ink); background: rgba(255,255,255,.05); }
+
+    .eyebrow {
+      color: var(--cyan);
+      font-size: 10px;
+      letter-spacing: .2em;
+      text-transform: uppercase;
+      text-shadow: 0 0 18px rgba(34,232,255,.40);
+      margin-bottom: 15px;
+    }
+    h1 {
+      font-size: clamp(42px, 6vw, 82px);
+      line-height: .97;
+      letter-spacing: -.065em;
+      margin: 0;
+      max-width: 1180px;
+    }
+    h1 span {
+      color: var(--violet);
+      text-shadow: 0 0 34px rgba(183,154,255,.22);
+    }
+    .lead {
+      max-width: 920px;
+      font-family: system-ui, sans-serif;
+      color: #cbd5e1;
+      line-height: 1.68;
+      font-size: 17px;
+      margin: 24px 0 0;
+    }
+    .statline {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(150px, 1fr));
+      gap: 1px;
+      margin-top: 34px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 15px;
+      background: var(--line);
+      max-width: 1040px;
+    }
+    .stat { padding: 15px 17px; background: rgba(5,10,23,.86); }
+    .stat strong { display: block; font-size: 16px; color: var(--ink); margin-bottom: 5px; }
+    .stat span { color: var(--muted); font-size: 8px; letter-spacing: .08em; }
+
+    section { margin-top: 86px; scroll-margin-top: 90px; }
+    .section-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: end;
+      gap: 28px;
+      margin-bottom: 22px;
+    }
+    .section-kicker { color: var(--cyan); font-size: 8px; letter-spacing: .18em; margin-bottom: 10px; }
+    h2 { margin: 0; font-size: 24px; letter-spacing: -.04em; }
+    .section-note { max-width: 590px; color: var(--muted); font: 13px/1.55 system-ui, sans-serif; text-align: right; }
+
+    .frame {
+      border: 1px solid var(--line);
+      border-top-color: rgba(34,232,255,.35);
+      border-radius: 20px;
+      overflow: hidden;
+      background: linear-gradient(180deg, rgba(13,25,47,.68), rgba(2,6,23,.84));
+      box-shadow: 0 28px 90px rgba(0,0,0,.34), inset 0 1px rgba(255,255,255,.04);
+    }
+    .desktop { padding: 12px; }
+    .desktop img { display: block; width: 100%; border-radius: 11px; cursor: zoom-in; }
+    .desktop-caption {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1px;
+      border-top: 1px solid var(--line);
+      background: var(--line);
+    }
+    .desktop-caption > div { padding: 18px 20px; background: rgba(4,8,19,.94); }
+    .micro { display: block; color: var(--muted); font-size: 7px; letter-spacing: .14em; margin-bottom: 7px; }
+    .datum { font-size: 11px; }
+
+    .shortlist {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+    }
+    .pick {
+      position: relative;
+      min-height: 174px;
+      padding: 22px;
+      border: 1px solid var(--line);
+      border-radius: 17px;
+      background: linear-gradient(145deg, rgba(10,19,38,.92), rgba(3,7,18,.88));
+      overflow: hidden;
+    }
+    .pick::after {
+      content: "";
+      position: absolute;
+      inset: auto -30px -52px auto;
+      width: 150px; height: 110px;
+      background: radial-gradient(circle, var(--glow, rgba(34,232,255,.13)), transparent 68%);
+    }
+    .pick .rank { color: var(--cyan); font-size: 9px; margin-bottom: 20px; }
+    .pick h3 { font-size: 15px; margin: 0 0 10px; }
+    .pick p { color: #aeb8c8; font: 12px/1.55 system-ui, sans-serif; margin: 0; }
+    .pick .traits { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 15px; }
+    .trait { color: var(--muted); border: 1px solid var(--line); border-radius: 999px; font-size: 7px; padding: 5px 7px; }
+
+    .feature-grid { display: grid; grid-template-columns: 1.05fr .95fr; gap: 16px; }
+    .feature-visual { padding: 15px; min-height: 480px; display: grid; place-items: center; }
+    .feature-visual img { display: block; max-width: 100%; width: 680px; cursor: zoom-in; }
+    .feature-copy { padding: 30px; }
+    .feature-copy h3 { font-size: 24px; margin: 0 0 12px; }
+    .feature-copy p { color: #b9c2d1; font: 14px/1.7 system-ui, sans-serif; }
+    .readout { margin-top: 24px; border-top: 1px solid var(--line); }
+    .readrow {
+      display: grid;
+      grid-template-columns: 84px 1fr;
+      gap: 14px;
+      padding: 13px 0;
+      border-bottom: 1px solid var(--line);
+      font-size: 9px;
+      line-height: 1.5;
+    }
+    .readrow b { color: var(--cyan); font-weight: 500; }
+    .readrow span { color: var(--muted); }
+
+    .segmented { display: inline-flex; gap: 4px; padding: 4px; background: rgba(2,6,23,.74); border: 1px solid var(--line); border-radius: 11px; }
+    .segmented button {
+      border: 0;
+      border-radius: 7px;
+      color: var(--muted);
+      background: transparent;
+      padding: 8px 11px;
+      font-size: 8px;
+      cursor: pointer;
+    }
+    .segmented button.active { color: #07111f; background: var(--green); box-shadow: 0 0 18px rgba(66,255,145,.22); }
+    .segmented button[data-tone="watch"].active { background: var(--amber); }
+    .segmented button[data-tone="danger"].active,
+    .segmented button[data-tone="alert"].active { background: var(--red); }
+
+    .state-stage { padding: 20px; display: grid; place-items: center; min-height: 450px; }
+    .state-stage img { max-width: 100%; max-height: 520px; cursor: zoom-in; }
+
+    .bare-affine-layout {
+      display: grid;
+      grid-template-columns: minmax(500px, 1fr) 390px;
+      border-top: 1px solid rgba(183,154,255,.18);
+      border-bottom: 1px solid rgba(34,232,255,.14);
+      background: rgba(3,7,18,.40);
+    }
+    .bare-affine-stage {
+      min-height: 500px;
+      display: grid;
+      place-items: center;
+      position: relative;
+      overflow: hidden;
+      background:
+        radial-gradient(ellipse at center, rgba(75,53,111,.20), transparent 47%),
+        radial-gradient(ellipse at center, rgba(5,10,24,.50), transparent 70%);
+    }
+    .bare-affine-stage img {
+      display: block;
+      width: 420px;
+      height: 300px;
+      cursor: zoom-in;
+      filter: drop-shadow(0 22px 34px rgba(0,0,0,.42));
+    }
+    .or-explain {
+      padding: 31px 30px;
+      border-left: 1px solid var(--line);
+      background: linear-gradient(165deg, rgba(15,13,34,.94), rgba(4,8,20,.90));
+    }
+    .or-kicker { color: var(--violet); font-size: 8px; letter-spacing: .14em; margin-bottom: 12px; }
+    .or-state { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 24px; }
+    .or-state span { border: 1px solid currentColor; border-radius: 999px; padding: 6px 8px; font-size: 7px; }
+    .or-state .safe { color: var(--green); }
+    .or-state .watch { color: var(--amber); }
+    .or-metrics {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1px;
+      margin-bottom: 23px;
+      border: 1px solid var(--line);
+      background: var(--line);
+    }
+    .or-metric { padding: 13px; background: rgba(3,7,18,.92); }
+    .or-metric b { display: block; font-size: 14px; margin-bottom: 5px; }
+    .or-metric span { color: var(--muted); font-size: 7px; letter-spacing: .08em; }
+    .or-explain p { color: #b9c2d1; font: 12px/1.62 system-ui, sans-serif; margin: 0 0 15px; }
+    .or-explain p:last-child { margin-bottom: 0; }
+    .or-callout {
+      padding: 13px 14px;
+      margin: 20px 0;
+      border-left: 2px solid var(--violet);
+      background: rgba(167,139,250,.07);
+      color: #d8d2ed;
+      font: 11px/1.58 system-ui, sans-serif;
+    }
+    .or-key { margin-top: 21px; border-top: 1px solid var(--line); }
+    .or-key div { display: grid; grid-template-columns: 84px 1fr; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 8px; }
+    .or-key b { color: var(--violet); font-weight: 500; }
+    .or-key span { color: var(--muted); }
+
+    .concept-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+    .concept {
+      border: 1px solid var(--line);
+      border-radius: 17px;
+      background: rgba(4,9,21,.78);
+      overflow: hidden;
+      box-shadow: 0 19px 55px rgba(0,0,0,.22);
+    }
+    .concept-image {
+      min-height: 365px;
+      display: grid;
+      place-items: center;
+      padding: 18px;
+      background:
+        radial-gradient(circle at 80% 10%, rgba(139,92,246,.12), transparent 48%),
+        linear-gradient(145deg, rgba(23,24,43,.78), rgba(29,22,31,.72));
+    }
+    .concept-image img { display: block; width: min(100%, 560px); max-height: 440px; object-fit: contain; cursor: zoom-in; }
+    .concept-copy { padding: 20px 22px 23px; border-top: 1px solid var(--line); }
+    .concept-title { display: flex; justify-content: space-between; gap: 15px; align-items: center; }
+    .concept-title h3 { margin: 0; font-size: 14px; }
+    .verdict { color: var(--green); font-size: 7px; border: 1px solid rgba(66,255,145,.28); border-radius: 999px; padding: 5px 7px; white-space: nowrap; }
+    .verdict.wild { color: var(--violet); border-color: rgba(183,154,255,.30); }
+    .verdict.study { color: var(--amber); border-color: rgba(255,178,71,.28); }
+    .concept-copy p { color: #aeb8c8; font: 12px/1.56 system-ui, sans-serif; margin: 12px 0 0; }
+
+    .rule-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+    .rule { padding: 21px; border: 1px solid var(--line); background: rgba(4,9,21,.70); border-radius: 15px; }
+    .rule .num { color: var(--cyan); font-size: 8px; margin-bottom: 14px; }
+    .rule h3 { font-size: 12px; margin: 0 0 9px; }
+    .rule p { color: var(--muted); font: 12px/1.55 system-ui, sans-serif; margin: 0; }
+
+    .footer {
+      margin-top: 84px;
+      border-top: 1px solid var(--line);
+      padding-top: 24px;
+      color: var(--muted);
+      font: 12px/1.6 system-ui, sans-serif;
+      display: flex;
+      justify-content: space-between;
+      gap: 30px;
+    }
+
+    body.focus-affine .quicknav,
+    body.focus-affine header,
+    body.focus-affine section:not(#bare-affine),
+    body.focus-affine .footer { display: none; }
+    body.focus-affine .shell { padding-top: 42px; }
+    body.focus-affine #bare-affine { margin-top: 0; }
+
+    dialog {
+      width: min(95vw, 1700px);
+      height: min(94vh, 1050px);
+      padding: 0;
+      border: 1px solid rgba(34,232,255,.34);
+      border-radius: 18px;
+      background: #070b17;
+      color: var(--ink);
+      box-shadow: 0 35px 140px #000;
+    }
+    dialog::backdrop { background: rgba(0,0,0,.82); backdrop-filter: blur(8px); }
+    .viewerbar { height: 48px; display: flex; align-items: center; justify-content: space-between; padding: 0 15px 0 18px; border-bottom: 1px solid var(--line); }
+    .viewerbar span { color: var(--muted); font-size: 9px; }
+    .viewerbar button { border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--ink); padding: 6px 9px; cursor: pointer; }
+    .viewerbody { height: calc(100% - 48px); overflow: auto; display: grid; place-items: center; padding: 20px; background: linear-gradient(145deg, #111222, #2c222c); }
+    .viewerbody img { max-width: 100%; max-height: 100%; object-fit: contain; image-rendering: auto; }
+
+    @media (max-width: 1180px) {
+      .shortlist, .rule-grid { grid-template-columns: repeat(2, 1fr); }
+      .feature-grid { grid-template-columns: 1fr; }
+      .feature-visual { min-height: 420px; }
+      .bare-affine-layout { grid-template-columns: 1fr; }
+      .or-explain { border-left: 0; border-top: 1px solid var(--line); }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <nav class="quicknav">
+      <div class="mark">BILLING / CONCEPT LAB / 02</div>
+      <div class="navlinks">
+        <a href="#shortlist">SHORTLIST</a>
+        <a href="#bare-affine">AFFINE ONLY</a>
+        <a href="#states">STATES</a>
+        <a href="#trajectory">TRAJECTORY</a>
+        <a href="#ambient">AMBIENT</a>
+        <a href="#geometry">GEOMETRY</a>
+      </div>
+    </nav>
+
+    <header>
+      <div class="eyebrow">Cairo prototypes · Round two</div>
+      <h1>Billing, without another <span>wall of bars.</span></h1>
+      <p class="lead">Fourteen visual systems built around the actual question: will a service cross its own cap before the month ends? Every mark maps to current spend, forecast landing, headroom, or prepaid runway. No invented sparklines, no mixed-currency total, and no repository changes for the mockups.</p>
+      <div class="statline">
+        <div class="stat"><strong>14 concepts</strong><span>NOT JUST COLOR VARIANTS</span></div>
+        <div class="stat"><strong>3 design lanes</strong><span>TRAJECTORY · AMBIENT · GEOMETRY</span></div>
+        <div class="stat"><strong>4 real quantities</strong><span>NOW · EOM · CAP · RUNWAY</span></div>
+        <div class="stat"><strong>0 fake history</strong><span>ONLY RECOMPUTABLE SHAPES</span></div>
+      </div>
+    </header>
+
+    <section id="placement">
+      <div class="section-head">
+        <div><div class="section-kicker">FOOTPRINT CHECK</div><h2>The right-side slot, at actual desktop scale</h2></div>
+        <div class="section-note">The panel sits between the resource HUD and weather. This is the conservative trajectory layout; the concept gallery below explores much further.</div>
+      </div>
+      <div class="frame">
+        <div class="desktop"><img class="zoomable" src="trajectory-desktop-placement.png" alt="Billing trajectory panel positioned between the resource and weather widgets"></div>
+        <div class="desktop-caption">
+          <div><span class="micro">WIDTH</span><span class="datum">424 px panel body</span></div>
+          <div><span class="micro">VERTICAL BAND</span><span class="datum">Middle-right, no collision</span></div>
+          <div><span class="micro">VISUAL ROLE</span><span class="datum">Forecast instrument, not quota stack</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="shortlist">
+      <div class="section-head">
+        <div><div class="section-kicker">CURATED FIRST</div><h2>The four worth staring at first</h2></div>
+        <div class="section-note">My ranking balances freshness, peripheral readability, and how honestly the shape survives real API data.</div>
+      </div>
+      <div class="shortlist">
+        <article class="pick"><div class="rank">01 / FRESHNESS WINNER</div><h3>Forecast Rain</h3><p>Time falls downward; cap pressure moves sideways. A breach lands beyond the red wall.</p><div class="traits"><span class="trait">VERY FRESH</span><span class="trait">LOW INK</span></div></article>
+        <article class="pick" style="--glow:rgba(66,255,145,.15)"><div class="rank">02 / GLANCE WINNER</div><h3>Cap Canopy</h3><p>Forecasts hang below one ceiling. Empty space is headroom; crossing it is impossible to miss.</p><div class="traits"><span class="trait">CALM</span><span class="trait">IMMEDIATE</span></div></article>
+        <article class="pick" style="--glow:rgba(255,178,71,.13)"><div class="rank">03 / SHAPE WINNER</div><h3>Delta Lenses</h3><p>Each lens spans actual to forecast. Its gap from the cap is remaining safety.</p><div class="traits"><span class="trait">NOVEL</span><span class="trait">HONEST</span></div></article>
+        <article class="pick" style="--glow:rgba(183,154,255,.16)"><div class="rank">04 / SAFE BASELINE</div><h3>Landing Field</h3><p>The most conventional of the new set, but clearest and easiest to ship responsibly.</p><div class="traits"><span class="trait">PRECISE</span><span class="trait">LEARNABLE</span></div></article>
+      </div>
+    </section>
+
+    <section id="bare-affine">
+      <div class="section-head">
+        <div><div class="section-kicker">CHROME-FREE STUDY</div><h2>Affine Month Map — now with OpenRouter</h2></div>
+        <div class="section-note">Every trajectory now ends on August 31. OpenRouter shares the geometry; recent history estimates its burn rate rather than giving it a different display horizon.</div>
+      </div>
+      <div class="bare-affine-layout">
+        <div class="bare-affine-stage"><img class="zoomable" src="affine-map-only.png" alt="Bare Affine Month Map including OpenRouter credit trajectory"></div>
+        <aside class="or-explain">
+          <div class="or-kicker">OPENROUTER / PROTOTYPE STATE</div>
+          <div class="or-state"><span class="safe">SAFE TO AUG 31</span></div>
+          <div class="or-metrics">
+            <div class="or-metric"><b>$12.44</b><span>CREDIT REMAINING</span></div>
+            <div class="or-metric"><b>−$0.43</b><span>AVERAGE / DAY</span></div>
+            <div class="or-metric"><b>$5.16</b><span>DRAW TO AUG 31</span></div>
+            <div class="or-metric"><b>$7.28</b><span>PROJECTED EOM LEFT</span></div>
+          </div>
+          <p>The violet trajectory treats the current <strong>$12.44 balance as its 100% ceiling</strong>. From August 19 to August 31 there are 12 days left; at $0.43 per day, the projected draw is $5.16.</p>
+          <div class="or-callout">OpenRouter therefore lands at 41% of its available credit on the same August 31 edge as AWS, Azure, and Anthropic. About $7.28 remains.</div>
+          <p>Unlike AWS, this is not a contractual monthly budget. Its normalized value means “share of today's available credit expected to be consumed before the common month-end date.”</p>
+          <div class="or-key">
+            <div><b>VIOLET BEAD</b><span>Zero future draw at August 19</span></div>
+            <div><b>VIOLET LINE</b><span>Expected spend through month-end</span></div>
+            <div><b>OPEN DIAMOND</b><span>August 31 landing at 41%</span></div>
+          </div>
+          <p style="margin-top:17px;color:#7f899b;font-size:10px">The values are illustrative mockup data. A trailing 30-day history would estimate the $0.43 daily burn, while the visible projection would still end on August 31.</p>
+        </aside>
+      </div>
+    </section>
+
+    <section id="hero-concept">
+      <div class="section-head">
+        <div><div class="section-kicker">CURRENT FAVORITE</div><h2>Forecast Rain</h2></div>
+        <div class="section-note">Same data as a time × cap chart, rotated into a stranger and calmer instrument.</div>
+      </div>
+      <div class="feature-grid">
+        <div class="frame feature-visual"><img class="zoomable" src="trajectory_variants/02-forecast-rain.png" alt="Forecast Rain billing visualization"></div>
+        <div class="frame feature-copy">
+          <h3>The cap becomes a wall.</h3>
+          <p>Providers begin at “now” along the top edge and fall toward their month-end landing. Their horizontal position is the percentage of their own cap—not dollars—so AWS and Azure remain comparable without pretending their money pools are one account.</p>
+          <div class="readout">
+            <div class="readrow"><b>DOT</b><span>Current month-to-date cap pressure</span></div>
+            <div class="readrow"><b>DIAMOND</b><span>Forecast month-end landing</span></div>
+            <div class="readrow"><b>RED WALL</b><span>100% of that provider's own cap</span></div>
+            <div class="readrow"><b>VIOLET RAY</b><span>OpenRouter runway against days left</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="states">
+      <div class="section-head">
+        <div><div class="section-kicker">BEHAVIOR, NOT DECORATION</div><h2>One skeleton through safe, watch, and danger</h2></div>
+        <div class="segmented" id="well-controls">
+          <button class="active" data-file="trajectory-well-safe.png" data-tone="safe">SAFE</button>
+          <button data-file="trajectory-well-watch.png" data-tone="watch">WATCH</button>
+          <button data-file="trajectory-well-danger.png" data-tone="danger">DANGER</button>
+        </div>
+      </div>
+      <div class="frame state-stage"><img id="well-state" class="zoomable" src="trajectory-well-safe.png" alt="Trajectory Well safe state"></div>
+    </section>
+
+    <section id="trajectory">
+      <div class="section-head">
+        <div><div class="section-kicker">LANE 01</div><h2>Trajectory systems</h2></div>
+        <div class="section-note">All use only the honest NOW→EOM segment. The axes move and bend; the underlying quantities do not.</div>
+      </div>
+      <div class="concept-grid">
+        <article class="concept"><div class="concept-image"><img class="zoomable" src="trajectory_variants/01-landing-field.png" alt="Landing Field"></div><div class="concept-copy"><div class="concept-title"><h3>01 · Landing Field</h3><span class="verdict">SHIP-SAFE</span></div><p>Day on x, cap pressure on y. The forecast endpoint crossing the ceiling is the alarm. Precise and immediately learnable.</p></div></article>
+        <article class="concept"><div class="concept-image"><img class="zoomable" src="trajectory_variants/02-forecast-rain.png" alt="Forecast Rain"></div><div class="concept-copy"><div class="concept-title"><h3>02 · Forecast Rain</h3><span class="verdict">TOP PICK</span></div><p>Time becomes gravity and the cap becomes a wall. Sparse, distinctive, and still a fully honest affine view of the data.</p></div></article>
+        <article class="concept"><div class="concept-image"><img class="zoomable" src="trajectory_variants/03-affine-cap-map.png" alt="Affine Cap Map"></div><div class="concept-copy"><div class="concept-title"><h3>03 · Affine Cap Map</h3><span class="verdict wild">EXPLORATION</span></div><p>The same plot rotated into a diamond. Beautiful, but the diagonal axes demand more attention than an ambient widget should.</p></div></article>
+        <article class="concept"><div class="concept-image"><img class="zoomable" src="trajectory_variants/04-isometric-runway.png" alt="Isometric Runway"></div><div class="concept-copy"><div class="concept-title"><h3>04 · Isometric Runway</h3><span class="verdict wild">EXPRESSIVE</span></div><p>Provider lanes recede in depth and rise toward a cap plane. The most instrument-like option; worth testing at peripheral distance.</p></div></article>
+        <article class="concept"><div class="concept-image"><img class="zoomable" src="trajectory-well-safe.png" alt="Trajectory Well"></div><div class="concept-copy"><div class="concept-title"><h3>05 · Split Trajectory Well</h3><span class="verdict">ROBUST</span></div><p>Metered services share normalized geometry while prepaid gets its own day rail. Dense, rigorous, and scalable to more providers.</p></div></article>
+        <article class="concept"><div class="concept-image"><img class="zoomable" src="horizon-threads.png" alt="Horizon Threads"></div><div class="concept-copy"><div class="concept-title"><h3>06 · Horizon Threads</h3><span class="verdict study">FUTURE DATA</span></div><p>The quietest trajectory version. It becomes valuable only after real daily samples exist; until then, the extra path should not be invented.</p></div></article>
+      </div>
+    </section>
+
+    <section id="ambient">
+      <div class="section-head">
+        <div><div class="section-kicker">LANE 02</div><h2>Ambient signals</h2></div>
+        <div class="segmented" id="ambient-controls">
+          <button class="active" data-state="safe" data-tone="safe">CALM</button>
+          <button data-state="alert" data-tone="alert">BREACH</button>
+        </div>
+      </div>
+      <div class="concept-grid">
+        <article class="concept"><div class="concept-image"><img class="zoomable ambient-shot" src="ambient_variants/01-cap-canopy-safe.png" data-safe="ambient_variants/01-cap-canopy-safe.png" data-alert="ambient_variants/01-cap-canopy-alert.png" alt="Cap Canopy"></div><div class="concept-copy"><div class="concept-title"><h3>07 · Cap Canopy</h3><span class="verdict">GLANCE PICK</span></div><p>Current squares and forecast diamonds hang under a literal ceiling. Empty vertical space is headroom; only a crossing earns red glow.</p></div></article>
+        <article class="concept"><div class="concept-image"><img class="zoomable ambient-shot" src="ambient_variants/02-threshold-tide-safe.png" data-safe="ambient_variants/02-threshold-tide-safe.png" data-alert="ambient_variants/02-threshold-tide-alert.png" alt="Threshold Tide"></div><div class="concept-copy"><div class="concept-title"><h3>08 · Threshold Tide</h3><span class="verdict wild">ORGANIC</span></div><p>Actual and forecast become paired crests. Very wallpaper-like and calm, though curved height sacrifices a little precision.</p></div></article>
+        <article class="concept"><div class="concept-image"><img class="zoomable ambient-shot" src="ambient_variants/03-delta-lenses-safe.png" data-safe="ambient_variants/03-delta-lenses-safe.png" data-alert="ambient_variants/03-delta-lenses-alert.png" alt="Delta Lenses"></div><div class="concept-copy"><div class="concept-title"><h3>09 · Delta Lenses</h3><span class="verdict">SHAPE PICK</span></div><p>The lens itself is expected remaining burn. Its upper edge is EOM forecast; its distance to the ceiling is headroom.</p></div></article>
+        <article class="concept"><div class="concept-image"><img class="zoomable ambient-shot" src="ambient_variants/04-threshold-ray-safe.png" data-safe="ambient_variants/04-threshold-ray-safe.png" data-alert="ambient_variants/04-threshold-ray-alert.png" alt="Threshold Ray"></div><div class="concept-copy"><div class="concept-title"><h3>10 · Threshold Ray</h3><span class="verdict">LOWEST INK</span></div><p>All services dock on one diagonal 0–100% ray. It takes a moment to learn, then asks for almost no eye movement.</p></div></article>
+      </div>
+    </section>
+
+    <section id="geometry">
+      <div class="section-head">
+        <div><div class="section-kicker">LANE 03</div><h2>Geometric objects</h2></div>
+        <div class="section-note">These trade some chart-like precision for stable silhouettes you can recognize without actively reading.</div>
+      </div>
+      <div class="concept-grid">
+        <article class="concept"><div class="concept-image"><img class="zoomable" src="geometric_variants/facet-ledger.png" alt="Facet Ledger"></div><div class="concept-copy"><div class="concept-title"><h3>11 · Facet Ledger</h3><span class="verdict">FAST COMPARE</span></div><p>Each hex is 10% of a provider cap; clipped boundary cells preserve the true percentage. It is bar-adjacent, but the texture is fresh.</p></div></article>
+        <article class="concept"><div class="concept-image"><img class="zoomable" src="geometric_variants/surprise-map.png" alt="Surprise Map"></div><div class="concept-copy"><div class="concept-title"><h3>12 · Surprise Map</h3><span class="verdict study">DIAGNOSTIC</span></div><p>Current cap pressure × forecast landing. Analytically strongest, but too much thinking for the default always-on face.</p></div></article>
+        <article class="concept"><div class="concept-image"><img class="zoomable" src="geometric_variants/allowance-facets.png" alt="Allowance Facets"></div><div class="concept-copy"><div class="concept-title"><h3>13 · Allowance Facets</h3><span class="verdict wild">SCULPTURAL</span></div><p>Nested gem area maps current and forecast percentages. Distinctive and serene; exact values stay visible because area is approximate to the eye.</p></div></article>
+        <article class="concept"><div class="concept-image"><img class="zoomable" src="geometric_variants/budget-shards.png" alt="Budget Shards"></div><div class="concept-copy"><div class="concept-title"><h3>14 · Budget Shards</h3><span class="verdict study">BOUNDARY CASE</span></div><p>Beautiful, but fundamentally a shaped vertical gauge. Included to show where fresh geometry becomes ornamental bar dressing.</p></div></article>
+      </div>
+    </section>
+
+    <section id="rules">
+      <div class="section-head">
+        <div><div class="section-kicker">CLAUDE × GROK CONVERGENCE</div><h2>The design rules that survived critique</h2></div>
+        <div class="section-note">Both outside reviews independently landed on the same semantic constraints, which changed the prototypes materially.</div>
+      </div>
+      <div class="rule-grid">
+        <article class="rule"><div class="num">01</div><h3>No grand dollar hero</h3><p>Mixed currencies and prepaid balances cannot honestly become one spend total.</p></article>
+        <article class="rule"><div class="num">02</div><h3>Risk changes geometry</h3><p>A forecast crosses a wall, ceiling, or plane. Danger is not merely red copy.</p></article>
+        <article class="rule"><div class="num">03</div><h3>Prepaid stays in days</h3><p>Runway compares with days left in the month, never with another provider's cap.</p></article>
+        <article class="rule"><div class="num">04</div><h3>No invented history</h3><p>Current→forecast is a segment. A sparkline appears only after real samples exist.</p></article>
+      </div>
+    </section>
+
+    <div class="footer">
+      <span>All artwork is deterministic Pycairo output using illustrative August billing data.</span>
+      <span>Click any render to inspect it at full size.</span>
+    </div>
+  </main>
+
+  <dialog id="viewer">
+    <div class="viewerbar"><span id="viewer-title">FULL-SIZE RENDER</span><button id="viewer-close">CLOSE ×</button></div>
+    <div class="viewerbody"><img id="viewer-image" alt="Expanded mockup"></div>
+  </dialog>
+
+  <script>
+    if (new URLSearchParams(location.search).get('focus') === 'affine') {
+      document.body.classList.add('focus-affine');
+    }
+
+    const activate = (root, current) => {
+      root.querySelectorAll('button').forEach(button => button.classList.toggle('active', button === current));
+    };
+
+    const wellControls = document.querySelector('#well-controls');
+    wellControls.addEventListener('click', event => {
+      const button = event.target.closest('button');
+      if (!button) return;
+      activate(wellControls, button);
+      const image = document.querySelector('#well-state');
+      image.src = button.dataset.file;
+      image.alt = `Trajectory Well ${button.textContent.toLowerCase()} state`;
+    });
+
+    const ambientControls = document.querySelector('#ambient-controls');
+    ambientControls.addEventListener('click', event => {
+      const button = event.target.closest('button');
+      if (!button) return;
+      activate(ambientControls, button);
+      document.querySelectorAll('.ambient-shot').forEach(image => {
+        image.src = image.dataset[button.dataset.state];
+      });
+    });
+
+    const dialog = document.querySelector('#viewer');
+    const dialogImage = document.querySelector('#viewer-image');
+    const dialogTitle = document.querySelector('#viewer-title');
+    document.addEventListener('click', event => {
+      const image = event.target.closest('img.zoomable');
+      if (!image) return;
+      dialogImage.src = image.currentSrc || image.src;
+      dialogTitle.textContent = image.alt.toUpperCase();
+      dialog.showModal();
+    });
+    document.querySelector('#viewer-close').addEventListener('click', () => dialog.close());
+    dialog.addEventListener('click', event => { if (event.target === dialog) dialog.close(); });
+
+    window.addEventListener('load', () => {
+      if (!location.hash) return;
+      const target = document.querySelector(location.hash);
+      if (target) target.scrollIntoView({ block: 'start' });
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,260 @@
+I'll inspect the mockups and the existing Cairo renderers first, then propose four distinct visual systems from that material and data mapping.The mockups confirm A/B are bar-siblings of the rate-limit panel, and C is the only structural break. I’ll pull the rest of the lighting vocabulary and the billing data model so the four systems map real fields, not decoration.The mockups and renderers point to one real job: show whether anyone will hit a cap before the month ends, without using the quota-bar language the desktop already owns.
+
+## What the mockups actually do
+
+The desktop already has two strong glyphs. The rate-limit panel is a row of **filled horizontal tubes** (used / window, with a pace tick). The resource HUD is a row of **circular 0–100% gauges**. Weather, below this slot, is a **big numeral plus a metric strip**. Billing has to own a third question: *given the calendar, will this pool survive the month?*
+
+**A and B** answer that with the quota glyph. Fill is MTD/budget, a tick is EOM, OpenRouter silently **inverts** the same tube (remaining, not used). After a day of quota tubes, another row of tubes is not a new reading; it is more of the same muscle. That is the fatigue, not the density.
+
+**C is the only structural break**, and it is also the one that cheats.
+
+- The 2×2 tiles are a SaaS metric grid. Each tile’s hero is EOM, which is already the panel hero (`$31.40`). Four frames repeat one number.
+- The sparklines are the actual gimmick. A static snapshot is `{MTD, budget, EOM, elapsed}`. That is two points and a landing, not a time series. Those slopes and kinks are invented drawing, not data. Ornament that *looks like* history is worse than a blank: it trains you to read a shape that will not move when the facts change.
+- The one honest new object in C is the ACTUAL / MONTH PACE / FORECAST strip. The tiles then ignore it.
+- `$31.40` and `$38.60` of a `$70` cap are a combined-currency dashboard total. Prepaid cannot enter that sum; mixed FX cannot either. The “ensemble number” is the most webpage thing on the pane.
+
+C is “forecast-first” in copy and dashboard-first in form. The direction to keep is **forecast versus calendar versus cap**. The form to throw away is **tiles, sparklines, and a summed hero**.
+
+---
+
+## The data that can become geometry
+
+Metered (AWS, Azure, Anthropic): month elapsed \(t \in [0,1]\), spend fraction \(s = \text{MTD}/\text{budget}\), forecast fraction \(f = \text{EOM}/\text{budget}\). Always \(f \ge s\) if spend is non-decreasing. On-pace is \(s \approx t\) and \(f \approx 1\) would be “lands on the cap.” Headroom is \(1-f\).
+
+Prepaid (OpenRouter): remaining balance, burn/day, runway days. Compare runway to **days left in the month**, not to anyone else’s dollars.
+
+Do not encode a total. Encode a **worst landing** (max \(f\)) and a **count of breaches**.
+
+Sample, 19 Aug 2026, August = 31 days, \(t = 19/31 = 0.613\):
+
+| Provider | Mode | \(s\) | \(f\) | vs calendar | vs cap |
+|---|---|---|---|---|---|
+| AWS | metered | 8.41/25 = **0.336** | 13.20/25 = **0.528** | well under | lands at 53% |
+| Azure | metered | 4.27/20 = **0.214** | 7.10/20 = **0.355** | well under | lands at 36% |
+| Anthropic | metered | 6.04/20 = **0.302** | 10.10/20 = **0.505** | well under | lands at 51% |
+| OpenRouter | prepaid | n/a | n/a | runway **29 d** vs **12 d** left | will not empty |
+
+All three metered land *under* both the diagonal and the ceiling. The instrument must still look like an instrument at rest, not an empty dashboard. Safe-state beauty is the hard part.
+
+---
+
+## System 1 — Shared month-orbit
+
+**1. Idea.** The billing month is one circular period; each metered provider is a satellite whose angle is how much of its own cap it has already eaten, compared with a single calendar cursor.
+
+**2. Mapping.** Circle = one month, 12 o’clock = day 0, clockwise. Calendar cursor at \(\theta_t = 0.613 \times 360° = 221°\). Body at \(\theta_s = s \times 360°\) (AWS 121°, Azure 77°, Anthropic 109°). Ghost tick at \(\theta_f = f \times 360°\) (AWS 190°, Azure 128°, Anthropic 182°). If \(f > 1\), the ghost continues past 12 o’clock onto a thin outer danger ring (overshoot is literally wrapping the period). Radius is shared; identity is stroke color, not orbit height. Prepaid is not on the circle: it is a radial **infall** — a bead whose distance from the rim toward the hub is \(\min(\text{runway}/45\text{d}, 1)\), with a hash at “days left in month.”
+
+**3. Peripheral vs focus.** Peripheral: any body or ghost *ahead of* the calendar cursor; any mark on the outer ring. A safe month is a huddle of beads in a rear sector, cursor leading them. Focus: color → provider, then the numerals parked on a short legend, not on the orbit.
+
+**4. States.** Safe: all ghosts behind 12 o’clock and behind the cursor. Watch: ghost in the last 20% of the circle (\(f > 0.8\)). Danger: ghost on the outer ring. Uncapped: no 12-o’clock cap mark for that color; the body angle is undefined against a cap — draw it as a **tick on the calendar cursor** with a `$` label only (angle would lie). Stale: dashed orbit, 40% chroma, small amber pip on the cursor. Prepaid danger: infall bead inside the days-left hash (runway shorter than the month).
+
+**5. Cairo / failure.** One `cairo_arc` track, three filled beads, three stroked ghosts, one thick cursor tick. Lighting: same overhead roll as the quota tubes, but **radial** (`cairo_pattern_create_radial` on each bead, highlight at 11 o’clock, not a linear y-gradient). Cheap.
+
+Failures: (a) this desktop already owns circular percent gauges — a circle here will be misread as “CPU but for money.” (b) Angle is a weak magnitude channel; 53% vs 51% is a 7° gap at this radius. (c) Three underspending bodies cluster in one sector and look like one blob. (d) Uncapped has no honest angle, so the metaphor breaks for the provider that most needs a non-bar treatment. **Semantic core is real** (period is cyclic; catching the calendar hand is over-pace). **Adjacency to the resource HUD makes it the wrong circle.**
+
+---
+
+## System 2 — Pace needles on one dial
+
+**1. Idea.** One analog dial, like a vertical-speed indicator: vertical is on-pace; deflection is signed pace error; needle length is forecast pressure against the cap.
+
+**2. Mapping.** Hub = on-pace. Angle \(\phi = (s - t) \times 90° / 0.5\), clamped to \(\pm 90°\) (50 pp off-pace = hard over). Under-pace is left; over-pace is right. Needle length \(\ell = 18 + 52f\) px so a full-cap forecast reaches the chapter ring. AWS: \(\phi = -49.8°\), \(\ell = 45.5\). Azure: \(\phi = -71.8°\), \(\ell = 36.5\). Anthropic: \(\phi = -56.0°\), \(\ell = 44.3\). The right hemisphere is a quiet red quadrant, the left a quiet cyan one — zones, not fills. Prepaid is a fourth needle whose \(\phi\) is \((\text{runway} - \text{days left}) / \text{days left}\) on the same signed scale (here \(+90°\), pinned), drawn as a **hollow** needle so it cannot be read as a fourth budget.
+
+**3. Peripheral vs focus.** Peripheral: any solid needle in the right half, especially a long one. A safe rest state is a fan of short-to-mid needles in the left hemisphere — a visible “lean.” Focus: hub is not a dollar total; it is the chip word (`SAFE`) plus worst \(f\) as `53%`. Provider names live at needle tips, 8–9 px, only if there is room; otherwise a two-line key.
+
+**4. States.** Safe: all solid needles left of ~10°. Watch: a needle in 0–30° right *or* a long needle (\(\ell\) near the ring) even if still left (high forecast, currently under). Danger: needle in the red quadrant or length past the ring (\(f > 1\)), in which case the needle is clipped with a barb at the rim. Uncapped: length has no cap to reach — draw a **bobbed needle** (fixed short length) so only angle (pace vs calendar, using a declared reference or MTD vs elapsed only) remains. Stale: needle stroked dashed, no fill, amber hub pip. Prepaid danger: hollow needle crosses into the right half (runway < days left).
+
+**5. Cairo / failure.** `cairo_rotate` around the hub; stroke a tapered path (move to hub, line to tip, 2.4 px at hub, 1.2 at tip) with the existing vertical shade trick applied **along the needle** (bright toward the top of the *screen*, not along the needle — same single overhead light as `draw_lit_text`). Destroy each pattern.
+
+Failures: (a) when several providers are similarly under, needles stack and hide each other — the ambient “fan” collapses to one stroke. (b) Cleveland/McGill: angle is read worse than position on a line; you will not rank AWS vs Anthropic from the dial. (c) Length *and* angle both vary, so a short dangerous needle (small budget, over cap) is quieter than a long safe one. **Semantic core is real** (signed error is the thing quota bars hide). **It is a poor magnitude instrument**, and a second circular object next to CPU/RAM/NET.
+
+---
+
+## System 3 — Forecast trajectories on a time × cap well
+
+**1. Idea.** A single instrument well: x is the month, y is each provider’s own cap, the diagonal is on-pace, the top wire is the ceiling; each metered provider is a bead at “now” and a dart at month-end.
+
+**2. Mapping.** Unit square, y normalized per provider (so mixed FX never share a dollar axis).
+
+| Channel | Datum |
+|---|---|
+| x | month elapsed \(t\), 0 at left, 1 at right |
+| y | fraction of *that* provider’s budget |
+| filled bead | \((t, s)\) — MTD |
+| open dart / ring | \((1, f)\) — EOM landing |
+| stroke between them | the only honest “forecast line”: two facts, one segment |
+| dashed diagonal | on-pace (\(y = x\)) |
+| horizontal wire at y = 1 | cap |
+| band y > 1 | overshoot, 16% extra scale |
+| vertical now-wire | today (calendar as a position, not a pie) |
+| color | provider |
+
+Prepaid **does not enter the well**. It gets a separate **day rail**: y = runway days, a gate at days-left-in-month. Dollars stay as type.
+
+**3. Peripheral vs focus.** Peripheral: (1) any dart above the ceiling wire; (2) any trajectory steeper than the diagonal *and* in the upper third; (3) prepaid bead below its gate. The safe rest state is three shallow strokes in the lower half, all darts under the wire, prepaid bead above its gate — a quiet downward field, like a glideslope everyone is below. Focus: legend numerals (`$8.41 / $25` → `$13.20`), not a hero total.
+
+**4. States.** Safe: all \(f < 0.80\). Watch: any dart in the 0.80–1.00 band (amber dart, ceiling wire lifts from 0.22 to 0.55 alpha). Danger: dart in the overshoot band or \(s > 1\) already; that stroke goes `f87171`, ceiling wire becomes a 2 px lit rim. Uncapped: omit the ceiling for that series; y-scale is a declared round reference printed on the left (`REF $50`) *or* the provider is drawn as a **hollow diamond on the now-wire** with a dollar label and no dart — do not fake a cap. Stale: 1 px dashed stroke, bead alpha 0.4, amber pip in the legend. Unavailable: a dim × on the now-wire, legend `—`. Prepaid empty/unknown: rail drawn, no bead, `NO DATA`.
+
+**5. Cairo / failure.** Clip a rounded well; fill darker than the pane (`020617` 0.9). Grid: 25/50/75% horizontals at 0.08 white, week verticals at 7/14/21/28. Diagonal: dash 3-3, `f8fafc` 0.16. Now-wire: `facc15` 0.40, 1 px. Each trajectory: `stroke_gradient` along the segment (brighter toward the dart). Beads: r = 4.5, radial highlight (overhead). Darts: 7×5 triangle or open ring r = 5. Destroy patterns. No clip leak: darts in the overshoot band must stay inside the well’s inner bevel.
+
+Failures: (a) two points make a straight line — people will expect a sparkline curve; **do not invent curvature** (that is how C went gimmick). (b) Normalization hides that Azure’s cap is $20 and AWS’s is $25; the legend must carry dollars or $8.41 and $6.04 look equally “low.” (c) Three beads share one x, so the well can be misread as a column chart of current spend; the **darts on the right rail** are the thing that prevents that. (d) A fifth/sixth provider still fits; past ~6, keep the worst \(f\) plus `+N`.
+
+**This is semantic innovation, not dressing.** The only 2D fact billing has is *calendar progress versus cap progress, with a predicted landing*. C’s sparklines faked the path. This draws the two points you actually have.
+
+---
+
+## System 4 — Constellation in error × pressure space
+
+**1. Idea.** Providers are stars in a field whose origin is “on-pace, no forecast pressure”; danger is a region, not a threshold line you have to compare by eye.
+
+**2. Mapping.** x = pace error \(s - t\) (0 at center, left = under, right = over). y = forecast pressure \(f\) (0 at bottom, 1 at a horizon line, >1 above it). AWS at (−0.277, 0.528), Azure at (−0.399, 0.355), Anthropic at (−0.311, 0.505). Prepaid is a **different star** (diamond) in a marked right-hand strip whose y is `days left / runway` (here 12/29 = 0.41 — low is safe). Identity = color. A faint 45° “same error, more money” is *not* needed; the horizon at y = 1 is the only law.
+
+**3. Peripheral vs focus.** Peripheral: empty upper-right. Any star in the box \(x > 0, y > 0.8\) should pop (brighter fill, 8 px glow using the existing cyan/red frame-glow recipe). Safe rest: a small cluster in the lower-left, field otherwise dark. Focus: star labels on a 40 px leader line; dollars in a one-line key.
+
+**4. States.** Safe: all metered stars left of x = 0 and below y = 0.8. Watch: a star with y > 0.8 still on the left (under now, landing hot). Danger: star above the horizon or in the upper-right box. Uncapped: y undefined — park as a star on the x-axis only (error vs calendar using \(s\) against \(t\), no pressure). Stale: unfilled star, dashed leader. Prepaid danger: diamond crosses y = 1 in its strip (days left > runway).
+
+**5. Cairo / failure.** Fill two regions (safe field vs danger box) at very low alpha (green 0.04 / red 0.06) — enough for peripheral hue, not a heatmap. Stars as 4-point paths, 7–9 px, same radial sheen as beads.
+
+Failures: (a) **cousin of System 3 with the month stripped off x.** You can no longer *see* that the dart is a month-end landing; y is the landing, x is a derived error. (b) Three stars in a 240 px field look sparse unless the danger box is painted; painted regions edge toward dashboard chrome. (c) “Constellation” as a metaphor is only justified if proximity means relatedness — here proximity means similar risk, which is fair, but with n = 3 it is a scatterplot of three points, not a sky. **Semantic core is weaker than System 3.** Keep it as a *state reading* (is the danger box empty?) rather than a magnitude instrument.
+
+---
+
+## Rejected forms (cool in a screenshot, bad on a desk)
+
+- **Four donuts / moon-phases / irises.** Competes with CPU/RAM/NET; encodes 0–100% used, which is the quota question again.
+- **Nested circles or a treemap of spend.** Implies containment or a shared total.
+- **Stacked area, braid, or “spend river.”** Implies additivity across AWS+Azure+Anthropic+OpenRouter.
+- **C-style sparklines or a 2×2 tile grid.** Fake history; metric cards.
+- **Nightingale / radar with one spoke per provider.** Category-as-angle; radius is a polar bar chart.
+- **Kepler orbits at different radii.** Radius would have to mean budget size, which is not the risk (a $20 cap at 98% is hotter than a $100 cap at 20%). Pretty, false.
+- **A summed MTD / EOM hero.** Breaks on FX and prepaid; even same-currency sums hide the one provider that is on fire.
+
+---
+
+## Selection
+
+**System 3**, with two restraints from the others: no circular chapter-ring (the now-wire already *is* the calendar; a ring would duplicate it and rhyme with the resource gauges), and System 2’s lesson that **ensemble state is a chip, not a dollar**. Prepaid stays on a **day rail** — same “marker on a scale” grammar, different unit, so it cannot be read as a fourth trajectory.
+
+What is innovative: one well in which **time, cap, spend, and landing are comparable without a fill**. What is not a gimmick: every stroke is two measured points; the diagonal and ceiling are laws, not decoration.
+
+---
+
+## Prototype spec — 424 × 328
+
+Panel origin `(0, 0)`. Envelope **424 × 328**, radius **18**, same slab as weather/rate-limit: contact glow `00e5ff` 0.10 at `(4, 7)`; 8 px outer stroke 0.15; 4 px violet `8b5cf6` 0.22; face gradient `0d1a30` → `020617` → `08111f`; 2 px cyan rim with top shade `+0.40`; inner bevel at inset 8, `c4b5fd` → `8b5cf6`. Font **JetBrains Mono**, bold unless noted. Light from above; shadows offset in **y only**.
+
+### Header chips (overlap the rim, weather-style)
+
+| Chip | Color | Box | Text |
+|---|---|---|---|
+| `AUG 19` | `00e5ff` | `(248, -9, 86, 20)` | month label, not an encoding |
+| `SAFE` | `39ff88` | `(342, -9, 58, 20)` | worst \(f < 0.80\) |
+
+Chip recipe: copy `draw_chip` from the rate-limit renderer (contact shadow, face shade, specular streak, 1.5 px rim). If worst \(f \in [0.80,1)\): chip `WATCH` / `ffb454`. If any \(f \ge 1\) or prepaid runway < days left: `DANGER` / `f87171`. Never a third chip with a summed dollar.
+
+No hero currency. The well is the reading.
+
+### Trajectory well
+
+**Well frame:** `(16, 38)` size **284 × 198**, inner radius 10. Fill `020617` 0.92. 1 px inner stroke `00e5ff` 0.18.
+
+**Data rectangle** \(R\): origin `(52, 54)`, size **236 × 164**.
+
+Y scale (px, panel space):
+
+- \(y_{116} = 54\) (top of overshoot)
+- \(y_{100} = 78\) (ceiling wire)
+- \(y_0 = 218\)
+
+So \(y(p) = 78 + 140 \times (1-p)\) for \(p \le 1\), and \(y(p) = 78 - 24 \times (p-1)/0.16\) for \(p > 1\), clipped to 54.
+
+X scale: \(x(t) = 52 + 236 \cdot t\). \(t=19/31\): **\(x_{\text{now}} = 196.5\)**. Month-end \(x_1 = 288\).
+
+**Grid (draw first, under data):**
+
+- Horizontal at 25/50/75/100%: y = 183, 148, 113, 78. Stroke `f8fafc` 0.07, 1 px. 100% is redrawn later as the ceiling.
+- Vertical week marks at days 7, 14, 21, 28: x = 105.4, 158.8, 212.2, 265.6. Same 0.07.
+- Left labels at x = 22, baseline 4 px below each grid: `0` `25` `50` `75` `CAP`, 8 px, `f8fafc` 0.38. `CAP` uses `f87171` 0.55.
+- Bottom labels at y = 230: `1` at x=52, `31` at x=280, `DAY` muted between. 8 px.
+
+**Laws:**
+
+- Diagonal: `(52, 218)` → `(288, 78)`, dash 3-3, `f8fafc` 0.16, 1 px.
+- Ceiling: `(52, 78)` → `(288, 78)`, `f87171` 0.22 (idle) / 0.70 (if any dart above). 1.5 px. Tiny right caption `CAP` already on the axis.
+- Now-wire: `(196.5, 54)` → `(196.5, 218)`, `facc15` 0.42, 1 px. Caption `NOW` at `(200, 66)`, 8 px, `facc15` 0.70.
+
+**Series (draw AWS, Anthropic, Azure — AWS last so the hottest of the three sits on top in this sample; in code, sort by \(f\) ascending so the worst is last):**
+
+| | \(s\) | \(f\) | bead \((x,y)\) | dart \((x,y)\) | accent |
+|---|---|---|---|---|---|
+| Azure | 0.214 | 0.355 | **(196.5, 188.1)** | **(288, 168.3)** | `00e5ff` |
+| Anthropic | 0.302 | 0.505 | **(196.5, 175.7)** | **(288, 147.3)** | `ff8f73` |
+| AWS | 0.336 | 0.528 | **(196.5, 171.0)** | **(288, 144.1)** | `ff9f1c` |
+
+Each trajectory: line bead → dart, 1.6 px, `stroke_gradient` along the segment, accent 0.85 → 1.0. Bead: circle r **4.5**, radial pattern accent (center highlight shade +0.45, rim −0.35), 1 px rim. Dart: isosceles triangle pointing right, base 7 px, height 6 px, open (stroke 1.2, no fill) so it cannot be mistaken for a current-value bead.
+
+Clip all series to the well. Nothing leaves the inner bevel.
+
+### Prepaid day rail (not a fourth series)
+
+**Rail frame:** `(308, 38)` size **100 × 198**, same inner fill as the well.
+
+**Scale:** 0 days at y=218, 40 days at y=54. \(y_{\text{day}}(d) = 218 - 164 \times d/40\).
+
+- Gate (days left = 12): **y = 168.8**, 1.5 px tick across the rail, `facc15` 0.55, caption `12D LEFT` at `(314, 166)`, 8 px.
+- Runway bead (29): **(358, 99.1)**, r 5, fill `c084fc`, same radial sheen. A 1.6 px vertical stem from `(358, 218)` to the bead, `c084fc` 0.55 — this is a **position stem**, not a proportional fill of a tube. Do not round-rect a liquid capsule here.
+- 0 / 20 / 40 labels at x=314, y=218 / 136 / 58, 8 px, muted.
+
+**Type on the rail, focus-only:**
+
+- `OPENROUTER` at `(314, 56)`, 9 px, `c084fc`
+- `$12.44` at `(314, 74)`, 16 px, `f8fafc` 0.95, lit-text `raised`
+- `$0.43/D` at `(314, 90)`, 9 px, `f8fafc` 0.50
+- `29D RUN` at `(368, 104)`, 9 px, `c084fc`
+
+If runway < 12: stem `f87171`, bead below the gate, header chip `DANGER`.
+
+### Legend strip (metered numerals — the only place dollars live)
+
+Y from **246 to 292**. Three columns, no cards, no inner frames, no sparklines:
+
+| Col | x | Name | Line 2 | Line 3 |
+|---|---|---|---|---|
+| AWS | 22 | `AWS` `ff9f1c` 9 px | `$8.41 / $25` 11 px `f8fafc` | `EOM $13.20` 9 px `ff9f1c` 0.85 |
+| Azure | 156 | `AZURE` `00e5ff` | `$4.27 / $20` | `EOM $7.10` |
+| Anthropic | 290 | `ANTHROPIC` `ff8f73` | `$6.04 / $20` | `EOM $10.10` |
+
+A 6 px colored pip at `(x, 258)` before each name. If a series is stale, pip becomes a 6 px amber hollow square and line 3 is `9H OLD` in `facc15`.
+
+### Footer
+
+At y **312**, 8 px, `f8fafc` 0.42:
+
+`3/3 METERED  ·  PREPAID LIVE  ·  NEXT 30M`
+
+Left-aligned at x=22. No `TRACKED MTD $18.72`. If you want one ensemble glyph besides the chip, print `WORST 53%` at the right of the footer in the worst provider’s color (`ff9f1c` here) — a percent of *that* cap, never a summed dollar.
+
+### State sheet (nonverbal)
+
+| State | Well | Chip | Legend |
+|---|---|---|---|
+| Safe (this sample) | shallow strokes, ceiling dim, prepaid bead above gate | `SAFE` green | as above |
+| Watch | dart in the 80–100 band, ceiling alpha 0.55, dart `ffb454` | `WATCH` amber | EOM line amber |
+| Danger | dart in overshoot band, stroke `f87171` 2 px, ceiling lit | `DANGER` red | EOM line red |
+| Uncapped | hollow diamond on now-wire, `$` only, no dart, no ceiling credit | chip from others | `UNCAP  $8.41` |
+| Stale | dashed 1 px, bead alpha 0.4 | if *all* stale: `STALE` amber, else keep risk chip and amber-pip the row | age text |
+| Missing | `×` at now-wire in that color at y=218 | unchanged | `—` |
+
+### Adding a fifth provider
+
+Draw another bead/dart in a new accent (e.g. Gemini `4ade80`). If the well exceeds 6 metered series, plot the 5 highest \(f\) and footer `+N`. Do not shrink into a 2×2 grid. Do not put the fifth on the prepaid rail.
+
+### What an implementer must not add
+
+- A top-left `$18.72` / `$31.40`
+- Sparklines, tile radii, or “COST GUARD”
+- A filled horizontal tube, even a thin one, for MTD/budget
+- Curving the trajectory through invented mid-month points
+- Putting OpenRouter’s `$12.44` on the y-axis of the well
+
+The pane at rest, with this sample, should read as a dark glass instrument: a now-wire, three shallow amber/cyan/coral darts docked well below a dim cap, and a violet bead sitting safely above a 12-day gate. That is the opposite of a billing webpage, and every mark on it can be recomputed from the four numbers you already have.
