@@ -1,6 +1,6 @@
 # GitHub overlay
 
-Transparent left-side contribution rail (year of squares). No chrome — only the calendar column.
+Transparent left-side contribution rail (year of squares). Empty days are not drawn, so the desktop shows through. No chrome — only the calendar column. A poured-blob replacement was tried and reverted; see [GitHub rail blob experiments](github-rail-blob-experiments.md).
 
 ## Data
 
@@ -36,5 +36,5 @@ See [Configuration](configuration.md) for the full variable table.
 
 ## Contribution calendar troubleshooting
 
-- A gray rightmost square does not necessarily mean today's commits are missing. GitHub can already be showing the next UTC date while local time is still on the previous day; hover the squares to confirm their dates.
-- GitHub may take up to 24 hours to refresh the contribution graph. If the expected square is still gray afterward, confirm that the commits are pushed to the repository's default branch and use an email address linked to the GitHub account.
+- Nothing at the top of the rail does not necessarily mean today's commits are missing. GitHub can already be showing the next UTC date while local time is still on the previous day.
+- GitHub may take up to 24 hours to refresh the contribution graph. If the expected square is still missing afterward, confirm that the commits are pushed to the repository's default branch and use an email address linked to the GitHub account.

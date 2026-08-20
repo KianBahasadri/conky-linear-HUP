@@ -9,6 +9,7 @@
 - [Expired credentials and stale cache](expired-credentials.md) — token refresh and fallback behavior per provider
 - [Minecraft overlay](minecraft.md) — server status and PebbleHost integration
 - [GitHub overlay](github.md) — contribution tracker
+- [GitHub rail blob experiments](github-rail-blob-experiments.md) — poured-shape study; reverted to the square calendar
 - [Weather and running overlay](weather.md) — current conditions, air quality, and run guidance
 - [Affine billing map](billing.md) — live provider spend, prepaid runway, and common EOM forecasts
 - [Git status overlay](git.md) — local repo fleet (branch, dirty, ahead/behind, Actions pip)

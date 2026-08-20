@@ -9,8 +9,8 @@ return function(shared, repo_root)
   local radius = 2
   -- Inset used when the rail is pinned by gap_y instead of centered in a band.
   local top_padding = 4
+  -- Levels 1-4. Empty days are not drawn, so the desktop shows through.
   local colors = {
-    '1f2937',
     '0e4429',
     '006d32',
     '26a641',
@@ -174,11 +174,11 @@ return function(shared, repo_root)
       local x = start_x + column * cell
       local y = start_y + row * cell
       level = entries[draw_index]
-      local alpha = level == 0 and 0.42 or 0.96
-
-      shared.rounded_rect(cr, x, y, square, square, radius)
-      shared.set_hex(cr, colors[level + 1], alpha)
-      cairo_fill(cr)
+      if level > 0 then
+        shared.rounded_rect(cr, x, y, square, square, radius)
+        shared.set_hex(cr, colors[level], 0.96)
+        cairo_fill(cr)
+      end
     end
 
     log_placement(placement, grid_height)
