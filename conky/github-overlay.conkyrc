@@ -1,6 +1,7 @@
 conky.config = {
-  -- top_left so gap_y is distance from the top; start script centers the rail
-  -- between the git panel and the Minecraft panel when GITHUB_GAP_Y is unset.
+  -- top_left so gap_y is distance from the top. When GITHUB_GAP_Y is unset the
+  -- start script sizes this window to the whole band between the git panel and
+  -- the Minecraft panel, and the renderer centers the rail inside it every draw.
   alignment = 'top_left',
   background = true,
   border_width = 0,
@@ -16,7 +17,8 @@ conky.config = {
   font = 'JetBrains Mono:size=10',
   gap_x = 18,
   gap_y = 320,
-  -- Tall enough for a 53-week column (7px square + 4px gap) plus edge pad.
+  -- Pinned fallback: tall enough for a 53-week column (7px square + 4px gap)
+  -- plus edge pad. Auto placement replaces this with the band height.
   minimum_height = 600,
   minimum_width = 96,
   maximum_width = 96,
@@ -28,7 +30,9 @@ conky.config = {
   own_window_hints = 'undecorated,below,sticky,skip_taskbar,skip_pager',
   own_window_transparent = true,
   own_window_type = 'desktop',
-  update_interval = 300,
+  -- Redraw often enough that the rail re-centers soon after a repo row comes
+  -- or goes; the contribution fetch stays on GITHUB_REFRESH_SECONDS.
+  update_interval = 15,
   use_xft = true,
   lua_load = './conky/overlay-entrypoint.lua',
   lua_draw_hook_post = 'draw_github_tracker',

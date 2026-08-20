@@ -99,11 +99,10 @@ Pioneer env vars (`PIONEER_API_KEY`, `PIONEER_USAGE_LABEL`, `PIONEER_MONTHLY_CRE
 | `GITHUB_OVERLAY_ENABLED` | Set to `0` to disable |
 | `GITHUB_GAP_X` | Horizontal gap from the left edge (default `18`) |
 | `GITHUB_GAP_Y` | Top offset in px; empty auto-centers the rail between git + Minecraft |
-| `GITHUB_AUTO_GIT_PANEL_H` | Auto-gap estimate for git panel height (default `300`) |
-| `GITHUB_AUTO_MC_PANEL_H` | Auto-gap estimate for Minecraft clearance (default `126`) |
-| `GITHUB_AUTO_RAIL_H` | Auto-gap estimate for contribution column height (default `590`) |
-| `GITHUB_AUTO_GAP_NUDGE_UP` | Pixels to shift auto-centered rail upward (default `28`) |
-| `GITHUB_AUTO_PRIMARY_GIT_EXTRA` | Extra git-bottom inset on the primary monitor so the rail clears the GNOME-shifted git panel; empty detects `_NET_WORKAREA` (fallback `32`) |
+| `GITHUB_AUTO_MC_PANEL_H` | Minecraft clearance above the screen bottom (default `126`) |
+| `GITHUB_AUTO_RAIL_H` | Shortest the rail window may be (default `590`) |
+| `GITHUB_AUTO_GAP_NUDGE_UP` | Pixels to bias the centered rail upward (default `0`) |
+| `GITHUB_AUTO_PRIMARY_GIT_EXTRA` | Extra git-panel inset on the primary monitor so the rail clears the GNOME-shifted git panel; empty detects `_NET_WORKAREA` (fallback `32`) |
 | `GITHUB_REFRESH_SECONDS` | Fetch interval |
 | `GITHUB_TIMEOUT_SECONDS` | Request timeout |
 

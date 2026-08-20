@@ -11,14 +11,12 @@ Transparent left-side contribution rail (year of squares). No chrome — only th
 
 ## Layout and placement
 
-- Alignment is **`top_left`**. The renderer draws the grid from the top of the window; vertical position is entirely `gap_y`.
-- When **`GITHUB_GAP_Y` is unset**, `scripts/start_conky_overlays.sh` **auto-centers** the rail in the free band between:
-  - the **git status panel** (top), and
-  - the **Minecraft panel** (bottom),
-  using each monitor’s pixel height from `xrandr --listmonitors`.
-- Auto placement estimates panel heights (git footer chip included) so the rail sits in the middle of that band, then subtracts `GITHUB_AUTO_GAP_NUDGE_UP` (default `28`) so it sits slightly high of pure center.
-- On the **primary** monitor the git panel is a `normal` window, so GNOME’s top bar pushes it down; the contribution rail is a `desktop` window measured from the top of the screen. Auto-gap adds `GITHUB_AUTO_PRIMARY_GIT_EXTRA` (detected from `_NET_WORKAREA`, typically `32`) to the git-panel bottom and will not nudge the rail back over that inset.
-- Set an explicit `GITHUB_GAP_Y` to pin the top of the rail; leave it empty to keep auto-centering.
+- Alignment is **`top_left`**. When **`GITHUB_GAP_Y` is unset**, `scripts/start_conky_overlays.sh` sizes the rail window to the whole free band on each monitor — from the top of the **git status panel** down to the **Minecraft panel** — using each monitor’s pixel height from `xrandr --listmonitors`.
+- The renderer then centers the calendar inside that band on **every draw**, measuring the git panel from the repo rows it is drawing right now (`cache/git-status.json`) plus the footer chip. A row appearing or disappearing moves the rail by half a row, so the gaps above and below the calendar stay equal without restarting Conky. Moves are logged to `cache/conky-github.log`.
+- `GITHUB_AUTO_GAP_NUDGE_UP` biases the rail above pure center (default `0`).
+- On the **primary** monitor the git panel is a `normal` window, so GNOME’s top bar pushes it down; the contribution rail is a `desktop` window measured from the top of the screen. Auto placement adds `GITHUB_AUTO_PRIMARY_GIT_EXTRA` (detected from `_NET_WORKAREA`, typically `32`) to the git panel’s top edge.
+- Set an explicit `GITHUB_GAP_Y` to pin the top of the rail; the calendar then draws at the top of its window and stops following the git panel. Leave it empty to keep auto-centering.
+- `update_interval` in `conky/github-overlay.conkyrc` (default `15`) is how fast the rail reacts to a repo row; the contribution fetch stays on `GITHUB_REFRESH_SECONDS`.
 
 | Variable | Purpose |
 | --- | --- |
@@ -29,11 +27,10 @@ Transparent left-side contribution rail (year of squares). No chrome — only th
 | `GITHUB_GAP_Y` | Top offset in px; **empty = auto-center** between git + Minecraft |
 | `GITHUB_REFRESH_SECONDS` | Fetch interval (default `1800`) |
 | `GITHUB_TIMEOUT_SECONDS` | Request timeout |
-| `GITHUB_AUTO_GIT_PANEL_H` | Estimated git panel height for auto gap (default `300`) |
-| `GITHUB_AUTO_MC_PANEL_H` | Estimated Minecraft clearance for auto gap (default `126`) |
-| `GITHUB_AUTO_RAIL_H` | Estimated contribution column height (default `590`) |
-| `GITHUB_AUTO_GAP_NUDGE_UP` | Pixels to shift auto gap upward (default `28`) |
-| `GITHUB_AUTO_PRIMARY_GIT_EXTRA` | Extra git-bottom inset on the primary monitor; empty detects the top bar from `_NET_WORKAREA` (fallback `32`); `0` disables |
+| `GITHUB_AUTO_MC_PANEL_H` | Minecraft clearance above the screen bottom (default `126`) |
+| `GITHUB_AUTO_RAIL_H` | Shortest the rail window may be (default `590`) |
+| `GITHUB_AUTO_GAP_NUDGE_UP` | Pixels to bias the centered rail upward (default `0`) |
+| `GITHUB_AUTO_PRIMARY_GIT_EXTRA` | Extra git-panel inset on the primary monitor; empty detects the top bar from `_NET_WORKAREA` (fallback `32`); `0` disables |
 
 See [Configuration](configuration.md) for the full variable table.
 

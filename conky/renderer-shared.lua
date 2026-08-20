@@ -241,6 +241,38 @@ function shared.wrap_title(cr, title, max_width, max_lines)
   return lines
 end
 
+-- Git status panel geometry. The GitHub rail centers itself in the band under
+-- this panel, so both renderers have to measure the panel the same way.
+shared.git_panel = {
+  top_padding = 4,      -- window top -> frame top (keeps the frame glow unclipped)
+  content_top = 8,      -- frame top -> first repo row
+  content_bottom = 10,  -- last repo row -> frame bottom
+  row_height = 40,      -- two-line repo row: name over branch
+  empty_height = 120,   -- frame height when there is nothing to list
+  footer_gap = 4,       -- frame bottom -> footer chip
+  footer_height = 20,   -- octocat + refresh age chip under the frame
+}
+
+-- Frame height for a repo count; the footer chip hangs below this.
+function shared.git_panel_frame_height(repo_count)
+  local panel = shared.git_panel
+  local count = repo_count or 0
+  local height = panel.content_top + math.max(1, count) * panel.row_height + panel.content_bottom
+  if count == 0 then
+    return math.max(height, panel.empty_height)
+  end
+  return height
+end
+
+-- Window top -> bottom of the footer chip: everything the git panel occupies.
+function shared.git_panel_occupied_height(repo_count)
+  local panel = shared.git_panel
+  return panel.top_padding
+    + shared.git_panel_frame_height(repo_count)
+    + panel.footer_gap
+    + panel.footer_height
+end
+
 function shared.create_surface()
   if not conky_window then
     return nil, false

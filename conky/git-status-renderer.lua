@@ -6,16 +6,19 @@ return function(shared, repo_root)
   local configured_panel_width = 272
   local panel_width = configured_panel_width
   local radius = 18
+  -- Row and padding geometry lives in renderer-shared: the GitHub rail measures
+  -- this panel from there so it can center itself in the band underneath.
+  local geometry = shared.git_panel
   -- Two-line rows: repo name on top, branch underneath.
-  local row_height = 40
+  local row_height = geometry.row_height
   -- Inside the frame: tight top/bottom padding around repo rows (no header bar).
-  local content_top = 8
-  local content_bottom = 10
+  local content_top = geometry.content_top
+  local content_bottom = geometry.content_bottom
   -- Outside the frame: octocat + refresh age sit bottom-right below the box.
-  local footer_gap = 4
-  local footer_height = 22
+  local footer_gap = geometry.footer_gap
+  local footer_height = geometry.footer_height
   -- Small inset so the frame glow is not clipped by the window edge.
-  local top_padding = 4
+  local top_padding = geometry.top_padding
   local side_padding = 14
   -- Official GitHub mark path in a 16×16 viewBox (absolute M/C/Z ops).
   local github_mark_ops = {
@@ -310,9 +313,8 @@ return function(shared, repo_root)
   end
 
   local function panel_height_for(repo_count)
-    local rows = math.max(1, repo_count)
     -- Frame only: top inset + rows + bottom inset (footer draws outside).
-    return content_top + rows * row_height + content_bottom
+    return shared.git_panel_frame_height(repo_count)
   end
 
   local function draw_github_mark(cr, x, y, size, color, alpha)
@@ -346,7 +348,7 @@ return function(shared, repo_root)
     local pad_x = 8
     local logo_timer_gap = 5
     local timer_font_size = 10
-    local chip_height = 20
+    local chip_height = footer_height
 
     local ago = '—'
     if status.updated_at_epoch and status.updated_at_epoch > 0 then
@@ -616,7 +618,6 @@ return function(shared, repo_root)
     local footer = prepare_footer(cr, status)
     local height = panel_height_for(#repos)
     if #repos == 0 then
-      height = math.max(height, 120)
       draw_empty(cr, status, x, y, height, footer)
       return
     end

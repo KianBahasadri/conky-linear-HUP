@@ -73,15 +73,16 @@ GITHUB_GAP_X="${GITHUB_GAP_X:-18}"
 GITHUB_GAP_Y="${GITHUB_GAP_Y-}"
 GITHUB_REFRESH_SECONDS="${GITHUB_REFRESH_SECONDS:-1800}"
 GITHUB_OVERLAY_ENABLED="${GITHUB_OVERLAY_ENABLED:-1}"
-# Height estimates used only for github auto gap_y (keep in sync with renderers).
-# Git: top pad + 6 two-line rows + bottom pad + footer chip under the frame.
-GITHUB_AUTO_GIT_PANEL_H="${GITHUB_AUTO_GIT_PANEL_H:-300}"
+# Auto placement spans the rail window across the whole band between the git
+# panel and Minecraft; the renderer centers the calendar inside it from the live
+# repo count, so the git panel's height is measured there instead of estimated
+# here. Only the Minecraft edge and the rail's own size are named here.
 # Minecraft: panel + bottom clearance inside its bottom-aligned window.
 GITHUB_AUTO_MC_PANEL_H="${GITHUB_AUTO_MC_PANEL_H:-126}"
-# Contribution column: ~53 weeks × (7px + 4px gap) + top pad.
+# Shortest the rail window may be: ~53 weeks × (7px + 4px gap) + top pad.
 GITHUB_AUTO_RAIL_H="${GITHUB_AUTO_RAIL_H:-590}"
-# Nudge the auto-centered rail upward a bit (pixels subtracted from gap_y).
-GITHUB_AUTO_GAP_NUDGE_UP="${GITHUB_AUTO_GAP_NUDGE_UP:-28}"
+# Bias the centered rail upward by this many pixels (0 keeps it centered).
+GITHUB_AUTO_GAP_NUDGE_UP="${GITHUB_AUTO_GAP_NUDGE_UP:-0}"
 # On the primary monitor the git panel is a normal window, so GNOME's top bar
 # pushes it down; the github rail is a desktop window measured from screen top.
 # Empty = detect from _NET_WORKAREA (fallback 32). Set 0 to disable.
@@ -557,12 +558,25 @@ if [[ ! "$GITHUB_AUTO_PRIMARY_GIT_EXTRA" =~ ^[0-9]+$ ]]; then
   GITHUB_AUTO_PRIMARY_GIT_EXTRA=32
 fi
 
-# Center the github rail in the free band between git (top) and Minecraft (bottom).
-github_auto_gap_y() {
+if [[ ! "$GITHUB_AUTO_GAP_NUDGE_UP" =~ ^[0-9]+$ ]]; then
+  log_overlay github "invalid GITHUB_AUTO_GAP_NUDGE_UP=$GITHUB_AUTO_GAP_NUDGE_UP; using 0"
+  GITHUB_AUTO_GAP_NUDGE_UP=0
+fi
+
+# Band the contribution rail is centered in: from the top of the git panel's
+# window down to where the Minecraft panel starts. The rail window covers the
+# whole band and the renderer centers the calendar inside it on every draw, so
+# the rail follows the git panel as repo rows come and go.
+GITHUB_BAND_GIT_TOP=""
+GITHUB_BAND_TOP=0
+GITHUB_BAND_BOTTOM=0
+GITHUB_BAND_HEIGHT=0
+
+github_band_for_monitor() {
   local monitor_h="$1"
   local git_gap_y="$2"
   local is_primary="${3:-0}"
-  local git_bottom mc_top free gap min_top extra
+  local mc_clearance=0
 
   if [[ ! "$monitor_h" =~ ^[0-9]+$ ]] || (( monitor_h < 200 )); then
     monitor_h=1080
@@ -571,45 +585,42 @@ github_auto_gap_y() {
     git_gap_y=1
   fi
 
-  git_bottom=$((git_gap_y + GITHUB_AUTO_GIT_PANEL_H))
-  # Primary: git (normal) is pushed below the top bar; github (desktop) is not.
-  extra=0
-  if [[ "$is_primary" == "1" ]]; then
-    extra="$GITHUB_AUTO_PRIMARY_GIT_EXTRA"
-    if (( extra > git_gap_y )); then
-      git_bottom=$((git_bottom + extra - git_gap_y))
+  GITHUB_BAND_GIT_TOP=""
+  if overlay_enabled git; then
+    GITHUB_BAND_GIT_TOP="$git_gap_y"
+    # Primary: git (normal) is pushed below the top bar; github (desktop) is not.
+    if [[ "$is_primary" == "1" ]] && (( GITHUB_AUTO_PRIMARY_GIT_EXTRA > git_gap_y )); then
+      GITHUB_BAND_GIT_TOP="$GITHUB_AUTO_PRIMARY_GIT_EXTRA"
     fi
   fi
-  mc_top=$((monitor_h - MINECRAFT_GAP_Y - GITHUB_AUTO_MC_PANEL_H))
-  free=$((mc_top - git_bottom))
-  if (( free > GITHUB_AUTO_RAIL_H )); then
-    gap=$((git_bottom + (free - GITHUB_AUTO_RAIL_H) / 2))
+
+  if overlay_enabled minecraft; then
+    mc_clearance=$((MINECRAFT_GAP_Y + GITHUB_AUTO_MC_PANEL_H))
+  fi
+
+  GITHUB_BAND_TOP="${GITHUB_BAND_GIT_TOP:-0}"
+  if (( GITHUB_BAND_TOP < 0 )); then
+    GITHUB_BAND_TOP=0
+  fi
+  GITHUB_BAND_BOTTOM=$((monitor_h - mc_clearance))
+  if (( GITHUB_BAND_BOTTOM - GITHUB_BAND_TOP < GITHUB_AUTO_RAIL_H )); then
+    GITHUB_BAND_BOTTOM=$((GITHUB_BAND_TOP + GITHUB_AUTO_RAIL_H))
+  fi
+  GITHUB_BAND_HEIGHT=$((GITHUB_BAND_BOTTOM - GITHUB_BAND_TOP))
+}
+
+github_placement_note() {
+  if [[ -n "$GITHUB_GAP_Y" ]]; then
+    printf "pinned gap_y=%s\n" "$GITHUB_GAP_Y"
   else
-    gap=$((git_bottom + 8))
+    printf "auto band=%s..%s height=%s git_top=%s\n" \
+      "$GITHUB_BAND_TOP" "$GITHUB_BAND_BOTTOM" "$GITHUB_BAND_HEIGHT" "${GITHUB_BAND_GIT_TOP:-none}"
   fi
-  if [[ "$GITHUB_AUTO_GAP_NUDGE_UP" =~ ^[0-9]+$ ]]; then
-    gap=$((gap - GITHUB_AUTO_GAP_NUDGE_UP))
-  fi
-  # The upward nudge must not walk the rail back over the git panel. Only
-  # enforce this on primary, where the extra inset is what makes the nudge
-  # overlap; side monitors are already visually correct at the nudged value.
-  if [[ "$is_primary" == "1" ]]; then
-    min_top=$((git_bottom + 8))
-    if (( gap < min_top )); then
-      gap=$min_top
-    fi
-  fi
-  if (( gap < 0 )); then
-    gap=0
-  fi
-  printf "%s\n" "$gap"
 }
 
 overlay_gap_y() {
   local key="$1"
   local linear_gap_y="$2"
-  local monitor_h="${3:-1080}"
-  local is_primary="${4:-0}"
 
   case "$key" in
     linear) printf "%s\n" "$linear_gap_y" ;;
@@ -619,7 +630,7 @@ overlay_gap_y() {
       if [[ -n "$GITHUB_GAP_Y" ]]; then
         printf "%s\n" "$GITHUB_GAP_Y"
       else
-        github_auto_gap_y "$monitor_h" "$(overlay_gap_y git "$linear_gap_y")" "$is_primary"
+        printf "%s\n" "$GITHUB_BAND_TOP"
       fi
       ;;
     weather) printf "%s\n" "$WEATHER_GAP_Y" ;;
@@ -659,7 +670,7 @@ log_generated_overlay() {
       log_overlay minecraft "generated monitor_index=$monitor_index width=$width gap_x=$MINECRAFT_GAP_X gap_y=$MINECRAFT_GAP_Y config=$config_path"
       ;;
     github)
-      log_overlay github "generated monitor_index=$monitor_index width=$width gap_x=$GITHUB_GAP_X gap_y=$(grep -E '^\s*gap_y\s*=' "$config_path" | head -1 | tr -dc '0-9-') config=$config_path"
+      log_overlay github "generated monitor_index=$monitor_index width=$width gap_x=$GITHUB_GAP_X $(github_placement_note) config=$config_path"
       ;;
     weather)
       log_overlay weather "generated monitor_index=$monitor_index width=$width gap_x=$WEATHER_GAP_X gap_y=$WEATHER_GAP_Y config=$config_path"
@@ -680,8 +691,19 @@ launch_overlay() {
   local monitor_gap_x="$4"
   local linear_gap_y="$5"
   local config_path="$6"
+  local -a launch_env=()
 
-  setsid conky -c "$config_path" >> "${overlay_log_path[$key]}" 2>&1 < /dev/null &
+  if [[ "$key" == "github" && -z "$GITHUB_GAP_Y" ]]; then
+    # Screen-space band the renderer re-centers the rail in on every draw.
+    launch_env=(
+      "GITHUB_RAIL_WINDOW_TOP=$GITHUB_BAND_TOP"
+      "GITHUB_RAIL_BAND_BOTTOM=$GITHUB_BAND_BOTTOM"
+      "GITHUB_RAIL_GIT_TOP=$GITHUB_BAND_GIT_TOP"
+      "GITHUB_RAIL_NUDGE_UP=$GITHUB_AUTO_GAP_NUDGE_UP"
+    )
+  fi
+
+  setsid env ${launch_env[@]+"${launch_env[@]}"} conky -c "$config_path" >> "${overlay_log_path[$key]}" 2>&1 < /dev/null &
 
   case "$key" in
     linear)
@@ -694,7 +716,7 @@ launch_overlay() {
       log_overlay minecraft "launched monitor_index=$monitor_index width=$width gap_x=$MINECRAFT_GAP_X gap_y=$MINECRAFT_GAP_Y config=$config_path pid=$!"
       ;;
     github)
-      log_overlay github "launched monitor_index=$monitor_index width=$width gap_x=$GITHUB_GAP_X gap_y=$(grep -E '^\s*gap_y\s*=' "$config_path" | head -1 | tr -dc '0-9-') config=$config_path pid=$!"
+      log_overlay github "launched monitor_index=$monitor_index width=$width gap_x=$GITHUB_GAP_X $(github_placement_note) config=$config_path pid=$!"
       ;;
     weather)
       log_overlay weather "launched monitor_index=$monitor_index width=$width gap_x=$WEATHER_GAP_X gap_y=$WEATHER_GAP_Y config=$config_path pid=$!"
@@ -749,6 +771,8 @@ for line in "${monitor_lines[@]}"; do
     is_primary=1
   fi
 
+  github_band_for_monitor "$monitor_height" "$(overlay_gap_y git "$linear_gap_y")" "$is_primary"
+
   for key in "${overlay_keys[@]}"; do
     if overlay_enabled "$key"; then
       config_path="$GENERATED_DIR/$key-overlay-$index.conkyrc"
@@ -757,8 +781,10 @@ for line in "${monitor_lines[@]}"; do
         extra_height="$LINEAR_MINIMUM_HEIGHT"
       elif [[ "$key" == "rate-limit-panel" ]]; then
         extra_height="$RATE_LIMIT_PANEL_MINIMUM_HEIGHT"
+      elif [[ "$key" == "github" && -z "$GITHUB_GAP_Y" ]]; then
+        extra_height="$GITHUB_BAND_HEIGHT"
       fi
-      generate_config "${overlay_config[$key]}" "$config_path" "$index" "$(overlay_gap_x "$key" "$monitor_gap_x")" "$(overlay_gap_y "$key" "$linear_gap_y" "$monitor_height" "$is_primary")" "$extra_height"
+      generate_config "${overlay_config[$key]}" "$config_path" "$index" "$(overlay_gap_x "$key" "$monitor_gap_x")" "$(overlay_gap_y "$key" "$linear_gap_y")" "$extra_height"
     fi
   done
 
