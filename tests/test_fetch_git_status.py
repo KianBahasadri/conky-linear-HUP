@@ -554,13 +554,14 @@ def test_attach_actions_disabled_clears_pips(monkeypatch):
     assert attached["repos"][0]["actions"] == ""
 
 
-def _row(name, state, actions="", severity=0):
+def _row(name, state, actions="", severity=0, branch="main"):
     return {
         "name": name,
         "path": f"/tmp/{name}",
         "state": state,
         "severity": severity,
         "actions": actions,
+        "branch": branch,
     }
 
 
@@ -585,6 +586,43 @@ def test_limit_repos_hides_clean_rows_without_actions(monkeypatch):
     assert names == ["dirty", "built", "broken-ci"]
     assert limited["summary"]["total"] == 3
     assert limited["summary"]["clean"] == 2
+
+
+def test_limit_repos_keeps_clean_rows_off_the_default_branch(monkeypatch):
+    monkeypatch.setenv("GIT_ACTIONS_ENABLED", "1")
+    monkeypatch.setattr(git_status, "log_event", lambda _message: None)
+    status = {
+        "ok": True,
+        "maxRepos": 6,
+        "repos": [
+            _row("on-main", "clean"),
+            _row("on-master", "clean", branch="master"),
+            _row("feature", "clean", branch="feature/x"),
+            _row("topic", "clean", branch="wip"),
+        ],
+    }
+
+    limited = git_status.limit_repos(status)
+    names = [repo["name"] for repo in limited["repos"]]
+    assert names == ["feature", "topic"]
+
+
+def test_limit_repos_default_branches_override_idle_hide(monkeypatch):
+    monkeypatch.setenv("GIT_ACTIONS_ENABLED", "1")
+    monkeypatch.setenv("GIT_DEFAULT_BRANCHES", "develop")
+    monkeypatch.setattr(git_status, "log_event", lambda _message: None)
+    status = {
+        "ok": True,
+        "maxRepos": 6,
+        "repos": [
+            _row("on-main", "clean"),
+            _row("on-develop", "clean", branch="develop"),
+        ],
+    }
+
+    limited = git_status.limit_repos(status)
+    names = [repo["name"] for repo in limited["repos"]]
+    assert names == ["on-main"]
 
 
 def test_limit_repos_explains_an_entirely_hidden_fleet(monkeypatch):

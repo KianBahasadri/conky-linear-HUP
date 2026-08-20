@@ -1112,17 +1112,28 @@ def collect_status(repo_paths=None, timeout=None, hide_clean=None, max_repos=Non
     }
 
 
-def is_idle_row(repo):
-    """A clean repo with no Actions run carries no signal worth a panel row."""
-    return repo.get("state") == "clean" and not (repo.get("actions") or "")
+def is_idle_row(repo, default_branches=None):
+    """A default-branch clean repo with no Actions run isn't worth a panel row.
+
+    Feature / non-default branches stay even when clean: being off main is the
+    signal. Default names come from GIT_DEFAULT_BRANCHES (main, master).
+    """
+    if repo.get("state") != "clean":
+        return False
+    if repo.get("actions"):
+        return False
+    branches = default_branches if default_branches is not None else parse_default_branches()
+    branch = (repo.get("branch") or "").strip()
+    return branch in branches
 
 
 def limit_repos(status, max_repos=None, actions_ready=True):
     """
     Trim the fleet down to the rows the panel actually shows.
 
-    Runs after attach_actions(): idle repos (clean *and* without an Actions pip)
-    drop out first so the GIT_MAX_REPOS cap is spent on rows that say something.
+    Runs after attach_actions(): idle repos (clean on a default branch *and*
+    without an Actions pip) drop out first so the GIT_MAX_REPOS cap is spent
+    on rows that say something. Off-default branches stay even when clean.
     When the pips are unavailable — Actions disabled, or the whole enrichment
     pass failed — nothing is hidden, since every row would look idle.
     """
@@ -1133,7 +1144,8 @@ def limit_repos(status, max_repos=None, actions_ready=True):
         max_repos = 6
 
     if actions_ready and env_flag("GIT_ACTIONS_ENABLED", True):
-        kept = [repo for repo in repos if not is_idle_row(repo)]
+        default_branches = parse_default_branches()
+        kept = [repo for repo in repos if not is_idle_row(repo, default_branches)]
         hidden = len(repos) - len(kept)
         if hidden:
             log_event(f"hid idle rows without actions hidden={hidden}")
