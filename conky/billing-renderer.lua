@@ -72,6 +72,20 @@ return function(shared, repo_root)
     { 'Z' },
   }
 
+  -- Compact Azure "A" in a 50×50 viewBox. The crossbar is part of the outline
+  -- so a winding fill stays solid at rail-marker size.
+  local azure_mark_ops = {
+    { 'M', 4, 44 },
+    { 'L', 22, 8 },
+    { 'L', 28, 8 },
+    { 'L', 46, 44 },
+    { 'L', 38, 44 },
+    { 'L', 32, 30 },
+    { 'L', 18, 30 },
+    { 'L', 12, 44 },
+    { 'Z' },
+  }
+
   local function hex_rgb(hex)
     return tonumber(hex:sub(1, 2), 16) / 255,
       tonumber(hex:sub(3, 4), 16) / 255,
@@ -289,6 +303,8 @@ return function(shared, repo_root)
         provider.color,
         alpha
       )
+    elseif provider.id == 'azure' then
+      vector_mark(cr, azure_mark_ops, x, y, 13.0, 50, 50, provider.color, alpha)
     else
       bead(cr, x, y, 4.3, provider.color, alpha)
     end
@@ -304,6 +320,8 @@ return function(shared, repo_root)
       clearance = 7.5
     elseif provider.id == 'openrouter' then
       clearance = 8.8
+    elseif provider.id == 'azure' then
+      clearance = 7.5
     end
     local dx, dy = x2 - x1, y2 - y1
     local distance = math.sqrt(dx * dx + dy * dy)

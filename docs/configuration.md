@@ -146,8 +146,8 @@ The transparent HUD is generated on every monitor. It reads local Linux telemetr
 | `BILLING_TIMEOUT_SECONDS` | Per-provider command/request timeout (default `30`) |
 | `BILLING_AWS_CAP_USD` | AWS monthly surprise-bill threshold; enables AWS |
 | `BILLING_AWS_PROFILE` | Optional AWS CLI profile; otherwise normal AWS CLI resolution applies |
-| `BILLING_AZURE_CAP_USD` | Azure monthly surprise-bill threshold; enables Azure |
-| `BILLING_AZURE_SUBSCRIPTION_ID` | Optional subscription; otherwise the Azure CLI active subscription is used |
+| `BILLING_AZURE_ENABLED` | Set to `1` to plot this month's Azure credit spend against the live starting balance |
+| `BILLING_AZURE_SUBSCRIPTION_ID` | Optional subscription for month-to-date spend; otherwise the Azure CLI active subscription is used |
 | `BILLING_AZURE_API_VERSION` | Cost Management API version override (default `2025-03-01`) |
 | `BILLING_ANTHROPIC_CAP_USD` | Anthropic monthly surprise-bill threshold; enables Anthropic |
 | `ANTHROPIC_ADMIN_KEY` | Anthropic organization Admin API key for the Cost Report endpoint |

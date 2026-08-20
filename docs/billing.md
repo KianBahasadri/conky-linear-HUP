@@ -19,25 +19,26 @@ geometry is unusual, but the underlying axes are conventional:
   changing color. Neither boundary carries a text label.
 - The dashed diagonal is calendar pace: 50% of the month against 50% of cap.
 - A provider glyph marks the current observation, the colored segment is the
-  now-to-EOM forecast, and the hollow diamond is the EOM landing. GitHub and
-  OpenRouter use their recognizable Octocat and geometric `OR` marks; providers
-  without a compact vector mark retain the filled bead. The trajectory meets
-  the marker edge without continuing underneath the service glyph. Diamonds
-  carry no text labels or leader lines.
+  now-to-EOM forecast, and the hollow diamond is the EOM landing. GitHub,
+  OpenRouter, and Azure use their recognizable Octocat, geometric `OR`, and
+  Azure `A` marks; providers without a compact vector mark retain the filled
+  bead. The trajectory meets the marker edge without continuing underneath the
+  service glyph. Diamonds carry no text labels or leader lines.
 - A dimmed trajectory means its last successful value is being retained after
   a failed refresh. A bead with no forecast line or diamond means there is not
   yet enough real history to calculate a forecast.
 
-AWS, Azure, and Anthropic are normalized separately. The component never adds
-their dollar values together. Their current pressure is month-to-date spend
-divided by the configured cap. Their forecast uses current calendar pace:
+AWS and Anthropic are normalized separately. The component never adds their
+dollar values together. Their current pressure is month-to-date spend divided
+by the configured cap. Their forecast uses current calendar pace:
 
 ```text
 forecast spend = current spend × days in month ÷ current day
 ```
 
-The caps are personal surprise-bill thresholds, not values inferred from a
-cross-provider total.
+Those caps are personal surprise-bill thresholds, not values inferred from a
+cross-provider total. Azure does not use a configured cap; its ceiling is the
+live credit balance at the start of the month.
 
 When no provider has usable billing data, the map is dimmed and a solid red
 `NO BILLING DATA` popup is drawn over its center with a prompt to check the
@@ -65,6 +66,28 @@ exist, OpenRouter renders its current bead with no forecast line or diamond.
 Top-ups do not distort this fallback because it uses cumulative total usage,
 not changes in remaining balance.
 
+## Azure
+
+Azure is prepaid, but it is plotted as this month's consumption against the
+credit pool the month started with, not as OpenRouter's remaining-balance
+runway:
+
+1. The authenticated Azure CLI reads the Microsoft Customer Agreement
+   [credit balance](https://learn.microsoft.com/en-us/rest/api/consumption/credits/get) for the billing profile. `currentBalance` is the starting
+   pool (posted credit). `estimatedBalance` is that pool after pending
+   eligible charges.
+2. Spent this month is starting credit minus remaining credit (`X − (X − Y)
+   = Y`). That is the current observation.
+3. The forecast uses current calendar pace of that spend through the common
+   EOM, divided by the same starting pool.
+
+The glyph therefore sits on the current-day line at `Y / X`, and the hollow
+diamond is the EOM landing against that same `X`. Remaining credit is kept
+as a diagnostic, not as the map's 100% ceiling.
+
+If the credit summary omits spend, month-to-date Cost Management (or usage
+`costInUSD` when Cost Management is throttled) fills `Y`.
+
 ## GitHub Actions
 
 GitHub Actions is an included-minutes allowance rather than a dollar cap. When
@@ -85,8 +108,12 @@ separate `currentPayableUsd` diagnostic.
 ## Live sources
 
 - AWS uses the authenticated [AWS CLI Cost Explorer](https://docs.aws.amazon.com/cli/latest/reference/ce/get-cost-and-usage.html) `UnblendedCost` total.
-- Azure uses the authenticated Azure CLI to query [Cost Management](https://learn.microsoft.com/en-us/rest/api/cost-management/query/usage?view=rest-cost-management-2025-03-01)
-  `ActualCost` / `PreTaxCost` for month to date.
+- Azure uses the authenticated Azure CLI. Starting and remaining credits
+  come from the billing-profile [Consumption credits](https://learn.microsoft.com/en-us/rest/api/consumption/credits/get)
+  `currentBalance` and `estimatedBalance`. Month-to-date spend is their
+  difference, with [Cost Management](https://learn.microsoft.com/en-us/rest/api/cost-management/query/usage?view=rest-cost-management-2025-03-01)
+  `ActualCost` / `PreTaxCost` as fallback (converted to USD when billed in
+  another currency; usage-detail `costInUSD` if Cost Management is throttled).
 - Anthropic uses the organization [Cost Report API](https://platform.claude.com/docs/en/api/admin/cost_report). Amounts are returned in
   fractional cents and converted to USD. This requires an Admin API key and is
   not available to an individual Claude account.

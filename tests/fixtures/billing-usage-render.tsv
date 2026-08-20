@@ -3,4 +3,4 @@ provider	aws	AWS	ffb454	metered	1	0	0.3364	0.528	1	aws	$8.41 now · $13.20 EOM �
 provider	anthropic	ANT	ff8f73	metered	1	0	0.302	0.505	1	anthropic-cost-report	$6.04 now · $10.10 EOM · $20.00 cap
 provider	openrouter	OR	a78bfa	prepaid	1	0	0.0	0.4148	1	openrouter-credits	$12.44 left · $0.43/day · $7.28 at EOM
 provider	github_actions	GH	3fb950	allowance	1	0	0.4123	0.6728	1	github-billing-usage	1,237 / 3,000 min · 2,018 EOM · $0.00 due
-provider	azure	AZR	38bdf8	metered	1	0	0.2135	0.355	1	azure	$4.27 now · $7.10 EOM · $20.00 cap
+provider	azure	AZR	38bdf8	prepaid	1	0	0.2478	0.4042	1	azure-credits	$24.46 now · $39.91 EOM · $98.72 at month start

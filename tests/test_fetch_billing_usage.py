@@ -291,7 +291,7 @@ def test_github_actions_uses_private_standard_runner_minutes(monkeypatch):
 def test_collect_live_providers_share_one_period_end(monkeypatch, tmp_path):
     isolate_cache(monkeypatch, tmp_path)
     monkeypatch.setenv("BILLING_AWS_CAP_USD", "25")
-    monkeypatch.setenv("BILLING_AZURE_CAP_USD", "20")
+    monkeypatch.setenv("BILLING_AZURE_ENABLED", "1")
     monkeypatch.setenv("BILLING_ANTHROPIC_CAP_USD", "20")
     monkeypatch.setenv("ANTHROPIC_ADMIN_KEY", "admin-key")
     monkeypatch.setenv("OPENROUTER_API_KEY", "management-key")
@@ -300,7 +300,13 @@ def test_collect_live_providers_share_one_period_end(monkeypatch, tmp_path):
         billing, "fetch_aws_current", lambda *_args: Decimal("8.41")
     )
     monkeypatch.setattr(
-        billing, "fetch_azure_current", lambda *_args: Decimal("4.27")
+        billing,
+        "fetch_azure_credit_balance",
+        lambda *_args: {
+            "remaining": Decimal("74.26"),
+            "starting": Decimal("98.72"),
+            "spent": Decimal("24.46"),
+        },
     )
     monkeypatch.setattr(
         billing, "fetch_anthropic_current", lambda *_args: Decimal("6.04")
@@ -332,6 +338,158 @@ def test_collect_live_providers_share_one_period_end(monkeypatch, tmp_path):
     openrouter = output["providers"][2]
     assert openrouter["forecastUsd"] == 5.16
     assert openrouter["forecastPressure"] == 0.4148
+    azure = output["providers"][3]
+    assert azure["kind"] == "prepaid"
+    assert azure["currentUsd"] == 24.46
+    assert azure["capUsd"] == 98.72
+    assert azure["currentPressure"] == round(24.46 / 98.72, 4)
+
+
+def _azure_url(command):
+    return command[command.index("--url") + 1]
+
+
+def test_azure_converts_cad_cost_to_usd(monkeypatch):
+    monkeypatch.setenv("BILLING_AZURE_SUBSCRIPTION_ID", "sub-1")
+
+    def fake_run_json(command, _timeout):
+        url = _azure_url(command)
+        if "CostManagement/query" in url:
+            return {
+                "properties": {
+                    "columns": [
+                        {"name": "PreTaxCost"},
+                        {"name": "Currency"},
+                    ],
+                    "rows": [[34.2355702355251, "CAD"]],
+                }
+            }
+        if "usageDetails" in url:
+            return {
+                "value": [
+                    {
+                        "properties": {
+                            "costInUSD": 0.05,
+                            "exchangeRatePricingToBilling": 1.40905,
+                        }
+                    }
+                ]
+            }
+        raise AssertionError(url)
+
+    monkeypatch.setattr(billing, "run_json", fake_run_json)
+
+    amount = billing.fetch_azure_current(5)
+
+    assert round(float(amount), 2) == round(34.2355702355251 / 1.40905, 2)
+
+
+def test_azure_usage_details_fallback_on_cost_management_throttle(monkeypatch):
+    monkeypatch.setenv("BILLING_AZURE_SUBSCRIPTION_ID", "sub-1")
+    versions = []
+
+    def fake_run_json(command, _timeout):
+        url = _azure_url(command)
+        if "CostManagement/query" in url:
+            versions.append(url)
+            raise billing.ProviderError("az failed: Too Many Requests (429)")
+        if "usageDetails" in url:
+            next_link = None if "page=2" in url else url + "&page=2"
+            rows = (
+                [{"properties": {"costInUSD": "2.00"}}]
+                if next_link is None
+                else [{"properties": {"costInUSD": "10.25"}}]
+            )
+            payload = {"value": rows}
+            if next_link:
+                payload["nextLink"] = next_link
+            return payload
+        raise AssertionError(url)
+
+    monkeypatch.setattr(billing, "run_json", fake_run_json)
+
+    amount = billing.fetch_azure_current(5)
+
+    assert amount == Decimal("12.25")
+    assert any("2025-03-01" in url for url in versions)
+    assert any("2023-11-01" in url for url in versions)
+
+
+def test_azure_credit_balance_uses_estimated_usd(monkeypatch):
+    monkeypatch.setenv("BILLING_AZURE_SUBSCRIPTION_ID", "sub-1")
+    urls = []
+
+    def fake_run_json(command, _timeout):
+        url = _azure_url(command)
+        urls.append(url)
+        if url.endswith("billingAccounts?api-version=2024-04-01"):
+            return {
+                "value": [
+                    {
+                        "name": (
+                            "b6cda2e3-d773-4a54-9a82-854549866a6b:"
+                            "963985be-33e3-4f26-91bc-01a4ababbf51_2019-05-31"
+                        )
+                    }
+                ]
+            }
+        if "billingProfiles?api-version=2024-04-01" in url:
+            assert "%3A" in url
+            return {
+                "value": [
+                    {
+                        "name": "KX5Y-D2GQ-BG7-PGB",
+                        "properties": {"spendingLimit": "On"},
+                    }
+                ]
+            }
+        if "credits/balanceSummary" in url:
+            return {
+                "properties": {
+                    "balanceSummary": {
+                        "currentBalance": {"currency": "USD", "value": 98.72},
+                        "estimatedBalance": {"currency": "USD", "value": 74.26},
+                    },
+                    "pendingEligibleCharges": {"currency": "USD", "value": -24.46},
+                }
+            }
+        raise AssertionError(url)
+
+    monkeypatch.setattr(billing, "run_json", fake_run_json)
+
+    credits = billing.fetch_azure_credit_balance(5)
+
+    assert credits["remaining"] == Decimal("74.26")
+    assert credits["starting"] == Decimal("98.72")
+    assert credits["spent"] == Decimal("24.46")
+
+
+def test_azure_plots_month_spend_against_starting_credits(monkeypatch, tmp_path):
+    isolate_cache(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        billing,
+        "fetch_azure_credit_balance",
+        lambda *_args: {
+            "remaining": Decimal("74.26"),
+            "starting": Decimal("98.72"),
+            "spent": Decimal("24.46"),
+        },
+    )
+
+    period = billing.month_period(date(2026, 8, 19))
+    provider = billing.azure_provider(period, 5)
+
+    spent = Decimal("24.46")
+    starting = Decimal("98.72")
+    forecast = spent * Decimal(31) / Decimal(19)
+    assert provider["kind"] == "prepaid"
+    assert provider["currentUsd"] == 24.46
+    assert provider["capUsd"] == 98.72
+    assert provider["balanceUsd"] == 74.26
+    assert provider["currentPressure"] == round(float(spent / starting), 4)
+    assert provider["forecastUsd"] == round(float(forecast), 2)
+    assert provider["forecastPressure"] == round(float(forecast / starting), 4)
+    assert provider["source"] == "azure-credits"
 
 
 def test_render_tsv_contains_only_renderer_fields():

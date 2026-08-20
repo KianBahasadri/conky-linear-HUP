@@ -2,9 +2,9 @@
 """Collect month-to-date billing data for the affine billing map.
 
 Metered services are normalized against user-defined monthly caps. OpenRouter
-is prepaid, so its current balance becomes its provider-specific ceiling and
-its pressure is the share of that balance expected to be consumed by the same
-calendar month end.
+is prepaid against remaining credit. Azure is prepaid against the credit
+pool the current month started with: month-to-date spend is the current
+point, and calendar pace projects that spend through the same month end.
 """
 
 import calendar
@@ -258,80 +258,326 @@ def fetch_aws_current(period, timeout):
     return as_decimal(value.get("Amount", 0), "AWS amount")
 
 
-def fetch_azure_current(timeout):
-    subscription_id = os.environ.get("BILLING_AZURE_SUBSCRIPTION_ID", "").strip()
-    if not subscription_id:
-        try:
-            result = subprocess.run(
-                ["az", "account", "show", "--query", "id", "--output", "tsv"],
-                check=False,
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-            )
-        except FileNotFoundError as error:
-            raise ProviderError("az is not installed") from error
-        except subprocess.TimeoutExpired as error:
-            raise ProviderError(f"az timed out after {timeout}s") from error
-        if result.returncode != 0 or not result.stdout.strip():
-            raise ProviderError("Azure CLI is not logged in and no subscription was set")
-        subscription_id = result.stdout.strip()
+def azure_throttled(error):
+    text = str(error).lower()
+    return "429" in text or "too many requests" in text
 
-    api_version = os.environ.get("BILLING_AZURE_API_VERSION", "2025-03-01").strip()
-    url = (
+
+def azure_subscription_id(timeout):
+    subscription_id = os.environ.get("BILLING_AZURE_SUBSCRIPTION_ID", "").strip()
+    if subscription_id:
+        return subscription_id
+    try:
+        result = subprocess.run(
+            ["az", "account", "show", "--query", "id", "--output", "tsv"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except FileNotFoundError as error:
+        raise ProviderError("az is not installed") from error
+    except subprocess.TimeoutExpired as error:
+        raise ProviderError(f"az timed out after {timeout}s") from error
+    if result.returncode != 0 or not result.stdout.strip():
+        raise ProviderError("Azure CLI is not logged in and no subscription was set")
+    return result.stdout.strip()
+
+
+def azure_rest(method, url, timeout, body=None):
+    command = ["az", "rest", "--method", method, "--url", url, "--output", "json"]
+    if body is not None:
+        command.extend(["--body", json.dumps(body, separators=(",", ":"))])
+    return run_json(command, timeout)
+
+
+def azure_cost_query_url(subscription_id, api_version):
+    return (
         "https://management.azure.com/subscriptions/"
         f"{urllib.parse.quote(subscription_id, safe='')}/providers/"
         f"Microsoft.CostManagement/query?api-version={urllib.parse.quote(api_version)}"
     )
+
+
+def azure_usage_details_url(subscription_id, top=100):
+    return (
+        "https://management.azure.com/subscriptions/"
+        f"{urllib.parse.quote(subscription_id, safe='')}/providers/"
+        f"Microsoft.Consumption/usageDetails?api-version=2023-05-01"
+        f"&$top={int(top)}"
+    )
+
+
+def parse_azure_cost_query(payload):
+    properties = payload.get("properties") or {}
+    columns = [str(item.get("name") or "") for item in properties.get("columns") or []]
+    rows = properties.get("rows") or []
+    if not rows:
+        return Decimal(0), "USD"
+    try:
+        cost_index = next(
+            index
+            for index, name in enumerate(columns)
+            if name.lower() in {"pretaxcost", "cost"}
+        )
+    except StopIteration as error:
+        raise ProviderError("Azure response did not include a cost column") from error
+    currency_index = next(
+        (index for index, name in enumerate(columns) if name.lower() == "currency"),
+        None,
+    )
+    total = Decimal(0)
+    currency = "USD"
+    for row in rows:
+        if currency_index is not None and len(row) > currency_index:
+            currency = str(row[currency_index] or "USD").upper()
+        total += as_decimal(row[cost_index], "Azure cost")
+    return total, currency
+
+
+def fetch_azure_cost_management(subscription_id, timeout):
+    configured = os.environ.get("BILLING_AZURE_API_VERSION", "2025-03-01").strip()
+    versions = [configured or "2025-03-01"]
+    if "2023-11-01" not in versions:
+        versions.append("2023-11-01")
     body = {
         "type": "ActualCost",
         "timeframe": "MonthToDate",
         "dataset": {
             "granularity": "None",
-            "aggregation": {
-                "totalCost": {"name": "PreTaxCost", "function": "Sum"}
-            },
+            "aggregation": {"totalCost": {"name": "PreTaxCost", "function": "Sum"}},
         },
     }
-    payload = run_json(
-        [
-            "az",
-            "rest",
-            "--method",
-            "post",
-            "--url",
-            url,
-            "--body",
-            json.dumps(body, separators=(",", ":")),
-            "--output",
-            "json",
-        ],
-        timeout,
-    )
-    properties = payload.get("properties") or {}
-    columns = [str(item.get("name") or "") for item in properties.get("columns") or []]
-    rows = properties.get("rows") or []
-    if not rows:
-        return Decimal(0)
-    try:
-        cost_index = next(
-            index for index, name in enumerate(columns) if name.lower() in {"pretaxcost", "cost"}
-        )
-    except StopIteration as error:
-        raise ProviderError("Azure response did not include a cost column") from error
-    currency_index = next(
-        (index for index, name in enumerate(columns) if name.lower() == "currency"), None
-    )
+    last_error = None
+    for api_version in versions:
+        try:
+            payload = azure_rest(
+                "post",
+                azure_cost_query_url(subscription_id, api_version),
+                timeout,
+                body,
+            )
+            return parse_azure_cost_query(payload)
+        except ProviderError as error:
+            last_error = error
+            if not azure_throttled(error):
+                raise
+    raise last_error
+
+
+def azure_usage_properties(item):
+    return item.get("properties") or item
+
+
+def azure_pricing_to_billing_rate(subscription_id, timeout):
+    payload = azure_rest("get", azure_usage_details_url(subscription_id, top=1), timeout)
+    items = payload.get("value") or []
+    if not items:
+        raise ProviderError("Azure usage details did not include an exchange rate")
+    props = azure_usage_properties(items[0])
+    rate = props.get("exchangeRatePricingToBilling") or props.get("exchangeRate")
+    value = as_decimal(rate, "Azure exchange rate")
+    if value <= 0:
+        raise ProviderError("Azure exchange rate was not positive")
+    return value
+
+
+def fetch_azure_usage_usd(subscription_id, timeout):
+    url = azure_usage_details_url(subscription_id, top=100)
     total = Decimal(0)
-    for row in rows:
-        if currency_index is not None and len(row) > currency_index:
-            currency = str(row[currency_index] or "USD").upper()
-            if currency != "USD":
-                raise ProviderError(
-                    f"Azure returned {currency}; only USD caps are supported"
-                )
-        total += as_decimal(row[cost_index], "Azure cost")
+    pages = 0
+    while url:
+        pages += 1
+        if pages > 40:
+            raise ProviderError("Azure usage details pagination exceeded the page limit")
+        payload = azure_rest("get", url, timeout)
+        for item in payload.get("value") or []:
+            usd = azure_usage_properties(item).get("costInUSD")
+            if usd is None:
+                continue
+            total += as_decimal(usd, "Azure costInUSD")
+        url = payload.get("nextLink")
     return total
+
+
+def fetch_azure_current(timeout):
+    subscription_id = azure_subscription_id(timeout)
+    try:
+        total, currency = fetch_azure_cost_management(subscription_id, timeout)
+    except ProviderError as error:
+        if azure_throttled(error):
+            return fetch_azure_usage_usd(subscription_id, timeout)
+        raise
+    if currency == "USD":
+        return total
+    return total / azure_pricing_to_billing_rate(subscription_id, timeout)
+
+
+def azure_resource_list(payload):
+    if isinstance(payload, list):
+        return payload
+    return payload.get("value") or []
+
+
+def azure_money_usd(amount, label):
+    if not isinstance(amount, dict) or "value" not in amount:
+        return None
+    currency = str(amount.get("currency") or "USD").upper()
+    value = as_decimal(amount.get("value"), label)
+    if currency != "USD":
+        raise ProviderError(f"{label} returned {currency}; USD is required")
+    return value
+
+
+def azure_parse_credits(payload):
+    """Return remaining, starting, and month-to-date spent credit in USD.
+
+    `currentBalance` is credit still posted (the month-start pool once pending
+    charges are excluded). `estimatedBalance` is that pool after pending
+    eligible charges. Spent this month is starting minus remaining.
+    """
+    props = payload.get("properties") or {}
+    summary = props.get("balanceSummary") or {}
+    remaining = azure_money_usd(
+        summary.get("estimatedBalance") or {}, "Azure estimated credit"
+    )
+    starting = azure_money_usd(
+        summary.get("currentBalance") or {}, "Azure current credit"
+    )
+    pending = azure_money_usd(
+        props.get("pendingEligibleCharges") or {}, "Azure pending charges"
+    )
+    spent = None
+    if pending is not None:
+        spent = max(Decimal(0), -pending)
+    if remaining is not None:
+        remaining = max(Decimal(0), remaining)
+    if starting is not None:
+        starting = max(Decimal(0), starting)
+    if spent is None and starting is not None and remaining is not None:
+        spent = max(Decimal(0), starting - remaining)
+    if starting is None and remaining is not None and spent is not None:
+        starting = remaining + spent
+    if remaining is None and starting is not None and spent is not None:
+        remaining = max(Decimal(0), starting - spent)
+    if remaining is None and starting is None and spent is None:
+        return None
+    return {
+        "remaining": remaining,
+        "starting": starting,
+        "spent": spent,
+    }
+
+
+def fetch_azure_credit_balance(timeout):
+    accounts = azure_resource_list(
+        azure_rest(
+            "get",
+            "https://management.azure.com/providers/Microsoft.Billing/billingAccounts?api-version=2024-04-01",
+            timeout,
+        )
+    )
+    if not accounts:
+        raise ProviderError("Azure returned no billing accounts")
+    last_error = None
+    for account in accounts:
+        account_name = str(account.get("name") or "").strip()
+        if not account_name:
+            continue
+        account_id = urllib.parse.quote(account_name, safe="")
+        try:
+            profiles = azure_resource_list(
+                azure_rest(
+                    "get",
+                    "https://management.azure.com/providers/Microsoft.Billing/billingAccounts/"
+                    f"{account_id}/billingProfiles?api-version=2024-04-01",
+                    timeout,
+                )
+            )
+        except ProviderError as error:
+            last_error = error
+            continue
+        ranked = sorted(
+            profiles,
+            key=lambda item: 0
+            if str((item.get("properties") or item).get("spendingLimit") or "") == "On"
+            else 1,
+        )
+        for profile in ranked:
+            profile_name = str(profile.get("name") or "").strip()
+            if not profile_name:
+                continue
+            try:
+                payload = azure_rest(
+                    "get",
+                    "https://management.azure.com/providers/Microsoft.Billing/billingAccounts/"
+                    f"{account_id}/billingProfiles/"
+                    f"{urllib.parse.quote(profile_name, safe='')}/providers/"
+                    "Microsoft.Consumption/credits/balanceSummary?api-version=2024-08-01",
+                    timeout,
+                )
+            except ProviderError as error:
+                last_error = error
+                continue
+            credits = azure_parse_credits(payload)
+            if credits is not None:
+                return credits
+    raise last_error or ProviderError("Azure credit balance was unavailable")
+
+
+def azure_provider(period, timeout):
+    credits = fetch_azure_credit_balance(timeout)
+    spent = credits.get("spent")
+    starting = credits.get("starting")
+    remaining = credits.get("remaining")
+    burn_source = "azure-credits"
+
+    if spent is None:
+        try:
+            spent = fetch_azure_current(timeout)
+            burn_source = "month-to-date-pace"
+        except ProviderError as error:
+            log_event(
+                f"Azure month-to-date spend unavailable: {clean_error(error)}"
+            )
+
+    if starting is None and remaining is not None and spent is not None:
+        starting = remaining + spent
+    if remaining is None and starting is not None and spent is not None:
+        remaining = max(Decimal(0), starting - spent)
+    if spent is None and starting is not None and remaining is not None:
+        spent = max(Decimal(0), starting - remaining)
+
+    if spent is None or starting is None or starting <= 0:
+        raise ProviderError("Azure credit summary omitted starting balance or spend")
+
+    forecast = linear_month_forecast(spent, period)
+    forecast = max(spent, forecast)
+    projected = max(Decimal(0), starting - forecast)
+    return {
+        "id": "azure",
+        "code": "AZR",
+        "name": "Azure",
+        "color": AZURE_COLOR,
+        "kind": "prepaid",
+        "ok": True,
+        "stale": False,
+        "currentUsd": rounded(spent, 2),
+        "capUsd": rounded(starting, 2),
+        "balanceUsd": rounded(remaining, 2),
+        "dailyBurnUsd": rounded(spent / Decimal(max(period["day"], 1)), 4),
+        "forecastUsd": rounded(forecast, 2),
+        "projectedBalanceUsd": rounded(projected, 2),
+        "currentPressure": rounded(spent / starting),
+        "forecastPressure": rounded(forecast / starting),
+        "forecastAvailable": True,
+        "source": "azure-credits",
+        "forecastSource": burn_source,
+        "detail": (
+            f"${float(spent):.2f} now · ${float(forecast):.2f} EOM · "
+            f"${float(starting):.2f} at month start"
+        ),
+    }
 
 
 def fetch_anthropic_current(period, admin_key, timeout):
@@ -768,17 +1014,15 @@ def collect(reference=None):
             "BILLING_AWS_PROFILE",
         ),
     )
-    add_metered(
-        "azure",
-        "AZR",
-        "Azure",
-        AZURE_COLOR,
-        lambda _period, provider_timeout: fetch_azure_current(provider_timeout),
-        (
-            "BILLING_AZURE_CAP_USD",
-            "BILLING_AZURE_SUBSCRIPTION_ID",
-        ),
-    )
+
+    if env_flag("BILLING_AZURE_ENABLED") or configured("BILLING_AZURE_SUBSCRIPTION_ID"):
+        try:
+            providers.append(azure_provider(period, timeout))
+        except Exception as error:
+            message = clean_error(error)
+            errors.append({"provider": "azure", "error": message})
+            if "azure" in old:
+                providers.append(stale_provider(old["azure"], error))
 
     anthropic_key = (
         os.environ.get("ANTHROPIC_ADMIN_KEY", "").strip()
@@ -846,7 +1090,7 @@ def collect(reference=None):
                 "provider": "configuration",
                 "error": (
                     "No billing providers configured; set a provider cap, OpenRouter key, "
-                    "or enable GitHub Actions"
+                    "or enable Azure / GitHub Actions"
                 ),
             }
         )
