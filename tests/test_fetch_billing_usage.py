@@ -594,7 +594,10 @@ def test_render_tsv_contains_only_renderer_fields():
     rendered = billing.render_tsv(output)
 
     assert "periodEnd\t2026-08-31" in rendered
-    assert "provider\topenrouter\tOR\ta78bfa\tprepaid\t1\t0\t0\t0.4148\t1" in rendered
+    assert (
+        f"provider\topenrouter\tOR\t{billing.OPENROUTER_COLOR}\tprepaid\t1\t0\t0\t0.4148\t1"
+        in rendered
+    )
     assert "history\tazure\t1\t0.0405" in rendered
     assert "history\tazure\t3\t0.1013" in rendered
     assert "OPENROUTER_API_KEY" not in rendered

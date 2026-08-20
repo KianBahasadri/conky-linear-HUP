@@ -1,6 +1,6 @@
 meta	ok	1	updatedAt	2026-08-19T12:00:00Z	periodStart	2026-08-01	periodEnd	2026-08-31	day	19	daysInMonth	31	daysRemaining	12	elapsedFraction	0.612903	error	none
 provider	aws	AWS	ffb454	metered	1	0	0.3364	0.528	1	aws	$8.41 now · $13.20 EOM · $25.00 cap
 provider	anthropic	ANT	ff8f73	metered	1	0	0.302	0.505	1	anthropic-cost-report	$6.04 now · $10.10 EOM · $20.00 cap
-provider	openrouter	OR	a78bfa	prepaid	1	0	0.0	0.4148	1	openrouter-credits	$12.44 left · $0.43/day · $7.28 at EOM
+provider	openrouter	OR	c8ff00	prepaid	1	0	0.0	0.4148	1	openrouter-credits	$12.44 left · $0.43/day · $7.28 at EOM
 provider	github_actions	GH	3fb950	allowance	1	0	0.4123	0.6728	1	github-billing-usage	1,237 / 3,000 min · 2,018 EOM · $0.00 due
 provider	azure	AZR	38bdf8	prepaid	1	0	0.2478	0.4042	1	azure-credits	$24.46 now · $39.91 EOM · $98.72 at month start

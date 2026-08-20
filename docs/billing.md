@@ -23,7 +23,8 @@ geometry is unusual, but the underlying axes are conventional:
   segment is the now-to-EOM forecast, and the hollow diamond is the EOM
   landing. GitHub, OpenRouter, and Azure use their recognizable Octocat,
   geometric `OR`, and Azure `A` marks; providers without a compact vector mark
-  retain the filled bead. Trails meet the marker edge without continuing
+  retain the filled bead. OpenRouter is `#c8ff00`; the other providers keep
+  the mockup palette. Trails meet the marker edge without continuing
   underneath the service glyph. Diamonds carry no text labels or leader lines.
 - A dimmed trajectory means its last successful value is being retained after
   a failed refresh. A bead with no forecast line or diamond means there is not
