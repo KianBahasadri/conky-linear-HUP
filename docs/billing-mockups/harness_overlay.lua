@@ -24,6 +24,9 @@ function cairo_set_line_cap(cr, cap) emit('line_cap', cap) end
 function cairo_set_antialias(cr, value) emit('antialias', value) end
 function cairo_move_to(cr, x, y) emit('move_to', x, y) end
 function cairo_line_to(cr, x, y) emit('line_to', x, y) end
+function cairo_curve_to(cr, x1, y1, x2, y2, x3, y3)
+  emit('curve_to', x1, y1, x2, y2, x3, y3)
+end
 function cairo_stroke(cr) emit('stroke') end
 function cairo_fill(cr) emit('fill') end
 function cairo_fill_preserve(cr) emit('fill_preserve') end

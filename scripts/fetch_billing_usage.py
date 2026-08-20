@@ -10,6 +10,7 @@ calendar month end.
 import calendar
 import json
 import os
+import re
 import subprocess
 import urllib.parse
 import urllib.request
@@ -31,6 +32,20 @@ AWS_COLOR = "ffb454"
 AZURE_COLOR = "38bdf8"
 ANTHROPIC_COLOR = "ff8f73"
 OPENROUTER_COLOR = "a78bfa"
+GITHUB_ACTIONS_COLOR = "3fb950"
+GITHUB_API_VERSION = "2026-03-10"
+GITHUB_ACTIONS_PLAN_MINUTES = {
+    "free": Decimal("2000"),
+    "pro": Decimal("3000"),
+}
+GITHUB_ACTIONS_STANDARD_SKUS = {
+    "actions_linux_slim",
+    "actions_linux",
+    "actions_linux_arm",
+    "actions_windows",
+    "actions_windows_arm",
+    "actions_macos",
+}
 USER_AGENT = "conky-linear-HUP/1.0"
 
 log_event = common.make_logger(LOG_PATH, "fetch_billing_usage")
@@ -137,6 +152,13 @@ def run_json(command, timeout):
         return json.loads(result.stdout)
     except json.JSONDecodeError as error:
         raise ProviderError(f"{command[0]} returned invalid JSON") from error
+
+
+def env_flag(name, default=False):
+    raw = os.environ.get(name, "").strip().lower()
+    if not raw:
+        return default
+    return raw not in {"0", "false", "no", "off", "disabled"}
 
 
 def request_json(url, *, headers=None, payload=None, timeout=20):
@@ -525,6 +547,154 @@ def openrouter_provider(period, timeout, observed_at):
     }
 
 
+def github_api(path, timeout):
+    return run_json(
+        [
+            "gh",
+            "api",
+            "--method",
+            "GET",
+            "-H",
+            "Accept: application/vnd.github+json",
+            "-H",
+            f"X-GitHub-Api-Version: {GITHUB_API_VERSION}",
+            path,
+        ],
+        timeout,
+    )
+
+
+def normalized_github_sku(value):
+    return re.sub(r"[^a-z0-9]+", "_", str(value or "").lower()).strip("_")
+
+
+def github_actions_allowance(identity):
+    plan = str(((identity.get("plan") or {}).get("name") or "")).lower()
+    allowance = GITHUB_ACTIONS_PLAN_MINUTES.get(plan)
+    if allowance is None:
+        label = plan or "unknown"
+        raise ProviderError(f"GitHub plan {label} has no known Actions allowance")
+    return plan, allowance
+
+
+def github_repository_path(login, repository_name):
+    name = str(repository_name or "").strip().strip("/")
+    if not name:
+        return None
+    parts = name.split("/", 1)
+    if len(parts) == 1:
+        owner, repository = login, parts[0]
+    else:
+        owner, repository = parts
+    if not owner or not repository:
+        return None
+    return "/repos/{}/{}".format(
+        urllib.parse.quote(owner, safe=""),
+        urllib.parse.quote(repository, safe=""),
+    )
+
+
+def github_repository_is_public(login, repository_name, timeout):
+    path = github_repository_path(login, repository_name)
+    if path is None:
+        raise ProviderError("GitHub usage row omitted its repository")
+    repository = github_api(path, timeout)
+    visibility = str(repository.get("visibility") or "").lower()
+    if visibility:
+        return visibility == "public"
+    if "private" in repository:
+        return not bool(repository["private"])
+    raise ProviderError(
+        f"GitHub repository metadata omitted visibility for {repository_name}"
+    )
+
+
+def github_actions_provider(period, timeout):
+    identity = github_api("/user", timeout)
+    login = str(identity.get("login") or "").strip()
+    if not login:
+        raise ProviderError("GitHub identity omitted login")
+    plan, allowance = github_actions_allowance(identity)
+
+    query = urllib.parse.urlencode(
+        {"year": period["today"].year, "month": period["today"].month}
+    )
+    usage_path = (
+        f"/users/{urllib.parse.quote(login, safe='')}/settings/billing/usage?{query}"
+    )
+    payload = github_api(usage_path, timeout)
+
+    minutes_by_repository = {}
+    current_payable = Decimal(0)
+    for item in payload.get("usageItems") or []:
+        if str(item.get("product") or "").lower() != "actions":
+            continue
+        current_payable += as_decimal(
+            item.get("netAmount", 0), "GitHub Actions net amount"
+        )
+        if str(item.get("unitType") or "").lower() != "minutes":
+            continue
+        if normalized_github_sku(item.get("sku")) not in GITHUB_ACTIONS_STANDARD_SKUS:
+            continue
+        repository_name = str(item.get("repositoryName") or "").strip()
+        quantity = max(
+            Decimal(0),
+            as_decimal(item.get("quantity", 0), "GitHub Actions minutes"),
+        )
+        minutes_by_repository[repository_name] = (
+            minutes_by_repository.get(repository_name, Decimal(0)) + quantity
+        )
+
+    included_usage = Decimal(0)
+    public_minutes = Decimal(0)
+    visibility_unknown = []
+    for repository_name in sorted(minutes_by_repository):
+        quantity = minutes_by_repository[repository_name]
+        try:
+            is_public = github_repository_is_public(login, repository_name, timeout)
+        except ProviderError:
+            # Deleted or inaccessible repositories cannot be classified. Count
+            # them conservatively so the warning map never understates risk.
+            visibility_unknown.append(repository_name or "unknown")
+            is_public = False
+        if is_public:
+            public_minutes += quantity
+        else:
+            included_usage += quantity
+
+    forecast = max(included_usage, linear_month_forecast(included_usage, period))
+    current_payable = max(Decimal(0), current_payable)
+    detail = (
+        f"{float(included_usage):,.0f} / {float(allowance):,.0f} min · "
+        f"{float(forecast):,.0f} EOM · ${float(current_payable):.2f} due"
+    )
+    if visibility_unknown:
+        detail += f" · {len(visibility_unknown)} repo visibility unknown"
+
+    return {
+        "id": "github_actions",
+        "code": "GH",
+        "name": "GitHub Actions",
+        "color": GITHUB_ACTIONS_COLOR,
+        "kind": "allowance",
+        "ok": True,
+        "stale": False,
+        "plan": plan,
+        "currentMinutes": rounded(included_usage, 2),
+        "includedMinutes": rounded(allowance, 2),
+        "forecastMinutes": rounded(forecast, 2),
+        "publicMinutesExcluded": rounded(public_minutes, 2),
+        "currentPayableUsd": rounded(current_payable, 2),
+        "visibilityUnknownRepositories": visibility_unknown,
+        "currentPressure": rounded(included_usage / allowance),
+        "forecastPressure": rounded(forecast / allowance),
+        "forecastAvailable": True,
+        "source": "github-billing-usage",
+        "forecastSource": "linear-month-pace",
+        "detail": detail,
+    }
+
+
 def configured(*names):
     return any(os.environ.get(name, "").strip() for name in names)
 
@@ -653,13 +823,31 @@ def collect(reference=None):
             if "openrouter" in old:
                 providers.append(stale_provider(old["openrouter"], error))
 
-    provider_order = {"aws": 0, "anthropic": 1, "openrouter": 2, "azure": 3}
+    if env_flag("BILLING_GITHUB_ACTIONS_ENABLED"):
+        try:
+            providers.append(github_actions_provider(period, timeout))
+        except Exception as error:
+            message = clean_error(error)
+            errors.append({"provider": "github_actions", "error": message})
+            if "github_actions" in old:
+                providers.append(stale_provider(old["github_actions"], error))
+
+    provider_order = {
+        "aws": 0,
+        "anthropic": 1,
+        "openrouter": 2,
+        "github_actions": 3,
+        "azure": 4,
+    }
     providers.sort(key=lambda item: provider_order.get(item.get("id"), 99))
     if not providers and not errors:
         errors.append(
             {
                 "provider": "configuration",
-                "error": "No billing providers configured; set a provider cap or OpenRouter key",
+                "error": (
+                    "No billing providers configured; set a provider cap, OpenRouter key, "
+                    "or enable GitHub Actions"
+                ),
             }
         )
 

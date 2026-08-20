@@ -153,11 +153,13 @@ The transparent HUD is generated on every monitor. It reads local Linux telemetr
 | `ANTHROPIC_ADMIN_KEY` | Anthropic organization Admin API key for the Cost Report endpoint |
 | `ANTHROPIC_ADMIN_API_KEY` | Alias for `ANTHROPIC_ADMIN_KEY` |
 | `OPENROUTER_API_KEY` | OpenRouter management key for live credits and trailing usage |
+| `BILLING_GITHUB_ACTIONS_ENABLED` | Set to `1` to plot the authenticated `gh` user's private-repository standard-runner minutes against the plan allowance; the token needs `user` scope |
 
 Only configured providers are fetched. AWS and Azure use their authenticated
-CLIs; Anthropic and OpenRouter use their official APIs. Live monetary values do
-not have environment-variable overrides. See [Affine billing map](billing.md)
-for the normalization and forecast semantics.
+CLIs; Anthropic and OpenRouter use their official APIs; GitHub Actions uses the
+official API through `gh`. Live usage and monetary values do not have
+environment-variable overrides. See [Affine billing map](billing.md) for the
+normalization and forecast semantics.
 
 ## Git status overlay
 

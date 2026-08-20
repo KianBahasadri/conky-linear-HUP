@@ -10,13 +10,19 @@ header, legend, or footer.
 The diamond is an affine transform of an ordinary time-by-budget chart. Its
 geometry is unusual, but the underlying axes are conventional:
 
-- `DAY 1` to `EOM` is the current local calendar month.
-- `NOW` is the current day divided by the number of days in that month.
-- `CAP` is 100% of each provider's own ceiling. The faint band beyond it makes
-  an over-cap forecast cross a real boundary instead of merely changing color.
+- The long time edge runs from the first through the final day of the current
+  local calendar month. Its endpoints are intentionally unlabeled.
+- The yellow cross-line marks the current day divided by the number of days in
+  that month.
+- The red boundary is 100% of each provider's own ceiling. The faint band
+  beyond it makes an over-cap forecast cross a real boundary instead of merely
+  changing color. Neither boundary carries a text label.
 - The dashed diagonal is calendar pace: 50% of the month against 50% of cap.
-- A filled bead is the current observation, the colored segment is the
-  now-to-EOM forecast, and the hollow diamond is the EOM landing.
+- A provider glyph marks the current observation, the colored segment is the
+  now-to-EOM forecast, and the hollow diamond is the EOM landing. GitHub and
+  OpenRouter use their recognizable Octocat and geometric `OR` marks; providers
+  without a compact vector mark retain the filled bead. The trajectory meets
+  the marker edge without continuing underneath the service glyph.
 - `~` after a provider label means its last successful value is being retained
   after a failed refresh. `--` means there is not yet enough real history to
   calculate a forecast.
@@ -32,6 +38,12 @@ forecast spend = current spend × days in month ÷ current day
 The caps are personal surprise-bill thresholds, not values inferred from a
 cross-provider total.
 
+When no provider has usable billing data, the map is dimmed and a solid red
+`NO BILLING DATA` popup is drawn over its center with a prompt to check the
+billing log. Valid stale values still render normally with the `~` marker;
+the popup is reserved for the state where there is nothing trustworthy to
+plot.
+
 ## OpenRouter
 
 OpenRouter is prepaid, so its percentage has a deliberately different meaning
@@ -44,13 +56,31 @@ while sharing the same visual EOM edge:
 3. Expected future draw is average daily burn multiplied by the number of days
    remaining through the common calendar EOM.
 4. The plotted pressure is expected future draw divided by today's available
-   balance. The bead therefore starts at zero future draw on `NOW`.
+   balance. The bead therefore starts at zero future draw on the current-day
+   line.
 
 If the analytics endpoint is unavailable, the fetcher derives burn from its
 own dated total-usage observations. It does not invent history: until two dates
 exist, OpenRouter renders its current bead with `OR --` and no forecast line.
 Top-ups do not distort this fallback because it uses cumulative total usage,
 not changes in remaining balance.
+
+## GitHub Actions
+
+GitHub Actions is an included-minutes allowance rather than a dollar cap. When
+enabled, `GH` uses the plan reported for the account currently authenticated in
+`gh`; GitHub Free supplies 2,000 minutes per month and GitHub Pro supplies
+3,000. The current point is private-repository standard-runner minutes divided
+by that allowance, and the landing projects the same live month pace through
+the common EOM.
+
+The detailed billing report does not identify whether a private-repository job
+was free because it came from Dependabot or GitHub Pages. Those minutes are
+therefore counted conservatively. Public-repository standard-runner minutes are
+identified from live repository visibility and excluded, while larger runners
+and storage are excluded from the minutes percentage because they have separate
+billing rules. The JSON cache retains GitHub's reported net Actions charge as a
+separate `currentPayableUsd` diagnostic.
 
 ## Live sources
 
@@ -61,6 +91,11 @@ not changes in remaining balance.
   fractional cents and converted to USD. This requires an Admin API key and is
   not available to an individual Claude account.
 - OpenRouter uses a management key for the [credits](https://openrouter.ai/docs/api/api-reference/credits/get-credits) and [analytics](https://openrouter.ai/docs/cookbook/administration/analytics-cost-control) endpoints.
+- GitHub Actions uses the authenticated `gh` CLI to read the personal-account
+  [billing usage report](https://docs.github.com/en/rest/billing/usage) and
+  repository visibility. The token needs the `user` scope. Plan allowances and
+  free public-repository behavior follow GitHub's
+  [Actions billing rules](https://docs.github.com/en/billing/concepts/product-billing/github-actions).
 
 Current spend, current balance, burn rate, and forecasts are always fetched or
 derived. They are never configured in `.env`. The complete setup variables are

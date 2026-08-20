@@ -15,10 +15,61 @@ return function(shared, repo_root)
 
   local colors = {
     text = 'f8fafc',
-    muted = '94a3b8',
     violet = 'c4b5fd',
     cap = 'f87171',
     now = 'facc15',
+  }
+
+  -- Official GitHub mark path in a 16×16 viewBox (absolute M/C/Z ops).
+  local github_mark_ops = {
+    { 'M', 8.00000, 0.00000 },
+    { 'C', 3.58000, 0.00000, 0.00000, 3.58000, 0.00000, 8.00000 },
+    { 'C', 0.00000, 11.54000, 2.29000, 14.53000, 5.47000, 15.59000 },
+    { 'C', 5.87000, 15.66000, 6.02000, 15.42000, 6.02000, 15.21000 },
+    { 'C', 6.02000, 15.02000, 6.01000, 14.39000, 6.01000, 13.72000 },
+    { 'C', 4.00000, 14.09000, 3.48000, 13.23000, 3.32000, 12.78000 },
+    { 'C', 3.23000, 12.55000, 2.84000, 11.84000, 2.50000, 11.65000 },
+    { 'C', 2.22000, 11.50000, 1.82000, 11.13000, 2.49000, 11.12000 },
+    { 'C', 3.12000, 11.11000, 3.57000, 11.70000, 3.72000, 11.94000 },
+    { 'C', 4.44000, 13.15000, 5.59000, 12.81000, 6.05000, 12.60000 },
+    { 'C', 6.12000, 12.08000, 6.33000, 11.73000, 6.56000, 11.53000 },
+    { 'C', 4.78000, 11.33000, 2.92000, 10.64000, 2.92000, 7.58000 },
+    { 'C', 2.92000, 6.71000, 3.23000, 5.99000, 3.74000, 5.43000 },
+    { 'C', 3.66000, 5.23000, 3.38000, 4.41000, 3.82000, 3.31000 },
+    { 'C', 3.82000, 3.31000, 4.49000, 3.10000, 6.02000, 4.13000 },
+    { 'C', 6.66000, 3.95000, 7.34000, 3.86000, 8.02000, 3.86000 },
+    { 'C', 8.70000, 3.86000, 9.38000, 3.95000, 10.02000, 4.13000 },
+    { 'C', 11.55000, 3.09000, 12.22000, 3.31000, 12.22000, 3.31000 },
+    { 'C', 12.66000, 4.41000, 12.38000, 5.23000, 12.30000, 5.43000 },
+    { 'C', 12.81000, 5.99000, 13.12000, 6.70000, 13.12000, 7.58000 },
+    { 'C', 13.12000, 10.65000, 11.25000, 11.33000, 9.47000, 11.53000 },
+    { 'C', 9.76000, 11.78000, 10.01000, 12.26000, 10.01000, 13.01000 },
+    { 'C', 10.01000, 14.08000, 10.00000, 14.94000, 10.00000, 15.21000 },
+    { 'C', 10.00000, 15.42000, 10.15000, 15.67000, 10.55000, 15.59000 },
+    { 'C', 13.80645, 14.49066, 15.99912, 11.43700, 16.00000, 8.00000 },
+    { 'C', 16.00000, 3.58000, 12.42000, 0.00000, 8.00000, 0.00000 },
+    { 'Z' },
+  }
+
+  -- Current OpenRouter glyph from its 401.4×293.7 brand viewBox, converted
+  -- to absolute Cairo curves. The second subpath preserves the central hole.
+  local openrouter_mark_ops = {
+    { 'M', 303.94750, 17.19926 },
+    { 'C', 346.74484, 17.19926, 381.43683, 51.89253, 381.43683, 94.68859 },
+    { 'C', 381.43683, 137.48465, 346.74484, 172.17792, 303.94750, 172.17792 },
+    { 'L', 380.80916, 249.04036 },
+    { 'C', 390.57283, 258.80349, 383.65819, 275.49703, 369.85219, 275.49703 },
+    { 'L', 148.96884, 275.49703 },
+    { 'C', 77.64198, 275.49703, 19.81995, 217.67501, 19.81995, 146.34814 },
+    { 'C', 19.81995, 75.02127, 77.64197, 17.19926, 148.96884, 17.19926 },
+    { 'L', 303.94750, 17.19926 },
+    { 'Z' },
+    { 'M', 148.96884, 68.85881 },
+    { 'C', 106.17277, 68.85881, 71.47951, 103.55208, 71.47951, 146.34814 },
+    { 'C', 71.47951, 189.14420, 106.17278, 223.83747, 148.96884, 223.83747 },
+    { 'C', 191.76490, 223.83747, 226.45817, 189.14420, 226.45817, 146.34814 },
+    { 'C', 226.45817, 103.55208, 191.76490, 68.85881, 148.96884, 68.85881 },
+    { 'Z' },
   }
 
   local function hex_rgb(hex)
@@ -90,7 +141,6 @@ return function(shared, repo_root)
         status.day = tonumber(meta.day) or status.day
         status.days_in_month = tonumber(meta.daysInMonth) or status.days_in_month
         status.elapsed = tonumber(meta.elapsedFraction) or status.elapsed
-        status.period_end = meta.periodEnd or ''
         status.error = meta.error or ''
       elseif fields[1] == 'provider' then
         table.insert(status.providers, {
@@ -170,6 +220,46 @@ return function(shared, repo_root)
     cairo_set_line_cap(cr, CAIRO_LINE_CAP_BUTT)
   end
 
+  local function add_mark_path(cr, ops, x, y, size, view_width, view_height)
+    local scale = size / view_width
+    local left = x - view_width * scale / 2
+    local top = y - view_height * scale / 2
+    cairo_new_path(cr)
+    for _, op in ipairs(ops) do
+      if op[1] == 'M' then
+        cairo_move_to(cr, left + op[2] * scale, top + op[3] * scale)
+      elseif op[1] == 'L' then
+        cairo_line_to(cr, left + op[2] * scale, top + op[3] * scale)
+      elseif op[1] == 'C' then
+        cairo_curve_to(
+          cr,
+          left + op[2] * scale,
+          top + op[3] * scale,
+          left + op[4] * scale,
+          top + op[5] * scale,
+          left + op[6] * scale,
+          top + op[7] * scale
+        )
+      elseif op[1] == 'Z' then
+        cairo_close_path(cr)
+      end
+    end
+  end
+
+  local function vector_mark(cr, ops, x, y, size, view_width, view_height, color, alpha)
+    add_mark_path(cr, ops, x, y, size, view_width, view_height)
+    set_hex(cr, color, 0.20 * alpha)
+    cairo_set_line_width(cr, 4.2)
+    cairo_stroke(cr)
+
+    add_mark_path(cr, ops, x, y, size, view_width, view_height)
+    set_hex(cr, color, 0.98 * alpha)
+    cairo_fill_preserve(cr)
+    set_hex(cr, colors.text, 0.64 * alpha)
+    cairo_set_line_width(cr, 0.55)
+    cairo_stroke(cr)
+  end
+
   local function bead(cr, x, y, radius, color, alpha)
     cairo_new_path(cr)
     cairo_arc(cr, x, y, radius + 4, 0, math.pi * 2)
@@ -182,6 +272,46 @@ return function(shared, repo_root)
     set_hex(cr, colors.text, 0.72 * alpha)
     cairo_set_line_width(cr, 0.8)
     cairo_stroke(cr)
+  end
+
+  local function provider_mark(cr, provider, x, y, alpha)
+    if provider.id == 'github_actions' then
+      vector_mark(cr, github_mark_ops, x, y, 13.0, 16, 16, provider.color, alpha)
+    elseif provider.id == 'openrouter' then
+      vector_mark(
+        cr,
+        openrouter_mark_ops,
+        x,
+        y,
+        15.0,
+        401.4,
+        293.7,
+        provider.color,
+        alpha
+      )
+    else
+      bead(cr, x, y, 4.3, provider.color, alpha)
+    end
+  end
+
+  local function trajectory_start_after_mark(provider, x1, y1, x2, y2)
+    -- Inset the centerline by the glyph body plus the solid line's round cap.
+    -- The solid trajectory then just meets the mark edge, while its wider glow
+    -- blends behind the mark instead of creating either a gap or a piercing
+    -- line through the logo.
+    local clearance = 5.5
+    if provider.id == 'github_actions' then
+      clearance = 7.5
+    elseif provider.id == 'openrouter' then
+      clearance = 8.8
+    end
+    local dx, dy = x2 - x1, y2 - y1
+    local distance = math.sqrt(dx * dx + dy * dy)
+    if distance <= clearance then
+      return nil, nil
+    end
+    local ratio = clearance / distance
+    return x1 + dx * ratio, y1 + dy * ratio
   end
 
   local function diamond(cr, x, y, radius, color, alpha)
@@ -207,6 +337,62 @@ return function(shared, repo_root)
     set_hex(cr, colors.text, 0.19)
     cairo_set_line_width(cr, 1)
     cairo_stroke(cr)
+  end
+
+  local function rounded_rectangle(cr, x, y, width, height, radius)
+    local corner = math.min(radius, width / 2, height / 2)
+    cairo_new_path(cr)
+    cairo_arc(cr, x + width - corner, y + corner, corner, -math.pi / 2, 0)
+    cairo_arc(cr, x + width - corner, y + height - corner, corner, 0, math.pi / 2)
+    cairo_arc(cr, x + corner, y + height - corner, corner, math.pi / 2, math.pi)
+    cairo_arc(cr, x + corner, y + corner, corner, math.pi, math.pi * 3 / 2)
+    cairo_close_path(cr)
+  end
+
+  local function draw_no_data_alert(cr)
+    -- Treat the empty state as a foreground error, not another annotation on
+    -- the map. The veil preserves the affine context while the opaque red
+    -- popup owns the center of the component and cannot be mistaken for data.
+    domain_path(cr)
+    set_hex(cr, '01030a', 0.58)
+    cairo_fill(cr)
+
+    local x, y, width, height = 42, 140, 196, 58
+    rounded_rectangle(cr, x, y, width, height, 9)
+    set_hex(cr, 'ef4444', 0.22)
+    cairo_set_line_width(cr, 9)
+    cairo_stroke(cr)
+
+    rounded_rectangle(cr, x, y, width, height, 9)
+    local background = cairo_pattern_create_linear(x, y, x + width, y + height)
+    add_stop(background, 0.00, '7f1d1d', 0.99)
+    add_stop(background, 0.48, '4c1018', 0.99)
+    add_stop(background, 1.00, '25070d', 0.99)
+    cairo_set_source(cr, background)
+    cairo_fill_preserve(cr)
+    set_hex(cr, 'fb7185', 0.96)
+    cairo_set_line_width(cr, 1.6)
+    cairo_stroke(cr)
+    cairo_pattern_destroy(background)
+
+    cairo_new_path(cr)
+    cairo_move_to(cr, x + 9, y + 10)
+    cairo_line_to(cr, x + 9, y + height - 10)
+    cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND)
+    cairo_set_line_width(cr, 2.5)
+    set_hex(cr, 'f87171', 0.98)
+    cairo_stroke(cr)
+    cairo_set_line_cap(cr, CAIRO_LINE_CAP_BUTT)
+
+    local icon_x, icon_y = x + 25, y + height / 2
+    cairo_new_path(cr)
+    cairo_arc(cr, icon_x, icon_y, 10.5, 0, math.pi * 2)
+    set_hex(cr, 'f87171', 0.98)
+    cairo_fill(cr)
+    text(cr, '!', icon_x, icon_y + 4, 11, '25070d', 1, 'center', true)
+
+    text(cr, 'NO BILLING DATA', x + 44, y + 25, 8.2, colors.text, 1, 'left', true)
+    text(cr, 'CHECK BILLING LOG', x + 44, y + 42, 6.7, 'fecaca', 0.92, 'left', true)
   end
 
   local function draw_map(cr, status)
@@ -280,17 +466,12 @@ return function(shared, repo_root)
     cairo_stroke(cr)
     dashed_pace_line(cr)
 
-    local origin_x, origin_y = point(0, 0)
-    text(cr, 'DAY 1', origin_x, origin_y + 17, 7.5, colors.muted, 0.62, 'center')
-    text(cr, 'NOW', now_start_x + 3, now_start_y + 17, 7.5, colors.now, 0.86, 'center')
-    text(cr, 'EOM', eom_start_x - 1, eom_start_y + 17, 7.5, colors.violet, 0.78, 'center')
-    text(cr, 'CAP', cap_start_x + 5, cap_start_y - 2, 7.5, colors.cap, 0.90, 'left')
-
     local label_rows = {
       aws = 91,
       anthropic = 108,
       openrouter = 125,
-      azure = 142,
+      github_actions = 142,
+      azure = 159,
     }
     local drawn = 0
     table.sort(status.providers, function(left, right)
@@ -303,18 +484,23 @@ return function(shared, repo_root)
         local current_x, current_y = point(status.elapsed, provider.current_pressure)
         local forecast_x, forecast_y = point(1, provider.forecast_pressure)
         if provider.forecast_available then
-          glow_line(
-            cr,
-            current_x,
-            current_y,
-            forecast_x,
-            forecast_y,
-            provider.color,
-            provider.kind == 'prepaid' and 2.0 or 1.9,
-            0.96 * alpha
+          local line_x, line_y = trajectory_start_after_mark(
+            provider, current_x, current_y, forecast_x, forecast_y
           )
+          if line_x then
+            glow_line(
+              cr,
+              line_x,
+              line_y,
+              forecast_x,
+              forecast_y,
+              provider.color,
+              provider.kind == 'prepaid' and 2.0 or 1.9,
+              0.96 * alpha
+            )
+          end
         end
-        bead(cr, current_x, current_y, provider.kind == 'prepaid' and 4.5 or 4.3, provider.color, alpha)
+        provider_mark(cr, provider, current_x, current_y, alpha)
         if provider.forecast_available then
           diamond(cr, forecast_x, forecast_y, provider.kind == 'prepaid' and 5.2 or 5.0, provider.color, alpha)
         end
@@ -341,8 +527,7 @@ return function(shared, repo_root)
     end
 
     if drawn == 0 then
-      text(cr, 'NO BILLING DATA', 205, 116, 7.5, colors.violet, 0.70, 'left', true)
-      text(cr, 'CHECK BILLING LOG', 205, 133, 7.0, colors.muted, 0.55, 'left')
+      draw_no_data_alert(cr)
     end
   end
 

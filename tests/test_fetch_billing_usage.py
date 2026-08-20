@@ -204,6 +204,90 @@ def test_anthropic_cost_report_converts_fractional_cents(monkeypatch):
     assert current == Decimal("2.00")
 
 
+def test_github_actions_uses_private_standard_runner_minutes(monkeypatch):
+    usage = {
+        "usageItems": [
+            {
+                "product": "actions",
+                "sku": "Actions Linux",
+                "unitType": "Minutes",
+                "quantity": 69,
+                "repositoryName": "private-app",
+                "netAmount": 0,
+            },
+            {
+                "product": "actions",
+                "sku": "Actions Windows",
+                "unitType": "Minutes",
+                "quantity": 816,
+                "repositoryName": "private-app",
+                "netAmount": 0,
+            },
+            {
+                "product": "actions",
+                "sku": "Actions Linux",
+                "unitType": "Minutes",
+                "quantity": 352,
+                "repositoryName": "private-tool",
+                "netAmount": 0,
+            },
+            {
+                "product": "actions",
+                "sku": "Actions Linux",
+                "unitType": "Minutes",
+                "quantity": 264,
+                "repositoryName": "public-tool",
+                "netAmount": 0,
+            },
+            {
+                "product": "actions",
+                "sku": "Actions storage",
+                "unitType": "GigabyteHours",
+                "quantity": 1200,
+                "repositoryName": "private-app",
+                "netAmount": 0.25,
+            },
+            {
+                "product": "actions",
+                "sku": "Actions Linux 4-core",
+                "unitType": "Minutes",
+                "quantity": 10,
+                "repositoryName": "private-app",
+                "netAmount": 0.10,
+            },
+        ]
+    }
+
+    def fake_github_api(path, _timeout):
+        if path == "/user":
+            return {"login": "octocat", "plan": {"name": "pro"}}
+        if path.startswith("/users/octocat/settings/billing/usage?"):
+            return usage
+        if path == "/repos/octocat/public-tool":
+            return {"visibility": "public"}
+        if path in {
+            "/repos/octocat/private-app",
+            "/repos/octocat/private-tool",
+        }:
+            return {"visibility": "private"}
+        raise AssertionError(f"unexpected GitHub API path: {path}")
+
+    monkeypatch.setattr(billing, "github_api", fake_github_api)
+
+    provider = billing.github_actions_provider(
+        billing.month_period(date(2026, 8, 19)), 5
+    )
+
+    assert provider["currentMinutes"] == 1237
+    assert provider["includedMinutes"] == 3000
+    assert provider["forecastMinutes"] == 2018.26
+    assert provider["publicMinutesExcluded"] == 264
+    assert provider["currentPayableUsd"] == 0.35
+    assert provider["currentPressure"] == 0.4123
+    assert provider["forecastPressure"] == 0.6728
+    assert provider["forecastSource"] == "linear-month-pace"
+
+
 def test_collect_live_providers_share_one_period_end(monkeypatch, tmp_path):
     isolate_cache(monkeypatch, tmp_path)
     monkeypatch.setenv("BILLING_AWS_CAP_USD", "25")
@@ -211,6 +295,7 @@ def test_collect_live_providers_share_one_period_end(monkeypatch, tmp_path):
     monkeypatch.setenv("BILLING_ANTHROPIC_CAP_USD", "20")
     monkeypatch.setenv("ANTHROPIC_ADMIN_KEY", "admin-key")
     monkeypatch.setenv("OPENROUTER_API_KEY", "management-key")
+    monkeypatch.setenv("BILLING_GITHUB_ACTIONS_ENABLED", "0")
     monkeypatch.setattr(
         billing, "fetch_aws_current", lambda *_args: Decimal("8.41")
     )

@@ -19,6 +19,7 @@ for line in open(ops_file):
     number = lambda index: float(fields[index])
     if op == 'move_to': cr.move_to(number(1), number(2))
     elif op == 'line_to': cr.line_to(number(1), number(2))
+    elif op == 'curve_to': cr.curve_to(number(1), number(2), number(3), number(4), number(5), number(6))
     elif op == 'rectangle': cr.rectangle(number(1), number(2), number(3), number(4))
     elif op == 'arc': cr.arc(number(1), number(2), number(3), number(4), number(5))
     elif op == 'arc_negative': cr.arc_negative(number(1), number(2), number(3), number(4), number(5))
