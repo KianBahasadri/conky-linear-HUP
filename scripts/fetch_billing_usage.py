@@ -153,6 +153,8 @@ def run_json(command, timeout):
     if result.returncode != 0:
         detail = clean_error(result.stderr or result.stdout or "command failed")
         raise ProviderError(f"{command[0]} failed: {detail}")
+    if not result.stdout.strip():
+        return {}
     try:
         return json.loads(result.stdout)
     except json.JSONDecodeError as error:
@@ -233,26 +235,163 @@ def metered_provider(
     }
 
 
-def fetch_aws_current(period, timeout):
-    query_end = min(period["today"] + timedelta(days=1), period["periodEndExclusive"])
-    command = [
-        "aws",
-        "ce",
-        "get-cost-and-usage",
-        "--time-period",
-        f"Start={period['periodStart'].isoformat()},End={query_end.isoformat()}",
-        "--granularity",
-        "MONTHLY",
-        "--metrics",
-        "UnblendedCost",
-        "--output",
-        "json",
-        "--no-cli-pager",
-    ]
+def aws_cli(args, timeout, *, region=None):
+    command = ["aws", *args, "--output", "json", "--no-cli-pager"]
     profile = os.environ.get("BILLING_AWS_PROFILE", "").strip()
     if profile:
         command.extend(["--profile", profile])
-    payload = run_json(command, timeout)
+    if region:
+        command.extend(["--region", region])
+    return run_json(command, timeout)
+
+
+def aws_account_id(timeout):
+    payload = aws_cli(["sts", "get-caller-identity"], timeout)
+    account = str(payload.get("Account") or "").strip()
+    if not re.fullmatch(r"\d{12}", account):
+        raise ProviderError("AWS identity omitted a 12-digit account id")
+    return account
+
+
+def aws_budget_is_account_wide(budget):
+    """True for an unfiltered monthly cost budget, including the console default.
+
+    The Billing console's default COST budget excludes Credit and Refund
+    record types and is still an account-wide surprise-bill ceiling.
+    """
+    cost_filters = budget.get("CostFilters") or {}
+    if any(cost_filters.values()):
+        return False
+    expression = budget.get("FilterExpression") or {}
+    if not expression:
+        return True
+    extra = set(expression) - {"Not"}
+    if extra:
+        return False
+    dimensions = (expression.get("Not") or {}).get("Dimensions") or {}
+    key = str(dimensions.get("Key") or "")
+    values = {str(value) for value in (dimensions.get("Values") or [])}
+    return key == "RECORD_TYPE" and values and values <= {"Credit", "Refund"}
+
+
+def select_aws_monthly_cost_budget(budgets, named=""):
+    """Pick a monthly COST USD budget. Named wins; otherwise the smallest account-wide limit."""
+    rows = [item for item in budgets or [] if isinstance(item, dict)]
+    if named:
+        match = next((item for item in rows if item.get("BudgetName") == named), None)
+        if match is None:
+            raise ProviderError(f"AWS budget {named!r} was not found")
+        rows = [match]
+    else:
+        rows = [item for item in rows if aws_budget_is_account_wide(item)]
+
+    candidates = []
+    for item in rows:
+        if str(item.get("BudgetType") or "").upper() != "COST":
+            continue
+        if str(item.get("TimeUnit") or "").upper() != "MONTHLY":
+            continue
+        limit = item.get("BudgetLimit") or {}
+        unit = str(limit.get("Unit") or "USD").upper()
+        if unit != "USD":
+            continue
+        amount = as_decimal(limit.get("Amount"), "AWS budget")
+        if amount <= 0:
+            continue
+        name = str(item.get("BudgetName") or "").strip()
+        candidates.append((amount, name))
+
+    if named and not candidates:
+        raise ProviderError(f"AWS budget {named!r} is not a monthly COST USD budget")
+    if not candidates:
+        raise ProviderError("no monthly account-wide COST budget in USD")
+    candidates.sort(key=lambda item: (item[0], item[1]))
+    return candidates[0]
+
+
+def select_aws_billing_alarm_threshold(alarms):
+    """Smallest account-wide CloudWatch EstimatedCharges GreaterThan threshold."""
+    thresholds = []
+    for alarm in alarms or []:
+        if not isinstance(alarm, dict):
+            continue
+        if str(alarm.get("Namespace") or "") != "AWS/Billing":
+            continue
+        if str(alarm.get("MetricName") or "") != "EstimatedCharges":
+            continue
+        comparison = str(alarm.get("ComparisonOperator") or "")
+        if comparison not in {
+            "GreaterThanThreshold",
+            "GreaterThanOrEqualToThreshold",
+        }:
+            continue
+        dimensions = {
+            str(item.get("Name") or ""): str(item.get("Value") or "")
+            for item in (alarm.get("Dimensions") or [])
+            if isinstance(item, dict)
+        }
+        if "ServiceName" in dimensions:
+            continue
+        currency = str(dimensions.get("Currency") or "USD").upper()
+        if currency != "USD":
+            continue
+        threshold = as_decimal(alarm.get("Threshold"), "AWS billing alarm")
+        if threshold > 0:
+            thresholds.append(threshold)
+    if not thresholds:
+        raise ProviderError("no account-wide CloudWatch billing alarm in USD")
+    return min(thresholds)
+
+
+def fetch_aws_budget_cap(timeout):
+    named = os.environ.get("BILLING_AWS_BUDGET_NAME", "").strip()
+    payload = aws_cli(
+        ["budgets", "describe-budgets", "--account-id", aws_account_id(timeout)],
+        timeout,
+    )
+    return select_aws_monthly_cost_budget(payload.get("Budgets") or [], named)
+
+
+def fetch_aws_billing_alarm_cap(timeout):
+    payload = aws_cli(
+        ["cloudwatch", "describe-alarms"],
+        timeout,
+        region="us-east-1",
+    )
+    return select_aws_billing_alarm_threshold(payload.get("MetricAlarms") or [])
+
+
+def resolve_aws_cap(timeout):
+    configured_cap = env_decimal("BILLING_AWS_CAP_USD", allow_zero=False)
+    if configured_cap is not None:
+        return configured_cap, "env", ""
+    try:
+        amount, name = fetch_aws_budget_cap(timeout)
+        return amount, "aws-budgets", name
+    except ProviderError as budget_error:
+        try:
+            return fetch_aws_billing_alarm_cap(timeout), "aws-billing-alarm", ""
+        except ProviderError as alarm_error:
+            raise ProviderError(
+                f"{clean_error(budget_error)}; {clean_error(alarm_error)}"
+            ) from alarm_error
+
+
+def fetch_aws_current(period, timeout):
+    query_end = min(period["today"] + timedelta(days=1), period["periodEndExclusive"])
+    payload = aws_cli(
+        [
+            "ce",
+            "get-cost-and-usage",
+            "--time-period",
+            f"Start={period['periodStart'].isoformat()},End={query_end.isoformat()}",
+            "--granularity",
+            "MONTHLY",
+            "--metrics",
+            "UnblendedCost",
+        ],
+        timeout,
+    )
     rows = payload.get("ResultsByTime") or []
     if not rows:
         return Decimal(0)
@@ -261,6 +400,33 @@ def fetch_aws_current(period, timeout):
     if unit != "USD":
         raise ProviderError(f"AWS returned {unit}; only USD caps are supported")
     return as_decimal(value.get("Amount", 0), "AWS amount")
+
+
+def aws_enabled():
+    return env_flag("BILLING_AWS_ENABLED") or configured(
+        "BILLING_AWS_CAP_USD",
+        "BILLING_AWS_PROFILE",
+        "BILLING_AWS_BUDGET_NAME",
+    )
+
+
+def aws_provider(period, timeout):
+    cap, cap_source, budget_name = resolve_aws_cap(timeout)
+    current = fetch_aws_current(period, timeout)
+    provider = metered_provider(
+        "aws",
+        "AWS",
+        "AWS",
+        AWS_COLOR,
+        cap,
+        current,
+        period,
+        "aws",
+    )
+    provider["capSource"] = cap_source
+    if budget_name:
+        provider["budgetName"] = budget_name
+    return provider
 
 
 def azure_throttled(error):
@@ -1318,45 +1484,14 @@ def collect(reference=None):
     errors = []
     old = previous_providers()
 
-    def add_metered(provider_id, code, name, color, current_fetcher, config_names):
-        if not configured(*config_names):
-            return
+    if aws_enabled():
         try:
-            cap = env_decimal(f"BILLING_{provider_id.upper()}_CAP_USD", allow_zero=False)
-            if cap is None:
-                raise ValueError(
-                    f"BILLING_{provider_id.upper()}_CAP_USD is required"
-                )
-            current = current_fetcher(period, timeout)
-            providers.append(
-                metered_provider(
-                    provider_id,
-                    code,
-                    name,
-                    color,
-                    cap,
-                    current,
-                    period,
-                    provider_id,
-                )
-            )
+            providers.append(aws_provider(period, timeout))
         except Exception as error:
             message = clean_error(error)
-            errors.append({"provider": provider_id, "error": message})
-            if provider_id in old:
-                providers.append(stale_provider(old[provider_id], error))
-
-    add_metered(
-        "aws",
-        "AWS",
-        "AWS",
-        AWS_COLOR,
-        fetch_aws_current,
-        (
-            "BILLING_AWS_CAP_USD",
-            "BILLING_AWS_PROFILE",
-        ),
-    )
+            errors.append({"provider": "aws", "error": message})
+            if "aws" in old:
+                providers.append(stale_provider(old["aws"], error))
 
     if env_flag("BILLING_AZURE_ENABLED") or configured("BILLING_AZURE_SUBSCRIPTION_ID"):
         try:
@@ -1443,7 +1578,7 @@ def collect(reference=None):
                 "provider": "configuration",
                 "error": (
                     "No billing providers configured; set a provider cap, OpenRouter key, "
-                    "or enable Azure / GitHub Actions / Blacksmith"
+                    "or enable AWS / Azure / GitHub Actions / Blacksmith"
                 ),
             }
         )

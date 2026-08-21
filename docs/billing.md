@@ -38,15 +38,21 @@ geometry is unusual, but the underlying axes are conventional:
 
 AWS and Anthropic are normalized separately. The component never adds their
 dollar values together. Their current pressure is month-to-date spend divided
-by the configured cap. Their forecast uses current calendar pace:
+by each provider's own ceiling. Their forecast uses current calendar pace:
 
 ```text
 forecast spend = current spend × days in month ÷ current day
 ```
 
-Those caps are personal surprise-bill thresholds, not values inferred from a
-cross-provider total. Azure does not use a configured cap; its ceiling is the
-live credit balance at the start of the month.
+Anthropic's cap is a personal surprise-bill threshold in `.env`. AWS does not
+use a configured cap by default; its ceiling is the live monthly COST budget
+from the authenticated AWS CLI (`BudgetLimit`). The Billing console's default
+budget, which only excludes Credit and Refund record types, still counts as
+account-wide. If more than one such budget exists, the smallest USD limit is
+used. A CloudWatch `AWS/Billing` `EstimatedCharges` alarm in `us-east-1` is
+the fallback when no monthly COST budget exists. `BILLING_AWS_CAP_USD` remains
+an optional override. Azure's ceiling is the live credit balance at the start
+of the month.
 
 When no provider has usable billing data, the map is dimmed and a solid red
 `NO BILLING DATA` popup is drawn over its center with a prompt to check the
@@ -162,7 +168,13 @@ current installation. Auth is `blacksmith auth login`.
 
 ## Live sources
 
-- AWS uses the authenticated [AWS CLI Cost Explorer](https://docs.aws.amazon.com/cli/latest/reference/ce/get-cost-and-usage.html) `UnblendedCost` total.
+- AWS uses the authenticated AWS CLI. Month-to-date spend is Cost Explorer
+  [`UnblendedCost`](https://docs.aws.amazon.com/cli/latest/reference/ce/get-cost-and-usage.html).
+  The 100% line is an account-wide monthly COST
+  [`BudgetLimit`](https://docs.aws.amazon.com/cli/latest/reference/budgets/describe-budgets.html)
+  when one exists, otherwise a CloudWatch billing-alarm threshold. Enable it
+  with `BILLING_AWS_ENABLED`; do not set a cap unless you want to override
+  that live limit.
 - Azure uses the authenticated Azure CLI. Starting and remaining credits
   come from the billing-profile [Consumption credits](https://learn.microsoft.com/en-us/rest/api/consumption/credits/get)
   `currentBalance` and `estimatedBalance`. Month-to-date spend is their

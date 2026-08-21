@@ -144,8 +144,10 @@ The transparent HUD is generated on every monitor. It reads local Linux telemetr
 | `BILLING_GAP_Y` | Optional top offset; empty sits the map just above the weather panel |
 | `BILLING_REFRESH_SECONDS` | Provider refresh interval (default `900`) |
 | `BILLING_TIMEOUT_SECONDS` | Per-provider command/request timeout (default `30`) |
-| `BILLING_AWS_CAP_USD` | AWS monthly surprise-bill threshold; enables AWS |
+| `BILLING_AWS_ENABLED` | Set to `1` to plot month-to-date AWS spend against the live monthly COST budget |
 | `BILLING_AWS_PROFILE` | Optional AWS CLI profile; otherwise normal AWS CLI resolution applies |
+| `BILLING_AWS_BUDGET_NAME` | Optional budget name when more than one monthly COST budget exists |
+| `BILLING_AWS_CAP_USD` | Optional override of the live budget/alarm ceiling; also enables AWS |
 | `BILLING_AZURE_ENABLED` | Set to `1` to plot this month's Azure credit spend against the live starting balance |
 | `BILLING_AZURE_SUBSCRIPTION_ID` | Optional subscription for month-to-date spend; otherwise the Azure CLI active subscription is used |
 | `BILLING_AZURE_API_VERSION` | Cost Management API version override (default `2025-03-01`) |
@@ -160,9 +162,9 @@ The transparent HUD is generated on every monitor. It reads local Linux telemetr
 Only configured providers are fetched. AWS and Azure use their authenticated
 CLIs; Anthropic and OpenRouter use their official APIs; GitHub Actions uses the
 official API through `gh`; Blacksmith uses the authenticated `blacksmith`
-CLI. Live usage and monetary values do not have environment-variable
-overrides. See [Affine billing map](billing.md) for the normalization and
-forecast semantics.
+CLI. Live usage, balances, and AWS/Azure ceilings do not have
+environment-variable overrides except the optional AWS cap. See
+[Affine billing map](billing.md) for the normalization and forecast semantics.
 
 ## Git status overlay
 

@@ -14,6 +14,7 @@ def isolate_cache(monkeypatch, tmp_path):
     monkeypatch.setattr(billing, "HISTORY_PATH", tmp_path / "billing-history.json")
     monkeypatch.setattr(billing, "log_event", lambda _message: None)
     monkeypatch.setenv("BILLING_BLACKSMITH_ENABLED", "0")
+    monkeypatch.setenv("BILLING_AWS_ENABLED", "0")
 
 
 def test_month_period_uses_one_inclusive_calendar_eom():
@@ -52,6 +53,158 @@ def test_metered_provider_projects_current_pace_to_eom():
     assert provider["currentPressure"] == 0.3364
     assert provider["forecastUsd"] == 13.72
     assert provider["forecastPressure"] == 0.5489
+    assert provider["forecastSource"] == "linear-month-pace"
+
+
+CONSOLE_AWS_BUDGET = {
+    "BudgetName": "My Monthly Cost Budget",
+    "BudgetLimit": {"Amount": "15.0", "Unit": "USD"},
+    "TimeUnit": "MONTHLY",
+    "BudgetType": "COST",
+    "FilterExpression": {
+        "Not": {
+            "Dimensions": {
+                "Key": "RECORD_TYPE",
+                "Values": ["Credit", "Refund"],
+            }
+        }
+    },
+    "Metrics": ["UnblendedCost"],
+}
+
+
+def test_aws_console_cost_budget_is_account_wide():
+    assert billing.aws_budget_is_account_wide(CONSOLE_AWS_BUDGET) is True
+    assert billing.aws_budget_is_account_wide({"CostFilters": {}}) is True
+    assert (
+        billing.aws_budget_is_account_wide(
+            {"CostFilters": {"Service": ["Amazon Simple Storage Service"]}}
+        )
+        is False
+    )
+
+
+def test_select_aws_monthly_cost_budget_picks_smallest_account_wide():
+    amount, name = billing.select_aws_monthly_cost_budget(
+        [
+            CONSOLE_AWS_BUDGET,
+            {
+                "BudgetName": "S3 only",
+                "BudgetLimit": {"Amount": "5.0", "Unit": "USD"},
+                "TimeUnit": "MONTHLY",
+                "BudgetType": "COST",
+                "CostFilters": {"Service": ["Amazon Simple Storage Service"]},
+            },
+            {
+                "BudgetName": "Loose",
+                "BudgetLimit": {"Amount": "40.0", "Unit": "USD"},
+                "TimeUnit": "MONTHLY",
+                "BudgetType": "COST",
+            },
+            {
+                "BudgetName": "Daily",
+                "BudgetLimit": {"Amount": "1.0", "Unit": "USD"},
+                "TimeUnit": "DAILY",
+                "BudgetType": "COST",
+            },
+        ]
+    )
+
+    assert amount == Decimal("15.0")
+    assert name == "My Monthly Cost Budget"
+
+
+def test_select_aws_monthly_cost_budget_named_can_be_filtered():
+    amount, name = billing.select_aws_monthly_cost_budget(
+        [
+            CONSOLE_AWS_BUDGET,
+            {
+                "BudgetName": "S3 only",
+                "BudgetLimit": {"Amount": "5.0", "Unit": "USD"},
+                "TimeUnit": "MONTHLY",
+                "BudgetType": "COST",
+                "CostFilters": {"Service": ["Amazon Simple Storage Service"]},
+            },
+        ],
+        named="S3 only",
+    )
+
+    assert amount == Decimal("5.0")
+    assert name == "S3 only"
+
+
+def test_select_aws_billing_alarm_ignores_per_service_metrics():
+    threshold = billing.select_aws_billing_alarm_threshold(
+        [
+            {
+                "Namespace": "AWS/Billing",
+                "MetricName": "EstimatedCharges",
+                "ComparisonOperator": "GreaterThanThreshold",
+                "Threshold": 8,
+                "Dimensions": [
+                    {"Name": "Currency", "Value": "USD"},
+                    {"Name": "ServiceName", "Value": "AmazonS3"},
+                ],
+            },
+            {
+                "Namespace": "AWS/Billing",
+                "MetricName": "EstimatedCharges",
+                "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+                "Threshold": 20,
+                "Dimensions": [{"Name": "Currency", "Value": "USD"}],
+            },
+        ]
+    )
+
+    assert threshold == Decimal("20")
+
+
+def test_resolve_aws_cap_prefers_env_then_budget_then_alarm(monkeypatch):
+    monkeypatch.setenv("BILLING_AWS_CAP_USD", "25")
+    cap, source, name = billing.resolve_aws_cap(5)
+    assert (cap, source, name) == (Decimal("25"), "env", "")
+
+    monkeypatch.delenv("BILLING_AWS_CAP_USD", raising=False)
+    monkeypatch.setattr(
+        billing,
+        "fetch_aws_budget_cap",
+        lambda _timeout: (Decimal("15"), "My Monthly Cost Budget"),
+    )
+    cap, source, name = billing.resolve_aws_cap(5)
+    assert (cap, source, name) == (
+        Decimal("15"),
+        "aws-budgets",
+        "My Monthly Cost Budget",
+    )
+
+    def no_budget(_timeout):
+        raise billing.ProviderError("no monthly account-wide COST budget in USD")
+
+    monkeypatch.setattr(billing, "fetch_aws_budget_cap", no_budget)
+    monkeypatch.setattr(
+        billing, "fetch_aws_billing_alarm_cap", lambda _timeout: Decimal("12")
+    )
+    cap, source, name = billing.resolve_aws_cap(5)
+    assert (cap, source, name) == (Decimal("12"), "aws-billing-alarm", "")
+
+
+def test_aws_provider_uses_live_budget_as_ceiling(monkeypatch):
+    monkeypatch.setattr(
+        billing,
+        "fetch_aws_budget_cap",
+        lambda _timeout: (Decimal("15"), "My Monthly Cost Budget"),
+    )
+    monkeypatch.setattr(
+        billing, "fetch_aws_current", lambda *_args: Decimal("0.02")
+    )
+
+    provider = billing.aws_provider(billing.month_period(date(2026, 8, 21)), 5)
+
+    assert provider["capUsd"] == 15.0
+    assert provider["currentUsd"] == 0.02
+    assert provider["currentPressure"] == 0.0013
+    assert provider["capSource"] == "aws-budgets"
+    assert provider["budgetName"] == "My Monthly Cost Budget"
     assert provider["forecastSource"] == "linear-month-pace"
 
 
