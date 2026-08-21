@@ -48,6 +48,7 @@ return function(shared, repo_root)
     local cards = {}
     for object in content:gmatch('{%s-"identifier".-}') do
       local identifier = shared.match_json_string(object, 'identifier')
+      local label = shared.match_json_string(object, 'label')
       local project_name = shared.match_json_string(object, 'projectName')
       local project_icon = shared.match_json_string(object, 'projectIcon')
       local state = shared.match_json_string(object, 'state')
@@ -63,6 +64,7 @@ return function(shared, repo_root)
       if title then
         table.insert(cards, {
           identifier = identifier and shared.unescape_json_string(identifier) or '',
+          label = label and shared.unescape_json_string(label) or '',
           project_name = project_name and shared.unescape_json_string(project_name) or '',
           project_icon = project_icon and shared.unescape_json_string(project_icon) or '',
           state = state and shared.unescape_json_string(state) or '',
@@ -301,16 +303,37 @@ return function(shared, repo_root)
       visible_due_date = card.due_date ~= '' and card.due_date or card.competition_due_date
     end
 
+    local due_width = 0
     if visible_due_date ~= '' then
       -- Set explicitly: the header may have left the emoji font selected.
       cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
       cairo_set_font_size(cr, project_font_size)
       local due_extents = cairo_text_extents_t:create()
       cairo_text_extents(cr, visible_due_date, due_extents)
+      due_width = due_extents.width
       shared.set_hex(cr, accent, 0.88)
       cairo_move_to(cr, footer_right - due_extents.width - due_extents.x_bearing, y + meta_offset_y)
       cairo_show_text(cr, visible_due_date)
       identifier_max_width = math.max(40, card_width - 62 - footer_reserved - due_extents.width)
+    end
+
+    if card.label and card.label ~= '' then
+      cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL)
+      cairo_set_font_size(cr, meta_font_size)
+      local right_content_x = footer_right - (due_width > 0 and (due_width + 8) or 0)
+      local max_half_right = math.max(20, right_content_x - (x + card_width / 2))
+      local max_label_width = math.min(120, max_half_right * 2)
+      local label_text = shared.truncate_title(cr, card.label, max_label_width)
+      local label_extents = cairo_text_extents_t:create()
+      cairo_text_extents(cr, label_text, label_extents)
+      local label_x = x + (card_width - label_extents.width) / 2 - label_extents.x_bearing
+
+      shared.set_hex(cr, '94a3b8', 0.76)
+      cairo_move_to(cr, label_x, y + meta_offset_y)
+      cairo_show_text(cr, label_text)
+
+      local id_right_limit = label_x + label_extents.x_bearing - 8
+      identifier_max_width = math.max(30, math.min(identifier_max_width, id_right_limit - (x + 22)))
     end
 
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL)

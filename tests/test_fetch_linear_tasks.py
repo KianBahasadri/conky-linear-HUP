@@ -33,6 +33,7 @@ def _issue(
     project_icon=None,
     state_type="unstarted",
     priority="No priority",
+    labels=None,
 ):
     return {
         "identifier": identifier,
@@ -43,6 +44,7 @@ def _issue(
         "url": f"https://linear.app/issue/{identifier}",
         "project": {"name": project, "icon": project_icon} if project else None,
         "state": {"name": state_name, "type": state_type},
+        "labels": {"nodes": [{"name": l} for l in labels]} if labels else {"nodes": []},
     }
 
 
@@ -230,6 +232,35 @@ def test_render_cards_merges_to_first_available_icon():
 
     assert card["projectName"] == "Hangout Automator / Competitions"
     assert card["projectIcon"] == "🏆"
+
+
+def test_render_cards_carries_first_label():
+    tasks = [
+        _issue("ABC-1", "With labels", "Todo", labels=["software-catalog", "backend"]),
+        _issue("ABC-2", "No labels", "Todo"),
+    ]
+
+    payload = linear.render_cards(tasks, {"Todo", "In Progress"}, lookback_hours=18)
+    cards_by_id = {card["identifier"]: card for card in payload["cards"]}
+
+    assert cards_by_id["ABC-1"]["label"] == "software-catalog"
+    assert cards_by_id["ABC-1"]["labels"] == ["software-catalog", "backend"]
+    assert cards_by_id["ABC-2"]["label"] == ""
+    assert cards_by_id["ABC-2"]["labels"] == []
+
+
+def test_render_cards_merges_to_first_available_label():
+    # Merged cards without a label in the first issue pick up the label from later issues.
+    tasks = [
+        _issue("ABC-1", "Shared", "Todo"),
+        _issue("ABC-2", "Shared", "Todo", labels=["infra", "devops"]),
+    ]
+
+    payload = linear.render_cards(tasks, {"Todo", "In Progress"}, lookback_hours=18)
+    card = payload["cards"][0]
+
+    assert card["label"] == "infra"
+    assert card["labels"] == ["infra", "devops"]
 
 
 def test_write_error_keeps_last_successful_cards(monkeypatch, tmp_path):

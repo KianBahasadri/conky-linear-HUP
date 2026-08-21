@@ -87,6 +87,12 @@ fragment IssueFields on Issue {
     name
     type
   }
+  labels {
+    nodes {
+      name
+      color
+    }
+  }
 }
 """
 
@@ -352,6 +358,13 @@ def render_cards(tasks, state_names, lookback_hours):
         project = task.get("project") or {}
         project_name = project.get("name", "")
         project_icon = emoji_from_project_icon(project.get("icon"))
+        labels_nodes = (task.get("labels") or {}).get("nodes", [])
+        task_labels = [
+            node.get("name", "").strip()
+            for node in labels_nodes
+            if isinstance(node, dict) and node.get("name", "").strip()
+        ]
+        label = task_labels[0] if task_labels else ""
         task_done = task in recently_done
         urgent = is_urgent(task)
         competition_upcoming = is_upcoming_competition(task, today)
@@ -363,6 +376,8 @@ def render_cards(tasks, state_names, lookback_hours):
             card = {
                 "identifier": identifier,
                 "identifiers": [],
+                "label": label,
+                "labels": list(task_labels),
                 "projectName": project_name,
                 "projectNames": [],
                 "projectIcon": project_icon,
@@ -388,6 +403,13 @@ def render_cards(tasks, state_names, lookback_hours):
 
         if len(card["identifiers"]) > 1:
             card["identifier"] = "   ".join(card["identifiers"])
+
+        if label and not card["label"]:
+            card["label"] = label
+
+        for item in task_labels:
+            if item not in card["labels"]:
+                card["labels"].append(item)
 
         if project_name and project_name not in card["projectNames"]:
             card["projectNames"].append(project_name)
@@ -535,19 +557,19 @@ def main():
     }
 
     try:
-        limit = int(os.environ.get("LINEAR_TASK_LIMIT", "30"))
+        limit = min(int(os.environ.get("LINEAR_TASK_LIMIT", "20")), 25)
     except ValueError:
-        limit = 30
+        limit = 20
 
     try:
-        competition_limit = int(os.environ.get("LINEAR_COMPETITION_TASK_LIMIT", "50"))
+        competition_limit = min(int(os.environ.get("LINEAR_COMPETITION_TASK_LIMIT", "20")), 25)
     except ValueError:
-        competition_limit = 50
+        competition_limit = 20
 
     try:
-        backlog_limit = int(os.environ.get("LINEAR_BACKLOG_DUE_SOON_LIMIT", "50"))
+        backlog_limit = min(int(os.environ.get("LINEAR_BACKLOG_DUE_SOON_LIMIT", "20")), 25)
     except ValueError:
-        backlog_limit = 50
+        backlog_limit = 20
 
     try:
         lookback_hours = int(os.environ.get("LINEAR_DONE_LOOKBACK_HOURS", "18"))
