@@ -673,7 +673,7 @@ github_placement_note() {
 }
 
 # Sit the 300px-tall map just above the weather card. The window is 456px so
-# the diamond matches that card's width. The diamond's origin is 282px from
+# the diamond matches that card's width. The diamond's origin is 268px from
 # the billing window top; the weather chip starts 74px into its window.
 BILLING_RESOLVED_GAP_Y=350
 BILLING_WEATHER_GAP=24
@@ -699,7 +699,7 @@ billing_placement_for_monitor() {
     [[ "$weather_gap" =~ ^-?[0-9]+$ ]] || weather_gap=6
     weather_text_top=$(( monitor_h - weather_gap - 276 ))
     weather_chip_top=$(( weather_text_top + 74 ))
-    BILLING_RESOLVED_GAP_Y=$(( weather_chip_top - 282 - BILLING_WEATHER_GAP ))
+    BILLING_RESOLVED_GAP_Y=$(( weather_chip_top - 268 - BILLING_WEATHER_GAP ))
     if (( BILLING_RESOLVED_GAP_Y < band_top )); then
       BILLING_RESOLVED_GAP_Y="$band_top"
     fi

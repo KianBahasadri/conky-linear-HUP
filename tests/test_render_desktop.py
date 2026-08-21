@@ -37,10 +37,10 @@ def config(**overrides):
         ),
         (
             "billing",
-            dict(alignment="top_right", gap_x=6, gap_y=566,
+            dict(alignment="top_right", gap_x=6, gap_y=580,
                  minimum_width=456, maximum_width=456, minimum_height=300),
             -1,
-            (3374, 562, 464, 308),
+            (3374, 576, 464, 308),
         ),
         (
             "minecraft",

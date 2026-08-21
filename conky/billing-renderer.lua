@@ -11,7 +11,7 @@ return function(shared, repo_root)
   -- The 456×300 window matches weather's width and leaves stroke room.
   local scale = 424 / 305
   local height_tuck = 0.88
-  local base_x, base_y = 20 + 145 * scale, 282
+  local base_x, base_y = 20 + 145 * scale, 268
   local time_x, time_y = 160 * scale, -94 * scale * height_tuck
   local pressure_x, pressure_y = -145 * scale, -94 * scale * height_tuck
 
@@ -249,16 +249,71 @@ return function(shared, repo_root)
       base_y + time_y * safe_time + pressure_y * safe_pressure / pressure_max
   end
 
-  local function domain_path(cr)
+  local function domain_corners()
     local x0, y0 = point(0, 0)
     local x1, y1 = point(1, 0)
     local x2, y2 = point(1, pressure_max)
     local x3, y3 = point(0, pressure_max)
+    return x0, y0, x1, y1, x2, y2, x3, y3
+  end
+
+  local function domain_path(cr)
+    local x0, y0, x1, y1, x2, y2, x3, y3 = domain_corners()
+    cairo_new_path(cr)
     cairo_move_to(cr, x0, y0)
     cairo_line_to(cr, x1, y1)
     cairo_line_to(cr, x2, y2)
     cairo_line_to(cr, x3, y3)
     cairo_close_path(cr)
+  end
+
+  local function fill_quad(cr, x1, y1, x2, y2, x3, y3, x4, y4, color, alpha)
+    cairo_new_path(cr)
+    cairo_move_to(cr, x1, y1)
+    cairo_line_to(cr, x2, y2)
+    cairo_line_to(cr, x3, y3)
+    cairo_line_to(cr, x4, y4)
+    cairo_close_path(cr)
+    set_hex(cr, color, alpha)
+    cairo_fill(cr)
+  end
+
+  -- Straight-down extrusion: the bottom face is the diamond translated in Y
+  -- only, so the walls are vertical in screen space like a true isometric tile.
+  local extrude_x, extrude_y = 0, 12
+
+  local function draw_slab(cr)
+    local ax, ay, bx, by, cx, cy, dx, dy = domain_corners()
+    local ax2, ay2 = ax + extrude_x, ay + extrude_y
+    local bx2, by2 = bx + extrude_x, by + extrude_y
+    local cx2, cy2 = cx + extrude_x, cy + extrude_y
+    local dx2, dy2 = dx + extrude_x, dy + extrude_y
+
+    -- Soft contact shadow sits a little down-right of the tile, not sheared
+    -- with a sideways extrusion.
+    fill_quad(
+      cr,
+      ax + 4, ay + 16,
+      bx + 4, by + 16,
+      cx + 4, cy + 16,
+      dx + 4, dy + 16,
+      '000000',
+      0.32
+    )
+
+    -- Painter's order: far faces first. Lit from the upper-left, so the
+    -- time-axis face is the darkest and the start-of-month face is lighter.
+    fill_quad(cr, dx, dy, cx, cy, cx2, cy2, dx2, dy2, '07101c', 0.94)
+    fill_quad(cr, bx, by, cx, cy, cx2, cy2, bx2, by2, '152a4a', 0.96)
+    fill_quad(cr, dx, dy, ax, ay, ax2, ay2, dx2, dy2, '2a3f63', 0.97)
+    fill_quad(cr, ax, ay, bx, by, bx2, by2, ax2, ay2, '03060c', 0.98)
+
+    cairo_new_path(cr)
+    cairo_move_to(cr, ax2, ay2)
+    cairo_line_to(cr, bx2, by2)
+    set_hex(cr, '6366f1', 0.28)
+    cairo_set_line_width(cr, 1)
+    cairo_stroke(cr)
   end
 
   local function text(cr, value, x, y, size, color, alpha, align, bold)
@@ -601,7 +656,7 @@ return function(shared, repo_root)
     set_hex(cr, '01030a', 0.58)
     cairo_fill(cr)
 
-    local x, y, width, height = 134, 138, 196, 58
+    local x, y, width, height = 134, 124, 196, 58
     rounded_rectangle(cr, x, y, width, height, 9)
     set_hex(cr, 'ef4444', 0.22)
     cairo_set_line_width(cr, 9)
@@ -640,7 +695,8 @@ return function(shared, repo_root)
   end
 
   local function draw_map(cr, status)
-    -- The object itself is the surface and the glow is its only shadow.
+    draw_slab(cr)
+
     domain_path(cr)
     set_hex(cr, '8b5cf6', 0.10)
     cairo_set_line_width(cr, 12)
@@ -650,9 +706,9 @@ return function(shared, repo_root)
     local gx0, gy0 = point(0, pressure_max)
     local gx1, gy1 = point(1, 0)
     local background = cairo_pattern_create_linear(gx0, gy0, gx1, gy1)
-    add_stop(background, 0.00, '10182b', 0.90)
-    add_stop(background, 0.48, '050b18', 0.88)
-    add_stop(background, 1.00, '02050e', 0.78)
+    add_stop(background, 0.00, '243044', 0.94)
+    add_stop(background, 0.42, '0c1424', 0.90)
+    add_stop(background, 1.00, '02050e', 0.86)
     cairo_set_source(cr, background)
     cairo_fill_preserve(cr)
     set_hex(cr, colors.violet, 0.30)
@@ -660,10 +716,23 @@ return function(shared, repo_root)
     cairo_stroke(cr)
     cairo_pattern_destroy(background)
 
+    -- Lit rim along the two near edges so the top plane separates from the slab.
+    local ax, ay, bx, by, _, _, dx, dy = domain_corners()
+    cairo_new_path(cr)
+    cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND)
+    set_hex(cr, 'c4b5fd', 0.42)
+    cairo_set_line_width(cr, 1.6)
+    cairo_move_to(cr, dx, dy)
+    cairo_line_to(cr, ax, ay)
+    cairo_line_to(cr, bx, by)
+    cairo_stroke(cr)
+    cairo_set_line_cap(cr, CAIRO_LINE_CAP_BUTT)
+
     local cap_start_x, cap_start_y = point(0, 1)
     local cap_end_x, cap_end_y = point(1, 1)
     local top_start_x, top_start_y = point(0, pressure_max)
     local top_end_x, top_end_y = point(1, pressure_max)
+    cairo_new_path(cr)
     cairo_move_to(cr, cap_start_x, cap_start_y)
     cairo_line_to(cr, cap_end_x, cap_end_y)
     cairo_line_to(cr, top_end_x, top_end_y)
