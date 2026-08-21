@@ -65,10 +65,11 @@ origin. A provider holding one stored day draws one short segment into its
 glyph, not a full-month diagonal down to the start-of-month corner.
 
 This is independent of whether a provider exposes a daily API. AWS, Anthropic,
-GitHub Actions, and Blacksmith therefore gain a trail only on days the fetcher
-actually ran. Azure still seeds the same store from Cost Management daily rows
-when those are available, so its trail can be complete even if the overlay was
-not running on those days. OpenRouter's plotted pressure is remaining-runway
+and GitHub Actions therefore gain a trail only on days the fetcher actually
+ran. Azure still seeds the same store from Cost Management daily rows when
+those are available, and Blacksmith seeds it from `blacksmith usage` daily
+totals, so those trails can be complete even if the overlay was not running on
+those days. OpenRouter's plotted pressure is remaining-runway
 future draw (the bead stays on the now-line at zero), so its stored trail sits
 on the baseline; the same file still keeps dated total-usage samples for the
 burn-rate fallback.
@@ -145,19 +146,16 @@ separate `currentPayableUsd` diagnostic.
 ## Blacksmith
 
 Blacksmith is an included-minutes allowance for the GitHub organization that
-the Firefox `app.blacksmith.sh` session is using. Enable it with
-`BILLING_BLACKSMITH_ENABLED`; do not set a cap. The dashboard
-[usage](https://app.blacksmith.sh) API returns `billable_minutes` as 1-vCPU
-weighted minutes and `free_minutes` as the advertised x64 2vCPU allowance
-(3,000 on the current free tier). The map divides billable by two so the
-current point is 2vCPU minutes consumed divided by that live allowance, then
-projects calendar pace through the common EOM. There is no provider daily
-history endpoint; the past trail is the local collection store, the same as
-AWS, Anthropic, and GitHub Actions.
+the authenticated `blacksmith` CLI is using. Enable it with
+`BILLING_BLACKSMITH_ENABLED`; do not set a cap. `blacksmith usage` returns
+`billable_minutes` as 1-vCPU weighted minutes. The advertised x64 2vCPU
+allowance is 3,000 minutes. The map divides billable by two so the current
+point is 2vCPU minutes consumed divided by that allowance, then projects
+calendar pace through the common EOM. Daily CLI totals seed the past trail
+the same way Azure Cost Management rows do.
 
-Org login follows `BILLING_BLACKSMITH_ORG` when set, otherwise the session's
-`active_org_name`. Auth is the Firefox `blacksmith_session` cookie, or
-`BILLING_BLACKSMITH_COOKIE` when that is set.
+Org login follows `BILLING_BLACKSMITH_ORG` when set, otherwise the CLI's
+current installation. Auth is `blacksmith auth login`.
 
 ## Live sources
 
@@ -177,9 +175,10 @@ Org login follows `BILLING_BLACKSMITH_ORG` when set, otherwise the session's
   repository visibility. The token needs the `user` scope. Plan allowances and
   free public-repository behavior follow GitHub's
   [Actions billing rules](https://docs.github.com/en/billing/concepts/product-billing/github-actions).
-- Blacksmith uses the Firefox `app.blacksmith.sh` session against the dashboard
-  usage API for the active GitHub organization. Spend and the free-minute
-  ceiling come from that response; they are not configured in `.env`.
+- Blacksmith uses the authenticated `blacksmith` CLI `usage` command for the
+  current GitHub organization. Spend comes from that response; the free-minute
+  ceiling is the advertised 3,000 x64 2vCPU minutes. They are not configured
+  in `.env`.
 
 Current spend, current balance, burn rate, and forecasts are always fetched or
 derived. They are never configured in `.env`. The complete setup variables are

@@ -1,5 +1,5 @@
 import json
-from datetime import date, datetime, timezone
+from datetime import date, datetime, time, timezone
 from decimal import Decimal
 
 import fetch_billing_usage as billing
@@ -289,15 +289,56 @@ def test_github_actions_uses_private_standard_runner_minutes(monkeypatch):
     assert provider["forecastSource"] == "linear-month-pace"
 
 
-def test_blacksmith_plots_2vcpu_minutes_against_live_free_allowance(monkeypatch):
-    def fake_blacksmith_api(path, _timeout):
-        if path == "/user":
-            return {"active_org_name": "klever-lab"}
-        if path.startswith("/user/github/orgs/klever-lab/usage?"):
-            return {"billable_minutes": 1050, "free_minutes": 3000}
-        raise AssertionError(f"unexpected Blacksmith API path: {path}")
+def test_blacksmith_usage_queries_local_calendar_month(monkeypatch):
+    captured = {}
 
-    monkeypatch.setattr(billing, "blacksmith_api", fake_blacksmith_api)
+    def fake_run_json(command, timeout):
+        captured["command"] = command
+        captured["timeout"] = timeout
+        return {
+            "installation": {"installation_name": "klever-lab"},
+            "summary": {"billable_minutes": 0},
+        }
+
+    monkeypatch.setattr(billing, "run_json", fake_run_json)
+    monkeypatch.setenv("BILLING_BLACKSMITH_ORG", "klever-lab")
+    period = billing.month_period(date(2026, 8, 19))
+
+    billing.blacksmith_usage(period, 5)
+
+    start = datetime.combine(
+        period["periodStart"], time.min, tzinfo=period["localNow"].tzinfo
+    )
+    end = datetime.combine(
+        period["periodEndExclusive"], time.min, tzinfo=period["localNow"].tzinfo
+    )
+    assert captured["timeout"] == 5
+    assert captured["command"] == [
+        "blacksmith",
+        "usage",
+        "--format",
+        "json",
+        "--start-time",
+        start.isoformat(timespec="seconds"),
+        "--end-time",
+        end.isoformat(timespec="seconds"),
+        "--org",
+        "klever-lab",
+    ]
+
+
+def test_blacksmith_plots_2vcpu_minutes_against_free_allowance(monkeypatch):
+    def fake_blacksmith_usage(_period, _timeout):
+        return {
+            "installation": {"installation_name": "klever-lab"},
+            "summary": {"billable_minutes": 1050, "runtime_minutes": 525},
+            "daily": [
+                {"date": "2026-08-06", "billable_minutes": 8},
+                {"date": "2026-08-08", "billable_minutes": 100},
+            ],
+        }
+
+    monkeypatch.setattr(billing, "blacksmith_usage", fake_blacksmith_usage)
 
     provider = billing.blacksmith_provider(
         billing.month_period(date(2026, 8, 19)), 5
@@ -313,6 +354,10 @@ def test_blacksmith_plots_2vcpu_minutes_against_live_free_allowance(monkeypatch)
     assert provider["forecastPressure"] == 0.2855
     assert provider["forecastSource"] == "linear-month-pace"
     assert provider["source"] == "blacksmith-usage"
+    assert provider["history"][0] == {"day": 1, "pressure": 0.0}
+    assert provider["history"][5] == {"day": 6, "pressure": round((8 / 2) / 3000, 4)}
+    assert provider["history"][7] == {"day": 8, "pressure": round((108 / 2) / 3000, 4)}
+    assert provider["history"][-1]["day"] == 18
 
 
 def test_collect_live_providers_share_one_period_end(monkeypatch, tmp_path):
@@ -476,6 +521,35 @@ def test_collect_seeds_azure_store_from_daily_api(monkeypatch, tmp_path):
     assert "2026-08-01" in azure_dates
     assert "2026-08-03" in azure_dates
     assert "2026-08-19" in azure_dates
+
+
+def test_collect_seeds_blacksmith_store_from_daily_cli(monkeypatch, tmp_path):
+    isolate_cache(monkeypatch, tmp_path)
+    monkeypatch.setenv("BILLING_BLACKSMITH_ENABLED", "1")
+    monkeypatch.setattr(
+        billing,
+        "blacksmith_usage",
+        lambda *_args: {
+            "installation": {"installation_name": "klever-lab"},
+            "summary": {"billable_minutes": 108},
+            "daily": [
+                {"date": "2026-08-01", "billable_minutes": 8},
+                {"date": "2026-08-03", "billable_minutes": 100},
+            ],
+        },
+    )
+
+    output = billing.collect(date(2026, 8, 19))
+    provider = next(item for item in output["providers"] if item["id"] == "blacksmith")
+    stored = json.loads((tmp_path / "billing-history.json").read_text(encoding="utf-8"))
+    dates = [sample["date"] for sample in stored["providers"]["blacksmith"]]
+
+    assert provider["history"][0] == {"day": 1, "pressure": round((8 / 2) / 3000, 4)}
+    assert provider["history"][2] == {"day": 3, "pressure": round((108 / 2) / 3000, 4)}
+    assert provider["history"][-1]["day"] == 18
+    assert "2026-08-01" in dates
+    assert "2026-08-03" in dates
+    assert "2026-08-19" in dates
 
 
 def test_collect_keeps_openrouter_v1_samples_when_migrating_the_store(
