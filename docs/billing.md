@@ -2,7 +2,7 @@
 
 The billing overlay is a transparent 456 × 300 Cairo object on the right side
 of every monitor. The diamond is scaled from the 420px mockup so its width
-matches the weather card, with a slight vertical tuck for a flatter isometric
+sits a hair under the weather card, with a slight vertical tuck for a flatter isometric
 read. Darker faces drop straight down from the chart plane so it reads as a
 thin isometric tile rather than a sheared slab. It is the selected Affine Month Map from the preserved
 [design study](billing-mockups/README.md), shipped without a surrounding card,

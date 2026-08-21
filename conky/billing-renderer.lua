@@ -6,12 +6,13 @@ return function(shared, repo_root)
   -- This is the production port of docs/billing-mockups/affine-map-only.py.
   -- The affine object is intentionally the whole component: no enclosing card,
   -- title bar, legend box, or footer is drawn around it.
-  -- Scale the 420×300 mockup so the diamond is 424px wide (the weather card).
-  -- Vertical scale is tucked 12% so the isometric reads a bit like a map.
-  -- The 456×300 window matches weather's width and leaves stroke room.
-  local scale = 424 / 305
-  local height_tuck = 0.88
-  local base_x, base_y = 20 + 145 * scale, 268
+  -- Scale the 420×300 mockup so the diamond is a hair under the weather
+  -- card's 424px width, then tuck the vertical 18% for a flatter map read.
+  -- Centered in the 456×300 window, which matches weather and leaves stroke room.
+  local scale = (424 * 0.97) / 305
+  local height_tuck = 0.82
+  local base_x = 232 - 7.5 * scale
+  local base_y = 268
   local time_x, time_y = 160 * scale, -94 * scale * height_tuck
   local pressure_x, pressure_y = -145 * scale, -94 * scale * height_tuck
 
@@ -656,7 +657,7 @@ return function(shared, repo_root)
     set_hex(cr, '01030a', 0.58)
     cairo_fill(cr)
 
-    local x, y, width, height = 134, 124, 196, 58
+    local x, y, width, height = 134, 132, 196, 58
     rounded_rectangle(cr, x, y, width, height, 9)
     set_hex(cr, 'ef4444', 0.22)
     cairo_set_line_width(cr, 9)

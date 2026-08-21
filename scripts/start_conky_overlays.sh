@@ -673,7 +673,7 @@ github_placement_note() {
 }
 
 # Sit the 300px-tall map just above the weather card. The window is 456px so
-# the diamond matches that card's width. The diamond's origin is 268px from
+# it shares the weather overlay's width. The diamond's origin is 268px from
 # the billing window top; the weather chip starts 74px into its window.
 BILLING_RESOLVED_GAP_Y=350
 BILLING_WEATHER_GAP=24
