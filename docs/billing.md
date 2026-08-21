@@ -36,23 +36,21 @@ geometry is unusual, but the underlying axes are conventional:
   a failed refresh. A bead with no forecast line or diamond means there is not
   yet enough real history to calculate a forecast.
 
-AWS and Anthropic are normalized separately. The component never adds their
-dollar values together. Their current pressure is month-to-date spend divided
-by each provider's own ceiling. Their forecast uses current calendar pace:
+AWS is normalized against its live monthly COST budget. The component never
+adds provider dollar values together. Current pressure is month-to-date spend
+divided by that budget. The forecast uses current calendar pace:
 
 ```text
 forecast spend = current spend × days in month ÷ current day
 ```
 
-Anthropic's cap is a personal surprise-bill threshold in `.env`. AWS does not
-use a configured cap by default; its ceiling is the live monthly COST budget
-from the authenticated AWS CLI (`BudgetLimit`). The Billing console's default
-budget, which only excludes Credit and Refund record types, still counts as
-account-wide. If more than one such budget exists, the smallest USD limit is
-used. A CloudWatch `AWS/Billing` `EstimatedCharges` alarm in `us-east-1` is
-the fallback when no monthly COST budget exists. `BILLING_AWS_CAP_USD` remains
-an optional override. Azure's ceiling is the live credit balance at the start
-of the month.
+The AWS ceiling is `BudgetLimit` from the authenticated AWS CLI. The Billing
+console's default budget, which only excludes Credit and Refund record types,
+still counts as account-wide. If more than one such budget exists, the
+smallest USD limit is used. A CloudWatch `AWS/Billing` `EstimatedCharges`
+alarm in `us-east-1` is the fallback when no monthly COST budget exists.
+Azure's ceiling is the live credit balance at the start of the month. None of
+those ceilings are configured in `.env`.
 
 When no provider has usable billing data, the map is dimmed and a solid red
 `NO BILLING DATA` popup is drawn over its center with a prompt to check the
@@ -73,8 +71,8 @@ The trail therefore starts at the earliest stored day, not at the month
 origin. A provider holding one stored day draws one short segment into its
 glyph, not a full-month diagonal down to the start-of-month corner.
 
-This is independent of whether a provider exposes a daily API. AWS, Anthropic,
-and GitHub Actions therefore gain a trail only on days the fetcher actually
+This is independent of whether a provider exposes a daily API. AWS and
+GitHub Actions therefore gain a trail only on days the fetcher actually
 ran. Azure still seeds the same store from Cost Management daily rows when
 those are available, and Blacksmith seeds it from `blacksmith usage` daily
 totals, so those trails can be complete even if the overlay was not running on
@@ -173,17 +171,13 @@ current installation. Auth is `blacksmith auth login`.
   The 100% line is an account-wide monthly COST
   [`BudgetLimit`](https://docs.aws.amazon.com/cli/latest/reference/budgets/describe-budgets.html)
   when one exists, otherwise a CloudWatch billing-alarm threshold. Enable it
-  with `BILLING_AWS_ENABLED`; do not set a cap unless you want to override
-  that live limit.
+  with `BILLING_AWS_ENABLED`; do not set a cap.
 - Azure uses the authenticated Azure CLI. Starting and remaining credits
   come from the billing-profile [Consumption credits](https://learn.microsoft.com/en-us/rest/api/consumption/credits/get)
   `currentBalance` and `estimatedBalance`. Month-to-date spend is their
   difference, with [Cost Management](https://learn.microsoft.com/en-us/rest/api/cost-management/query/usage?view=rest-cost-management-2025-03-01)
   `ActualCost` / `PreTaxCost` as fallback (converted to USD when billed in
   another currency; usage-detail `costInUSD` if Cost Management is throttled).
-- Anthropic uses the organization [Cost Report API](https://platform.claude.com/docs/en/api/admin/cost_report). Amounts are returned in
-  fractional cents and converted to USD. This requires an Admin API key and is
-  not available to an individual Claude account.
 - OpenRouter uses a management key for the [credits](https://openrouter.ai/docs/api/api-reference/credits/get-credits) and [analytics](https://openrouter.ai/docs/cookbook/administration/analytics-cost-control) endpoints.
 - GitHub Actions uses the authenticated `gh` CLI to read the personal-account
   [billing usage report](https://docs.github.com/en/rest/billing/usage) and

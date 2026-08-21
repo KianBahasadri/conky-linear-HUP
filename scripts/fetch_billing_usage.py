@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Collect month-to-date billing data for the affine billing map.
 
-Metered services are normalized against user-defined monthly caps. OpenRouter
-is prepaid against remaining credit. Azure is prepaid against the credit
-pool the current month started with: month-to-date spend is the current
-point, and calendar pace projects that spend through the same month end.
+Metered AWS spend is normalized against the live monthly COST budget.
+OpenRouter is prepaid against remaining credit. Azure is prepaid against the
+credit pool the current month started with: month-to-date spend is the
+current point, and calendar pace projects that spend through the same month
+end.
 
 Every successful collect stores that day's observation. The map's solid past
 trail is that growing series; missing days are not invented.
@@ -33,7 +34,6 @@ LOG_PATH = CACHE_DIR / "conky-billing.log"
 
 AWS_COLOR = "ffb454"
 AZURE_COLOR = "38bdf8"
-ANTHROPIC_COLOR = "ff8f73"
 OPENROUTER_COLOR = "c8ff00"
 GITHUB_ACTIONS_COLOR = "3fb950"
 BLACKSMITH_COLOR = "f0fb29"
@@ -99,20 +99,6 @@ def month_period(reference=None):
         "endLabel": period_end.strftime("%b %d").upper(),
         "localNow": local_now,
     }
-
-
-def env_decimal(name, *, allow_zero=True):
-    text = os.environ.get(name, "").strip()
-    if not text:
-        return None
-    try:
-        value = Decimal(text)
-    except InvalidOperation as error:
-        raise ValueError(f"{name} must be a number") from error
-    if not value.is_finite() or value < 0 or (not allow_zero and value == 0):
-        qualifier = "greater than zero" if not allow_zero else "zero or greater"
-        raise ValueError(f"{name} must be {qualifier}")
-    return value
 
 
 def as_decimal(value, label):
@@ -211,7 +197,7 @@ def metered_provider(
     source,
 ):
     if cap is None or cap <= 0:
-        raise ValueError(f"BILLING_{provider_id.upper()}_CAP_USD must be greater than zero")
+        raise ValueError(f"{provider_id} cap must be greater than zero")
     current = max(Decimal(0), current)
     forecast = linear_month_forecast(current, period)
     forecast = max(current, forecast)
@@ -362,9 +348,6 @@ def fetch_aws_billing_alarm_cap(timeout):
 
 
 def resolve_aws_cap(timeout):
-    configured_cap = env_decimal("BILLING_AWS_CAP_USD", allow_zero=False)
-    if configured_cap is not None:
-        return configured_cap, "env", ""
     try:
         amount, name = fetch_aws_budget_cap(timeout)
         return amount, "aws-budgets", name
@@ -404,7 +387,6 @@ def fetch_aws_current(period, timeout):
 
 def aws_enabled():
     return env_flag("BILLING_AWS_ENABLED") or configured(
-        "BILLING_AWS_CAP_USD",
         "BILLING_AWS_PROFILE",
         "BILLING_AWS_BUDGET_NAME",
     )
@@ -1502,40 +1484,6 @@ def collect(reference=None):
             if "azure" in old:
                 providers.append(stale_provider(old["azure"], error))
 
-    anthropic_key = (
-        os.environ.get("ANTHROPIC_ADMIN_KEY", "").strip()
-        or os.environ.get("ANTHROPIC_ADMIN_API_KEY", "").strip()
-    )
-    if configured(
-        "BILLING_ANTHROPIC_CAP_USD",
-        "ANTHROPIC_ADMIN_KEY",
-        "ANTHROPIC_ADMIN_API_KEY",
-    ):
-        try:
-            cap = env_decimal("BILLING_ANTHROPIC_CAP_USD", allow_zero=False)
-            if cap is None:
-                raise ValueError("BILLING_ANTHROPIC_CAP_USD is required")
-            if not anthropic_key:
-                raise ValueError("ANTHROPIC_ADMIN_KEY is required")
-            current = fetch_anthropic_current(period, anthropic_key, timeout)
-            providers.append(
-                metered_provider(
-                    "anthropic",
-                    "ANT",
-                    "Anthropic",
-                    ANTHROPIC_COLOR,
-                    cap,
-                    current,
-                    period,
-                    "anthropic-cost-report",
-                )
-            )
-        except Exception as error:
-            message = clean_error(error)
-            errors.append({"provider": "anthropic", "error": message})
-            if "anthropic" in old:
-                providers.append(stale_provider(old["anthropic"], error))
-
     if configured("OPENROUTER_API_KEY"):
         try:
             providers.append(openrouter_provider(period, timeout, observed_at))
@@ -1577,7 +1525,7 @@ def collect(reference=None):
             {
                 "provider": "configuration",
                 "error": (
-                    "No billing providers configured; set a provider cap, OpenRouter key, "
+                    "No billing providers configured; set an OpenRouter key "
                     "or enable AWS / Azure / GitHub Actions / Blacksmith"
                 ),
             }

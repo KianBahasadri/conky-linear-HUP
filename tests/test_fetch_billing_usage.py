@@ -159,12 +159,7 @@ def test_select_aws_billing_alarm_ignores_per_service_metrics():
     assert threshold == Decimal("20")
 
 
-def test_resolve_aws_cap_prefers_env_then_budget_then_alarm(monkeypatch):
-    monkeypatch.setenv("BILLING_AWS_CAP_USD", "25")
-    cap, source, name = billing.resolve_aws_cap(5)
-    assert (cap, source, name) == (Decimal("25"), "env", "")
-
-    monkeypatch.delenv("BILLING_AWS_CAP_USD", raising=False)
+def test_resolve_aws_cap_prefers_budget_then_alarm(monkeypatch):
     monkeypatch.setattr(
         billing,
         "fetch_aws_budget_cap",
@@ -515,12 +510,15 @@ def test_blacksmith_plots_2vcpu_minutes_against_free_allowance(monkeypatch):
 
 def test_collect_live_providers_share_one_period_end(monkeypatch, tmp_path):
     isolate_cache(monkeypatch, tmp_path)
-    monkeypatch.setenv("BILLING_AWS_CAP_USD", "25")
+    monkeypatch.setenv("BILLING_AWS_ENABLED", "1")
     monkeypatch.setenv("BILLING_AZURE_ENABLED", "1")
-    monkeypatch.setenv("BILLING_ANTHROPIC_CAP_USD", "20")
-    monkeypatch.setenv("ANTHROPIC_ADMIN_KEY", "admin-key")
     monkeypatch.setenv("OPENROUTER_API_KEY", "management-key")
     monkeypatch.setenv("BILLING_GITHUB_ACTIONS_ENABLED", "0")
+    monkeypatch.setattr(
+        billing,
+        "fetch_aws_budget_cap",
+        lambda *_args: (Decimal("25"), "Test"),
+    )
     monkeypatch.setattr(
         billing, "fetch_aws_current", lambda *_args: Decimal("8.41")
     )
@@ -534,9 +532,6 @@ def test_collect_live_providers_share_one_period_end(monkeypatch, tmp_path):
         },
     )
     monkeypatch.setattr(billing, "fetch_azure_daily_usd", lambda *_args: {})
-    monkeypatch.setattr(
-        billing, "fetch_anthropic_current", lambda *_args: Decimal("6.04")
-    )
     monkeypatch.setattr(
         billing,
         "fetch_openrouter_credits",
@@ -557,14 +552,13 @@ def test_collect_live_providers_share_one_period_end(monkeypatch, tmp_path):
     assert output["daysRemaining"] == 12
     assert [item["id"] for item in output["providers"]] == [
         "aws",
-        "anthropic",
         "openrouter",
         "azure",
     ]
-    openrouter = output["providers"][2]
+    openrouter = output["providers"][1]
     assert openrouter["forecastUsd"] == 5.16
     assert openrouter["forecastPressure"] == 0.4148
-    azure = output["providers"][3]
+    azure = output["providers"][2]
     assert azure["kind"] == "prepaid"
     assert azure["currentUsd"] == 24.46
     assert azure["capUsd"] == 98.72
@@ -573,12 +567,15 @@ def test_collect_live_providers_share_one_period_end(monkeypatch, tmp_path):
 
 def _stub_collect_providers(monkeypatch, tmp_path, *, azure_daily=None):
     isolate_cache(monkeypatch, tmp_path)
-    monkeypatch.setenv("BILLING_AWS_CAP_USD", "25")
+    monkeypatch.setenv("BILLING_AWS_ENABLED", "1")
     monkeypatch.setenv("BILLING_AZURE_ENABLED", "1")
-    monkeypatch.setenv("BILLING_ANTHROPIC_CAP_USD", "20")
-    monkeypatch.setenv("ANTHROPIC_ADMIN_KEY", "admin-key")
     monkeypatch.setenv("OPENROUTER_API_KEY", "management-key")
     monkeypatch.setenv("BILLING_GITHUB_ACTIONS_ENABLED", "0")
+    monkeypatch.setattr(
+        billing,
+        "fetch_aws_budget_cap",
+        lambda *_args: (Decimal("25"), "Test"),
+    )
     monkeypatch.setattr(
         billing, "fetch_aws_current", lambda *_args: Decimal("8.41")
     )
@@ -593,9 +590,6 @@ def _stub_collect_providers(monkeypatch, tmp_path, *, azure_daily=None):
     )
     monkeypatch.setattr(
         billing, "fetch_azure_daily_usd", lambda *_args: azure_daily or {}
-    )
-    monkeypatch.setattr(
-        billing, "fetch_anthropic_current", lambda *_args: Decimal("6.04")
     )
     monkeypatch.setattr(
         billing,
@@ -725,14 +719,16 @@ def test_collect_keeps_openrouter_v1_samples_when_migrating_the_store(
         ),
         encoding="utf-8",
     )
-    monkeypatch.setenv("BILLING_AWS_CAP_USD", "25")
+    monkeypatch.setenv("BILLING_AWS_ENABLED", "1")
     monkeypatch.setenv("BILLING_AZURE_ENABLED", "0")
     monkeypatch.setenv("BILLING_AZURE_SUBSCRIPTION_ID", "")
     monkeypatch.setenv("BILLING_GITHUB_ACTIONS_ENABLED", "0")
     monkeypatch.setenv("OPENROUTER_API_KEY", "")
-    monkeypatch.setenv("ANTHROPIC_ADMIN_KEY", "")
-    monkeypatch.setenv("ANTHROPIC_ADMIN_API_KEY", "")
-    monkeypatch.setenv("BILLING_ANTHROPIC_CAP_USD", "")
+    monkeypatch.setattr(
+        billing,
+        "fetch_aws_budget_cap",
+        lambda *_args: (Decimal("25"), "Test"),
+    )
     monkeypatch.setattr(
         billing, "fetch_aws_current", lambda *_args: Decimal("8.41")
     )

@@ -147,23 +147,18 @@ The transparent HUD is generated on every monitor. It reads local Linux telemetr
 | `BILLING_AWS_ENABLED` | Set to `1` to plot month-to-date AWS spend against the live monthly COST budget |
 | `BILLING_AWS_PROFILE` | Optional AWS CLI profile; otherwise normal AWS CLI resolution applies |
 | `BILLING_AWS_BUDGET_NAME` | Optional budget name when more than one monthly COST budget exists |
-| `BILLING_AWS_CAP_USD` | Optional override of the live budget/alarm ceiling; also enables AWS |
 | `BILLING_AZURE_ENABLED` | Set to `1` to plot this month's Azure credit spend against the live starting balance |
 | `BILLING_AZURE_SUBSCRIPTION_ID` | Optional subscription for month-to-date spend; otherwise the Azure CLI active subscription is used |
 | `BILLING_AZURE_API_VERSION` | Cost Management API version override (default `2025-03-01`) |
-| `BILLING_ANTHROPIC_CAP_USD` | Anthropic monthly surprise-bill threshold; enables Anthropic |
-| `ANTHROPIC_ADMIN_KEY` | Anthropic organization Admin API key for the Cost Report endpoint |
-| `ANTHROPIC_ADMIN_API_KEY` | Alias for `ANTHROPIC_ADMIN_KEY` |
 | `OPENROUTER_API_KEY` | OpenRouter management key for live credits and trailing usage |
 | `BILLING_GITHUB_ACTIONS_ENABLED` | Set to `1` to plot the authenticated `gh` user's private-repository standard-runner minutes against the plan allowance; the token needs `user` scope |
 | `BILLING_BLACKSMITH_ENABLED` | Set to `1` to plot Blacksmith x64 2vCPU minutes against the advertised 3,000-minute free allowance |
 | `BILLING_BLACKSMITH_ORG` | Optional GitHub org login passed to `blacksmith usage --org`; otherwise the CLI's current org is used |
 
 Only configured providers are fetched. AWS and Azure use their authenticated
-CLIs; Anthropic and OpenRouter use their official APIs; GitHub Actions uses the
-official API through `gh`; Blacksmith uses the authenticated `blacksmith`
-CLI. Live usage, balances, and AWS/Azure ceilings do not have
-environment-variable overrides except the optional AWS cap. See
+CLIs; OpenRouter uses its official API; GitHub Actions uses the official API
+through `gh`; Blacksmith uses the authenticated `blacksmith` CLI. Live usage,
+balances, and ceilings do not have environment-variable overrides. See
 [Affine billing map](billing.md) for the normalization and forecast semantics.
 
 ## Git status overlay
