@@ -440,8 +440,10 @@ done
 
 for key in "${overlay_keys[@]}"; do
   pkill -f "$GENERATED_DIR/$key-overlay-" 2>/dev/null || true
+  rm -f "$GENERATED_DIR/$key-overlay-"*.conkyrc
 done
 pkill -f "$GENERATED_DIR/codex-overlay-" 2>/dev/null || true
+rm -f "$GENERATED_DIR/codex-overlay-"*.conkyrc
 for key in "${overlay_keys[@]}"; do
   pkill -f "${overlay_config[$key]}" 2>/dev/null || true
 done
