@@ -6,12 +6,14 @@ return function(shared, repo_root)
   -- This is the production port of docs/billing-mockups/affine-map-only.py.
   -- The affine object is intentionally the whole component: no enclosing card,
   -- title bar, legend box, or footer is drawn around it.
-  -- The 280px footprint shares the resource monitor's centerline. Horizontal
-  -- vectors are a compact affine projection of the selected 420px mockup;
-  -- vertical geometry and all data semantics remain unchanged.
-  local base_x, base_y = 133.4, 263
-  local time_x, time_y = 140.5, -94
-  local pressure_x, pressure_y = -127.3, -94
+  -- Scale the 420×300 mockup so the diamond is 424px wide (the weather card).
+  -- Vertical scale is tucked 12% so the isometric reads a bit like a map.
+  -- The 456×300 window matches weather's width and leaves stroke room.
+  local scale = 424 / 305
+  local height_tuck = 0.88
+  local base_x, base_y = 20 + 145 * scale, 282
+  local time_x, time_y = 160 * scale, -94 * scale * height_tuck
+  local pressure_x, pressure_y = -145 * scale, -94 * scale * height_tuck
 
   local colors = {
     text = 'f8fafc',
@@ -599,7 +601,7 @@ return function(shared, repo_root)
     set_hex(cr, '01030a', 0.58)
     cairo_fill(cr)
 
-    local x, y, width, height = 42, 140, 196, 58
+    local x, y, width, height = 134, 138, 196, 58
     rounded_rectangle(cr, x, y, width, height, 9)
     set_hex(cr, 'ef4444', 0.22)
     cairo_set_line_width(cr, 9)
@@ -645,7 +647,9 @@ return function(shared, repo_root)
     cairo_stroke(cr)
 
     domain_path(cr)
-    local background = cairo_pattern_create_linear(4, 72, 252, 262)
+    local gx0, gy0 = point(0, pressure_max)
+    local gx1, gy1 = point(1, 0)
+    local background = cairo_pattern_create_linear(gx0, gy0, gx1, gy1)
     add_stop(background, 0.00, '10182b', 0.90)
     add_stop(background, 0.48, '050b18', 0.88)
     add_stop(background, 1.00, '02050e', 0.78)

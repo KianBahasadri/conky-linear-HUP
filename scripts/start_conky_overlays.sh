@@ -90,7 +90,7 @@ GITHUB_AUTO_GAP_NUDGE_UP="${GITHUB_AUTO_GAP_NUDGE_UP:-0}"
 # pushes it down; the github rail is a desktop window measured from screen top.
 # Empty = detect from _NET_WORKAREA (fallback 32). Set 0 to disable.
 GITHUB_AUTO_PRIMARY_GIT_EXTRA="${GITHUB_AUTO_PRIMARY_GIT_EXTRA-}"
-WEATHER_GAP_X="${WEATHER_GAP_X:-18}"
+WEATHER_GAP_X="${WEATHER_GAP_X:-6}"
 WEATHER_GAP_Y="${WEATHER_GAP_Y:-6}"
 WEATHER_REFRESH_SECONDS="${WEATHER_REFRESH_SECONDS:-600}"
 WEATHER_OVERLAY_ENABLED="${WEATHER_OVERLAY_ENABLED:-1}"
@@ -98,9 +98,9 @@ RESOURCE_MONITOR_GAP_X="${RESOURCE_MONITOR_GAP_X:-0}"
 # Empty means follow Linear's per-monitor gap_y so gauge tops stay flush with cards.
 RESOURCE_MONITOR_GAP_Y="${RESOURCE_MONITOR_GAP_Y:-}"
 RESOURCE_MONITOR_OVERLAY_ENABLED="${RESOURCE_MONITOR_OVERLAY_ENABLED:-1}"
-# Empty = follow RESOURCE_MONITOR_GAP_X so both right-side centers align.
+# Empty = center on the weather panel; otherwise an explicit right-edge gap.
 BILLING_GAP_X="${BILLING_GAP_X-}"
-# Empty = auto-center between the resource HUD above and weather below.
+# Empty = sit just above the weather panel; otherwise an explicit top offset.
 BILLING_GAP_Y="${BILLING_GAP_Y-}"
 BILLING_REFRESH_SECONDS="${BILLING_REFRESH_SECONDS:-900}"
 BILLING_OVERLAY_ENABLED="${BILLING_OVERLAY_ENABLED:-1}"
@@ -581,6 +581,9 @@ overlay_gap_x() {
     billing)
       if [[ -n "$BILLING_GAP_X" ]]; then
         printf "%s\n" "$BILLING_GAP_X"
+      elif overlay_enabled weather; then
+        # Billing window is the same 456px as weather, so they share gap_x.
+        printf "%s\n" "$WEATHER_GAP_X"
       else
         printf "%s\n" "$RESOURCE_MONITOR_GAP_X"
       fi
@@ -669,24 +672,24 @@ github_placement_note() {
   fi
 }
 
-# Keep the 300px map centered in the right-side lane that remains between the
-# top resource HUD and bottom weather panel. The explicit BILLING_GAP_Y escape
-# hatch is useful on unusual monitor layouts.
+# Sit the 300px-tall map just above the weather card. The window is 456px so
+# the diamond matches that card's width. The diamond's origin is 282px from
+# the billing window top; the weather chip starts 74px into its window.
 BILLING_RESOLVED_GAP_Y=350
+BILLING_WEATHER_GAP=24
 
 billing_placement_for_monitor() {
   local monitor_h="$1"
   local linear_gap_y="$2"
   local band_top=0
-  local band_bottom
-  local available
+  local weather_text_top
+  local weather_chip_top
   local resource_gap
   local weather_gap="$WEATHER_GAP_Y"
 
   if [[ ! "$monitor_h" =~ ^[0-9]+$ ]] || (( monitor_h < 300 )); then
     monitor_h=1080
   fi
-  band_bottom="$monitor_h"
   if overlay_enabled resource-monitor; then
     resource_gap="$(overlay_gap_y resource-monitor "$linear_gap_y")"
     [[ "$resource_gap" =~ ^-?[0-9]+$ ]] || resource_gap=0
@@ -694,22 +697,35 @@ billing_placement_for_monitor() {
   fi
   if overlay_enabled weather; then
     [[ "$weather_gap" =~ ^-?[0-9]+$ ]] || weather_gap=6
-    band_bottom=$(( monitor_h - weather_gap - 276 ))
-  fi
-  available=$(( band_bottom - band_top ))
-  if (( available >= 300 )); then
-    BILLING_RESOLVED_GAP_Y=$(( band_top + (available - 300) / 2 ))
+    weather_text_top=$(( monitor_h - weather_gap - 276 ))
+    weather_chip_top=$(( weather_text_top + 74 ))
+    BILLING_RESOLVED_GAP_Y=$(( weather_chip_top - 282 - BILLING_WEATHER_GAP ))
+    if (( BILLING_RESOLVED_GAP_Y < band_top )); then
+      BILLING_RESOLVED_GAP_Y="$band_top"
+    fi
+  elif (( monitor_h - band_top >= 300 )); then
+    BILLING_RESOLVED_GAP_Y=$(( band_top + (monitor_h - band_top - 300) / 2 ))
   else
     BILLING_RESOLVED_GAP_Y=$(( (monitor_h - 300) / 2 ))
-    (( BILLING_RESOLVED_GAP_Y < 0 )) && BILLING_RESOLVED_GAP_Y=0
+  fi
+  if (( BILLING_RESOLVED_GAP_Y < 0 )); then
+    BILLING_RESOLVED_GAP_Y=0
   fi
 }
 
 billing_placement_note() {
-  if [[ -n "$BILLING_GAP_Y" ]]; then
-    printf "pinned gap_y=%s\n" "$BILLING_GAP_Y"
+  local gap_x_note
+  if [[ -n "$BILLING_GAP_X" ]]; then
+    gap_x_note="pinned gap_x=$BILLING_GAP_X"
+  elif overlay_enabled weather; then
+    gap_x_note="auto gap_x=$(overlay_gap_x billing 0) (weather-centered)"
   else
-    printf "auto gap_y=%s\n" "$BILLING_RESOLVED_GAP_Y"
+    gap_x_note="auto gap_x=$(overlay_gap_x billing 0) (resource)"
+  fi
+  if [[ -n "$BILLING_GAP_Y" ]]; then
+    printf "%s pinned gap_y=%s\n" "$gap_x_note" "$BILLING_GAP_Y"
+  else
+    printf "%s auto gap_y=%s\n" "$gap_x_note" "$BILLING_RESOLVED_GAP_Y"
   fi
 }
 

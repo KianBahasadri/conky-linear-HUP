@@ -23,10 +23,10 @@ def config(**overrides):
     [
         (
             "weather",
-            dict(alignment="bottom_right", gap_x=18, gap_y=6,
+            dict(alignment="bottom_right", gap_x=6, gap_y=6,
                  minimum_width=456, maximum_width=456, minimum_height=276),
             -1,
-            (3362, 794, 464, 284),
+            (3374, 794, 464, 284),
         ),
         (
             "resource-monitor",
@@ -37,10 +37,10 @@ def config(**overrides):
         ),
         (
             "billing",
-            dict(alignment="top_right", gap_x=0, gap_y=395,
-                 minimum_width=280, maximum_width=280, minimum_height=300),
+            dict(alignment="top_right", gap_x=6, gap_y=566,
+                 minimum_width=456, maximum_width=456, minimum_height=300),
             -1,
-            (3556, 391, 288, 308),
+            (3374, 562, 464, 308),
         ),
         (
             "minecraft",

@@ -1,7 +1,9 @@
 # Affine billing map
 
-The billing overlay is a transparent 280 × 300 Cairo object on the right side
-of every monitor. It is the selected Affine Month Map from the preserved
+The billing overlay is a transparent 456 × 300 Cairo object on the right side
+of every monitor. The diamond is scaled from the 420px mockup so its width
+matches the weather card, with a slight vertical tuck for a flatter isometric
+read. It is the selected Affine Month Map from the preserved
 [design study](billing-mockups/README.md), shipped without a surrounding card,
 header, legend, or footer.
 
@@ -187,10 +189,9 @@ listed in [Configuration](configuration.md#affine-billing-map).
 ## Placement and lifecycle
 
 The launcher creates one billing window per monitor. With `BILLING_GAP_Y`
-unset, it centers the 300px map in the vertical lane between the top-right
-resource HUD and bottom-right weather panel. With `BILLING_GAP_X` unset, its
-horizontal center follows the resource monitor; an explicit value overrides
-that alignment. The fetch loop is independent of the GitHub contribution rail and does
+unset, the map sits just above the bottom-right weather panel. With
+`BILLING_GAP_X` unset, its horizontal center follows the weather card; an
+explicit value overrides that alignment. The fetch loop is independent of the GitHub contribution rail and does
 not read or write any GitHub cache or renderer state.
 
 Cache and log ownership are documented in [Caches](caches.md). The renderer's

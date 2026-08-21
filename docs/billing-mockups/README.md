@@ -110,7 +110,7 @@ python3 docs/billing-mockups/replay_transparent.py \
 
 lua docs/billing-mockups/harness_overlay.lua "$PWD" billing > /tmp/billing.ops
 python3 docs/billing-mockups/replay_transparent.py \
-  /tmp/billing.ops /tmp/billing.png 280 300
+  /tmp/billing.ops /tmp/billing.png 456 300
 ```
 
 Those harnesses load the repository's current Lua renderers and cached data, so rerunning them later is a regression check rather than a reproduction of the exact 2026 snapshot.

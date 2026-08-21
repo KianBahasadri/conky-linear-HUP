@@ -116,7 +116,7 @@ Pioneer env vars (`PIONEER_API_KEY`, `PIONEER_USAGE_LABEL`, `PIONEER_MONTHLY_CRE
 | `WEATHER_LOCATION` | City or postal code to geocode when coordinates are unset |
 | `WEATHER_LOCATION_LABEL` | Override the displayed location name |
 | `WEATHER_UNITS` | `imperial`, `metric`, or `auto` (IP country only); defaults to `imperial` |
-| `WEATHER_GAP_X` | Horizontal gap from the right screen edge |
+| `WEATHER_GAP_X` | Horizontal gap from the right screen edge (default `6`) |
 | `WEATHER_GAP_Y` | Vertical gap from the bottom screen edge (default `6`) |
 | `WEATHER_REFRESH_SECONDS` | Weather and air-quality refresh interval |
 | `WEATHER_TIMEOUT_SECONDS` | Timeout for each provider request |
@@ -140,8 +140,8 @@ The transparent HUD is generated on every monitor. It reads local Linux telemetr
 | Variable | Purpose |
 | --- | --- |
 | `BILLING_OVERLAY_ENABLED` | Set to `0` to disable |
-| `BILLING_GAP_X` | Optional right-edge gap; empty follows `RESOURCE_MONITOR_GAP_X` so panel centers align |
-| `BILLING_GAP_Y` | Optional top offset; empty auto-centers between resources and weather |
+| `BILLING_GAP_X` | Optional right-edge gap; empty centers the map on the weather panel |
+| `BILLING_GAP_Y` | Optional top offset; empty sits the map just above the weather panel |
 | `BILLING_REFRESH_SECONDS` | Provider refresh interval (default `900`) |
 | `BILLING_TIMEOUT_SECONDS` | Per-provider command/request timeout (default `30`) |
 | `BILLING_AWS_CAP_USD` | AWS monthly surprise-bill threshold; enables AWS |

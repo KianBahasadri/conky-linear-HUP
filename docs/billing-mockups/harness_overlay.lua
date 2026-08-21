@@ -71,7 +71,7 @@ end
 local specs = {
   resource = { width = 280, height = 258, file = 'resource-monitor-renderer.lua' },
   weather = { width = 456, height = 276, file = 'weather-renderer.lua' },
-  billing = { width = 280, height = 300, file = 'billing-renderer.lua' },
+  billing = { width = 456, height = 300, file = 'billing-renderer.lua' },
 }
 local spec = assert(specs[overlay], 'unknown overlay: ' .. tostring(overlay))
 conky_window = { width = spec.width, height = spec.height }
