@@ -60,6 +60,10 @@ today. It does not invent missing days, interpolate across gaps, or write a
 sample when a refresh failed and the previous value is only being retained as
 stale.
 
+The trail therefore starts at the earliest stored day, not at the month
+origin. A provider holding one stored day draws one short segment into its
+glyph, not a full-month diagonal down to the start-of-month corner.
+
 This is independent of whether a provider exposes a daily API. AWS, Anthropic,
 GitHub Actions, and Blacksmith therefore gain a trail only on days the fetcher
 actually ran. Azure still seeds the same store from Cost Management daily rows

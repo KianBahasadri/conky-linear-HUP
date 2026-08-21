@@ -718,9 +718,10 @@ return function(shared, repo_root)
         local alpha = provider.stale and 0.50 or 1
         local current_x, current_y = point(status.elapsed, provider.current_pressure)
         local forecast_x, forecast_y = point(1, provider.forecast_pressure)
+        -- Observed days only. Anchoring the trail at the month origin drew a
+        -- straight full-month diagonal for a provider holding a single sample,
+        -- claiming a history the store does not have.
         local trail = {}
-        local origin_x, origin_y = point(0, 0)
-        table.insert(trail, { origin_x, origin_y })
         for _, sample in ipairs(provider.history or {}) do
           local day = sample.day or 0
           if day > 0 and day < status.day then
@@ -728,6 +729,7 @@ return function(shared, repo_root)
             table.insert(trail, { past_x, past_y })
           end
         end
+        local has_past_samples = #trail > 0
         table.insert(trail, { current_x, current_y })
         local past_segments = {}
         local clearance = mark_clearance(provider)
@@ -756,7 +758,7 @@ return function(shared, repo_root)
         end
         -- Only draw a past trail when there is observed history, not a lone
         -- origin-to-now diagonal for providers without daily samples.
-        if #(provider.history or {}) > 0 then
+        if has_past_samples then
           glow_segments(
             cr,
             past_segments,
