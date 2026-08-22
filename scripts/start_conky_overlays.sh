@@ -91,7 +91,7 @@ GITHUB_OVERLAY_ENABLED="${GITHUB_OVERLAY_ENABLED:-1}"
 # Window height for the skyline: the plinth, the day-axis depth and the tallest
 # tower all share it, and the renderer scales the extrusion to whatever is left
 # over.
-GITHUB_SKYLINE_HEIGHT="${GITHUB_SKYLINE_HEIGHT:-340}"
+GITHUB_SKYLINE_HEIGHT="${GITHUB_SKYLINE_HEIGHT:-200}"
 # Floor for that height once the Linear clearance below has been taken out.
 GITHUB_SKYLINE_MIN_HEIGHT="${GITHUB_SKYLINE_MIN_HEIGHT:-180}"
 # Gap kept between the bottom of the Linear cards and the skyline's top.
@@ -654,8 +654,8 @@ overlay_gap_x() {
 }
 
 if [[ ! "$GITHUB_SKYLINE_HEIGHT" =~ ^[1-9][0-9]*$ ]]; then
-  log_overlay github "invalid GITHUB_SKYLINE_HEIGHT=$GITHUB_SKYLINE_HEIGHT; using 340"
-  GITHUB_SKYLINE_HEIGHT=340
+  log_overlay github "invalid GITHUB_SKYLINE_HEIGHT=$GITHUB_SKYLINE_HEIGHT; using 200"
+  GITHUB_SKYLINE_HEIGHT=200
 fi
 
 if [[ ! "$GITHUB_ROOF_CLEARANCE" =~ ^[0-9]+$ ]]; then
@@ -670,7 +670,7 @@ fi
 RATE_LIMIT_FRAME_LEFT=0
 RATE_LIMIT_FRAME_TOP=0
 GITHUB_ROOF_BASELINE=0
-GITHUB_RESOLVED_HEIGHT=340
+GITHUB_RESOLVED_HEIGHT=200
 MONITOR_HEIGHT=1080
 
 rate_limit_frame_for_monitor() {

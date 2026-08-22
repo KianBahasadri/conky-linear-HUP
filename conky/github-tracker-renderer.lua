@@ -8,12 +8,13 @@ return function(shared, repo_root)
   -- front edge, so it can sit on the rate limit panel's top edge as its roof
   -- instead of floating. Both basis vectors stay the same length, so plan-view
   -- cells read square. Ratios are relative to the week step.
-  local day_dx_ratio = 0.5211
-  local day_dy_ratio = 0.8600
+  local day_dx_ratio = 0.015   -- squared up: virtually no left-right skew
+  local day_dy_ratio = 0.095   -- a hair more top-down tilt so the towers still read
   local fill = 0.86            -- cell footprint as a fraction of the step
-  local deck_ratio = 0.7451    -- plinth thickness, also relative to the step
+  local deck_ratio = 0.55      -- plinth thickness, also relative to the step
   local columns = 7
-  local weeks_max = 53
+  local weeks_max = 105         -- no visible cap; the fetcher dictates length
+                               -- (~371 HTML vs ~401 graphql for an extra month)
   local window_inset = 4       -- Conky window border around the text area
 
   -- GitHub's own dark-theme ramp. Index is data-level + 1.
@@ -103,20 +104,26 @@ return function(shared, repo_root)
       top[index] = { point[1], point[2] - height }
     end
 
+    -- Semi-translucent outside, but overlapping along line-of-sight. Each
+    -- layer blends on the transparent surface, so dense rows read denser.
+    local wall_a = 0.62
+    local top_a = 0.66
+    local edge_a = 0.34
+
     -- Only two of the four walls face the camera: the day-0 (south) edge and
     -- the week-max (east) edge. Three fills per tower, not six.
     poly(cr, { base[1], base[2], top[2], top[1] })
-    shared.set_hex_shaded(cr, color, 0.95, -0.55)
+    shared.set_hex_shaded(cr, color, wall_a, -0.55)
     cairo_fill(cr)
 
     poly(cr, { base[2], base[3], top[3], top[2] })
-    shared.set_hex_shaded(cr, color, 0.95, -0.30)
+    shared.set_hex_shaded(cr, color, wall_a, -0.30)
     cairo_fill(cr)
 
     poly(cr, top)
-    shared.set_hex_shaded(cr, color, 0.98, 0.12)
+    shared.set_hex_shaded(cr, color, top_a, 0.12)
     cairo_fill_preserve(cr)
-    shared.set_hex_shaded(cr, color, 0.70, 0.45)
+    shared.set_hex_shaded(cr, color, edge_a, 0.45)
     cairo_set_line_width(cr, 0.7)
     cairo_stroke(cr)
   end
@@ -223,7 +230,8 @@ return function(shared, repo_root)
         if entry then
           local base = footprint(geo, week, day)
           if entry.count > 0 then
-            draw_tower(cr, base, tower_height(geo, entry.count), colors[entry.level + 1])
+            draw_tower(cr, base, tower_height(geo, entry.count),
+              colors[entry.level + 1])
           else
             poly(cr, base)
             shared.set_hex(cr, deck_color, 0.42)

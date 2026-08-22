@@ -57,13 +57,37 @@ def github_username():
     raise ValueError("Set GITHUB_USERNAME in .env")
 
 
+def github_token_via_gh():
+    try:
+        result = subprocess.run(
+            ["gh", "auth", "token"],
+            capture_output=True,
+            text=True,
+            timeout=3,
+        )
+        if result.returncode == 0:
+            token = (result.stdout or "").strip().splitlines()[0].strip()
+            if token and len(token) > 10:
+                return token
+    except (OSError, subprocess.SubprocessError, ValueError):
+        pass
+    return ""
+
+
+def effective_github_token():
+    env_token = os.environ.get("GITHUB_TOKEN", "").strip()
+    if env_token:
+        return env_token
+    return github_token_via_gh()
+
+
 def fetch_contributions(username):
     url = f"https://github.com/users/{username}/contributions"
     headers = {
         "Accept": "text/html,application/xhtml+xml",
         "User-Agent": "conky-linear-HUP/1.0",
     }
-    token = os.environ.get("GITHUB_TOKEN", "").strip()
+    token = effective_github_token()
     if token:
         headers["Authorization"] = f"Bearer {token}"
 
@@ -71,6 +95,86 @@ def fetch_contributions(username):
     timeout = float(os.environ.get("GITHUB_TIMEOUT_SECONDS", "10"))
     with urllib.request.urlopen(request, timeout=timeout) as response:
         return response.read().decode("utf-8", errors="replace")
+
+
+GRAPHQL_LEVEL_MAP = {
+    "NONE": 0,
+    "FIRST_QUARTILE": 1,
+    "SECOND_QUARTILE": 2,
+    "THIRD_QUARTILE": 3,
+    "FOURTH_QUARTILE": 4,
+}
+
+
+def fetch_contributions_graphql(username, token, from_iso, to_iso):
+    query = (
+        "query($login:String!,$from:DateTime!,$to:DateTime!){"
+        "user(login:$login){contributionsCollection(from:$from,to:$to)"
+        "{contributionCalendar{weeks{contributionDays"
+        "{date contributionCount contributionLevel}}}}}}"
+    )
+    body = json.dumps(
+        {"query": query, "variables": {"login": username, "from": from_iso, "to": to_iso}}
+    ).encode("utf-8")
+    request = urllib.request.Request(
+        "https://api.github.com/graphql",
+        data=body,
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "User-Agent": "conky-linear-HUP/1.0",
+        },
+        method="POST",
+    )
+    timeout = float(os.environ.get("GITHUB_TIMEOUT_SECONDS", "10"))
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        payload = json.loads(response.read().decode("utf-8", errors="replace"))
+    if "errors" in payload and payload["errors"]:
+        raise ValueError(payload["errors"][0].get("message", "graphql error"))
+    weeks = payload["data"]["user"]["contributionsCollection"]["contributionCalendar"]["weeks"]
+    entries = []
+    for week in weeks:
+        for day in week.get("contributionDays", []):
+            entries.append(
+                {
+                    "date": day["date"],
+                    "level": GRAPHQL_LEVEL_MAP.get(day.get("contributionLevel"), 0),
+                    "count": int(day.get("contributionCount", 0)),
+                }
+            )
+    return entries
+
+
+def fetch_contributions_graphql_extended(username, token):
+    raw_days = os.environ.get("GITHUB_HISTORY_DAYS", "401")
+    try:
+        want_days = int(str(raw_days).strip() or 401)
+    except (TypeError, ValueError):
+        want_days = 401
+    if want_days < 1:
+        want_days = 401
+    want_days = min(want_days, 730)
+
+    today = datetime.now(timezone.utc).date()
+    start = today - __import__("datetime").timedelta(days=want_days - 1)
+
+    merged = {}
+    cursor = start
+    one_day = __import__("datetime").timedelta(days=1)
+    while cursor <= today:
+        window_end = min(cursor + __import__("datetime").timedelta(days=364), today)
+        from_iso = f"{cursor.isoformat()}T00:00:00Z"
+        to_iso = f"{(window_end + one_day).isoformat()}T00:00:00Z"
+        chunk = fetch_contributions_graphql(username, token, from_iso, to_iso)
+        for entry in chunk:
+            if start.isoformat() <= entry["date"] <= today.isoformat():
+                merged[entry["date"]] = entry
+        cursor = window_end + one_day
+
+    entries = sorted(merged.values(), key=lambda item: item["date"])
+    if not entries:
+        raise ValueError("No contribution days from GraphQL")
+    return entries
 
 
 def parse_counts(html):
@@ -118,7 +222,13 @@ def parse_contributions(html):
         raise ValueError("No contribution squares found in GitHub response")
 
     entries.sort(key=lambda item: item["date"])
+    # Public page only has ~52 weeks; GITHUB_HISTORY_DAYS has no effect on it.
     return entries[-371:]
+
+
+def parse_contributions_graphql_entries(entries):
+    entries = sorted(entries, key=lambda item: item["date"])
+    return entries
 
 
 def main():
@@ -127,6 +237,24 @@ def main():
 
     try:
         username = github_username()
+        token = effective_github_token()
+        if token:
+            try:
+                entries = fetch_contributions_graphql_extended(username, token)
+                payload = {
+                    "ok": True,
+                    "updatedAt": datetime.now(timezone.utc).isoformat(),
+                    "username": username,
+                    "contributions": entries,
+                    "source": "graphql",
+                }
+                atomic_write_json(CONTRIBUTIONS_PATH, payload)
+                total = sum(entry["count"] for entry in entries)
+                log_event(f"updated username={username} days={len(entries)} contributions={total} source=graphql via={'GITHUB_TOKEN' if os.environ.get('GITHUB_TOKEN','').strip() else 'gh'}")
+                return 0
+            except (OSError, urllib.error.URLError, ValueError, json.JSONDecodeError, KeyError) as graphql_error:
+                log_event(f"graphql extended fetch failed, falling back to HTML: {graphql_error}")
+
         html = fetch_contributions(username)
         entries = parse_contributions(html)
         payload = {

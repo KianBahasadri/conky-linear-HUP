@@ -95,7 +95,8 @@ Pioneer env vars (`PIONEER_API_KEY`, `PIONEER_USAGE_LABEL`, `PIONEER_MONTHLY_CRE
 | --- | --- |
 | `GITHUB_USERNAME` | GitHub account to render |
 | `GH_USERNAME` | Alias for `GITHUB_USERNAME` |
-| `GITHUB_TOKEN` | Optional token for authenticated contribution requests |
+| `GITHUB_TOKEN` | Optional auth for GraphQL `401`-day skyline; falls back to `gh` auth token |
+| `GITHUB_HISTORY_DAYS` | Skyline window in days when authenticated (default `401`, max `730`) |
 | `GITHUB_OVERLAY_ENABLED` | Set to `0` to disable |
 | `GITHUB_GAP_X` | Left offset in px; empty matches the rate limit panel's drawn frame |
 | `GITHUB_GAP_Y` | Bottom offset in px; empty sits the skyline on the rate limit panel |
