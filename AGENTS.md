@@ -5,7 +5,7 @@ This project provides multi-monitor Conky desktop overlays backed by Python data
 ## Seeing the overlays
 
 Do not ask for a screenshot to check how a change looks. Run
-`./scripts/render_desktop.py` and read the PNG it writes; see
+`uv run python scripts/render_desktop.py` and read the PNG it writes; see
 [docs/desktop-render.md](docs/desktop-render.md) for its options.
 
 ## Documentation (read/write)

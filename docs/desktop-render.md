@@ -5,11 +5,11 @@ anything. It needs no X display, no compositor, and no running Conky, so an
 agent can see what the desktop looks like on its own.
 
 ```bash
-./scripts/render_desktop.py                     # whole virtual desktop
-./scripts/render_desktop.py --monitor 0         # one monitor, cropped
-./scripts/render_desktop.py --overlay weather   # one overlay (repeatable)
-./scripts/render_desktop.py --list              # window table, no render
-./scripts/render_desktop.py --check             # model vs the live X windows
+uv run python scripts/render_desktop.py                     # whole virtual desktop
+uv run python scripts/render_desktop.py --monitor 0         # one monitor, cropped
+uv run python scripts/render_desktop.py --overlay weather   # one overlay (repeatable)
+uv run python scripts/render_desktop.py --list              # window table, no render
+uv run python scripts/render_desktop.py --check             # model vs the live X windows
 ```
 
 Output defaults to `cache/desktop-render.png`; `-o` puts it elsewhere.

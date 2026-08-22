@@ -183,6 +183,104 @@ def test_resolve_aws_cap_prefers_budget_then_alarm(monkeypatch):
     assert (cap, source, name) == (Decimal("12"), "aws-billing-alarm", "")
 
 
+def test_aws_session_kwargs_prefers_access_keys(monkeypatch):
+    monkeypatch.setenv("BILLING_AWS_ACCESS_KEY_ID", "AKIATEST")
+    monkeypatch.setenv("BILLING_AWS_SECRET_ACCESS_KEY", "secret")
+    monkeypatch.setenv("BILLING_AWS_PROFILE", "ignored")
+    assert billing.aws_session_kwargs() == {
+        "aws_access_key_id": "AKIATEST",
+        "aws_secret_access_key": "secret",
+    }
+
+
+def test_aws_session_kwargs_uses_profile_without_keys(monkeypatch):
+    monkeypatch.delenv("BILLING_AWS_ACCESS_KEY_ID", raising=False)
+    monkeypatch.delenv("BILLING_AWS_SECRET_ACCESS_KEY", raising=False)
+    monkeypatch.setenv("BILLING_AWS_PROFILE", "desktop")
+    assert billing.aws_session_kwargs() == {"profile_name": "desktop"}
+
+
+def test_aws_enabled_by_access_key(monkeypatch):
+    monkeypatch.setenv("BILLING_AWS_ENABLED", "0")
+    monkeypatch.delenv("BILLING_AWS_PROFILE", raising=False)
+    monkeypatch.delenv("BILLING_AWS_BUDGET_NAME", raising=False)
+    monkeypatch.setenv("BILLING_AWS_ACCESS_KEY_ID", "AKIATEST")
+    monkeypatch.delenv("BILLING_AWS_SECRET_ACCESS_KEY", raising=False)
+    assert billing.aws_enabled() is True
+
+
+def test_fetch_aws_current_reads_unblended_cost(monkeypatch):
+    captured = {}
+
+    class Client:
+        def get_cost_and_usage(self, **kwargs):
+            captured.update(kwargs)
+            return {
+                "ResultsByTime": [
+                    {
+                        "Total": {
+                            "UnblendedCost": {"Amount": "8.41", "Unit": "USD"}
+                        }
+                    }
+                ]
+            }
+
+    monkeypatch.setattr(billing, "aws_client", lambda *_args, **_kwargs: Client())
+    amount = billing.fetch_aws_current(
+        billing.month_period(date(2026, 8, 19)), 5
+    )
+    assert amount == Decimal("8.41")
+    assert captured["Granularity"] == "MONTHLY"
+    assert captured["Metrics"] == ["UnblendedCost"]
+    assert captured["TimePeriod"] == {"Start": "2026-08-01", "End": "2026-08-20"}
+
+
+def test_fetch_aws_budget_cap_paginates(monkeypatch):
+    monkeypatch.delenv("BILLING_AWS_BUDGET_NAME", raising=False)
+
+    class Paginator:
+        def paginate(self, **kwargs):
+            assert kwargs["AccountId"] == "123456789012"
+            yield {"Budgets": [CONSOLE_AWS_BUDGET]}
+            yield {
+                "Budgets": [
+                    {
+                        "BudgetName": "Loose",
+                        "BudgetLimit": {"Amount": "40.0", "Unit": "USD"},
+                        "TimeUnit": "MONTHLY",
+                        "BudgetType": "COST",
+                    }
+                ]
+            }
+
+    class Client:
+        def can_paginate(self, operation):
+            return operation == "describe_budgets"
+
+        def get_paginator(self, name):
+            assert name == "describe_budgets"
+            return Paginator()
+
+    monkeypatch.setattr(billing, "aws_client", lambda *_args, **_kwargs: Client())
+    monkeypatch.setattr(billing, "aws_account_id", lambda _timeout: "123456789012")
+    amount, name = billing.fetch_aws_budget_cap(5)
+    assert amount == Decimal("15.0")
+    assert name == "My Monthly Cost Budget"
+
+
+def test_aws_try_wraps_sdk_errors():
+    def boom():
+        raise RuntimeError("AccessDenied")
+
+    try:
+        billing.aws_try("get_cost_and_usage", boom)
+    except billing.ProviderError as error:
+        assert "get_cost_and_usage" in str(error)
+        assert "AccessDenied" in str(error)
+    else:
+        raise AssertionError("expected ProviderError")
+
+
 def test_aws_provider_uses_live_budget_as_ceiling(monkeypatch):
     monkeypatch.setattr(
         billing,

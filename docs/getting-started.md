@@ -1,6 +1,10 @@
 # Getting started
 
+Python fetchers, tests, and helper scripts run through
+[uv](https://docs.astral.sh/uv/). Install `uv`, then from the repo root:
+
 ```bash
+uv sync
 ./scripts/start_conky_overlays.sh
 ./scripts/stop_conky_overlays.sh
 ```

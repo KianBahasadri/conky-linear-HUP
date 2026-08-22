@@ -221,18 +221,78 @@ def metered_provider(
     }
 
 
-def aws_cli(args, timeout, *, region=None):
-    command = ["aws", *args, "--output", "json", "--no-cli-pager"]
+AWS_BILLING_REGION = "us-east-1"
+
+
+def aws_session_kwargs():
+    """Explicit IAM keys win; otherwise an AWS profile; otherwise the default chain."""
+    key = os.environ.get("BILLING_AWS_ACCESS_KEY_ID", "").strip()
+    secret = os.environ.get("BILLING_AWS_SECRET_ACCESS_KEY", "").strip()
     profile = os.environ.get("BILLING_AWS_PROFILE", "").strip()
+    if key and secret:
+        return {
+            "aws_access_key_id": key,
+            "aws_secret_access_key": secret,
+        }
     if profile:
-        command.extend(["--profile", profile])
-    if region:
-        command.extend(["--region", region])
-    return run_json(command, timeout)
+        return {"profile_name": profile}
+    return {}
+
+
+def load_boto3():
+    try:
+        import boto3
+        from botocore.config import Config
+        from botocore.exceptions import BotoCoreError, ClientError
+    except ImportError as error:
+        raise ProviderError(
+            "boto3 is not installed; run uv sync from the repo root"
+        ) from error
+    return boto3, Config, (BotoCoreError, ClientError)
+
+
+def aws_client(service, timeout, *, region=AWS_BILLING_REGION):
+    boto3, Config, errors = load_boto3()
+    config = Config(
+        connect_timeout=timeout,
+        read_timeout=timeout,
+        retries={"max_attempts": 2, "mode": "standard"},
+    )
+    try:
+        session = boto3.Session(**aws_session_kwargs())
+        return session.client(service, region_name=region, config=config)
+    except errors as error:
+        raise ProviderError(
+            f"AWS {service} client failed: {clean_error(error)}"
+        ) from error
+
+
+def aws_try(action, fn):
+    try:
+        return fn()
+    except ProviderError:
+        raise
+    except Exception as error:
+        raise ProviderError(f"AWS {action} failed: {clean_error(error)}") from error
+
+
+def aws_paginate(client, operation, result_key, **kwargs):
+    def collect():
+        can_paginate = getattr(client, "can_paginate", None)
+        if callable(can_paginate) and can_paginate(operation):
+            items = []
+            for page in client.get_paginator(operation).paginate(**kwargs):
+                items.extend(page.get(result_key) or [])
+            return items
+        payload = getattr(client, operation)(**kwargs)
+        return payload.get(result_key) or []
+
+    return aws_try(operation, collect)
 
 
 def aws_account_id(timeout):
-    payload = aws_cli(["sts", "get-caller-identity"], timeout)
+    client = aws_client("sts", timeout)
+    payload = aws_try("get_caller_identity", client.get_caller_identity)
     account = str(payload.get("Account") or "").strip()
     if not re.fullmatch(r"\d{12}", account):
         raise ProviderError("AWS identity omitted a 12-digit account id")
@@ -331,20 +391,20 @@ def select_aws_billing_alarm_threshold(alarms):
 
 def fetch_aws_budget_cap(timeout):
     named = os.environ.get("BILLING_AWS_BUDGET_NAME", "").strip()
-    payload = aws_cli(
-        ["budgets", "describe-budgets", "--account-id", aws_account_id(timeout)],
-        timeout,
+    client = aws_client("budgets", timeout)
+    budgets = aws_paginate(
+        client,
+        "describe_budgets",
+        "Budgets",
+        AccountId=aws_account_id(timeout),
     )
-    return select_aws_monthly_cost_budget(payload.get("Budgets") or [], named)
+    return select_aws_monthly_cost_budget(budgets, named)
 
 
 def fetch_aws_billing_alarm_cap(timeout):
-    payload = aws_cli(
-        ["cloudwatch", "describe-alarms"],
-        timeout,
-        region="us-east-1",
-    )
-    return select_aws_billing_alarm_threshold(payload.get("MetricAlarms") or [])
+    client = aws_client("cloudwatch", timeout, region=AWS_BILLING_REGION)
+    alarms = aws_paginate(client, "describe_alarms", "MetricAlarms")
+    return select_aws_billing_alarm_threshold(alarms)
 
 
 def resolve_aws_cap(timeout):
@@ -362,18 +422,17 @@ def resolve_aws_cap(timeout):
 
 def fetch_aws_current(period, timeout):
     query_end = min(period["today"] + timedelta(days=1), period["periodEndExclusive"])
-    payload = aws_cli(
-        [
-            "ce",
-            "get-cost-and-usage",
-            "--time-period",
-            f"Start={period['periodStart'].isoformat()},End={query_end.isoformat()}",
-            "--granularity",
-            "MONTHLY",
-            "--metrics",
-            "UnblendedCost",
-        ],
-        timeout,
+    client = aws_client("ce", timeout)
+    payload = aws_try(
+        "get_cost_and_usage",
+        lambda: client.get_cost_and_usage(
+            TimePeriod={
+                "Start": period["periodStart"].isoformat(),
+                "End": query_end.isoformat(),
+            },
+            Granularity="MONTHLY",
+            Metrics=["UnblendedCost"],
+        ),
     )
     rows = payload.get("ResultsByTime") or []
     if not rows:
@@ -387,6 +446,8 @@ def fetch_aws_current(period, timeout):
 
 def aws_enabled():
     return env_flag("BILLING_AWS_ENABLED") or configured(
+        "BILLING_AWS_ACCESS_KEY_ID",
+        "BILLING_AWS_SECRET_ACCESS_KEY",
         "BILLING_AWS_PROFILE",
         "BILLING_AWS_BUDGET_NAME",
     )

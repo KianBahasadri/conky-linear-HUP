@@ -9,12 +9,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.x"
+      - uses: astral-sh/setup-uv@v6
       - run: sudo apt-get update && sudo apt-get install -y lua5.4
-      - run: python -m pip install pytest
-      - run: python -m pytest tests/ -q
-      - run: python -m py_compile scripts/*.py
+      - run: uv sync --locked
+      - run: uv run pytest tests/ -q
+      - run: uv run python -m py_compile scripts/*.py
       - run: bash -n scripts/*.sh
       - run: shellcheck scripts/*.sh

@@ -6,7 +6,7 @@ Conky desktop overlays with Python fetch scripts and Lua Cairo renderers.
 - Fetch scripts: `scripts/fetch_*.py`
 - Renderers: `conky/*-renderer.lua`
 - Cache output: `cache/`
-- Tests: `python -m pytest tests/`
+- Tests: `uv run pytest tests/`
 - Config template: `.env.example`
 
 Keep changes focused. Match existing patterns in the fetcher and renderer you are editing.

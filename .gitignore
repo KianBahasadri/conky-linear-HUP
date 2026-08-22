@@ -1,4 +1,14 @@
 .env
+.venv/
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
 cache/
 linear-tasks.txt
 linear-cards.json

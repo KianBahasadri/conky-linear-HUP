@@ -27,6 +27,15 @@ if [[ -f "$ENV_PATH" ]]; then
   done < "$ENV_PATH"
 fi
 
+if ! command -v uv >/dev/null 2>&1; then
+  printf 'uv is not installed\n' >&2
+  exit 1
+fi
+
+run_python() {
+  uv --project "$ROOT" run --no-dev python "$@"
+}
+
 BASE_CONFIG="$ROOT/conky/linear-overlay.conkyrc"
 RATE_LIMIT_PANEL_CONFIG="$ROOT/conky/rate-limit-panel-overlay.conkyrc"
 MINECRAFT_CONFIG="$ROOT/conky/minecraft-overlay.conkyrc"
@@ -330,6 +339,7 @@ start_fetch_loop() {
     changed_interval="$5"
     unchanged_interval="$6"
     recent_change_window="$7"
+    project_root="$8"
     fingerprint_path=""
     last_change_path=""
     [[ -n "$render_path" ]] && fingerprint_path="${render_path}.fingerprint"
@@ -353,7 +363,7 @@ start_fetch_loop() {
       last_change_epoch=""
       [[ -n "$fingerprint_path" && -f "$fingerprint_path" ]] && prev_fp="$(<"$fingerprint_path")"
       [[ -n "$last_change_path" && -f "$last_change_path" ]] && last_change_epoch="$(<"$last_change_path")"
-      "$script_path" >/dev/null 2>>"$log_path" || true
+      uv --project "$project_root" run --no-dev python "$script_path" >/dev/null 2>>"$log_path" || true
       if [[ -n "$render_path" ]]; then
         new_fp="$(compute_fingerprint)"
         now_epoch="$(date +%s)"
@@ -373,7 +383,7 @@ start_fetch_loop() {
     done
   ' bash "$script_path" "$log_path" "$interval_seconds" "$render_path" \
     "$RATE_LIMIT_CHANGED_INTERVAL" "$RATE_LIMIT_UNCHANGED_INTERVAL" \
-    "$RATE_LIMIT_RECENT_CHANGE_WINDOW" </dev/null >/dev/null 2>&1 &
+    "$RATE_LIMIT_RECENT_CHANGE_WINDOW" "$ROOT" </dev/null >/dev/null 2>&1 &
   printf '%s\n' "$!" > "$pid_file"
   if [[ -n "$render_path" ]]; then
     log_overlay "$log_key" "started $label fetch loop adaptive (changed=${RATE_LIMIT_CHANGED_INTERVAL}s unchanged=${RATE_LIMIT_UNCHANGED_INTERVAL}s recent_window=${RATE_LIMIT_RECENT_CHANGE_WINDOW}s) pid=$!"
@@ -467,11 +477,11 @@ if [[ "$GENERATE_ONLY" -eq 0 ]]; then
 fi
 
 linear_overlay_height() {
-  python3 "$ROOT/scripts/fetch_linear_tasks.py" --print-overlay-height
+  run_python "$ROOT/scripts/fetch_linear_tasks.py" --print-overlay-height
 }
 
 rate_limit_panel_overlay_height() {
-  python3 "$ROOT/scripts/fetch_common.py" --print-rate-limit-panel-height
+  run_python "$ROOT/scripts/fetch_common.py" --print-rate-limit-panel-height
 }
 
 generate_config() {

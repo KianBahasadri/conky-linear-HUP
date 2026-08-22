@@ -44,7 +44,7 @@ divided by that budget. The forecast uses current calendar pace:
 forecast spend = current spend × days in month ÷ current day
 ```
 
-The AWS ceiling is `BudgetLimit` from the authenticated AWS CLI. The Billing
+The AWS ceiling is `BudgetLimit` from the Budgets API. The Billing
 console's default budget, which only excludes Credit and Refund record types,
 still counts as account-wide. If more than one such budget exists, the
 smallest USD limit is used. A CloudWatch `AWS/Billing` `EstimatedCharges`
@@ -166,10 +166,10 @@ current installation. Auth is `blacksmith auth login`.
 
 ## Live sources
 
-- AWS uses the authenticated AWS CLI. Month-to-date spend is Cost Explorer
-  [`UnblendedCost`](https://docs.aws.amazon.com/cli/latest/reference/ce/get-cost-and-usage.html).
+- AWS uses boto3. Month-to-date spend is Cost Explorer
+  [`UnblendedCost`](https://docs.aws.amazon.com/aws-cost-management/latest/APIReference/API_GetCostAndUsage.html).
   The 100% line is an account-wide monthly COST
-  [`BudgetLimit`](https://docs.aws.amazon.com/cli/latest/reference/budgets/describe-budgets.html)
+  [`BudgetLimit`](https://docs.aws.amazon.com/cost-management/latest/APIReference/API_budgets_DescribeBudgets.html)
   when one exists, otherwise a CloudWatch billing-alarm threshold. Enable it
   with `BILLING_AWS_ENABLED`; do not set a cap.
 - Azure uses the authenticated Azure CLI. Starting and remaining credits
@@ -192,6 +192,21 @@ current installation. Auth is `blacksmith auth login`.
 Current spend, current balance, burn rate, and forecasts are always fetched or
 derived. They are never configured in `.env`. The complete setup variables are
 listed in [Configuration](configuration.md#affine-billing-map).
+
+## AWS credentials
+
+The overlay polls every 15 minutes unattended, so it cannot depend on an
+`aws login` / SSO session. Terraform creates IAM user
+`conky-billing-reader` with no console password and an inline policy that
+allows only `ce:GetCostAndUsage`, `budgets:ViewBudget`, and
+`cloudwatch:DescribeAlarms`. `scripts/apply_aws_billing_iam.sh` uses your
+existing AWS identity once to create that user, then writes
+`BILLING_AWS_ACCESS_KEY_ID` and `BILLING_AWS_SECRET_ACCESS_KEY` into `.env`.
+Those keys take precedence; `BILLING_AWS_PROFILE` or the default boto3
+chain are fallbacks. boto3 comes from `uv sync`. Local Terraform state
+holds the same secret; it is gitignored. Rotate by replacing `aws_iam_access_key.billing_reader` and
+re-running the script. Cost Explorer / Budgets SDK calls are not gated on
+the Billing console's "Activate IAM Access" toggle.
 
 ## Placement and lifecycle
 

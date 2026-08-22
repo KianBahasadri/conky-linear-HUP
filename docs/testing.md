@@ -1,7 +1,7 @@
 # Testing
 
 ```bash
-python -m pytest tests/
+uv run pytest tests/
 ```
 
 The Lua characterization tests (`tests/lua/`, run by

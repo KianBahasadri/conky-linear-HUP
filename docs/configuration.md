@@ -145,7 +145,9 @@ The transparent HUD is generated on every monitor. It reads local Linux telemetr
 | `BILLING_REFRESH_SECONDS` | Provider refresh interval (default `900`) |
 | `BILLING_TIMEOUT_SECONDS` | Per-provider command/request timeout (default `30`) |
 | `BILLING_AWS_ENABLED` | Set to `1` to plot month-to-date AWS spend against the live monthly COST budget |
-| `BILLING_AWS_PROFILE` | Optional AWS CLI profile; otherwise normal AWS CLI resolution applies |
+| `BILLING_AWS_ACCESS_KEY_ID` | Access key for the Terraform-provisioned billing-read IAM user |
+| `BILLING_AWS_SECRET_ACCESS_KEY` | Secret for that access key; takes precedence over a profile |
+| `BILLING_AWS_PROFILE` | Optional AWS profile when no access key is set; otherwise the default boto3 chain applies |
 | `BILLING_AWS_BUDGET_NAME` | Optional budget name when more than one monthly COST budget exists |
 | `BILLING_AZURE_ENABLED` | Set to `1` to plot this month's Azure credit spend against the live starting balance |
 | `BILLING_AZURE_SUBSCRIPTION_ID` | Optional subscription for month-to-date spend; otherwise the Azure CLI active subscription is used |
@@ -155,8 +157,9 @@ The transparent HUD is generated on every monitor. It reads local Linux telemetr
 | `BILLING_BLACKSMITH_ENABLED` | Set to `1` to plot Blacksmith x64 2vCPU minutes against the advertised 3,000-minute free allowance |
 | `BILLING_BLACKSMITH_ORG` | Optional GitHub org login passed to `blacksmith usage --org`; otherwise the CLI's current org is used |
 
-Only configured providers are fetched. AWS and Azure use their authenticated
-CLIs; OpenRouter uses its official API; GitHub Actions uses the official API
+Only configured providers are fetched. AWS uses boto3 with the IAM user from
+`scripts/apply_aws_billing_iam.sh`; Azure uses the authenticated Azure CLI;
+OpenRouter uses its official API; GitHub Actions uses the official API
 through `gh`; Blacksmith uses the authenticated `blacksmith` CLI. Live usage,
 balances, and ceilings do not have environment-variable overrides. See
 [Affine billing map](billing.md) for the normalization and forecast semantics.
