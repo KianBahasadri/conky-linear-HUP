@@ -130,6 +130,31 @@ return function(shared, repo_root)
     { 'Z' },
   }
 
+  -- Official AWS smile + arrowhead from the 304×182 brand SVG
+  -- (Wikimedia Amazon_Web_Services_Logo.svg). The dark wordmark is omitted.
+  -- Coordinates are shifted so y=108 in the original file is the top of
+  -- this 306×76 view of the orange artwork only.
+  local aws_smile_ops = {
+    { 'M', 273.50000, 35.70000 },
+    { 'C', 240.60000, 60.00000, 192.80000, 72.90000, 151.70000, 72.90000 },
+    { 'C', 94.10000, 72.90000, 42.20000, 51.60000, 3.00000, 16.20000 },
+    { 'C', -0.10000, 13.40000, 2.70000, 9.60000, 6.40000, 11.80000 },
+    { 'C', 48.80000, 36.40000, 101.10000, 51.30000, 155.20000, 51.30000 },
+    { 'C', 191.70000, 51.30000, 231.80000, 43.70000, 268.70000, 28.10000 },
+    { 'C', 274.20000, 25.60000, 278.90000, 31.70000, 273.50000, 35.70000 },
+    { 'Z' },
+  }
+  local aws_arrow_ops = {
+    { 'M', 287.20000, 20.10000 },
+    { 'C', 283.00000, 14.70000, 259.40000, 17.50000, 248.70000, 18.80000 },
+    { 'C', 245.50000, 19.20000, 245.00000, 16.40000, 247.90000, 14.30000 },
+    { 'C', 266.70000, 1.10000, 297.60000, 4.90000, 301.20000, 9.30000 },
+    { 'C', 304.80000, 13.80000, 300.20000, 44.70000, 282.60000, 59.50000 },
+    { 'C', 279.90000, 61.80000, 277.30000, 60.60000, 278.50000, 57.60000 },
+    { 'C', 282.50000, 47.70000, 291.40000, 25.40000, 287.20000, 20.10000 },
+    { 'Z' },
+  }
+
   -- Official Blacksmith C-block in its 144×96 brand viewBox. The inner
   -- quarter-circle is the same cubic as the wordmark icon.
   local blacksmith_mark_ops = {
@@ -496,6 +521,61 @@ return function(shared, repo_root)
     cairo_stroke(cr)
   end
 
+  local function aws_mark(cr, x, y, alpha)
+    -- Arrowhead keeps the uniform scale; the smile is squashed toward the
+    -- join so the mark is less wide. Then the pair is recentered on (x, y).
+    local view_h, height = 76, 10.0
+    local s = height / view_h
+    local smile_k = 0.55
+    local pivot = 270.0
+    local smile_left = 3.0
+    local arrow_right = 305.0
+    local left_span = pivot - smile_left
+    local combined_left = pivot - left_span * smile_k
+    local combined_right = arrow_right
+    local ox_arrow = x - s * (combined_left + combined_right) / 2
+    local oy = y - view_h * s / 2
+    -- Nudge the squashed smile into the arrow so the join does not gap.
+    local ox_smile = ox_arrow + pivot * s * (1 - smile_k) + 1.6
+    local sx_smile = s * smile_k
+
+    local function add_aws_path(ops, origin_x, scale_x)
+      cairo_new_path(cr)
+      for _, op in ipairs(ops) do
+        if op[1] == 'M' then
+          cairo_move_to(cr, origin_x + op[2] * scale_x, oy + op[3] * s)
+        elseif op[1] == 'C' then
+          cairo_curve_to(
+            cr,
+            origin_x + op[2] * scale_x,
+            oy + op[3] * s,
+            origin_x + op[4] * scale_x,
+            oy + op[5] * s,
+            origin_x + op[6] * scale_x,
+            oy + op[7] * s
+          )
+        elseif op[1] == 'Z' then
+          cairo_close_path(cr)
+        end
+      end
+    end
+
+    local function paint(ops, origin_x, scale_x, fill_it)
+      add_aws_path(ops, origin_x, scale_x)
+      set_hex(cr, 'ff9900', 0.18 * alpha)
+      cairo_set_line_width(cr, 2.4)
+      cairo_stroke(cr)
+      add_aws_path(ops, origin_x, scale_x)
+      set_hex(cr, 'ff9900', alpha)
+      if fill_it then
+        cairo_fill(cr)
+      end
+    end
+
+    paint(aws_smile_ops, ox_smile, sx_smile, true)
+    paint(aws_arrow_ops, ox_arrow, s, true)
+  end
+
   local function bead(cr, x, y, radius, color, alpha)
     cairo_new_path(cr)
     cairo_arc(cr, x, y, radius + 4, 0, math.pi * 2)
@@ -529,6 +609,8 @@ return function(shared, repo_root)
       azure_mark(cr, x, y, alpha)
     elseif provider.id == 'blacksmith' then
       blacksmith_mark(cr, x, y, alpha)
+    elseif provider.id == 'aws' then
+      aws_mark(cr, x, y, alpha)
     else
       bead(cr, x, y, 4.3, provider.color, alpha)
     end
@@ -544,6 +626,8 @@ return function(shared, repo_root)
       return 11.0
     elseif provider.id == 'blacksmith' then
       return 8.5
+    elseif provider.id == 'aws' then
+      return 14.0
     end
     return 5.5
   end

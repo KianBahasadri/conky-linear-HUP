@@ -24,12 +24,12 @@ geometry is unusual, but the underlying axes are conventional:
 - A provider glyph marks the current observation. A solid trail of stored
   daily observations sits on the past side of the yellow now-line. A dotted
   segment is the now-to-EOM forecast, and the hollow diamond is the EOM
-  landing. GitHub, OpenRouter, Azure, and Blacksmith use their recognizable
-  Octocat, geometric `OR`, official folded Azure `A`, and C-block marks;
-  providers without a compact vector mark retain the filled bead. OpenRouter
-  is `#c8ff00`; Blacksmith's glyph is the charcoal C-block with a thin
-  `#f0fb29` outline; Azure's glyph uses the brand folded-A blues; the other
-  providers keep the mockup palette. Trails
+  landing. GitHub, OpenRouter, Azure, Blacksmith, and AWS use their
+  recognizable Octocat, geometric `OR`, official folded Azure `A`, C-block,
+  and orange smile-arrow marks; providers without a compact vector mark
+  retain the filled bead. OpenRouter is `#c8ff00`; Blacksmith's glyph is
+  the charcoal C-block with a thin `#f0fb29` outline; Azure's glyph uses
+  the brand folded-A blues; AWS's glyph is the brand smile `#ff9900`. Trails
   meet the marker edge without continuing underneath the service glyph.
   Diamonds carry no text labels or leader lines.
 - A dimmed trajectory means its last successful value is being retained after
