@@ -248,6 +248,29 @@ def test_scan_home_excludes_clean_old_repo(tmp_path):
     assert "stale-clean" not in names
 
 
+def test_scan_home_ignores_unreadable_directories(tmp_path):
+    valid_repo = init_repo(tmp_path / "valid-repo")
+    unreadable_dir = tmp_path / "unreadable"
+    unreadable_dir.mkdir()
+    try:
+        unreadable_dir.chmod(0o000)
+    except OSError:
+        pass
+
+    try:
+        paths = git_status.scan_home_for_recent_repos(
+            root=tmp_path, since_days=14, max_depth=2, timeout=5
+        )
+        names = {path.name for path in paths}
+        assert "valid-repo" in names
+        assert "unreadable" not in names
+    finally:
+        try:
+            unreadable_dir.chmod(0o755)
+        except OSError:
+            pass
+
+
 def test_resolve_repo_paths_merges_pinned_and_scanned(tmp_path, monkeypatch):
     pinned = init_repo(tmp_path / "pinned")
     scanned = init_repo(tmp_path / "scanned")

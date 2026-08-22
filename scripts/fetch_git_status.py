@@ -239,8 +239,11 @@ def run_git(repo_path, args, timeout):
 
 def is_git_repo(path: Path) -> bool:
     """True if path is a git work tree root (.git file or directory)."""
-    git_entry = path / ".git"
-    return git_entry.is_dir() or git_entry.is_file()
+    try:
+        git_entry = path / ".git"
+        return git_entry.is_dir() or git_entry.is_file()
+    except OSError:
+        return False
 
 
 def should_skip_dir(name: str) -> bool:
@@ -352,7 +355,11 @@ def scan_home_for_recent_repos(
             if is_git_repo(entry):
                 epoch = last_commit_epoch(entry, timeout=timeout)
                 if (epoch is not None and epoch >= cutoff) or is_dirty_repo(entry, timeout=timeout):
-                    found.append((epoch or 0, entry.resolve()))
+                    try:
+                        resolved = entry.resolve()
+                    except OSError:
+                        resolved = entry
+                    found.append((epoch or 0, resolved))
                 # Never walk into a git work tree.
                 continue
 
@@ -668,23 +675,27 @@ def inspect_repo(repo_path, timeout, include_stash=True):
         "lastModifiedEpoch": 0,
     }
 
-    if not repo_path.exists():
-        base["error"] = "path not found"
-        return base
-    if not repo_path.is_dir():
-        base["error"] = "not a directory"
-        return base
-
-    git_dir = repo_path / ".git"
-    if not git_dir.exists():
-        # Could still be a worktree linked via .git file; ask git.
-        try:
-            run_git(repo_path, ["rev-parse", "--is-inside-work-tree"], timeout=timeout)
-        except (RuntimeError, TimeoutError) as error:
-            base["error"] = "not a git repository"
-            if str(error):
-                base["error"] = str(error)[:160]
+    try:
+        if not repo_path.exists():
+            base["error"] = "path not found"
             return base
+        if not repo_path.is_dir():
+            base["error"] = "not a directory"
+            return base
+
+        git_dir = repo_path / ".git"
+        if not git_dir.exists():
+            # Could still be a worktree linked via .git file; ask git.
+            try:
+                run_git(repo_path, ["rev-parse", "--is-inside-work-tree"], timeout=timeout)
+            except (RuntimeError, TimeoutError) as error:
+                base["error"] = "not a git repository"
+                if str(error):
+                    base["error"] = str(error)[:160]
+                return base
+    except OSError as error:
+        base["error"] = str(error)[:160] or "cannot access repository"
+        return base
 
     try:
         porcelain = run_git(
