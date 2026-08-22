@@ -1,6 +1,6 @@
 # GitHub rail blob experiments
 
-Archive of the August 2026 attempt to replace the contribution rail’s year of squares with a poured organic shape. The shipped rail is still the square calendar; empty days are not drawn. See [GitHub overlay](github.md).
+Archive of the August 2026 attempt to replace the contribution rail’s year of squares with a poured organic shape. The rail itself has since been replaced by the [contribution skyline](github.md), which extrudes the same calendar instead of reshaping it. Nothing here shipped either way.
 
 The target look was a smooth metaball / goo blob: round lobes, concave waists, no grid, no noise. The data is a 7×53 occupancy mask, and those constraints fight each other. Nothing in this file is live.
 

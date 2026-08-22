@@ -147,6 +147,29 @@ function shared.set_hex(cr, hex, alpha)
   cairo_set_source_rgba(cr, r, g, b, alpha or 1)
 end
 
+-- Hex to rgb with a lightness shade: >0 lifts toward white, <0 toward black.
+-- Face shading on the contribution skyline's towers, and the gradient stops in
+-- the sessions panel, are both built from this.
+function shared.shade_rgb(hex, shade)
+  local r = tonumber(hex:sub(1, 2), 16) / 255
+  local g = tonumber(hex:sub(3, 4), 16) / 255
+  local b = tonumber(hex:sub(5, 6), 16) / 255
+  shade = shade or 0
+
+  if shade > 0 then
+    return r + (1 - r) * shade, g + (1 - g) * shade, b + (1 - b) * shade
+  end
+  if shade < 0 then
+    return r * (1 + shade), g * (1 + shade), b * (1 + shade)
+  end
+  return r, g, b
+end
+
+function shared.set_hex_shaded(cr, hex, alpha, shade)
+  local r, g, b = shared.shade_rgb(hex, shade)
+  cairo_set_source_rgba(cr, r, g, b, alpha or 1)
+end
+
 function shared.clamp(value, min_value, max_value)
   if value < min_value then
     return min_value

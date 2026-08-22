@@ -1,0 +1,41 @@
+conky.config = {
+  -- bottom_left so gap_y pins the bottom edge: the panel grows upward as
+  -- sessions appear and keeps the baseline it shares with the skyline's
+  -- plinth. The start script sets gap_y to that line, and gap_x so the right
+  -- edge meets the rate limit panel's left edge.
+  alignment = 'bottom_left',
+  background = true,
+  border_width = 0,
+  default_color = '000000',
+  default_outline_color = '111827',
+  default_shade_color = '111827',
+  double_buffer = true,
+  draw_borders = false,
+  draw_graph_borders = false,
+  draw_outline = false,
+  draw_shades = false,
+  extra_newline = false,
+  font = 'JetBrains Mono:size=10',
+  gap_x = 4,
+  gap_y = 321,
+  -- Floor only; actual height is driven by ${lua_parse sessions_height_spacer},
+  -- and the start script seeds it from fetch_sessions.py --print-overlay-height.
+  minimum_height = 130,
+  minimum_width = 456,
+  maximum_width = 456,
+  no_buffers = true,
+  own_window = true,
+  own_window_argb_visual = true,
+  own_window_argb_value = 0,
+  own_window_class = 'Conky',
+  own_window_hints = 'undecorated,below,sticky,skip_taskbar,skip_pager',
+  own_window_transparent = true,
+  own_window_type = 'desktop',
+  update_interval = 10,
+  use_xft = true,
+  lua_load = './conky/overlay-entrypoint.lua',
+  lua_draw_hook_post = 'draw_sessions',
+}
+
+conky.text = [[
+${lua_parse sessions_height_spacer}]]

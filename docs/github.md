@@ -1,6 +1,13 @@
 # GitHub overlay
 
-Transparent left-side contribution rail (year of squares). Empty days are not drawn, so the desktop shows through. No chrome — only the calendar column. A poured-blob replacement was tried and reverted; see [GitHub rail blob experiments](github-rail-blob-experiments.md).
+A 3D contribution skyline: the year of squares extruded into one tower per day,
+standing on a plinth that sits on the [rate limit panel](rate-limit-panel.md)'s
+top edge so the two objects read as one stack. No frame and no header — the
+desktop shows through between the towers. It replaced a flat left-side rail of
+squares; that rail's own experiments are in
+[GitHub rail blob experiments](github-rail-blob-experiments.md), and the study
+the skyline came out of is the
+[contribution skyline study](github-mockups/NOTES.md).
 
 ## Data
 
@@ -9,32 +16,79 @@ Transparent left-side contribution rail (year of squares). Empty days are not dr
 - `GITHUB_TOKEN` is optional; used only for authenticated requests to the public contributions endpoint. The git overlay's Actions pip uses `gh` instead (see [Git status overlay](git.md)).
 - Set `GITHUB_OVERLAY_ENABLED=0` to disable the overlay and its refresh loop.
 
-## Layout and placement
+Each day carries a `level` (0-4) **and** a `count`. The level alone cannot be
+extruded into anything worth looking at — a typical year is mostly level 1, so
+five discrete heights make a flat carpet. The real per-day number is not in the
+`<td>`'s attributes; it is in a sibling `<tool-tip>` element joined to the cell
+by `id`, which `parse_counts` reads. A cache written before counts existed still
+renders: the parser falls back to the level.
 
-- Alignment is **`top_left`**. When **`GITHUB_GAP_Y` is unset**, `scripts/start_conky_overlays.sh` sizes the rail window to the whole free band on each monitor — from the top of the **git status panel** down to the **Minecraft panel** — using each monitor’s pixel height from `xrandr --listmonitors`.
-- The renderer then centers the calendar inside that band on **every draw**, measuring the git panel from the repo rows it is drawing right now (`cache/git-status.json`) plus the footer chip. A row appearing or disappearing moves the rail by half a row, so the gaps above and below the calendar stay equal without restarting Conky. Moves are logged to `cache/conky-github.log`.
-- `GITHUB_AUTO_GAP_NUDGE_UP` biases the rail above pure center (default `0`).
-- On the **primary** monitor the git panel is a `normal` window, so GNOME’s top bar pushes it down; the contribution rail is a `desktop` window measured from the top of the screen. Auto placement adds `GITHUB_AUTO_PRIMARY_GIT_EXTRA` (detected from `_NET_WORKAREA`, typically `32`) to the git panel’s top edge.
-- Set an explicit `GITHUB_GAP_Y` to pin the top of the rail; the calendar then draws at the top of its window and stops following the git panel. Leave it empty to keep auto-centering.
-- `update_interval` in `conky/github-overlay.conkyrc` (default `15`) is how fast the rail reacts to a repo row; the contribution fetch stays on `GITHUB_REFRESH_SECONDS`.
+## Geometry
+
+- One week steps straight right; one weekday steps right and away. Both basis
+  vectors are the same length, so plan-view cells read square.
+- The **level** week axis is the point. A straight front edge gives the object a
+  baseline, so it can be stood on something instead of floating.
+- The plinth (`draw_deck`) fills the whole lattice and extrudes downward. Its
+  fascia carries the month scale, because below the front edge is the panel.
+- Tower height is proportional to `sqrt(count)`. Linear scaling lets a single
+  outlier day press every other tower flat into the deck.
+- Only two of the four walls ever face the camera, so a tower is three fills.
+- Zero days draw as an outlined plate, which keeps the calendar's shape readable
+  through the gaps.
+- The four-stat readout (year total, busiest day, longest and current streak)
+  is a band across the top, inset from the left so its first column clears the
+  [sessions overlay](sessions.md) next to it.
+
+The renderer solves for the week step that makes the plinth exactly the window's
+width, then scales the extrusion to whatever vertical room is left. Everything
+follows from the window, so placement is entirely the start script's business.
+
+## Placement
+
+Alignment is **`bottom_left`**, and `gap_y` is the distance from the screen
+bottom up to the roof line — the renderer draws the plinth flush with the
+window's bottom edge.
+
+`scripts/start_conky_overlays.sh` measures the rate limit panel's **drawn frame**
+rather than its window. That window is 1548px wide, but the frame it paints is
+1000px centred inside it and sits a fixed inset above the window's bottom edge:
+
+- Frame width comes from `fetch_common.rate_limit_panel_frame_width`, and is
+  what this window's `minimum_width` is set to.
+- Frame height comes from `fetch_common.rate_limit_panel_frame_height`, which
+  grows with the account count.
+- The frame's bottom is always 12px above its window's bottom, so its top edge
+  is `monitor_height - RATE_LIMIT_PANEL_GAP_Y + 4 - 12 - frame_height`.
+- The roof line is `GITHUB_ROOF_CLEARANCE` above that, because the provider
+  title chips straddle the panel's top edge, riding 9px above it.
+
+With the rate limit panel disabled there is nothing to roof, so the skyline
+stands on the screen bottom instead.
+
+`GITHUB_SKYLINE_HEIGHT` is a request, not a promise. The Linear cards grow
+downward as tasks land and the stat band is the first thing under them, so the
+start script gives height back until `GITHUB_LINEAR_CLEARANCE` is free below
+them, down to a floor of `GITHUB_SKYLINE_MIN_HEIGHT`. Setting `GITHUB_GAP_X` or
+`GITHUB_GAP_Y` pins that axis and opts out of the corresponding measurement.
 
 | Variable | Purpose |
 | --- | --- |
 | `GITHUB_OVERLAY_ENABLED` | `0` disables overlay + fetch loop |
 | `GITHUB_USERNAME` / `GH_USERNAME` | Account to render |
 | `GITHUB_TOKEN` | Optional auth for the contributions endpoint |
-| `GITHUB_GAP_X` | Horizontal gap from the left edge (default `18`) |
-| `GITHUB_GAP_Y` | Top offset in px; **empty = auto-center** between git + Minecraft |
+| `GITHUB_GAP_X` | Left offset in px; **empty = match the rate limit panel's frame** |
+| `GITHUB_GAP_Y` | Bottom offset in px; **empty = sit on the rate limit panel** |
+| `GITHUB_SKYLINE_HEIGHT` | Requested window height (default `340`) |
+| `GITHUB_SKYLINE_MIN_HEIGHT` | Floor after the Linear clearance is taken out (default `180`) |
+| `GITHUB_LINEAR_CLEARANCE` | Gap kept under the Linear cards (default `14`) |
+| `GITHUB_ROOF_CLEARANCE` | Gap above the panel's title chips (default `11`) |
 | `GITHUB_REFRESH_SECONDS` | Fetch interval (default `1800`) |
 | `GITHUB_TIMEOUT_SECONDS` | Request timeout |
-| `GITHUB_AUTO_MC_PANEL_H` | Minecraft clearance above the screen bottom (default `126`) |
-| `GITHUB_AUTO_RAIL_H` | Shortest the rail window may be (default `590`) |
-| `GITHUB_AUTO_GAP_NUDGE_UP` | Pixels to bias the centered rail upward (default `0`) |
-| `GITHUB_AUTO_PRIMARY_GIT_EXTRA` | Extra git-panel inset on the primary monitor; empty detects the top bar from `_NET_WORKAREA` (fallback `32`); `0` disables |
 
 See [Configuration](configuration.md) for the full variable table.
 
 ## Contribution calendar troubleshooting
 
-- Nothing at the top of the rail does not necessarily mean today's commits are missing. GitHub can already be showing the next UTC date while local time is still on the previous day.
-- GitHub may take up to 24 hours to refresh the contribution graph. If the expected square is still missing afterward, confirm that the commits are pushed to the repository's default branch and use an email address linked to the GitHub account.
+- Nothing at the right-hand end of the skyline does not necessarily mean today's commits are missing. GitHub can already be showing the next UTC date while local time is still on the previous day.
+- GitHub may take up to 24 hours to refresh the contribution graph. If the expected tower is still missing afterward, confirm that the commits are pushed to the repository's default branch and use an email address linked to the GitHub account.

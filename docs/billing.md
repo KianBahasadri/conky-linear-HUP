@@ -218,8 +218,8 @@ refreshes once per day and each Cost Explorer API call incurs a $0.01 fee.
 The launcher creates one billing window per monitor. With `BILLING_GAP_Y`
 unset, the map sits just above the bottom-right weather panel. With
 `BILLING_GAP_X` unset, its horizontal center follows the weather card; an
-explicit value overrides that alignment. The fetch loop is independent of the GitHub contribution rail and does
-not read or write any GitHub cache or renderer state.
+explicit value overrides that alignment. The fetch loop is independent of the GitHub contribution
+skyline and does not read or write any GitHub cache or renderer state.
 
 Cache and log ownership are documented in [Caches](caches.md). The renderer's
 operation-dump replay is retained with the original mockup so the shipped Lua

@@ -57,6 +57,17 @@ function conky_draw_resource_monitor()
   resource_monitor.draw()
 end
 
+-- tmux sessions and inbound logins
+local sessions = dofile(conky_dir .. '/sessions-renderer.lua')(shared, repo_root)
+
+function conky_draw_sessions()
+  sessions.draw()
+end
+
+function conky_sessions_height_spacer()
+  return sessions.height_spacer()
+end
+
 -- Local git status fleet
 local git_status = dofile(conky_dir .. '/git-status-renderer.lua')(shared, repo_root)
 

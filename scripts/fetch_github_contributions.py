@@ -73,8 +73,26 @@ def fetch_contributions(username):
         return response.read().decode("utf-8", errors="replace")
 
 
+def parse_counts(html):
+    """Per-day contribution counts, keyed by each cell's id.
+
+    `data-level` is only 0-4, which is too coarse to extrude into towers — a
+    typical year is mostly level 1. The same page carries the real number in a
+    <tool-tip> element pointed at each cell by id.
+    """
+    counts = {}
+    pattern = r'<tool-tip[^>]*\bfor="([^"]+)"[^>]*>(.*?)</tool-tip>'
+    for cell_id, text in re.findall(pattern, html, re.DOTALL):
+        match = re.match(r"\s*(?:(\d[\d,]*)|No)\s+contribution", unescape(text).strip())
+        if not match:
+            continue
+        counts[cell_id] = int(match.group(1).replace(",", "")) if match.group(1) else 0
+    return counts
+
+
 def parse_contributions(html):
     entries = []
+    counts = parse_counts(html)
 
     for tag in re.findall(r"<td\b[^>]*ContributionCalendar-day[^>]*>", html):
         date_match = re.search(r'data-date="([^"]+)"', tag)
@@ -82,9 +100,18 @@ def parse_contributions(html):
         if not date_match or not level_match:
             continue
 
+        level = int(level_match.group(1))
+        id_match = re.search(r'\bid="([^"]+)"', tag)
+        count = counts.get(id_match.group(1)) if id_match else None
+        if count is None:
+            # Tooltip missing: keep the day, and let the level stand in so the
+            # renderer still has a magnitude to extrude.
+            count = 0 if level == 0 else level * 2
+
         entries.append({
             "date": unescape(date_match.group(1)),
-            "level": int(level_match.group(1)),
+            "level": level,
+            "count": count,
         })
 
     if not entries:
@@ -109,7 +136,8 @@ def main():
             "contributions": entries,
         }
         atomic_write_json(CONTRIBUTIONS_PATH, payload)
-        log_event(f"updated username={username} days={len(entries)}")
+        total = sum(entry["count"] for entry in entries)
+        log_event(f"updated username={username} days={len(entries)} contributions={total}")
         return 0
     except (OSError, urllib.error.URLError, ValueError) as error:
         payload = {

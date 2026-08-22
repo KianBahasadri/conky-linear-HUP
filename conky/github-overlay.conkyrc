@@ -1,8 +1,9 @@
 conky.config = {
-  -- top_left so gap_y is distance from the top. When GITHUB_GAP_Y is unset the
-  -- start script sizes this window to the whole band between the git panel and
-  -- the Minecraft panel, and the renderer centers the rail inside it every draw.
-  alignment = 'top_left',
+  -- bottom_left so gap_y pins the bottom edge, which is the roof line. The
+  -- start script puts that line on the rate limit panel's top edge and matches
+  -- this window's width to that panel's drawn frame; the renderer draws the
+  -- skyline's plinth flush with the window bottom, so the two objects stack.
+  alignment = 'bottom_left',
   background = true,
   border_width = 0,
   default_color = '000000',
@@ -15,13 +16,13 @@ conky.config = {
   draw_shades = false,
   extra_newline = false,
   font = 'JetBrains Mono:size=10',
-  gap_x = 18,
-  gap_y = 320,
-  -- Pinned fallback: tall enough for a 53-week column (7px square + 4px gap)
-  -- plus edge pad. Auto placement replaces this with the band height.
-  minimum_height = 600,
-  minimum_width = 96,
-  maximum_width = 96,
+  gap_x = 460,
+  gap_y = 321,
+  -- Pinned fallbacks. Auto placement replaces both: the width with the rate
+  -- limit panel's drawn frame width, the height with GITHUB_SKYLINE_HEIGHT.
+  minimum_height = 298,
+  minimum_width = 1000,
+  maximum_width = 1000,
   no_buffers = true,
   own_window = true,
   own_window_argb_visual = true,
@@ -30,9 +31,9 @@ conky.config = {
   own_window_hints = 'undecorated,below,sticky,skip_taskbar,skip_pager',
   own_window_transparent = true,
   own_window_type = 'desktop',
-  -- Redraw often enough that the rail re-centers soon after a repo row comes
-  -- or goes; the contribution fetch stays on GITHUB_REFRESH_SECONDS.
-  update_interval = 15,
+  -- The skyline only changes when the contribution fetch lands, which is on
+  -- GITHUB_REFRESH_SECONDS; this just has to be often enough to pick that up.
+  update_interval = 60,
   use_xft = true,
   lua_load = './conky/overlay-entrypoint.lua',
   lua_draw_hook_post = 'draw_github_tracker',

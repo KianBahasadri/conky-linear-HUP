@@ -97,12 +97,12 @@ Pioneer env vars (`PIONEER_API_KEY`, `PIONEER_USAGE_LABEL`, `PIONEER_MONTHLY_CRE
 | `GH_USERNAME` | Alias for `GITHUB_USERNAME` |
 | `GITHUB_TOKEN` | Optional token for authenticated contribution requests |
 | `GITHUB_OVERLAY_ENABLED` | Set to `0` to disable |
-| `GITHUB_GAP_X` | Horizontal gap from the left edge (default `18`) |
-| `GITHUB_GAP_Y` | Top offset in px; empty auto-centers the rail between git + Minecraft |
-| `GITHUB_AUTO_MC_PANEL_H` | Minecraft clearance above the screen bottom (default `126`) |
-| `GITHUB_AUTO_RAIL_H` | Shortest the rail window may be (default `590`) |
-| `GITHUB_AUTO_GAP_NUDGE_UP` | Pixels to bias the centered rail upward (default `0`) |
-| `GITHUB_AUTO_PRIMARY_GIT_EXTRA` | Extra git-panel inset on the primary monitor so the rail clears the GNOME-shifted git panel; empty detects `_NET_WORKAREA` (fallback `32`) |
+| `GITHUB_GAP_X` | Left offset in px; empty matches the rate limit panel's drawn frame |
+| `GITHUB_GAP_Y` | Bottom offset in px; empty sits the skyline on the rate limit panel |
+| `GITHUB_SKYLINE_HEIGHT` | Requested skyline window height (default `340`) |
+| `GITHUB_SKYLINE_MIN_HEIGHT` | Floor after the Linear clearance is taken out (default `180`) |
+| `GITHUB_LINEAR_CLEARANCE` | Gap kept between the Linear cards and the stat band (default `14`) |
+| `GITHUB_ROOF_CLEARANCE` | Gap above the rate limit panel's title chips (default `11`) |
 | `GITHUB_REFRESH_SECONDS` | Fetch interval |
 | `GITHUB_TIMEOUT_SECONDS` | Request timeout |
 
@@ -191,3 +191,14 @@ balances, and ceilings do not have environment-variable overrides. See
 | `GIT_ACTIONS_TIMEOUT_SECONDS` | `gh run list` timeout (falls back to `GITHUB_TIMEOUT_SECONDS`) |
 
 See [Git status overlay](git.md) for layout, severity rules, and the rotating ticker.
+
+## Sessions overlay
+
+| Variable | Purpose |
+| --- | --- |
+| `SESSIONS_OVERLAY_ENABLED` | Set to `0` to disable |
+| `SESSIONS_GAP_X` | Left offset in px; empty meets the rate limit panel's left edge |
+| `SESSIONS_GAP_Y` | Bottom offset in px; empty shares the contribution skyline's baseline |
+| `SESSIONS_REFRESH_SECONDS` | Fetch interval (default `20`) |
+
+See [Sessions overlay](sessions.md) for the login-to-session join and what each element means.

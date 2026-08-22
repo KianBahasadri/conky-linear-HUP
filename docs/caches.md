@@ -25,7 +25,8 @@
 - `cache/*-usage-render.tsv.fingerprint`: SHA-256 of the meaningful usage state from the matching render TSV, used by the adaptive rate-limit fetch loops to detect usage changes.
 - `cache/*-usage-render.tsv.last_change`: Unix epoch of the last fingerprint change for that fetcher; keeps the short poll interval active for `RATE_LIMIT_RECENT_CHANGE_WINDOW` seconds after any change.
 - `cache/minecraft-status.json`: Minecraft Java server status consumed by the Cairo renderer. Includes `lastPlayerSeenAt` / `lastPlayerSeenAtEpoch` and `lastSuccessfulAt` / `lastSuccessfulAtEpoch` for empty-server idle display; last-seen is only trusted across continuous successful polls.
-- `cache/github-contributions.json`: GitHub contribution squares consumed by the Cairo renderer.
+- `cache/github-contributions.json`: GitHub contribution days consumed by the Cairo renderer. Each entry carries the `level` (0-4) that GitHub puts on the cell and the real `count` scraped from its tooltip; the skyline extrudes the count.
+- `cache/sessions.json`: inbound logins joined to tmux sessions, consumed by the Cairo renderer. Device names and OS strings come from `tailscale status`; no tailnet account identity is stored.
 - `cache/weather-status.json`: normalized weather, air quality, and running guidance consumed by the Cairo renderer.
 - `cache/git-status.json`: local git fleet status consumed by the Cairo renderer. Each repo may include `actions` (`run` / `fail` / `ok` / empty) for the name-line pip.
 - `cache/git-repo-discovery.json`: auto-discovered home repos with recent commits (TTL `GIT_SCAN_TTL_SECONDS`).
@@ -45,6 +46,7 @@
 - `cache/conky-weather.log`: weather fetch, launcher, and weather Conky output.
 - `cache/conky-billing.log`: billing provider fetches, launcher placement, fallback notices, and billing Conky output.
 - `cache/conky-git.log`: git status fetch, launcher, and git Conky output.
+- `cache/conky-sessions.log`: session scans, launcher placement, and sessions Conky output.
 
 ## Fetch intervals
 
@@ -56,5 +58,6 @@
 - GitHub: `1800s`
 - Weather and air quality: `600s`
 - Billing: `900s` (override with `BILLING_REFRESH_SECONDS`); AWS Cost Explorer is cached daily (`86400s` / `BILLING_AWS_CACHE_TTL_SECONDS`) to avoid per-query API fees on daily-refreshed backend data
+- Sessions: `20s` (override with `SESSIONS_REFRESH_SECONDS`)
 - Git status: `30s` (override with `GIT_REFRESH_SECONDS`)
 - Git Actions pips: on the git fetch; cache `20s` while running, `180s` when completed, `300s` when empty

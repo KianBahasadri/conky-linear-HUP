@@ -193,6 +193,32 @@ def rate_limit_account_count_from_cache(cache_dir=CACHE_DIR):
     return count
 
 
+# The drawn frame is narrower than the window and sits a fixed distance above
+# its bottom edge; the contribution skyline is placed against those numbers.
+RATE_LIMIT_PANEL_FRAME_WIDTH = 1000
+RATE_LIMIT_PANEL_FRAME_SIDE_CLEARANCE = 40
+
+
+def rate_limit_panel_frame_height(account_count):
+    """Height of the panel's drawn frame, before the window insets.
+
+    Must match the layout math in conky/rate-limit-panel-renderer.lua.
+    """
+    count = max(1, int(account_count or 0))
+    return max(
+        RATE_LIMIT_PANEL_MIN_HEIGHT,
+        RATE_LIMIT_PANEL_DYNAMIC_PADDING + count * RATE_LIMIT_PANEL_ROW_GAP,
+    )
+
+
+def rate_limit_panel_frame_width(window_width):
+    """Width of the panel's drawn frame inside a window this wide."""
+    return min(
+        RATE_LIMIT_PANEL_FRAME_WIDTH,
+        int(window_width) - RATE_LIMIT_PANEL_FRAME_SIDE_CLEARANCE,
+    )
+
+
 def rate_limit_panel_window_height(account_count):
     """Return the Conky minimum_height needed for the account list.
 
@@ -210,11 +236,18 @@ def rate_limit_panel_window_height(account_count):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1 and sys.argv[1] == "--print-rate-limit-panel-height":
+    flag = sys.argv[1] if len(sys.argv) > 1 else ""
+    if flag == "--print-rate-limit-panel-height":
         print(rate_limit_panel_window_height(rate_limit_account_count_from_cache()))
+    elif flag == "--print-rate-limit-panel-frame-height":
+        print(rate_limit_panel_frame_height(rate_limit_account_count_from_cache()))
+    elif flag == "--print-rate-limit-panel-frame-width":
+        print(rate_limit_panel_frame_width(sys.argv[2]))
     else:
         print(
-            "usage: fetch_common.py --print-rate-limit-panel-height",
+            "usage: fetch_common.py --print-rate-limit-panel-height"
+            " | --print-rate-limit-panel-frame-height"
+            " | --print-rate-limit-panel-frame-width WINDOW_WIDTH",
             file=sys.stderr,
         )
         sys.exit(1)
