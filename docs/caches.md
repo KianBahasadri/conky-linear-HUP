@@ -34,6 +34,7 @@
 - `cache/billing-usage.json`: full billing observations, normalized pressures, forecast details, data sources, and per-provider errors.
 - `cache/billing-usage-render.tsv`: compact affine-map input consumed by the Lua renderer; it contains no credentials.
 - `cache/billing-history.json`: dated observations for every billing provider. Each successful collect upserts that day's pressure (the affine map's past trail). OpenRouter samples also keep total-usage / balance for the burn-rate fallback. Retained from the earlier of month-start and 30 days ago.
+- `cache/billing-aws-cache.json`: last successful AWS Cost Explorer and Budgets response; daily cache (TTL `BILLING_AWS_CACHE_TTL_SECONDS`, default `86400s`) to avoid Cost Explorer API query charges.
 
 ## Logs
 
@@ -54,6 +55,6 @@
 - Minecraft: `60s`
 - GitHub: `1800s`
 - Weather and air quality: `600s`
-- Billing: `900s` (override with `BILLING_REFRESH_SECONDS`)
+- Billing: `900s` (override with `BILLING_REFRESH_SECONDS`); AWS Cost Explorer is cached daily (`86400s` / `BILLING_AWS_CACHE_TTL_SECONDS`) to avoid per-query API fees on daily-refreshed backend data
 - Git status: `30s` (override with `GIT_REFRESH_SECONDS`)
 - Git Actions pips: on the git fetch; cache `20s` while running, `180s` when completed, `300s` when empty

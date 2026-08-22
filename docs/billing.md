@@ -208,6 +208,10 @@ holds the same secret; it is gitignored. Rotate by replacing `aws_iam_access_key
 re-running the script. Cost Explorer / Budgets SDK calls are not gated on
 the Billing console's "Activate IAM Access" toggle.
 
+AWS Cost Explorer queries are cached daily (`cache/billing-aws-cache.json`,
+TTL `BILLING_AWS_CACHE_TTL_SECONDS` default `86400`) because AWS billing data
+refreshes once per day and each Cost Explorer API call incurs a $0.01 fee.
+
 ## Placement and lifecycle
 
 The launcher creates one billing window per monitor. With `BILLING_GAP_Y`

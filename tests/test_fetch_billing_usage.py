@@ -12,9 +12,15 @@ def isolate_cache(monkeypatch, tmp_path):
         billing, "RENDER_PATH", tmp_path / "billing-usage-render.tsv"
     )
     monkeypatch.setattr(billing, "HISTORY_PATH", tmp_path / "billing-history.json")
+    monkeypatch.setattr(billing, "AWS_CACHE_PATH", tmp_path / "billing-aws-cache.json")
     monkeypatch.setattr(billing, "log_event", lambda _message: None)
+    monkeypatch.setattr(billing.common, "load_env", lambda: None)
     monkeypatch.setenv("BILLING_BLACKSMITH_ENABLED", "0")
     monkeypatch.setenv("BILLING_AWS_ENABLED", "0")
+    monkeypatch.setenv("BILLING_AZURE_ENABLED", "0")
+    monkeypatch.delenv("BILLING_AZURE_SUBSCRIPTION_ID", raising=False)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.setenv("BILLING_GITHUB_ACTIONS_ENABLED", "0")
 
 
 def test_month_period_uses_one_inclusive_calendar_eom():
@@ -1095,3 +1101,158 @@ def test_render_tsv_contains_only_renderer_fields():
     assert "history\tazure\t1\t0.0405" in rendered
     assert "history\tazure\t3\t0.1013" in rendered
     assert "OPENROUTER_API_KEY" not in rendered
+
+
+def test_is_rate_limited():
+    assert billing.is_rate_limited("HTTP 429: Too Many Requests") is True
+    assert billing.is_rate_limited("Rate limit exceeded") is True
+    assert billing.is_rate_limited("ThrottlingException: Rate exceeded") is True
+    assert billing.is_rate_limited("Client.RequestLimitExceeded") is True
+    assert billing.is_rate_limited("ProvisionedThroughputExceededException") is True
+    assert billing.is_rate_limited("Network timeout") is False
+    assert billing.is_rate_limited("Invalid JSON returned") is False
+
+
+def test_aws_provider_uses_cache_when_valid(monkeypatch, tmp_path):
+    isolate_cache(monkeypatch, tmp_path)
+    now = datetime(2026, 8, 19, 12, 0, tzinfo=timezone.utc)
+    period = billing.month_period(date(2026, 8, 19))
+
+    cache_file = tmp_path / "billing-aws-cache.json"
+    cache_file.write_text(
+        json.dumps(
+            {
+                "fetchedAt": "2026-08-19T06:00:00Z",
+                "fetchedEpoch": int(now.timestamp()) - 3600,  # 1 hour old
+                "date": "2026-08-19",
+                "periodStart": "2026-08-01",
+                "capUsd": 50.0,
+                "capSource": "aws-budgets",
+                "budgetName": "My Budget",
+                "currentUsd": 15.0,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    # If it tries to make live API calls, fail the test
+    monkeypatch.setattr(
+        billing,
+        "resolve_aws_cap",
+        lambda _timeout: (_ for _ in ()).throw(AssertionError("should not call resolve_aws_cap")),
+    )
+    monkeypatch.setattr(
+        billing,
+        "fetch_aws_current",
+        lambda _period, _timeout: (_ for _ in ()).throw(AssertionError("should not call fetch_aws_current")),
+    )
+
+    provider = billing.aws_provider(period, 30)
+
+    assert provider["ok"] is True
+    assert provider["source"] == "aws-cached"
+    assert provider["currentUsd"] == 15.0
+    assert provider["capUsd"] == 50.0
+    assert provider["budgetName"] == "My Budget"
+
+
+def test_aws_provider_fetches_fresh_when_cache_expired(monkeypatch, tmp_path):
+    isolate_cache(monkeypatch, tmp_path)
+    now = datetime(2026, 8, 19, 12, 0, tzinfo=timezone.utc)
+    period = billing.month_period(date(2026, 8, 19))
+
+    cache_file = tmp_path / "billing-aws-cache.json"
+    cache_file.write_text(
+        json.dumps(
+            {
+                "fetchedAt": "2026-08-17T06:00:00Z",
+                "fetchedEpoch": int(now.timestamp()) - 90000,  # >24h old
+                "date": "2026-08-17",
+                "periodStart": "2026-08-01",
+                "capUsd": 50.0,
+                "capSource": "aws-budgets",
+                "budgetName": "My Budget",
+                "currentUsd": 10.0,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        billing,
+        "resolve_aws_cap",
+        lambda _timeout: (Decimal("50.0"), "aws-budgets", "My Budget"),
+    )
+    monkeypatch.setattr(
+        billing,
+        "fetch_aws_current",
+        lambda _period, _timeout: Decimal("22.50"),
+    )
+
+    provider = billing.aws_provider(period, 30)
+
+    assert provider["ok"] is True
+    assert provider["source"] == "aws"
+    assert provider["currentUsd"] == 22.50
+    assert provider["capUsd"] == 50.0
+
+    # Verify cache was updated
+    updated_cache = json.loads(cache_file.read_text(encoding="utf-8"))
+    assert updated_cache["currentUsd"] == 22.50
+
+
+def test_aws_provider_fetches_fresh_when_month_changes(monkeypatch, tmp_path):
+    isolate_cache(monkeypatch, tmp_path)
+    now = datetime(2026, 9, 1, 1, 0, tzinfo=timezone.utc)
+    period = billing.month_period(date(2026, 9, 1))
+
+    cache_file = tmp_path / "billing-aws-cache.json"
+    cache_file.write_text(
+        json.dumps(
+            {
+                "fetchedAt": "2026-08-31T23:00:00Z",
+                "fetchedEpoch": int(now.timestamp()) - 7200,  # 2 hours old, but previous month!
+                "date": "2026-08-31",
+                "periodStart": "2026-08-01",
+                "capUsd": 50.0,
+                "capSource": "aws-budgets",
+                "budgetName": "My Budget",
+                "currentUsd": 45.0,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        billing,
+        "resolve_aws_cap",
+        lambda _timeout: (Decimal("50.0"), "aws-budgets", "My Budget"),
+    )
+    monkeypatch.setattr(
+        billing,
+        "fetch_aws_current",
+        lambda _period, _timeout: Decimal("0.50"),
+    )
+
+    provider = billing.aws_provider(period, 30)
+
+    assert provider["ok"] is True
+    assert provider["source"] == "aws"
+    assert provider["currentUsd"] == 0.50
+
+
+def test_collect_logs_throttling_and_errors(monkeypatch, tmp_path):
+    isolate_cache(monkeypatch, tmp_path)
+    events = []
+    monkeypatch.setattr(billing, "log_event", lambda msg: events.append(msg))
+    monkeypatch.setenv("BILLING_BLACKSMITH_ENABLED", "1")
+    monkeypatch.setattr(
+        billing,
+        "blacksmith_usage",
+        lambda _period, _timeout: (_ for _ in ()).throw(billing.ProviderError("HTTP 429 Too Many Requests")),
+    )
+
+    output = billing.collect(date(2026, 8, 19))
+    assert output["ok"] is False
+    assert any("RATE LIMIT / THROTTLED" in msg and "Blacksmith" in msg for msg in events)
+

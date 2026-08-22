@@ -30,7 +30,9 @@ CACHE_DIR = ROOT / "cache"
 STATUS_PATH = CACHE_DIR / "billing-usage.json"
 RENDER_PATH = CACHE_DIR / "billing-usage-render.tsv"
 HISTORY_PATH = CACHE_DIR / "billing-history.json"
+AWS_CACHE_PATH = CACHE_DIR / "billing-aws-cache.json"
 LOG_PATH = CACHE_DIR / "conky-billing.log"
+DEFAULT_AWS_CACHE_TTL_SECONDS = 86400  # 24 hours (AWS data updates once daily; $0.01 per query)
 
 AWS_COLOR = "ffb454"
 AZURE_COLOR = "38bdf8"
@@ -122,6 +124,24 @@ def clean_error(error):
     return message[:320] or error.__class__.__name__
 
 
+def is_rate_limited(error):
+    text = str(error).lower()
+    return any(
+        signal in text
+        for signal in (
+            "429",
+            "too many requests",
+            "rate limit",
+            "ratelimit",
+            "throttl",
+            "quota exceeded",
+            "requestlimitexceeded",
+            "provisionedthroughputexceeded",
+            "bandwidth limit exceeded",
+        )
+    )
+
+
 def run_json(command, timeout):
     try:
         result = subprocess.run(
@@ -177,6 +197,10 @@ def request_json(url, *, headers=None, payload=None, timeout=20):
         # message deliberately terse and never include headers or URLs with keys.
         code = getattr(error, "code", None)
         suffix = f" (HTTP {code})" if code else ""
+        if code == 429:
+            suffix += " [Rate Limit / Too Many Requests]"
+        elif code == 403:
+            suffix += " [Forbidden / Rate Limit Exceeded]"
         raise ProviderError(f"request failed{suffix}: {error.__class__.__name__}") from error
 
 
@@ -453,7 +477,75 @@ def aws_enabled():
     )
 
 
-def aws_provider(period, timeout):
+def aws_cache_ttl_seconds():
+    raw = os.environ.get("BILLING_AWS_CACHE_TTL_SECONDS", "").strip()
+    if not raw:
+        raw = os.environ.get("BILLING_AWS_REFRESH_SECONDS", "").strip()
+    if raw:
+        try:
+            return max(60, int(raw))
+        except ValueError:
+            pass
+    return DEFAULT_AWS_CACHE_TTL_SECONDS
+
+
+def load_aws_cache():
+    return load_json(AWS_CACHE_PATH, {})
+
+
+def save_aws_cache(data):
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    common.atomic_write_json(AWS_CACHE_PATH, data)
+
+
+def aws_provider(period, timeout, force=False):
+    cache = load_aws_cache() if not force else {}
+    ttl = aws_cache_ttl_seconds()
+    now_epoch = int(period["localNow"].astimezone(timezone.utc).timestamp())
+    today_iso = period["today"].isoformat()
+
+    cached_epoch = cache.get("fetchedEpoch")
+    cached_start = cache.get("periodStart")
+    cached_date = cache.get("date")
+    cached_current = cache.get("currentUsd")
+    cached_cap = cache.get("capUsd")
+    cached_cap_source = cache.get("capSource", "aws-budgets")
+    cached_budget_name = cache.get("budgetName", "")
+
+    is_valid_cache = (
+        not force
+        and isinstance(cached_epoch, (int, float))
+        and (now_epoch - cached_epoch) < ttl
+        and cached_start == period["periodStart"].isoformat()
+        and cached_date == today_iso
+        and cached_current is not None
+        and cached_cap is not None
+    )
+
+    if is_valid_cache:
+        cap = Decimal(str(cached_cap))
+        current = Decimal(str(cached_current))
+        age_seconds = max(0, now_epoch - int(cached_epoch))
+        log_event(
+            f"AWS: using daily cached usage from {cached_date} "
+            f"(TTL {ttl}s, age {age_seconds}s; ${float(current):.2f} / ${float(cap):.2f})"
+        )
+        provider = metered_provider(
+            "aws",
+            "AWS",
+            "AWS",
+            AWS_COLOR,
+            cap,
+            current,
+            period,
+            "aws-cached",
+        )
+        provider["capSource"] = cached_cap_source
+        if cached_budget_name:
+            provider["budgetName"] = cached_budget_name
+        return provider
+
+    log_event("AWS: daily refresh needed or no cache; fetching fresh cost & budget data from AWS APIs...")
     cap, cap_source, budget_name = resolve_aws_cap(timeout)
     current = fetch_aws_current(period, timeout)
     provider = metered_provider(
@@ -469,12 +561,27 @@ def aws_provider(period, timeout):
     provider["capSource"] = cap_source
     if budget_name:
         provider["budgetName"] = budget_name
+
+    save_aws_cache(
+        {
+            "fetchedAt": utc_iso(period["localNow"].astimezone(timezone.utc)),
+            "fetchedEpoch": now_epoch,
+            "date": today_iso,
+            "periodStart": period["periodStart"].isoformat(),
+            "capUsd": rounded(cap, 2),
+            "capSource": cap_source,
+            "budgetName": budget_name,
+            "currentUsd": rounded(current, 2),
+        }
+    )
+    log_event(
+        f"AWS: fresh fetch succeeded: current spend ${provider['currentUsd']} / cap ${provider['capUsd']} ({cap_source})"
+    )
     return provider
 
 
 def azure_throttled(error):
-    text = str(error).lower()
-    return "429" in text or "too many requests" in text
+    return is_rate_limited(error)
 
 
 def azure_subscription_id(timeout):
@@ -708,7 +815,10 @@ def fetch_azure_daily_usd(period, timeout):
         if daily:
             return daily
     except ProviderError as error:
-        log_event(f"Azure daily Cost Management unavailable: {clean_error(error)}")
+        if is_rate_limited(error):
+            log_event(f"RATE LIMIT / THROTTLED: Azure daily Cost Management throttled: {clean_error(error)}; falling back to Usage Details")
+        else:
+            log_event(f"Azure daily Cost Management unavailable: {clean_error(error)}; falling back to Usage Details")
     return fetch_azure_usage_by_day(subscription_id, timeout, period)
 
 
@@ -734,6 +844,7 @@ def fetch_azure_current(timeout):
         total, currency = fetch_azure_cost_management(subscription_id, timeout)
     except ProviderError as error:
         if azure_throttled(error):
+            log_event(f"RATE LIMIT / THROTTLED: Azure Cost Management throttled ({clean_error(error)}); falling back to Usage Details")
             return fetch_azure_usage_usd(subscription_id, timeout)
         raise
     if currency == "USD":
@@ -854,6 +965,7 @@ def fetch_azure_credit_balance(timeout):
 
 
 def azure_provider(period, timeout):
+    log_event("Azure: fetching credit balance and usage data...")
     credits = fetch_azure_credit_balance(timeout)
     spent = credits.get("spent")
     starting = credits.get("starting")
@@ -890,7 +1002,7 @@ def azure_provider(period, timeout):
     forecast = linear_month_forecast(spent, period)
     forecast = max(spent, forecast)
     projected = max(Decimal(0), starting - forecast)
-    return {
+    provider = {
         "id": "azure",
         "code": "AZR",
         "name": "Azure",
@@ -915,6 +1027,10 @@ def azure_provider(period, timeout):
             f"${float(starting):.2f} at month start"
         ),
     }
+    log_event(
+        f"Azure: fresh fetch succeeded: spent ${provider['currentUsd']} / starting balance ${provider['capUsd']} (remaining ${provider['balanceUsd']})"
+    )
+    return provider
 
 
 def fetch_anthropic_current(period, admin_key, timeout):
@@ -1179,6 +1295,7 @@ def burn_from_local_history(samples):
 
 
 def openrouter_provider(period, timeout, observed_at):
+    log_event("OpenRouter: fetching credits and trailing usage...")
     api_key = os.environ.get("OPENROUTER_API_KEY", "").strip()
     if not api_key:
         raise ValueError("OPENROUTER_API_KEY is required")
@@ -1197,7 +1314,10 @@ def openrouter_provider(period, timeout, observed_at):
         history_days = 30
         burn_source = "openrouter-analytics-30d"
     except ProviderError as error:
-        log_event(f"OpenRouter analytics unavailable; using local history: {clean_error(error)}")
+        if is_rate_limited(error):
+            log_event(f"RATE LIMIT / THROTTLED: OpenRouter analytics throttled: {clean_error(error)}; using local history")
+        else:
+            log_event(f"OpenRouter analytics unavailable: {clean_error(error)}; using local history")
     if daily_burn is None:
         daily_burn, history_days = burn_from_local_history(samples)
         burn_source = "local-observation-history"
@@ -1225,7 +1345,7 @@ def openrouter_provider(period, timeout, observed_at):
         projected_balance = Decimal(0)
         detail = "$0.00 left"
 
-    return {
+    provider = {
         "id": "openrouter",
         "code": "OR",
         "name": "OpenRouter",
@@ -1247,6 +1367,11 @@ def openrouter_provider(period, timeout, observed_at):
         "forecastSource": burn_source,
         "detail": detail,
     }
+    log_event(
+        f"OpenRouter: fresh fetch succeeded: balance ${provider['balanceUsd']}, "
+        f"daily burn ${provider['dailyBurnUsd'] or 0:.4f}/day, projected ${provider['projectedBalanceUsd']} at EOM"
+    )
+    return provider
 
 
 def github_api(path, timeout):
@@ -1312,6 +1437,7 @@ def github_repository_is_public(login, repository_name, timeout):
 
 
 def github_actions_provider(period, timeout):
+    log_event("GitHub Actions: querying user billing usage report and repo visibility...")
     identity = github_api("/user", timeout)
     login = str(identity.get("login") or "").strip()
     if not login:
@@ -1354,9 +1480,17 @@ def github_actions_provider(period, timeout):
         quantity = minutes_by_repository[repository_name]
         try:
             is_public = github_repository_is_public(login, repository_name, timeout)
-        except ProviderError:
+        except ProviderError as error:
             # Deleted or inaccessible repositories cannot be classified. Count
             # them conservatively so the warning map never understates risk.
+            if is_rate_limited(error):
+                log_event(
+                    f"RATE LIMIT / THROTTLED: GitHub repository visibility check throttled for {repository_name}: {clean_error(error)}"
+                )
+            else:
+                log_event(
+                    f"GitHub repository visibility check failed for {repository_name}: {clean_error(error)}"
+                )
             visibility_unknown.append(repository_name or "unknown")
             is_public = False
         if is_public:
@@ -1373,7 +1507,7 @@ def github_actions_provider(period, timeout):
     if visibility_unknown:
         detail += f" · {len(visibility_unknown)} repo visibility unknown"
 
-    return {
+    provider = {
         "id": "github_actions",
         "code": "GH",
         "name": "GitHub Actions",
@@ -1395,6 +1529,10 @@ def github_actions_provider(period, timeout):
         "forecastSource": "linear-month-pace",
         "detail": detail,
     }
+    log_event(
+        f"GitHub Actions: fresh fetch succeeded: {provider['currentMinutes']}/{provider['includedMinutes']} min ({plan} plan), forecast {provider['forecastMinutes']} min, ${provider['currentPayableUsd']} due"
+    )
+    return provider
 
 
 def blacksmith_usage(period, timeout):
@@ -1450,6 +1588,7 @@ def blacksmith_history_pressures(daily_rows, period, allowance):
 
 
 def blacksmith_provider(period, timeout):
+    log_event("Blacksmith: querying CLI usage...")
     payload = blacksmith_usage(period, timeout)
     summary = payload.get("summary") or {}
     billable = max(
@@ -1465,7 +1604,7 @@ def blacksmith_provider(period, timeout):
     org = str(
         ((payload.get("installation") or {}).get("installation_name") or "")
     ).strip() or os.environ.get("BILLING_BLACKSMITH_ORG", "").strip()
-    return {
+    provider = {
         "id": "blacksmith",
         "code": "BSM",
         "name": "Blacksmith",
@@ -1491,6 +1630,10 @@ def blacksmith_provider(period, timeout):
             f"{float(forecast):,.0f} EOM"
         ),
     }
+    log_event(
+        f"Blacksmith: fresh fetch succeeded: {provider['currentMinutes']}/{provider['includedMinutes']} min (org: {org or 'default'}), forecast {provider['forecastMinutes']} min"
+    )
+    return provider
 
 
 def configured(*names):
@@ -1532,6 +1675,10 @@ def collect(reference=None):
             providers.append(aws_provider(period, timeout))
         except Exception as error:
             message = clean_error(error)
+            if is_rate_limited(error):
+                log_event(f"RATE LIMIT / THROTTLED: AWS request was throttled: {message}")
+            else:
+                log_event(f"ERROR: AWS fetch failed: {message}")
             errors.append({"provider": "aws", "error": message})
             if "aws" in old:
                 providers.append(stale_provider(old["aws"], error))
@@ -1541,6 +1688,10 @@ def collect(reference=None):
             providers.append(azure_provider(period, timeout))
         except Exception as error:
             message = clean_error(error)
+            if is_rate_limited(error):
+                log_event(f"RATE LIMIT / THROTTLED: Azure request was throttled: {message}")
+            else:
+                log_event(f"ERROR: Azure fetch failed: {message}")
             errors.append({"provider": "azure", "error": message})
             if "azure" in old:
                 providers.append(stale_provider(old["azure"], error))
@@ -1550,6 +1701,10 @@ def collect(reference=None):
             providers.append(openrouter_provider(period, timeout, observed_at))
         except Exception as error:
             message = clean_error(error)
+            if is_rate_limited(error):
+                log_event(f"RATE LIMIT / THROTTLED: OpenRouter request was throttled: {message}")
+            else:
+                log_event(f"ERROR: OpenRouter fetch failed: {message}")
             errors.append({"provider": "openrouter", "error": message})
             if "openrouter" in old:
                 providers.append(stale_provider(old["openrouter"], error))
@@ -1559,6 +1714,10 @@ def collect(reference=None):
             providers.append(github_actions_provider(period, timeout))
         except Exception as error:
             message = clean_error(error)
+            if is_rate_limited(error):
+                log_event(f"RATE LIMIT / THROTTLED: GitHub Actions request was throttled/rate-limited: {message}")
+            else:
+                log_event(f"ERROR: GitHub Actions fetch failed: {message}")
             errors.append({"provider": "github_actions", "error": message})
             if "github_actions" in old:
                 providers.append(stale_provider(old["github_actions"], error))
@@ -1568,6 +1727,10 @@ def collect(reference=None):
             providers.append(blacksmith_provider(period, timeout))
         except Exception as error:
             message = clean_error(error)
+            if is_rate_limited(error):
+                log_event(f"RATE LIMIT / THROTTLED: Blacksmith request was throttled: {message}")
+            else:
+                log_event(f"ERROR: Blacksmith fetch failed: {message}")
             errors.append({"provider": "blacksmith", "error": message})
             if "blacksmith" in old:
                 providers.append(stale_provider(old["blacksmith"], error))
@@ -1582,13 +1745,15 @@ def collect(reference=None):
     }
     providers.sort(key=lambda item: provider_order.get(item.get("id"), 99))
     if not providers and not errors:
+        msg = (
+            "No billing providers configured; set an OpenRouter key "
+            "or enable AWS / Azure / GitHub Actions / Blacksmith"
+        )
+        log_event(f"Configuration notice: {msg}")
         errors.append(
             {
                 "provider": "configuration",
-                "error": (
-                    "No billing providers configured; set an OpenRouter key "
-                    "or enable AWS / Azure / GitHub Actions / Blacksmith"
-                ),
+                "error": msg,
             }
         )
 
@@ -1680,15 +1845,19 @@ def main():
         output = collect()
         write_output(output)
         if output["ok"]:
+            active_names = [p.get("name", p.get("id")) for p in output["providers"]]
             log_event(
-                f"updated {len(output['providers'])} provider(s) for {output['periodEnd']}"
+                f"updated {len(output['providers'])} provider(s) ({', '.join(active_names)}) for {output['periodEnd']}"
             )
             return 0
-        log_event(output.get("error") or "no billing providers available")
+        log_event(f"ERROR: {output.get('error') or 'no billing providers available'}")
         return 1
     except Exception as error:
         message = clean_error(error)
-        log_event(message)
+        if is_rate_limited(error):
+            log_event(f"RATE LIMIT / THROTTLED: fatal billing fetch error: {message}")
+        else:
+            log_event(f"ERROR: fatal billing fetch error: {message}")
         period = month_period()
         output = {
             "ok": False,
