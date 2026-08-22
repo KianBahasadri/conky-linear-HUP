@@ -101,7 +101,7 @@ Pioneer env vars (`PIONEER_API_KEY`, `PIONEER_USAGE_LABEL`, `PIONEER_MONTHLY_CRE
 | `GITHUB_GAP_Y` | Bottom offset in px; empty sits the skyline on the rate limit panel |
 | `GITHUB_SKYLINE_HEIGHT` | Requested skyline window height (default `340`) |
 | `GITHUB_SKYLINE_MIN_HEIGHT` | Floor after the Linear clearance is taken out (default `180`) |
-| `GITHUB_LINEAR_CLEARANCE` | Gap kept between the Linear cards and the stat band (default `14`) |
+| `GITHUB_LINEAR_CLEARANCE` | Gap kept between the Linear cards and the skyline (default `14`) |
 | `GITHUB_ROOF_CLEARANCE` | Gap above the rate limit panel's title chips (default `11`) |
 | `GITHUB_REFRESH_SECONDS` | Fetch interval |
 | `GITHUB_TIMEOUT_SECONDS` | Request timeout |

@@ -88,13 +88,13 @@ GITHUB_GAP_X="${GITHUB_GAP_X-}"
 GITHUB_GAP_Y="${GITHUB_GAP_Y-}"
 GITHUB_REFRESH_SECONDS="${GITHUB_REFRESH_SECONDS:-1800}"
 GITHUB_OVERLAY_ENABLED="${GITHUB_OVERLAY_ENABLED:-1}"
-# Window height for the skyline: the plinth, the day-axis depth, the tallest
-# tower and the stat band all share it, and the renderer scales the extrusion to
-# whatever is left over.
+# Window height for the skyline: the plinth, the day-axis depth and the tallest
+# tower all share it, and the renderer scales the extrusion to whatever is left
+# over.
 GITHUB_SKYLINE_HEIGHT="${GITHUB_SKYLINE_HEIGHT:-340}"
 # Floor for that height once the Linear clearance below has been taken out.
 GITHUB_SKYLINE_MIN_HEIGHT="${GITHUB_SKYLINE_MIN_HEIGHT:-180}"
-# Gap kept between the bottom of the Linear cards and the skyline's stat band.
+# Gap kept between the bottom of the Linear cards and the skyline's top.
 GITHUB_LINEAR_CLEARANCE="${GITHUB_LINEAR_CLEARANCE:-14}"
 # Clearance between the roof line and the panel's top edge. The provider title
 # chips straddle that edge, riding 9px above it.
@@ -699,8 +699,8 @@ rate_limit_frame_for_monitor() {
     GITHUB_ROOF_BASELINE=$(( monitor_h - RATE_LIMIT_PANEL_GAP_Y ))
   fi
 
-  # The Linear cards grow downward as tasks land, and the skyline's stat band is
-  # the first thing under them. Give back height rather than let the two meet.
+  # The Linear cards grow downward as tasks land. Give back height rather than
+  # let the two meet.
   GITHUB_RESOLVED_HEIGHT="$GITHUB_SKYLINE_HEIGHT"
   if overlay_enabled linear; then
     linear_bottom=$(( linear_gap_y + LINEAR_MINIMUM_HEIGHT + 4 ))

@@ -85,6 +85,5 @@ floor below its left end. Year total and busiest day go top-right; the two
 streaks go bottom-left. Every other position collides with towers or the month
 ticks — including the single top row, which the tall autumn columns cut into.
 
-`level` has no such pockets: every edge is horizontal and the towers reach the
-full width. The four stats become one band across the top instead, which suits
-the mode — it is a third horizontal layer above the skyline above the panel.
+The shipped `level` mode drops the readout entirely — the skyline is just the
+plinth and the towers filling the available height.

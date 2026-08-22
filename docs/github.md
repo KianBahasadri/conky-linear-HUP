@@ -36,9 +36,6 @@ renders: the parser falls back to the level.
 - Only two of the four walls ever face the camera, so a tower is three fills.
 - Zero days draw as an outlined plate, which keeps the calendar's shape readable
   through the gaps.
-- The four-stat readout (year total, busiest day, longest and current streak)
-  is a band across the top, inset from the left so its first column clears the
-  [sessions overlay](sessions.md) next to it.
 
 The renderer solves for the week step that makes the plinth exactly the window's
 width, then scales the extrusion to whatever vertical room is left. Everything
@@ -67,10 +64,10 @@ With the rate limit panel disabled there is nothing to roof, so the skyline
 stands on the screen bottom instead.
 
 `GITHUB_SKYLINE_HEIGHT` is a request, not a promise. The Linear cards grow
-downward as tasks land and the stat band is the first thing under them, so the
-start script gives height back until `GITHUB_LINEAR_CLEARANCE` is free below
-them, down to a floor of `GITHUB_SKYLINE_MIN_HEIGHT`. Setting `GITHUB_GAP_X` or
-`GITHUB_GAP_Y` pins that axis and opts out of the corresponding measurement.
+downward as tasks land. The start script gives height back until
+`GITHUB_LINEAR_CLEARANCE` is free below them, down to a floor of
+`GITHUB_SKYLINE_MIN_HEIGHT`. Setting `GITHUB_GAP_X` or `GITHUB_GAP_Y` pins that
+axis and opts out of the corresponding measurement.
 
 | Variable | Purpose |
 | --- | --- |

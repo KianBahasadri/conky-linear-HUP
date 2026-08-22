@@ -19,19 +19,7 @@ return function(shared, repo_root)
   -- GitHub's own dark-theme ramp. Index is data-level + 1.
   local colors = { '0e4429', '0e4429', '006d32', '26a641', '39d353' }
   local deck_color = '1e293b'
-  local muted = '94a3b8'
   local dim = '64748b'
-  local text_color = 'f8fafc'
-  local value_color = '39d353'
-
-  -- Stat readout band above the skyline. The band is inset from the left so
-  -- the first column clears the sessions panel, whose right edge meets the
-  -- skyline's left edge.
-  local band_height = 46
-  local band_inset = 14
-  local band_label_baseline = 8
-  local band_value_baseline = 28
-  local band_value_size = 17
 
   local month_names = {
     'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
@@ -51,22 +39,6 @@ return function(shared, repo_root)
       x = x - extents.x_advance / 2
     end
     shared.set_hex(cr, color, alpha or 1)
-    cairo_move_to(cr, x, baseline)
-    cairo_show_text(cr, label)
-    return extents.x_advance
-  end
-
-  local function lit_text(cr, label, x, baseline, size, color, alpha)
-    cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
-    cairo_set_font_size(cr, size)
-    local extents = cairo_text_extents_t:create()
-    cairo_text_extents(cr, label, extents)
-
-    shared.set_hex(cr, '000000', 0.44)
-    cairo_move_to(cr, x, baseline + 1.5)
-    cairo_show_text(cr, label)
-
-    shared.set_hex_shaded(cr, color, alpha or 1, 0.24)
     cairo_move_to(cr, x, baseline)
     cairo_show_text(cr, label)
     return extents.x_advance
@@ -115,48 +87,6 @@ return function(shared, repo_root)
     end
     local stamp = os.time({ year = entry.year, month = entry.month, day = entry.day, hour = 12 })
     return (tonumber(os.date('*t', stamp).wday) or 1) - 1
-  end
-
-  local function streaks(entries)
-    local best, best_end, run = 0, nil, 0
-    for _, entry in ipairs(entries) do
-      if entry.count > 0 then
-        run = run + 1
-        if run > best then
-          best, best_end = run, entry
-        end
-      else
-        run = 0
-      end
-    end
-
-    local current, current_end = 0, nil
-    for index = #entries, 1, -1 do
-      local entry = entries[index]
-      if entry.count > 0 then
-        current = current + 1
-        if not current_end then
-          current_end = entry
-        end
-      elseif current > 0 or index < #entries then
-        break
-      end
-    end
-
-    return best, best_end, current, current_end
-  end
-
-  local function short_date(entry)
-    if not entry then
-      return ''
-    end
-    return string.format('%s %d', month_names[entry.month], entry.day)
-  end
-
-  local function with_thousands(value)
-    local text = tostring(math.floor(value))
-    local grouped = text:reverse():gsub('(%d%d%d)', '%1,'):reverse()
-    return (grouped:gsub('^,', ''))
   end
 
   local function poly(cr, points)
@@ -237,7 +167,7 @@ return function(shared, repo_root)
       end
     end
 
-    local headroom = height - band_height - deck - columns * day_dy
+    local headroom = height - deck - columns * day_dy
     if headroom < 20 then
       headroom = 20
     end
@@ -317,49 +247,6 @@ return function(shared, repo_root)
     end
   end
 
-  local function draw_stat(cr, x, y, label, value, unit, sub)
-    flat_text(cr, label, x, y + band_label_baseline, 6.8, muted, 0.7)
-    local advance = lit_text(cr, value, x, y + band_value_baseline, band_value_size, value_color, 1)
-    flat_text(cr, unit, x + advance + 8, y + band_value_baseline - 5, 7.2, text_color, 0.82)
-    flat_text(cr, sub, x + advance + 8, y + band_value_baseline + 5, 6.6, dim, 0.72)
-  end
-
-  -- Every edge of the level skyline is horizontal and the towers reach the full
-  -- width, so there are no pockets to tuck a readout into. It becomes a band
-  -- across the top: a third horizontal layer above the skyline above the panel.
-  local function draw_stat_band(cr, entries, geo, x, y, width)
-    local total = 0
-    local busiest = entries[1]
-    for _, entry in ipairs(entries) do
-      total = total + entry.count
-      if entry.count > busiest.count then
-        busiest = entry
-      end
-    end
-
-    local best, best_end, current, current_end = streaks(entries)
-    local first, last = entries[1], entries[#entries]
-    x = x + band_inset
-    width = width - band_inset
-    local step = width / 4
-
-    draw_stat(cr, x, y, 'LAST YEAR', with_thousands(total), 'contributions',
-      string.format('%s, %d - %s, %d', short_date(first), first.year,
-        short_date(last), last.year))
-    draw_stat(cr, x + step, y, 'BUSIEST DAY', tostring(busiest.count), 'contributions',
-      short_date(busiest))
-    draw_stat(cr, x + step * 2, y, 'LONGEST STREAK', tostring(best), 'days',
-      best_end and ('ended ' .. short_date(best_end)) or '')
-    draw_stat(cr, x + step * 3, y, 'CURRENT STREAK', tostring(current), 'days',
-      current_end and ('through ' .. short_date(current_end)) or '')
-
-    shared.set_hex(cr, dim, 0.22)
-    cairo_set_line_width(cr, 1)
-    cairo_move_to(cr, x, y + band_height - 12)
-    cairo_line_to(cr, x + width, y + band_height - 12)
-    cairo_stroke(cr)
-  end
-
   -- Only log when the shape of the object changes, so the log tracks geometry
   -- rather than repeating every frame.
   local function log_geometry(entries, geo)
@@ -405,7 +292,6 @@ return function(shared, repo_root)
     geo.y = conky_window.height - window_inset - geo.deck
 
     draw_skyline(cr, entries, geo)
-    draw_stat_band(cr, entries, geo, window_inset, window_inset, width)
     log_geometry(entries, geo)
 
     cairo_destroy(cr)
