@@ -398,11 +398,20 @@ return function(shared, repo_root)
     if distance <= 0 then
       return
     end
-    local dash, gap = 2.4, 3.8
+    -- First dash is long enough to clear the mark glow (a 4.2px stroke around
+    -- the glyph) so the forecast reads as attached instead of starting after
+    -- a hole where the opening dash was painted over.
+    local first_dash, dash, gap = 5.0, 2.4, 3.8
     local segments = {}
     local t = 0
+    local used_first = false
     while t < distance do
-      local t2 = math.min(t + dash, distance)
+      local this_dash = dash
+      if not used_first then
+        this_dash = first_dash
+        used_first = true
+      end
+      local t2 = math.min(t + this_dash, distance)
       local start_ratio = t / distance
       local end_ratio = t2 / distance
       table.insert(segments, {
@@ -411,7 +420,7 @@ return function(shared, repo_root)
         x1 + dx * end_ratio,
         y1 + dy * end_ratio,
       })
-      t = t + dash + gap
+      t = t2 + gap
     end
     glow_segments(cr, segments, color, width, alpha)
   end
@@ -441,6 +450,151 @@ return function(shared, repo_root)
       end
     end
   end
+
+  -- Map a brand path into pixel offsets from the mark center, sampling cubics
+  -- so the convex hull follows the curve instead of cutting the control polygon.
+  local function ops_local_points(ops, map_point)
+    local points = {}
+    local cx, cy = 0, 0
+    local function add(vx, vy)
+      local px, py = map_point(vx, vy)
+      table.insert(points, { px, py })
+    end
+    for _, op in ipairs(ops) do
+      if op[1] == 'M' then
+        cx, cy = op[2], op[3]
+        add(cx, cy)
+      elseif op[1] == 'L' then
+        cx, cy = op[2], op[3]
+        add(cx, cy)
+      elseif op[1] == 'C' then
+        local x1, y1, x2, y2, x3, y3 = op[2], op[3], op[4], op[5], op[6], op[7]
+        for step = 1, 4 do
+          local t = step / 4
+          local u = 1 - t
+          add(
+            u * u * u * cx + 3 * u * u * t * x1 + 3 * u * t * t * x2 + t * t * t * x3,
+            u * u * u * cy + 3 * u * u * t * y1 + 3 * u * t * t * y2 + t * t * t * y3
+          )
+        end
+        cx, cy = x3, y3
+      end
+    end
+    return points
+  end
+
+  local function uniform_local_map(size, view_width, view_height)
+    local scale = size / view_width
+    local left = -view_width * scale / 2
+    local top = -view_height * scale / 2
+    return function(vx, vy)
+      return left + vx * scale, top + vy * scale
+    end
+  end
+
+  local function convex_hull(points)
+    if #points <= 2 then
+      return points
+    end
+    table.sort(points, function(left, right)
+      if left[1] ~= right[1] then
+        return left[1] < right[1]
+      end
+      return left[2] < right[2]
+    end)
+    local unique = { points[1] }
+    for index = 2, #points do
+      local previous = unique[#unique]
+      local point = points[index]
+      if math.abs(point[1] - previous[1]) > 1e-6 or math.abs(point[2] - previous[2]) > 1e-6 then
+        table.insert(unique, point)
+      end
+    end
+    if #unique <= 2 then
+      return unique
+    end
+    local function cross(origin, a, b)
+      return (a[1] - origin[1]) * (b[2] - origin[2]) - (a[2] - origin[2]) * (b[1] - origin[1])
+    end
+    local lower = {}
+    for index = 1, #unique do
+      while #lower >= 2 and cross(lower[#lower - 1], lower[#lower], unique[index]) <= 0 do
+        table.remove(lower)
+      end
+      table.insert(lower, unique[index])
+    end
+    local upper = {}
+    for index = #unique, 1, -1 do
+      while #upper >= 2 and cross(upper[#upper - 1], upper[#upper], unique[index]) <= 0 do
+        table.remove(upper)
+      end
+      table.insert(upper, unique[index])
+    end
+    table.remove(lower)
+    table.remove(upper)
+    for _, point in ipairs(upper) do
+      table.insert(lower, point)
+    end
+    return lower
+  end
+
+  local function append_ops_points(points, ops, map_point)
+    for _, point in ipairs(ops_local_points(ops, map_point)) do
+      table.insert(points, point)
+    end
+  end
+
+  -- AWS uses a squashed smile plus a uniformly scaled arrow, then recenters.
+  -- Keep this mapping identical to aws_mark so the collider matches the ink.
+  local function aws_local_maps()
+    local view_h, height = 76, 10.0
+    local s = height / view_h
+    local smile_k = 0.55
+    local pivot = 270.0
+    local smile_left = 3.0
+    local arrow_right = 305.0
+    local left_span = pivot - smile_left
+    local combined_left = pivot - left_span * smile_k
+    local combined_right = arrow_right
+    local ox_arrow = -s * (combined_left + combined_right) / 2
+    local oy = -view_h * s / 2
+    local ox_smile = ox_arrow + pivot * s * (1 - smile_k) + 1.6
+    local sx_smile = s * smile_k
+    return function(vx, vy)
+      return ox_smile + vx * sx_smile, oy + vy * s
+    end, function(vx, vy)
+      return ox_arrow + vx * s, oy + vy * s
+    end
+  end
+
+  local function hull_from_ops_list(pairs)
+    local points = {}
+    for _, item in ipairs(pairs) do
+      append_ops_points(points, item[1], item[2])
+    end
+    return convex_hull(points)
+  end
+
+  local github_hull = hull_from_ops_list({
+    { github_mark_ops, uniform_local_map(13.0, 16, 16) },
+  })
+  local openrouter_hull = hull_from_ops_list({
+    { openrouter_mark_ops, uniform_local_map(15.0, 401.4, 293.7) },
+  })
+  local azure_map = uniform_local_map(14.0, 96, 96)
+  local azure_hull = hull_from_ops_list({
+    { azure_left_ops, azure_map },
+    { azure_arrow_ops, azure_map },
+    { azure_right_ops, azure_map },
+  })
+  local blacksmith_hull = hull_from_ops_list({
+    { blacksmith_mark_ops, uniform_local_map(14.0, 144, 96) },
+  })
+  local aws_smile_map, aws_arrow_map = aws_local_maps()
+  local aws_hull = hull_from_ops_list({
+    { aws_smile_ops, aws_smile_map },
+    { aws_arrow_ops, aws_arrow_map },
+  })
 
   local function vector_mark(cr, ops, x, y, size, view_width, view_height, color, alpha)
     add_mark_path(cr, ops, x, y, size, view_width, view_height)
@@ -616,39 +770,229 @@ return function(shared, repo_root)
     end
   end
 
-  local function mark_clearance(provider)
-    if provider.id == 'github_actions' then
-      return 7.5
-    elseif provider.id == 'openrouter' then
-      return 8.8
-    elseif provider.id == 'azure' then
-      -- The A is wide at the base, which is the side the past trail approaches.
-      return 11.0
+  -- Outline half-width plus a hair of AA. Dilates the fill for hit-testing
+  -- and backs the hull fallback off the raw envelope.
+  local function mark_outline_pad(provider)
+    if provider.id == 'github_actions' or provider.id == 'openrouter' then
+      return 0.45
     elseif provider.id == 'blacksmith' then
-      return 8.5
-    elseif provider.id == 'aws' then
-      return 14.0
+      return 0.70
+    elseif provider.id == 'azure' or provider.id == 'aws' then
+      return 0.30
     end
-    return 5.5
+    return 0.70
   end
 
-  local function trajectory_start_after_mark(provider, x1, y1, x2, y2)
-    -- Inset the centerline by the glyph body plus the solid line's round cap.
-    -- The solid trajectory then just meets the mark edge, while its wider glow
-    -- blends behind the mark instead of creating either a gap or a piercing
-    -- line through the logo.
-    local clearance = mark_clearance(provider)
+  local function mark_collider(provider)
+    local pad = mark_outline_pad(provider)
+    if provider.id == 'github_actions' then
+      return { hull = github_hull, pad = pad }
+    elseif provider.id == 'openrouter' then
+      return { hull = openrouter_hull, pad = pad }
+    elseif provider.id == 'azure' then
+      return { hull = azure_hull, pad = pad }
+    elseif provider.id == 'blacksmith' then
+      return { hull = blacksmith_hull, pad = pad }
+    elseif provider.id == 'aws' then
+      return { hull = aws_hull, pad = pad }
+    end
+    return { radius = 4.3 + pad }
+  end
+
+  local function point_in_hull(lx, ly, hull)
+    local count = #hull
+    if count < 3 then
+      return false
+    end
+    for index = 1, count do
+      local a = hull[index]
+      local b = hull[index % count + 1]
+      if (b[1] - a[1]) * (ly - a[2]) - (b[2] - a[2]) * (lx - a[1]) < -1e-6 then
+        return false
+      end
+    end
+    return true
+  end
+
+  local function mark_contains(collider, mx, my, px, py)
+    if collider.hull then
+      return point_in_hull(px - mx, py - my, collider.hull)
+    end
+    local dx, dy = px - mx, py - my
+    return dx * dx + dy * dy <= collider.radius * collider.radius
+  end
+
+  local function segment_edge_t(x1, y1, x2, y2, x3, y3, x4, y4)
+    local denominator = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4)
+    if math.abs(denominator) < 1e-12 then
+      return nil
+    end
+    local t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denominator
+    local u = ((x1 - x3) * (y1 - y2) - (y1 - y3) * (x1 - x2)) / denominator
+    if t >= 0 and t <= 1 and u >= 0 and u <= 1 then
+      return t
+    end
+    return nil
+  end
+
+  local function first_hull_hit_t(x1, y1, x2, y2, mx, my, hull)
+    local best
+    local count = #hull
+    for index = 1, count do
+      local a = hull[index]
+      local b = hull[index % count + 1]
+      local t = segment_edge_t(
+        x1, y1, x2, y2,
+        mx + a[1], my + a[2],
+        mx + b[1], my + b[2]
+      )
+      if t and (not best or t < best) then
+        best = t
+      end
+    end
+    return best
+  end
+
+  local function add_ops_world_path(cr, ops, local_map, mx, my, reset)
+    if reset then
+      cairo_new_path(cr)
+    else
+      cairo_new_sub_path(cr)
+    end
+    local function to_world(vx, vy)
+      local lx, ly = local_map(vx, vy)
+      return mx + lx, my + ly
+    end
+    for _, op in ipairs(ops) do
+      if op[1] == 'M' then
+        cairo_move_to(cr, to_world(op[2], op[3]))
+      elseif op[1] == 'L' then
+        cairo_line_to(cr, to_world(op[2], op[3]))
+      elseif op[1] == 'C' then
+        local x1, y1 = to_world(op[2], op[3])
+        local x2, y2 = to_world(op[4], op[5])
+        local x3, y3 = to_world(op[6], op[7])
+        cairo_curve_to(cr, x1, y1, x2, y2, x3, y3)
+      elseif op[1] == 'Z' then
+        cairo_close_path(cr)
+      end
+    end
+  end
+
+  local function add_mark_fill_path(cr, provider, mx, my)
+    if provider.id == 'github_actions' then
+      add_ops_world_path(
+        cr, github_mark_ops, uniform_local_map(13.0, 16, 16), mx, my, true
+      )
+    elseif provider.id == 'openrouter' then
+      add_ops_world_path(
+        cr, openrouter_mark_ops, uniform_local_map(15.0, 401.4, 293.7), mx, my, true
+      )
+    elseif provider.id == 'azure' then
+      local azure_local = uniform_local_map(14.0, 96, 96)
+      add_ops_world_path(cr, azure_left_ops, azure_local, mx, my, true)
+      add_ops_world_path(cr, azure_arrow_ops, azure_local, mx, my, false)
+      add_ops_world_path(cr, azure_right_ops, azure_local, mx, my, false)
+    elseif provider.id == 'blacksmith' then
+      add_ops_world_path(
+        cr, blacksmith_mark_ops, uniform_local_map(14.0, 144, 96), mx, my, true
+      )
+    elseif provider.id == 'aws' then
+      add_ops_world_path(cr, aws_smile_ops, aws_smile_map, mx, my, true)
+      add_ops_world_path(cr, aws_arrow_ops, aws_arrow_map, mx, my, false)
+    else
+      cairo_new_path(cr)
+      cairo_arc(cr, mx, my, 4.3, 0, math.pi * 2)
+      cairo_close_path(cr)
+    end
+  end
+
+  local function mark_ink_contains(cr, provider, mx, my, px, py)
+    cairo_save(cr)
+    add_mark_fill_path(cr, provider, mx, my)
+    local hit = cairo_in_fill(cr, px, py) ~= 0
+    if not hit then
+      cairo_set_line_width(cr, mark_outline_pad(provider) * 2)
+      cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND)
+      cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND)
+      hit = cairo_in_stroke(cr, px, py) ~= 0
+    end
+    cairo_new_path(cr)
+    cairo_restore(cr)
+    return hit
+  end
+
+  -- First filled-ink crossing from (x1,y1) toward (x2,y2), as a t in [0,1].
+  -- Starts near the hull so thin strokes are not missed; nil if the ray
+  -- never hits paint (holes, AWS negative space).
+  local function first_ink_t(cr, provider, x1, y1, x2, y2, mx, my, hull_t, distance)
+    local dx, dy = x2 - x1, y2 - y1
+    local start_t = 0
+    if hull_t then
+      start_t = math.max(0, hull_t - 2.5 / distance)
+    end
+    local step = 0.35 / distance
+    local limit_t = 1
+    if hull_t then
+      limit_t = math.min(1, hull_t + 12.0 / distance)
+    end
+    local found
+    local t = start_t
+    while t <= limit_t do
+      if mark_ink_contains(cr, provider, mx, my, x1 + dx * t, y1 + dy * t) then
+        found = t
+        break
+      end
+      t = t + step
+    end
+    if not found then
+      return nil
+    end
+    local lo, hi = math.max(start_t, found - step), found
+    for _ = 1, 12 do
+      local mid = (lo + hi) / 2
+      if mark_ink_contains(cr, provider, mx, my, x1 + dx * mid, y1 + dy * mid) then
+        hi = mid
+      else
+        lo = mid
+      end
+    end
+    return lo
+  end
+
+  -- t along outside->inside where the stroke should stop. Prefers the real
+  -- ink edge; falls back to the convex hull when the ray would dive into a
+  -- concavity or hole (more than a couple of pixels of empty hull).
+  local function contact_t_from_outside(cr, provider, x1, y1, x2, y2, mx, my)
+    local collider = mark_collider(provider)
     local dx, dy = x2 - x1, y2 - y1
     local distance = math.sqrt(dx * dx + dy * dy)
-    if distance <= clearance then
-      return nil, nil
+    if distance < 1e-9 then
+      return nil
     end
-    local ratio = clearance / distance
-    return x1 + dx * ratio, y1 + dy * ratio
+    local hull_t
+    if collider.hull then
+      hull_t = first_hull_hit_t(x1, y1, x2, y2, mx, my, collider.hull)
+    end
+    local ink_t = first_ink_t(
+      cr, provider, x1, y1, x2, y2, mx, my, hull_t, distance
+    )
+    -- Ink t is already just outside the dilated fill (outline included).
+    -- Hull t is the raw fill envelope, so back up by the outline pad.
+    -- Prefer ink so the stroke meets the painted edge; hull is only the
+    -- fallback when the ray misses the artwork (holes, AWS negative space).
+    local pad_t = collider.pad / distance
+    if ink_t then
+      return ink_t
+    end
+    if hull_t then
+      return hull_t - pad_t
+    end
+    return nil
   end
 
-  local function clip_segment_outside_mark(x1, y1, x2, y2, mx, my, clearance)
-    local r2 = clearance * clearance
+  local function clip_circle_outside_mark(x1, y1, x2, y2, mx, my, radius)
+    local r2 = radius * radius
     local function dist2(x, y)
       local dx, dy = x - mx, y - my
       return dx * dx + dy * dy
@@ -696,6 +1040,68 @@ return function(shared, repo_root)
       return x1, y1, ix, iy
     end
     return ix, iy, x2, y2
+  end
+
+  local function clip_segment_outside_mark(cr, provider, x1, y1, x2, y2, mx, my, collider)
+    if not collider.hull then
+      return clip_circle_outside_mark(x1, y1, x2, y2, mx, my, collider.radius)
+    end
+    local inside1 = point_in_hull(x1 - mx, y1 - my, collider.hull)
+    local inside2 = point_in_hull(x2 - mx, y2 - my, collider.hull)
+    if inside1 and inside2 then
+      return nil
+    end
+    local dx, dy = x2 - x1, y2 - y1
+    local distance = math.sqrt(dx * dx + dy * dy)
+    if distance < 1e-9 then
+      return nil
+    end
+    if not inside1 and not inside2 then
+      return x1, y1, x2, y2
+    end
+    if not inside1 then
+      local stop = contact_t_from_outside(cr, provider, x1, y1, x2, y2, mx, my)
+      if not stop or stop <= 0.0 then
+        return nil
+      end
+      return x1, y1, x1 + dx * stop, y1 + dy * stop
+    end
+    local start = contact_t_from_outside(cr, provider, x2, y2, x1, y1, mx, my)
+    if not start then
+      return nil
+    end
+    -- start is t along (x2 -> x1); convert to t along (x1 -> x2).
+    start = 1 - start
+    if start >= 1.0 then
+      return nil
+    end
+    return x1 + dx * start, y1 + dy * start, x2, y2
+  end
+
+  local function trajectory_start_after_mark(cr, provider, mx, my, forecast_x, forecast_y)
+    -- Walk from the EOM point back toward the glyph and start the dotted
+    -- forecast just outside the ink.
+    local collider = mark_collider(provider)
+    local dx, dy = mx - forecast_x, my - forecast_y
+    local distance = math.sqrt(dx * dx + dy * dy)
+    if distance <= 1e-9 then
+      return nil, nil
+    end
+    if collider.hull then
+      local t = contact_t_from_outside(
+        cr, provider, forecast_x, forecast_y, mx, my, mx, my
+      )
+      if not t or t <= 0.0 then
+        return nil, nil
+      end
+      return forecast_x + dx * t, forecast_y + dy * t
+    end
+    local clearance = collider.radius
+    if distance <= clearance then
+      return nil, nil
+    end
+    local ratio = 1 - clearance / distance
+    return forecast_x + dx * ratio, forecast_y + dy * ratio
   end
 
   local function diamond(cr, x, y, radius, color, alpha)
@@ -890,7 +1296,7 @@ return function(shared, repo_root)
         local has_past_samples = #trail > 0
         table.insert(trail, { current_x, current_y })
         local past_segments = {}
-        local clearance = mark_clearance(provider)
+        local collider = mark_collider(provider)
         local entered_mark = false
         if #trail >= 2 then
           for index = 1, #trail - 1 do
@@ -900,13 +1306,11 @@ return function(shared, repo_root)
             local x1, y1 = trail[index][1], trail[index][2]
             local x2, y2 = trail[index + 1][1], trail[index + 1][2]
             local cx1, cy1, cx2, cy2 = clip_segment_outside_mark(
-              x1, y1, x2, y2, current_x, current_y, clearance
+              cr, provider, x1, y1, x2, y2, current_x, current_y, collider
             )
             if cx1 then
               table.insert(past_segments, { cx1, cy1, cx2, cy2 })
-              local dx = x2 - current_x
-              local dy = y2 - current_y
-              if dx * dx + dy * dy <= clearance * clearance then
+              if mark_contains(collider, current_x, current_y, x2, y2) then
                 entered_mark = true
               end
             else
@@ -927,7 +1331,7 @@ return function(shared, repo_root)
         end
         if provider.forecast_available then
           local line_x, line_y = trajectory_start_after_mark(
-            provider, current_x, current_y, forecast_x, forecast_y
+            cr, provider, current_x, current_y, forecast_x, forecast_y
           )
           if line_x then
             dotted_glow_line(

@@ -30,7 +30,8 @@ geometry is unusual, but the underlying axes are conventional:
   retain the filled bead. OpenRouter is `#c8ff00`; Blacksmith's glyph is
   the charcoal C-block with a thin `#f0fb29` outline; Azure's glyph uses
   the brand folded-A blues; AWS's glyph is the brand smile `#ff9900`. Trails
-  meet the marker edge without continuing underneath the service glyph.
+  and forecast segments meet each glyph's painted outline, so they do not
+  run under the mark or leave a circular gap around a non-round logo.
   Diamonds carry no text labels or leader lines.
 - A dimmed trajectory means its last successful value is being retained after
   a failed refresh. A bead with no forecast line or diamond means there is not
