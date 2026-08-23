@@ -53,8 +53,12 @@ def test_overlay_height_has_no_empty_sockets_and_expands_for_more_data():
     assert sessions.overlay_height(0, 1) == sessions.overlay_height(0, 3)
     # Drift field is fixed height — extra ingress devices sink, they do not stretch the window.
     assert sessions.overlay_height(100, 3) == sessions.overlay_height(3, 3)
-    # Extra tmux sessions beyond one row eventually push the bottom down.
-    assert sessions.overlay_height(3, 7) > sessions.overlay_height(3, 3)
+    # Constellation reserves a fixed diamond zone so the bay holds the same
+    # footprint for a few sessions; only when rows exceed that zone does it
+    # grow. 3 sessions (1 row) and 7 (3 rows) now share the same height;
+    # growth is visible only once the zone is exceeded.
+    assert sessions.overlay_height(3, 7) == sessions.overlay_height(3, 3)
+    assert sessions.overlay_height(3, 10) > sessions.overlay_height(3, 3)
 
 
 def test_relative_age_units():

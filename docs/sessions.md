@@ -64,10 +64,10 @@ that is the normal state between sessions, not an error.
 
 ## Placement
 
-Alignment is **`bottom_left`**. The panel is 360px wide and occupies the lower-left
-column below the Git status panel. Its default `gap_x` is 20px and its default
-`gap_y` is 14px, leaving a small screen margin while keeping the tall rail clear
-of the top Linear cards.
+Alignment is **`bottom_left`**. The panel is 440px wide, flush with the left edge,
+and occupies the lower-left area below the Git status panel. Its default `gap_x`
+is 4px and its default `gap_y` is 6px, using the full collision-free gutter before
+the rate-limit panel.
 
 The renderer is the Constellation instrument. It is transparent like the [Affine
 billing map](billing.md) — no outer frame, panel fill, or card background.
@@ -84,9 +84,9 @@ faint dashed arc links the session diamonds.
 
 The window self-sizes through `${lua_parse sessions_height_spacer}`, the same
 mechanism the [rate limit panel](rate-limit-panel.md) uses. Because it is
-bottom-anchored the field grows upward. The field is a fixed 358px drift at
-minimum; an extra row of tmux destinations beyond three will make the window
-taller than its 760px minimum, and the socket row is hidden entirely when no
+bottom-anchored the field grows upward. The expanded drift field fills the lower-left space below Git, and destinations
+are bottom-aligned within their zone. An extra row of tmux destinations beyond
+three will make the window taller than its 790px minimum, and the socket row is hidden entirely when no
 tmux server is running. Only real tmux sessions produce diamonds — empty
 placeholder sockets are never drawn, so a single session shows a single
 diamond, not a padded row of three. `minimum_height` is seeded at launch from
@@ -95,8 +95,8 @@ diamond, not a padded row of three. `minimum_height` is seeded at launch from
 | Variable | Purpose |
 | --- | --- |
 | `SESSIONS_OVERLAY_ENABLED` | `0` disables overlay + fetch loop |
-| `SESSIONS_GAP_X` | Left offset in px (default `20`) |
-| `SESSIONS_GAP_Y` | Bottom offset in px (default `14`) |
+| `SESSIONS_GAP_X` | Left offset in px (default `4`) |
+| `SESSIONS_GAP_Y` | Bottom offset in px (default `6`) |
 | `SESSIONS_REFRESH_SECONDS` | Fetch interval (default `20`) |
 
 See [Configuration](configuration.md) for the full variable table.

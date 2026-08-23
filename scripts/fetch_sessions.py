@@ -31,12 +31,14 @@ LOG_PATH = CACHE_DIR / "conky-sessions.log"
 # Drift keeps a fixed sinking field for ingress origins and a fixed bottom row
 # for tmux destinations. Height only grows when a second destination row is
 # needed.
-PANEL_MIN_HEIGHT = 760
-PANEL_DRIFT_TOP = 112
-PANEL_DRIFT_HEIGHT = 358
+PANEL_MIN_HEIGHT = 790
+PANEL_DRIFT_TOP = 0
+PANEL_DRIFT_FULL_HEIGHT = 460
+PANEL_DRIFT_MIN_HEIGHT = 430
 PANEL_SOURCE_COLUMNS = 3
-PANEL_DESTINATION_ROW_HEIGHT = 104
-PANEL_FOOTER_HEIGHT = 70
+PANEL_DESTINATION_ROW_HEIGHT = 110
+PANEL_FOOTER_HEIGHT = 0
+PANEL_DIAMOND_ZONE_HEIGHT = 330
 
 # Tailscale OS strings -> the glyph the renderer draws.
 OS_GLYPHS = {
@@ -399,11 +401,11 @@ def session_rows_for(sessions):
 def overlay_height(device_count, session_count, sessions=None):
     """Conky minimum_height for the panel.
 
-    Must match the layout math in conky/sessions-renderer.lua.
-    Drift keeps a fixed sinking field; the bottom socket row is only reserved
-    when at least one tmux session exists. No empty placeholder sockets are
-    drawn — the strip shows exactly session_count diamonds, packed so
-    same-repo sessions stay next to each other (may leave a gap at row end).
+    Must match conky/sessions-renderer.lua: a fixed constellation field
+    (PANEL_DRIFT_FULL_HEIGHT) plus a diamond zone that always reserves
+    PANEL_DIAMOND_ZONE_HEIGHT so the bay holds the same footprint even when
+    only one row of diamonds is present. Only an extra diamond row beyond
+    that grows the panel.
     """
     if session_count == 0:
         session_rows = 0
@@ -411,13 +413,11 @@ def overlay_height(device_count, session_count, sessions=None):
         session_rows = session_rows_for(sessions)
     else:
         session_rows = ceil(session_count / PANEL_SOURCE_COLUMNS)
-    content_height = (
-        PANEL_DRIFT_TOP
-        + PANEL_DRIFT_HEIGHT
-        + session_rows * PANEL_DESTINATION_ROW_HEIGHT
-        + PANEL_FOOTER_HEIGHT
-    )
-    return max(PANEL_MIN_HEIGHT, content_height)
+    diamond_reserved = max(PANEL_DIAMOND_ZONE_HEIGHT, session_rows * PANEL_DESTINATION_ROW_HEIGHT)
+    needed = PANEL_DRIFT_TOP + PANEL_DRIFT_FULL_HEIGHT + diamond_reserved + PANEL_FOOTER_HEIGHT
+    if PANEL_DRIFT_FULL_HEIGHT < PANEL_DRIFT_MIN_HEIGHT:
+        needed = PANEL_DRIFT_TOP + PANEL_DRIFT_MIN_HEIGHT + diamond_reserved + PANEL_FOOTER_HEIGHT
+    return max(PANEL_MIN_HEIGHT, needed)
 
 
 def current_overlay_height():

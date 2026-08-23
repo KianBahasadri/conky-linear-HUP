@@ -2,16 +2,18 @@ return function(shared, repo_root)
   local sessions_path = repo_root .. '/cache/sessions.json'
   local font = 'JetBrains Mono'
 
-  local panel_width = 360
-  local panel_min_height = 760
+  local panel_width = 440
+  local panel_min_height = 790
 
-  local content_left = 22
-  local content_right = panel_width - 22
+  local content_left = 18
+  local content_right = panel_width - 18
   local slot_columns = 3
-  local drift_top = 112
-  local drift_nominal_height = 358
-  local destination_row_height = 104
-  local footer_height = 70
+  local drift_top = 0
+  local drift_full_height = 460
+  local drift_min_height = 430
+  local destination_row_height = 110
+  local footer_height = 0
+  local diamond_zone_height = 330
 
   local green = '39ff88'
   local red = 'f87171'
@@ -130,13 +132,34 @@ return function(shared, repo_root)
   end
 
   local function panel_height(state)
-    local session_count = state and state.sessions and #state.sessions or 0
-    local session_rows = 0
-    if session_count > 0 then
-      session_rows = math.ceil(session_count / slot_columns)
+    local n = state and state.sessions and #state.sessions or 0
+    local rows = 0
+    if n > 0 then
+      rows = math.ceil(n / slot_columns)
+      local rr, cc = 0, 0
+      local k = 1
+      while k <= n do
+        local repo = (state.sessions[k].repo or state.sessions[k].path or state.sessions[k].name or ''):lower()
+        local kk = k + 1
+        while kk <= n and ((state.sessions[kk].repo or state.sessions[kk].path or state.sessions[kk].name or ''):lower() == repo) do kk = kk + 1 end
+        local gs = kk - k
+        if cc ~= 0 and gs <= slot_columns and gs > (slot_columns - cc) then rr = rr + 1; cc = 0 end
+        for t = k, kk - 1 do
+          if cc >= slot_columns then rr = rr + 1; cc = 0 end
+          cc = cc + 1
+          if cc >= slot_columns and t ~= n then rr = rr + 1; cc = 0 end
+        end
+        k = kk
+      end
+      if cc == 0 then rows = rr else rows = rr + 1 end
+      if rows == 0 then rows = math.ceil(n / slot_columns) end
     end
-    local content_height = drift_top + drift_nominal_height + session_rows * destination_row_height + footer_height
-    return math.max(panel_min_height, content_height)
+    local diamond_reserved = math.max(diamond_zone_height, rows * destination_row_height)
+    local needed = drift_top + drift_full_height + diamond_reserved + footer_height
+    if drift_full_height < drift_min_height then
+      needed = drift_top + drift_min_height + diamond_reserved + footer_height
+    end
+    return math.max(panel_min_height, needed)
   end
 
   local function flat_text(cr, label, x, baseline, size, color, alpha, align)
@@ -249,58 +272,99 @@ return function(shared, repo_root)
     cairo_rectangle(cr, cx - 1.85, by + bh * 0.5 - 0.35, 3.8, 0.65); cairo_fill(cr)
   end
 
-  local function draw_nebula(cr, x, y)
-    -- very subtle washes — barely visible on transparent desktop, just depth
-    radial_hex(cr, x + panel_width * 0.50, y + drift_top + 88, 0, 420, {
-      {0,    'f8fafc', 0.022}, {0.30, '94a3b8', 0.010}, {0.62, '64748b', 0.004}, {1, '000000', 0},
+  local function draw_nebula(cr, x, y, layout)
+    local fh = layout and layout.field_height or drift_full_height
+    radial_hex(cr, x + panel_width * 0.50, y + drift_top + fh * 0.18, 0, 520, {
+      {0,    'f8fafc', 0.075}, {0.28, '94a3b8', 0.036}, {0.60, '64748b', 0.018}, {1, '000000', 0},
     })
-    radial_hex(cr, x + 108, y + drift_top + 52, 0, 170, {
-      {0, '94a3b8', 0.014}, {1, '000000', 0},
+    radial_hex(cr, x + 76, y + drift_top + 42, 0, 210, {
+      {0, '94a3b8', 0.050}, {1, '000000', 0},
     })
-    radial_hex(cr, x + 190, y + drift_top + drift_nominal_height * 0.88, 0, 220, {
-      {0, '39ff88', 0.007}, {1, '000000', 0},
+    radial_hex(cr, x + panel_width * 0.74, y + drift_top + fh * 0.52, 0, 260, {
+      {0, '39ff88', 0.032}, {0.45, '38bdf8', 0.022}, {1, '000000', 0},
     })
-    -- soft vignette toward edges
+    radial_hex(cr, x + panel_width * 0.26, y + drift_top + fh * 0.36, 0, 200, {
+      {0, 'a78bfa', 0.032}, {0.52, 'f472b6', 0.016}, {1, '000000', 0},
+    })
+    radial_hex(cr, x + panel_width * 0.50, y + drift_top + fh * 0.78, 0, 180, {
+      {0, 'facc15', 0.022}, {1, '000000', 0},
+    })
     if cairo_pattern_create_radial then
-      local cx, cy = x + panel_width / 2, y + drift_top + drift_nominal_height / 2
-      local r0, r1 = drift_nominal_height * 0.40, drift_nominal_height * 0.90
+      local cx, cy = x + panel_width / 2, y + drift_top + fh / 2
+      local r0, r1 = fh * 0.32, fh * 0.98
       local pat = cairo_pattern_create_radial(cx, cy, r0, cx, cy, r1)
       cairo_pattern_add_color_stop_rgba(pat, 0, 0, 0, 0, 0)
-      cairo_pattern_add_color_stop_rgba(pat, 1, 0, 0, 0, 0.07)
+      cairo_pattern_add_color_stop_rgba(pat, 1, 0, 0, 0, 0.14)
       cairo_set_source(cr, pat)
-      cairo_rectangle(cr, x + content_left, y + drift_top, panel_width - 44, drift_nominal_height)
+      cairo_rectangle(cr, x + content_left, y + drift_top, panel_width - (content_left*2) + 12, fh + 18)
       cairo_fill(cr)
       if cairo_pattern_destroy then cairo_pattern_destroy(pat) end
     end
   end
 
   local function draw_field_stars(cr, x, y, layout, slot_width, star_pos, diamond_pos)
-    -- deterministic micro-stars, seeded per frame count so they don't crawl
     local seed = 42
     local function rnd() seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296 end
-    for _ = 1, 30 do
-      local sx = x + 8 + rnd() * (panel_width - 16)
-      local sy = y + 14 + rnd() * (layout.field_height + 34)
+    local density = (panel_width * layout.field_height) / (520 * 520)
+    local total = math.floor(118 * density + 0.5)
+    if total < 72 then total = 72 end
+    if total > 155 then total = 155 end
+    for _ = 1, total do
+      local sx = x + 10 + rnd() * (panel_width - 20)
+      local sy = y + 10 + rnd() * (layout.field_height + 34)
       local too_close = false
       for _, p in ipairs(star_pos) do
         local dx, dy = sx - p[1], sy - p[2]
-        if dx*dx + dy*dy < 18*18 then too_close = true; break end
+        if dx*dx + dy*dy < 14*14 then too_close = true; break end
       end
       if not too_close then
         for _, p in ipairs(diamond_pos) do
           local dx, dy = sx - p[1], sy - p[2]
-          if dx*dx + dy*dy < 18*18 then too_close = true; break end
+          if dx*dx + dy*dy < 15*15 then too_close = true; break end
         end
       end
       if not too_close then
-        local r = 0.45 + rnd() * 0.50
-        local a = rnd() * 0.14 + 0.06
-        if rnd() < 0.16 then
-          radial_hex(cr, sx, sy, 0, 3.2, {{0,'f8fafc', a * 0.35},{1,'000000',0}})
+        local tier = rnd()
+        local r, a, halo
+        if tier < 0.14 then
+          r = 1.05 + rnd() * 0.70
+          a = 0.38 + rnd() * 0.26
+          halo = true
+        elseif tier < 0.38 then
+          r = 0.68 + rnd() * 0.46
+          a = 0.26 + rnd() * 0.18
+          halo = rnd() < 0.55
+        elseif tier < 0.70 then
+          r = 0.48 + rnd() * 0.34
+          a = 0.18 + rnd() * 0.14
+          halo = rnd() < 0.22
+        else
+          r = 0.32 + rnd() * 0.26
+          a = 0.12 + rnd() * 0.10
+          halo = false
         end
-        shared.set_hex(cr, rnd() < 0.18 and 'e2e8f0' or 'f8fafc', a)
+        if halo then
+          radial_hex(cr, sx, sy, 0, r * 4.0, {{0,'f8fafc', a * 0.50},{1,'000000',0}})
+        end
+        local tint_roll = rnd()
+        local tint = 'f8fafc'
+        if tint_roll < 0.16 then tint = 'e2e8f0'
+        elseif tint_roll < 0.24 then tint = 'a5b4fc'
+        elseif tint_roll < 0.30 then tint = '7dd3fc'
+        end
+        shared.set_hex(cr, tint, a)
         cairo_arc(cr, sx, sy, r, 0, math.pi * 2)
         cairo_fill(cr)
+        if tier < 0.08 then
+          shared.set_hex(cr, 'f8fafc', a * 0.62)
+          cairo_set_line_width(cr, 0.60)
+          cairo_move_to(cr, sx - r*2.0, sy); cairo_line_to(cr, sx + r*2.0, sy); cairo_stroke(cr)
+          cairo_move_to(cr, sx, sy - r*2.0); cairo_line_to(cr, sx, sy + r*2.0); cairo_stroke(cr)
+        end
+        if tier < 0.04 then
+          shared.set_hex(cr, tint, a * 0.22)
+          cairo_arc(cr, sx, sy, r * 2.4, 0, math.pi * 2); cairo_fill(cr)
+        end
       end
     end
   end
@@ -526,19 +590,27 @@ return function(shared, repo_root)
       if session_rows == 0 then session_rows = math.ceil(session_count / slot_columns) end
     end
     height = height or panel_height(state)
-    local destination_top = height - footer_height - session_rows * destination_row_height
     local field_top = drift_top
-    local field_bottom = destination_top - 14
-    if field_bottom - field_top < drift_nominal_height then
-      field_bottom = field_top + drift_nominal_height
+    local diamond_reserved = math.max(diamond_zone_height, session_rows * destination_row_height)
+    local reserved = diamond_reserved + footer_height
+    local field_height = height - field_top - reserved
+    if field_height < drift_min_height then
+      field_height = drift_min_height
+      height = field_top + field_height + reserved
     end
+    if field_height > drift_full_height then
+      field_height = drift_full_height
+      height = field_top + field_height + reserved
+    end
+    local field_bottom = field_top + field_height
+    local destination_top = field_bottom + diamond_reserved - session_rows * destination_row_height
     return {
       session_slots = session_slots,
       session_rows = session_rows,
       destination_top = destination_top,
       field_top = field_top,
       field_bottom = field_bottom,
-      field_height = field_bottom - field_top,
+      field_height = field_height,
       status_divider = height - footer_height,
       height = height,
     }
@@ -597,10 +669,10 @@ return function(shared, repo_root)
         local count = #arr
         local spacing
         if count == 1 then spacing = 0
-        elseif count == 2 then spacing = 96
-        else spacing = 74 end
+        elseif count == 2 then spacing = 190
+        else spacing = 175 end
         local stagger = (r % 2 == 1) and 14 or 0
-        local row_base_y = y + layout.destination_top + destination_row_height * r + 46 + (r % 2 == 1 and 7 or 0)
+        local row_base_y = y + layout.destination_top + destination_row_height * r + 76 + (r % 2 == 1 and 7 or 0)
         local max_off = (count - 1) / 2 * spacing
         for k, item in ipairs(arr) do
           local off = (k - (count + 1) / 2) * spacing + stagger
@@ -631,7 +703,7 @@ return function(shared, repo_root)
     end
 
     -- depth: nebula + field stars (behind everything)
-    draw_nebula(cr, x, y)
+    draw_nebula(cr, x, y, layout)
     draw_field_stars(cr, x, y, layout, slot_width, star_pos, diamond_list)
 
     -- constellation arc linking diamonds (faint skeleton)
