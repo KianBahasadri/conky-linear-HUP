@@ -269,13 +269,13 @@ return function(shared, repo_root)
         cairo_arc(cr, cx, cy, 7.2, 0, math.pi * 2)
         cairo_stroke(cr)
       end
-      local label = fit_text(cr, device.name, slot_width - 10, 7)
+      local label = fit_text(cr, device.name, slot_width - 10, 9)
       local lab_color = device.state == 'alert' and red or (device.state == 'live' and text_color or muted)
       local lab_alpha = device.state == 'idle' and 0.62 or 0.96
-      flat_text(cr, label, cx, cy + 15, 7, lab_color, lab_alpha, 'center')
+      flat_text(cr, label, cx, cy + 17, 9, lab_color, lab_alpha, 'center')
     end
     if #state.devices == 0 then
-      flat_text(cr, 'no inbound', x + panel_width / 2, y + layout.field_top + layout.field_height / 2, 7, dim, 0.62, 'center')
+      flat_text(cr, 'no inbound', x + panel_width / 2, y + layout.field_top + layout.field_height / 2, 9, dim, 0.62, 'center')
     end
 
     -- destination diamonds + labels (no empty sockets)
@@ -299,12 +299,12 @@ return function(shared, repo_root)
         cairo_set_line_width(cr, 1.15)
         cairo_stroke(cr)
       end
-      local lab = fit_text(cr, session.name, slot_width - 12, 7)
-      flat_text(cr, lab, cx, cy + 20, 7, live and text_color or dim, live and 0.96 or 0.62, 'center')
+      local lab = fit_text(cr, session.name, slot_width - 12, 9)
+      flat_text(cr, lab, cx, cy + 22, 9, live and text_color or dim, live and 0.96 or 0.62, 'center')
       if live then
-        flat_text(cr, string.format('%dw', session.windows), cx, cy + 30, 6, dim, 0.62, 'center')
+        flat_text(cr, string.format('%dw', session.windows), cx, cy + 34, 8, dim, 0.62, 'center')
       else
-        flat_text(cr, 'open', cx, cy + 30, 6, dim, 0.48, 'center')
+        flat_text(cr, 'open', cx, cy + 34, 8, dim, 0.48, 'center')
       end
     end
 
@@ -317,8 +317,8 @@ return function(shared, repo_root)
     cairo_move_to(cr, x + content_left, y + 64)
     cairo_line_to(cr, x + content_right, y + 64)
     cairo_stroke(cr)
-    flat_text(cr, 'PATCH BAY', x + content_left, y + 31, 9, muted, 0.62)
-    flat_text(cr, fit_text(cr, state.error or 'error', panel_width - 48, 7), x + content_left, y + 88, 7, red, 0.92)
+    flat_text(cr, 'PATCH BAY', x + content_left, y + 31, 11, muted, 0.62)
+    flat_text(cr, fit_text(cr, state.error or 'error', panel_width - 48, 9), x + content_left, y + 88, 9, red, 0.92)
   end
 
   local function needed_height()
