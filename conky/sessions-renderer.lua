@@ -19,6 +19,49 @@ return function(shared, repo_root)
   local dim = '334155'
   local text_color = 'f8fafc'
 
+  local repo_palette = {
+    '39ff88',
+    '38bdf8',
+    'a78bfa',
+    'f472b6',
+    'facc15',
+    '2dd4bf',
+    'fb923c',
+    '818cf8',
+    'a3e635',
+    '22d3ee',
+  }
+
+  local function repo_key(session)
+    local repo = session.repo
+    if repo and repo ~= '' then return repo end
+    local p = session.path or ''
+    if p == '' then return session.name or '?' end
+    p = p:gsub('/+$', '')
+    if p == '~' then return '~' end
+    if p:sub(1, 2) == '~/' then
+      p = p:sub(3)
+    end
+    local base = p:match('([^/]+)$')
+    if base and base ~= '' then return base end
+    return p
+  end
+
+  local function hash_string(s)
+    local h = 0
+    for i = 1, #s do
+      h = (h * 31 + s:byte(i) * i) % 2147483647
+    end
+    return h
+  end
+
+  local function repo_color_for(session)
+    local key = repo_key(session)
+    local h = hash_string(key:lower())
+    local idx = (h % #repo_palette) + 1
+    return repo_palette[idx]
+  end
+
   local function json_objects(body)
     local objects = {}
     for object in body:gmatch('%b{}') do table.insert(objects, object) end
@@ -77,6 +120,7 @@ return function(shared, repo_root)
         windows = number_field(object, 'windows'),
         panes = number_field(object, 'panes'),
         path = field(object, 'path') or '',
+        repo = field(object, 'repo') or '',
         attached = attached ~= '' and attached or nil,
         idle = field(object, 'idle') or '',
         idleSeconds = number_field(object, 'idleSeconds'),
@@ -279,6 +323,34 @@ return function(shared, repo_root)
     cairo_set_line_cap(cr, CAIRO_LINE_CAP_BUTT)
   end
 
+  local function constellation_gradient(cr, x1, y1, x2, y2, col, alpha)
+    alpha = alpha or 0.50
+    if not cairo_pattern_create_linear then
+      constellation_line(cr, x1, y1, x2, y2, col, alpha)
+      return
+    end
+    local function stroke_gradient(width, stops)
+      local pat = cairo_pattern_create_linear(x1, y1, x2, y2)
+      for _, s in ipairs(stops) do
+        local r, g, b = hex_rgb(s[2])
+        cairo_pattern_add_color_stop_rgba(pat, s[1], r, g, b, s[3])
+      end
+      cairo_set_source(cr, pat)
+      cairo_set_line_width(cr, width)
+      cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND)
+      cairo_move_to(cr, x1, y1); cairo_line_to(cr, x2, y2); cairo_stroke(cr)
+      if cairo_pattern_destroy then cairo_pattern_destroy(pat) end
+    end
+    stroke_gradient(6.0, {{0, 'f8fafc', 0.12}, {0.38, 'f8fafc', 0.12}, {0.66, col, 0.085 * alpha / 0.50}, {1, col, 0.085 * alpha / 0.50}})
+    stroke_gradient(2.8, {{0, 'f8fafc', 0.22}, {0.38, 'f8fafc', 0.22}, {0.66, col, 0.16 * alpha / 0.50}, {1, col, 0.16 * alpha / 0.50}})
+    stroke_gradient(1.0, {{0, 'f8fafc', 0.62}, {0.38, 'f8fafc', 0.62}, {0.58, col, alpha}, {1, col, alpha}})
+    shared.set_hex(cr, 'f8fafc', 0.16)
+    cairo_set_line_width(cr, 0.45)
+    cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND)
+    cairo_move_to(cr, x1, y1); cairo_line_to(cr, x2, y2); cairo_stroke(cr)
+    cairo_set_line_cap(cr, CAIRO_LINE_CAP_BUTT)
+  end
+
   local function idle_tail(cr, cx, cy)
     if cairo_pattern_create_linear then
       local pat = cairo_pattern_create_linear(cx, cy + 5, cx, cy + 32)
@@ -332,16 +404,18 @@ return function(shared, repo_root)
     end
   end
 
-  local function draw_diamond(cr, cx, cy, state)
+  local function draw_diamond(cr, cx, cy, state, col)
     local r = state == 'live' and 8.2 or 6.6
-    local col = state == 'live' and green or dim
+    local draw_col = col or (state == 'live' and green or dim)
+    local idle_col = col or dim
+    local halo_col = state == 'live' and draw_col or idle_col
     local halo = state == 'live' and 20 or 13
-    radial_hex(cr, cx, cy, 0, halo, {{0, col, state == 'live' and 0.16 or 0.09},{0.45, col, state == 'live' and 0.040 or 0.022},{1, col, 0}})
+    radial_hex(cr, cx, cy, 0, halo, {{0, halo_col, state == 'live' and 0.16 or 0.09},{0.45, halo_col, state == 'live' and 0.040 or 0.022},{1, halo_col, 0}})
     cairo_move_to(cr, cx, cy - r); cairo_line_to(cr, cx + r, cy); cairo_line_to(cr, cx, cy + r); cairo_line_to(cr, cx - r, cy); cairo_close_path(cr)
     if state == 'live' then
       if cairo_pattern_create_linear then
         local pat = cairo_pattern_create_linear(cx, cy - r, cx, cy + r)
-        local rr, gg, bb = hex_rgb(green)
+        local rr, gg, bb = hex_rgb(draw_col)
         cairo_pattern_add_color_stop_rgba(pat, 0, rr, gg, bb, 0.88)
         cairo_pattern_add_color_stop_rgba(pat, 0.55, rr, gg, bb, 0.46)
         cairo_pattern_add_color_stop_rgba(pat, 1, rr, gg, bb, 0.14)
@@ -349,16 +423,16 @@ return function(shared, repo_root)
         cairo_fill_preserve(cr)
         if cairo_pattern_destroy then cairo_pattern_destroy(pat) end
       else
-        shared.set_hex(cr, green, 0.72); cairo_fill_preserve(cr)
+        shared.set_hex(cr, draw_col, 0.72); cairo_fill_preserve(cr)
       end
-      shared.set_hex(cr, green, 0.84); cairo_set_line_width(cr, 1.0); cairo_stroke(cr)
+      shared.set_hex(cr, draw_col, 0.84); cairo_set_line_width(cr, 1.0); cairo_stroke(cr)
       shared.set_hex(cr, 'ffffff', 0.34); cairo_set_line_width(cr, 0.45)
       cairo_move_to(cr, cx - r * 0.38, cy - r * 0.38); cairo_line_to(cr, cx, cy - r + 0.55); cairo_line_to(cr, cx + r * 0.38, cy - r * 0.38); cairo_stroke(cr)
       shared.set_hex(cr, 'ffffff', 0.72); cairo_arc(cr, cx, cy - 0.9, 0.58, 0, math.pi*2); cairo_fill(cr)
     else
       shared.set_hex(cr, '020617', 0.58); cairo_fill_preserve(cr)
-      shared.set_hex(cr, dim, 0.46); cairo_set_line_width(cr, 0.90); cairo_stroke(cr)
-      shared.set_hex(cr, dim, 0.11)
+      shared.set_hex(cr, idle_col, 0.46); cairo_set_line_width(cr, 0.90); cairo_stroke(cr)
+      shared.set_hex(cr, idle_col, 0.18)
       cairo_move_to(cr, cx, cy - r*0.56); cairo_line_to(cr, cx + r*0.56, cy); cairo_line_to(cr, cx, cy + r*0.56); cairo_line_to(cr, cx - r*0.56, cy); cairo_close_path(cr); cairo_fill(cr)
     end
   end
@@ -383,7 +457,26 @@ return function(shared, repo_root)
     local session_slots = session_count
     local session_rows = 0
     if session_count > 0 then
-      session_rows = math.ceil(session_count / slot_columns)
+      local n = session_count
+      local row, col = 0, 0
+      local i = 1
+      while i <= n do
+        local repo = (state.sessions[i].repo or state.sessions[i].path or state.sessions[i].name or ''):lower()
+        local j = i + 1
+        while j <= n and ((state.sessions[j].repo or state.sessions[j].path or state.sessions[j].name or ''):lower() == repo) do j = j + 1 end
+        local group_size = j - i
+        if col ~= 0 and group_size <= slot_columns and group_size > (slot_columns - col) then
+          row = row + 1; col = 0
+        end
+        for k = i, j - 1 do
+          if col >= slot_columns then row = row + 1; col = 0 end
+          col = col + 1
+          if col >= slot_columns and k ~= n then row = row + 1; col = 0 end
+        end
+        i = j
+      end
+      if col == 0 then session_rows = row else session_rows = row + 1 end
+      if session_rows == 0 then session_rows = math.ceil(session_count / slot_columns) end
     end
     height = height or panel_height(state)
     local destination_top = height - footer_height - session_rows * destination_row_height
@@ -410,16 +503,42 @@ return function(shared, repo_root)
     local sessions_by_name = {}
     for _, s in ipairs(state.sessions) do sessions_by_name[s.name] = s end
 
-    -- positions
+    -- positions (same-repo groups stay contiguous; bump a group to next row if it wouldn't fit)
     local star_pos = {}
     local star_list = {}
     local diamond_list = {}
     local session_positions = {}
-    for index, session in ipairs(state.sessions) do
-      local cx = x + column_center(index, slot_width)
-      local cy = y + layout.destination_top + destination_row_height * math.floor((index - 1) / slot_columns) + 46
-      session_positions[session.name] = { x = cx, y = cy }
-      table.insert(diamond_list, {cx, cy})
+    local slot_for_session = {}
+    do
+      local n = #state.sessions
+      local row, col = 0, 0
+      local i = 1
+      local slot = 0
+      while i <= n do
+        local repo = (state.sessions[i].repo or state.sessions[i].path or state.sessions[i].name or ''):lower()
+        local j = i + 1
+        while j <= n and ((state.sessions[j].repo or state.sessions[j].path or state.sessions[j].name or ''):lower() == repo) do j = j + 1 end
+        local group_size = j - i
+        if col ~= 0 and group_size <= slot_columns and group_size > (slot_columns - col) then
+          slot = slot + (slot_columns - col)
+          row = row + 1; col = 0
+        end
+        for k = i, j - 1 do
+          if col >= slot_columns then row = row + 1; col = 0 end
+          slot = slot + 1
+          slot_for_session[k] = slot
+          col = col + 1
+          if col >= slot_columns and k ~= n then row = row + 1; col = 0 end
+        end
+        i = j
+      end
+      for index, session in ipairs(state.sessions) do
+        local s = slot_for_session[index] or index
+        local cx = x + column_center(s, slot_width)
+        local cy = y + layout.destination_top + destination_row_height * math.floor((s - 1) / slot_columns) + 46
+        session_positions[session.name] = { x = cx, y = cy }
+        table.insert(diamond_list, {cx, cy})
+      end
     end
     for index, device in ipairs(state.devices) do
       local cx = x + column_center(index, slot_width)
@@ -478,8 +597,10 @@ return function(shared, repo_root)
       local is_live = device.state == 'live' and device.state ~= 'alert'
       if is_live then
         local targets = {}
+        local target_sessions = {}
         if device.session and session_positions[device.session] then
           table.insert(targets, session_positions[device.session])
+          target_sessions[session_positions[device.session]] = sessions_by_name[device.session]
         end
         for _, sess in ipairs(state.sessions) do
           if sess.attached and sess.attached:find(device.name, 1, true) then
@@ -487,7 +608,10 @@ return function(shared, repo_root)
             if pos then
               local already = false
               for _, t in ipairs(targets) do if t == pos then already = true; break end end
-              if not already then table.insert(targets, pos) end
+              if not already then
+                table.insert(targets, pos)
+                target_sessions[pos] = sess
+              end
             end
           end
         end
@@ -497,13 +621,12 @@ return function(shared, repo_root)
           local len = math.sqrt(dx*dx + dy*dy)
           local nx, ny = len > 0 and dx/len or 0, len > 0 and dy/len or 0
           local a = icon_inset(kind, device.state, nx, ny)
-          local live_target = false
-          for _, s in ipairs(state.sessions) do
-            if session_positions[s.name] == target then live_target = s.attached ~= nil; break end
-          end
+          local sess = target_sessions[target]
+          local live_target = sess and sess.attached ~= nil or false
           local b = diamond_inset(live_target, nx, ny)
           local x1, y1, x2, y2 = inset_line(entry.cx, entry.cy, target.x, target.y, a, b)
-          constellation_line(cr, x1, y1, x2, y2, green, 0.48)
+          local col = sess and live_target and repo_color_for(sess) or green
+          constellation_gradient(cr, x1, y1, x2, y2, col, 0.52)
         end
       end
     end
@@ -517,11 +640,14 @@ return function(shared, repo_root)
 
     -- alert X handled inside draw_star; idle tail above is for idle only
 
-    -- stars/icons + labels (phone/laptop with glow, fallback dot star)
+    -- stars/icons + labels (ingress is always white; alert stays red, idle stays dim)
     for _, entry in ipairs(star_list) do
       local device = entry.device
       local cx, cy = entry.cx, entry.cy
-      local color = device.state == 'alert' and red or (device.state == 'idle' and dim or green)
+      local color
+      if device.state == 'alert' then color = red
+      elseif device.state == 'idle' then color = dim
+      else color = 'f8fafc' end
       local filled = device.state == 'live' or device.state == 'alert'
       local kind = device.state ~= 'alert' and device_icon_kind(device) or nil
       if kind == 'phone' then
@@ -529,7 +655,16 @@ return function(shared, repo_root)
       elseif kind == 'laptop' then
         draw_laptop_icon(cr, cx, cy, color, filled)
       else
-        draw_star(cr, cx, cy, device.state)
+        if device.state == 'live' then
+          radial_hex(cr, cx, cy, 0, 17, {{0, color, 0.14},{0.28, color, 0.05},{0.62, color, 0.012},{1, color, 0}})
+          radial_hex(cr, cx, cy, 0, 7, {{0, color, 0.10},{1, color, 0}})
+          shared.set_hex(cr, color, 0.14); cairo_arc(cr, cx, cy, 3.6, 0, math.pi*2); cairo_fill(cr)
+          shared.set_hex(cr, color, 1.0); cairo_arc(cr, cx, cy, 2.05, 0, math.pi*2); cairo_fill(cr)
+          shared.set_hex(cr, 'ffffff', 0.86); cairo_arc(cr, cx - 0.50, cy - 0.68, 0.72, 0, math.pi*2); cairo_fill(cr)
+          shared.set_hex(cr, color, 0.42); cairo_set_line_width(cr, 0.60); cairo_arc(cr, cx, cy, 2.05, 0, math.pi*2); cairo_stroke(cr)
+        else
+          draw_star(cr, cx, cy, device.state)
+        end
       end
       local label = fit_text(cr, device.name, slot_width - 10, 8)
       local lab_color, lab_alpha, lab_w = text_color, 0.92, CAIRO_FONT_WEIGHT_BOLD
@@ -549,13 +684,15 @@ return function(shared, repo_root)
       flat_text(cr, 'no inbound', x + panel_width / 2, y + layout.field_top + layout.field_height / 2, 8, dim, 0.52, 'center')
     end
 
-    -- diamonds + labels
+    -- diamonds + labels (live tinted by repo, same colour on filament)
     for index, session in ipairs(state.sessions) do
-      local cx = x + column_center(index, slot_width)
-      local row = math.floor((index - 1) / slot_columns)
+      local s = slot_for_session[index] or index
+      local cx = x + column_center(s, slot_width)
+      local row = math.floor((s - 1) / slot_columns)
       local cy = y + layout.destination_top + row * destination_row_height + 46
       local live = session.attached ~= nil
-      draw_diamond(cr, cx, cy, live and 'live' or 'idle')
+      local col = repo_color_for(session)
+      draw_diamond(cr, cx, cy, live and 'live' or 'idle', col)
       local lab = fit_text(cr, session.name, slot_width - 12, 9)
       local r = live and 8.2 or 6.6
       flat_text(cr, lab, cx, cy + r + 13, live and 9 or 8.4, live and text_color or muted, live and 0.90 or 0.72, 'center')

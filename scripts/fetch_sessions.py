@@ -89,6 +89,22 @@ def shorten_path(path):
     return path
 
 
+def repo_from_path(path):
+    """Best-effort repo key from a session path."""
+    if not path:
+        return ""
+    name = Path(path).expanduser().name
+    if name and name != "." and name != "":
+        return name
+    try:
+        expanded = str(Path(path).expanduser())
+    except (OSError, ValueError, RuntimeError):
+        return ""
+    if expanded in ("", "/"):
+        return expanded
+    return Path(expanded).name or expanded
+
+
 def tmux_sessions():
     """name -> session record. Empty when no tmux server is running."""
     listing = tmux(
@@ -118,6 +134,7 @@ def tmux_sessions():
             "windows": int(windows) if windows.isdigit() else 1,
             "panes": 0,
             "path": shorten_path(path),
+            "repo": repo_from_path(path),
             "attached": [],
             "idle": relative_age(idle_seconds) if idle_seconds is not None else "",
             "idleSeconds": idle_seconds if idle_seconds is not None else 0,
@@ -330,7 +347,11 @@ def collect():
 
     session_list = sorted(
         sessions.values(),
-        key=lambda item: (not item["attached"], item["name"]),
+        key=lambda item: (
+            not item["attached"],
+            (item.get("repo") or "").lower(),
+            item["name"].lower(),
+        ),
     )
     for session in session_list:
         session["attached"] = ", ".join(session["attached"])
@@ -338,16 +359,56 @@ def collect():
     return devices, session_list
 
 
-def overlay_height(device_count, session_count):
+def session_rows_for(sessions):
+    """Rows needed when same-repo sessions stay next to each other.
+
+    Packs repo groups left-to-right; a group that wouldn't fit in the
+    remaining slots of the current row is bumped to the next row (leaving
+    a gap) unless the group itself is larger than a row. Must stay in
+    sync with conky/sessions-renderer.lua layout_for.
+    """
+    if not sessions:
+        return 0
+    n = len(sessions)
+    row = 0
+    col = 0
+    i = 0
+    while i < n:
+        repo = (sessions[i].get("repo") or "").lower()
+        j = i + 1
+        while j < n and (sessions[j].get("repo") or "").lower() == repo:
+            j += 1
+        group_size = j - i
+        if col != 0 and group_size <= PANEL_SOURCE_COLUMNS and group_size > (PANEL_SOURCE_COLUMNS - col):
+            row += 1
+            col = 0
+        for k in range(i, j):
+            if col >= PANEL_SOURCE_COLUMNS:
+                row += 1
+                col = 0
+            col += 1
+            if col >= PANEL_SOURCE_COLUMNS and k != n - 1:
+                row += 1
+                col = 0
+        i = j
+    if col == 0:
+        return row
+    return row + 1
+
+
+def overlay_height(device_count, session_count, sessions=None):
     """Conky minimum_height for the panel.
 
     Must match the layout math in conky/sessions-renderer.lua.
     Drift keeps a fixed sinking field; the bottom socket row is only reserved
     when at least one tmux session exists. No empty placeholder sockets are
-    drawn — the strip shows exactly session_count diamonds.
+    drawn — the strip shows exactly session_count diamonds, packed so
+    same-repo sessions stay next to each other (may leave a gap at row end).
     """
     if session_count == 0:
         session_rows = 0
+    elif sessions is not None:
+        session_rows = session_rows_for(sessions)
     else:
         session_rows = ceil(session_count / PANEL_SOURCE_COLUMNS)
     content_height = (
@@ -363,15 +424,16 @@ def current_overlay_height():
     """Height for the state right now, falling back to the last written cache."""
     try:
         devices, sessions = collect()
-        return overlay_height(len(devices), len(sessions))
+        return overlay_height(len(devices), len(sessions), sessions)
     except (OSError, ValueError):
         pass
     try:
         payload = json.loads(SESSIONS_PATH.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return overlay_height(0, 0)
+    payload_sessions = payload.get("sessions") or []
     return overlay_height(
-        len(payload.get("devices") or []), len(payload.get("sessions") or [])
+        len(payload.get("devices") or []), len(payload_sessions), payload_sessions
     )
 
 
@@ -396,7 +458,7 @@ def main():
         atomic_write_json(SESSIONS_PATH, payload)
         log_event(
             f"updated devices={len(devices)} sessions={len(sessions)} "
-            f"sshd_listening={listening} height={overlay_height(len(devices), len(sessions))}"
+            f"sshd_listening={listening} height={overlay_height(len(devices), len(sessions), sessions)}"
         )
         return 0
     except OSError as error:
