@@ -2,7 +2,7 @@ return function(shared, repo_root)
   local font = 'JetBrains Mono'
   local hud_width = 268
   -- Gauge arc tops sit at y=12, matching Linear card top_padding.
-  local gauge_center_y = 45
+  local gauge_center_y = 50
   local history_limit = tonumber(os.getenv('RESOURCE_HISTORY_SAMPLES') or '') or 90
   history_limit = math.floor(shared.clamp(history_limit, 30, 180))
   -- NET gauge arcs use a short moving average so bursty traffic does not make
@@ -500,7 +500,7 @@ return function(shared, repo_root)
 
     cairo_new_path(cr)
     shared.set_hex(cr, colors.dim, 0.72)
-    cairo_set_line_width(cr, 4)
+    cairo_set_line_width(cr, 5)
     cairo_arc(cr, center_x, center_y, radius, start_angle, end_angle)
     cairo_stroke(cr)
 
@@ -511,7 +511,7 @@ return function(shared, repo_root)
       local inner_radius = outer_radius - (tick % 3 == 0 and 5 or 3)
       local active = tick / 12 <= value / 100
       shared.set_hex(cr, active and metric.color or colors.dim, active and 0.84 or 0.42)
-      cairo_set_line_width(cr, tick % 3 == 0 and 1.2 or 0.8)
+      cairo_set_line_width(cr, tick % 3 == 0 and 1.5 or 1.0)
       cairo_move_to(
         cr,
         center_x + math.cos(tick_angle) * outer_radius,
@@ -528,13 +528,13 @@ return function(shared, repo_root)
     if value > 0.2 then
       cairo_new_path(cr)
       shared.set_hex(cr, metric.color, 0.13)
-      cairo_set_line_width(cr, 11)
+      cairo_set_line_width(cr, 13)
       cairo_arc(cr, center_x, center_y, radius, start_angle, active_angle)
       cairo_stroke(cr)
 
       cairo_new_path(cr)
       shared.set_hex(cr, metric.color, 0.98)
-      cairo_set_line_width(cr, 3.4)
+      cairo_set_line_width(cr, 4.6)
       if cairo_set_line_cap and CAIRO_LINE_CAP_ROUND then
         cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND)
       end
@@ -548,7 +548,7 @@ return function(shared, repo_root)
     local needle_sin = math.sin(active_angle)
     cairo_new_path(cr)
     shared.set_hex(cr, metric.color, 0.88)
-    cairo_set_line_width(cr, 1.25)
+    cairo_set_line_width(cr, 1.8)
     if cairo_set_line_cap and CAIRO_LINE_CAP_ROUND then
       cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND)
     end
@@ -569,7 +569,7 @@ return function(shared, repo_root)
       metric.value,
       center_x,
       center_y + 5,
-      metric.value_size or 13,
+      metric.value_size or 15,
       colors.text,
       0.98,
       CAIRO_FONT_WEIGHT_BOLD
@@ -579,7 +579,7 @@ return function(shared, repo_root)
       metric.label,
       center_x,
       center_y + radius - 4,
-      7,
+      12,
       metric.color,
       0.94,
       CAIRO_FONT_WEIGHT_BOLD
@@ -640,7 +640,7 @@ return function(shared, repo_root)
       local inner_radius = outer_radius - (tick % 3 == 0 and 5 or 3)
       local active = tick / 12 <= down_value / 100
       shared.set_hex(cr, active and metric.down_color or colors.dim, active and 0.84 or 0.42)
-      cairo_set_line_width(cr, tick % 3 == 0 and 1.2 or 0.8)
+      cairo_set_line_width(cr, tick % 3 == 0 and 1.5 or 1.0)
       cairo_move_to(
         cr,
         center_x + math.cos(tick_angle) * outer_radius,
@@ -654,8 +654,8 @@ return function(shared, repo_root)
       cairo_stroke(cr)
     end
 
-    draw_gauge_arc(cr, center_x, center_y, down_radius, metric.down_percent, metric.down_color, 3.2, 9)
-    draw_gauge_arc(cr, center_x, center_y, up_radius, metric.up_percent, metric.up_color, 2.4, 6)
+    draw_gauge_arc(cr, center_x, center_y, down_radius, metric.down_percent, metric.down_color, 4.2, 11)
+    draw_gauge_arc(cr, center_x, center_y, up_radius, metric.up_percent, metric.up_color, 3.2, 8)
 
     shared.set_hex(cr, colors.dim, 0.9)
     cairo_arc(cr, center_x, center_y, 2.0, 0, math.pi * 2)
@@ -666,7 +666,7 @@ return function(shared, repo_root)
       metric.value,
       center_x,
       center_y + 5,
-      metric.value_size or 12,
+      metric.value_size or 14,
       colors.text,
       0.98,
       CAIRO_FONT_WEIGHT_BOLD
@@ -676,7 +676,7 @@ return function(shared, repo_root)
       metric.label,
       center_x,
       center_y + radius - 4,
-      7,
+      12,
       metric.down_color,
       0.94,
       CAIRO_FONT_WEIGHT_BOLD
@@ -795,7 +795,6 @@ return function(shared, repo_root)
   local function draw_hud(cr, status, x, y)
     local cpu_color = usage_color(status.cpu, colors.green)
     local ram_color = usage_color(status.ram, colors.violet)
-    local disk_color = usage_color(math.max(status.root_disk or 0, status.home_disk or 0), colors.amber)
     local rx_peak, tx_peak = 1024, 1024
     for _, sample in ipairs(history) do
       rx_peak = math.max(rx_peak, sample.rx_rate or 0)
@@ -814,13 +813,13 @@ return function(shared, repo_root)
       value = string.format('%.0f%%', status.cpu),
       percent = status.cpu,
       color = cpu_color,
-    }, x + 38, y + gauge_center_y, 33)
+    }, x + 38, y + gauge_center_y, 38)
     draw_gauge(cr, {
       label = 'RAM',
       value = string.format('%.0f%%', status.ram),
       percent = status.ram,
       color = ram_color,
-    }, x + 134, y + gauge_center_y, 33)
+    }, x + 134, y + gauge_center_y, 38)
     draw_net_gauge(cr, {
       label = 'NET',
       value = format_rate_compact(smooth_net),
@@ -828,8 +827,8 @@ return function(shared, repo_root)
       up_percent = up_percent,
       down_color = colors.cyan,
       up_color = colors.magenta,
-      value_size = #format_rate_compact(smooth_net) > 4 and 10 or 12,
-    }, x + 230, y + gauge_center_y, 33)
+      value_size = #format_rate_compact(smooth_net) > 4 and 12 or 14,
+    }, x + 230, y + gauge_center_y, 38)
 
     local cpu_trace, ram_trace, rx_trace, tx_trace = {}, {}, {}, {}
     for _, sample in ipairs(history) do
@@ -845,24 +844,12 @@ return function(shared, repo_root)
       { values = ram_trace, color = ram_color, maximum = 100 },
       { values = rx_trace, color = colors.cyan, maximum = rate_ceiling },
       { values = tx_trace, color = colors.magenta, maximum = rate_ceiling },
-    }, x + 12, y + 90, hud_width - 24, 34)
+    }, x + 12, y + 96, hud_width - 24, 52)
 
-    draw_readout_grid(cr, {
-      { label = 'LOAD', value = string.format('%.2f', status.load_one), color = cpu_color },
-      { label = 'UP', value = format_duration(status.uptime), color = colors.green },
-      {
-        label = '/',
-        value = format_gib_fraction(status.root_disk_used, status.root_disk_total),
-        color = disk_color,
-      },
-      {
-        label = '/home',
-        value = format_gib_fraction(status.home_disk_used, status.home_disk_total),
-        color = disk_color,
-      },
-      { label = 'IN', value = format_rate_compact(status.rx_rate) .. '/s', color = colors.cyan },
-      { label = 'OUT', value = format_rate_compact(status.tx_rate) .. '/s', color = colors.magenta },
-    }, x + 13, y + 153, hud_width - 26, 3, 19)
+    -- Bottom readout rows removed: LOAD/UP, //home, IN/OUT are now
+    -- readable from the gauges (CPU/RAM/NET) and the shared trace;
+    -- keep the lower third quiet so the resource HUD stays a
+    -- gauge + sparkline instrument.
   end
 
   local function draw()
