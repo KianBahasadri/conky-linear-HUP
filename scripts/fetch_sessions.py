@@ -289,13 +289,13 @@ def overlay_height(device_count, session_count):
 
     Must match the layout math in conky/sessions-renderer.lua.
     Drift keeps a fixed sinking field; the bottom socket row is only reserved
-    when at least one tmux session exists.
+    when at least one tmux session exists. No empty placeholder sockets are
+    drawn — the strip shows exactly session_count diamonds.
     """
     if session_count == 0:
         session_rows = 0
     else:
-        session_slots = max(PANEL_SOURCE_COLUMNS, session_count)
-        session_rows = max(1, ceil(session_slots / PANEL_SOURCE_COLUMNS))
+        session_rows = ceil(session_count / PANEL_SOURCE_COLUMNS)
     content_height = (
         PANEL_DRIFT_TOP
         + PANEL_DRIFT_HEIGHT

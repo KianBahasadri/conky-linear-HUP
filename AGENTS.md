@@ -8,6 +8,8 @@ Do not ask for a screenshot to check how a change looks. Run
 `uv run python scripts/render_desktop.py` and read the PNG it writes; see
 [docs/desktop-render.md](docs/desktop-render.md) for its options.
 
+After editing anything under `conky/` (Lua renderers, entrypoints, or `*.conkyrc`), run `./scripts/start_conky_overlays.sh` so `conky/generated/*.conkyrc` are regenerated and live windows reload — the user watches the desktop, so this is how they see your change. Then verify with `render_desktop.py`. See [docs/getting-started.md](docs/getting-started.md#iterating-on-overlays).
+
 ## Documentation (read/write)
 
 - **Read first:** For how this repo works, start at `docs/README.md`, then

@@ -74,7 +74,9 @@ mechanism the [rate limit panel](rate-limit-panel.md) uses. Because it is
 bottom-anchored the field grows upward. The field is a fixed 358px drift at
 minimum; an extra row of tmux destinations beyond three will make the window
 taller than its 760px minimum, and the socket row is hidden entirely when no
-tmux server is running. `minimum_height` is seeded at launch from
+tmux server is running. Only real tmux sessions produce diamonds — empty
+placeholder sockets are never drawn, so a single session shows a single
+diamond, not a padded row of three. `minimum_height` is seeded at launch from
 `fetch_sessions.py --print-overlay-height`.
 
 | Variable | Purpose |
@@ -92,6 +94,6 @@ See [Configuration](configuration.md) for the full variable table.
 | --- | --- |
 | Height | Freshness. Top is now, bottom is stale (sunk). Three faint isobars are only depth guides. |
 | Dot | Ingress origin. Filled green is live and driving a session, hollow dim is idle, filled red is an unresolved remote. No OS glyph is drawn — the dot is the state. |
-| Diamond | Tmux destination. Filled green has a client attached, hollow dim is open. |
+| Diamond | Tmux destination. Filled green has a client attached, hollow dim is open. No empty placeholder diamonds are drawn — the strip shows exactly one diamond per tmux session. |
 | Thread | Live is a taut green line from dot to its diamond. Idle is a short dim sag that stops in the field. Alert is a short red stub that ends in an X and never reaches a diamond. |
 | Footer | How many live vs idle origins, whether any are unresolved, and whether `sshd` is listening. |

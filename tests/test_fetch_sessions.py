@@ -43,9 +43,14 @@ def test_device_for_treats_the_console_as_local():
     )
 
 
-def test_overlay_height_keeps_three_slots_and_expands_for_more_data():
+def test_overlay_height_has_no_empty_sockets_and_expands_for_more_data():
     assert sessions.overlay_height(0, 0) == sessions.PANEL_MIN_HEIGHT
     assert sessions.overlay_height(3, 3) == sessions.PANEL_MIN_HEIGHT
+    # No empty placeholder sockets: 1 or 2 sessions use exactly that many diamonds,
+    # not a padded row of three. Height stays at one row until >3 sessions.
+    assert sessions.overlay_height(0, 1) == sessions.PANEL_MIN_HEIGHT
+    assert sessions.overlay_height(0, 2) == sessions.PANEL_MIN_HEIGHT
+    assert sessions.overlay_height(0, 1) == sessions.overlay_height(0, 3)
     # Drift field is fixed height — extra ingress devices sink, they do not stretch the window.
     assert sessions.overlay_height(100, 3) == sessions.overlay_height(3, 3)
     # Extra tmux sessions beyond one row eventually push the bottom down.

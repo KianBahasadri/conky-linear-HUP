@@ -93,8 +93,7 @@ return function(shared, repo_root)
     local session_count = state and state.sessions and #state.sessions or 0
     local session_rows = 0
     if session_count > 0 then
-      local session_slots = math.max(slot_columns, session_count)
-      session_rows = math.max(1, math.ceil(session_slots / slot_columns))
+      session_rows = math.ceil(session_count / slot_columns)
     end
     local content_height = drift_top + drift_nominal_height + session_rows * destination_row_height + footer_height
     return math.max(panel_min_height, content_height)
@@ -144,11 +143,10 @@ return function(shared, repo_root)
 
   local function layout_for(state, height)
     local session_count = state and state.sessions and #state.sessions or 0
-    local session_slots = 0
+    local session_slots = session_count
     local session_rows = 0
     if session_count > 0 then
-      session_slots = math.max(slot_columns, session_count)
-      session_rows = math.max(1, math.ceil(session_slots / slot_columns))
+      session_rows = math.ceil(session_count / slot_columns)
     end
     height = height or panel_height(state)
     local destination_top = height - footer_height - session_rows * destination_row_height
@@ -193,17 +191,12 @@ return function(shared, repo_root)
       cairo_stroke(cr)
     end
 
-    -- destinations: fixed bottom row, diamonds
+    -- destinations: only real sessions, no empty placeholder sockets
     local session_positions = {}
     for index, session in ipairs(state.sessions) do
       local cx = x + column_center(index, slot_width)
       local cy = y + layout.destination_top + destination_row_height * math.floor((index - 1) / slot_columns) + 46
       session_positions[session.name] = { x = cx, y = cy }
-    end
-    for index = #state.sessions + 1, layout.session_slots do
-      local cx = x + column_center(index, slot_width)
-      local cy = y + layout.destination_top + destination_row_height * math.floor((index - 1) / slot_columns) + 46
-      session_positions['__empty_' .. index] = { x = cx, y = cy }
     end
 
     -- threads: height is time
@@ -285,14 +278,12 @@ return function(shared, repo_root)
       flat_text(cr, 'no inbound', x + panel_width / 2, y + layout.field_top + layout.field_height / 2, 7, dim, 0.62, 'center')
     end
 
-    -- destination diamonds + labels
-    if layout.session_slots > 0 then
-    for index = 1, layout.session_slots do
-      local session = state.sessions[index]
+    -- destination diamonds + labels (no empty sockets)
+    for index, session in ipairs(state.sessions) do
       local cx = x + column_center(index, slot_width)
       local row = math.floor((index - 1) / slot_columns)
       local cy = y + layout.destination_top + row * destination_row_height + 46
-      local live = session and session.attached ~= nil
+      local live = session.attached ~= nil
       local col = live and green or dim
       cairo_new_path(cr)
       cairo_move_to(cr, cx, cy - 7)
@@ -308,15 +299,13 @@ return function(shared, repo_root)
         cairo_set_line_width(cr, 1.15)
         cairo_stroke(cr)
       end
-      local name = session and session.name or '--'
-      local lab = fit_text(cr, name, slot_width - 12, 7)
+      local lab = fit_text(cr, session.name, slot_width - 12, 7)
       flat_text(cr, lab, cx, cy + 20, 7, live and text_color or dim, live and 0.96 or 0.62, 'center')
-      if session and live then
+      if live then
         flat_text(cr, string.format('%dw', session.windows), cx, cy + 30, 6, dim, 0.62, 'center')
-      elseif session then
+      else
         flat_text(cr, 'open', cx, cy + 30, 6, dim, 0.48, 'center')
       end
-    end
     end
 
     -- footer hidden for minimal Drift (like billing map)
