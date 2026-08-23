@@ -93,7 +93,7 @@ See [Configuration](configuration.md) for the full variable table.
 | Element | Meaning |
 | --- | --- |
 | Height | Freshness. Top is now, bottom is stale (sunk). Three faint isobars are only depth guides. |
-| Dot | Ingress origin. Filled green is live and driving a session, hollow dim is idle, filled red is an unresolved remote. No OS glyph is drawn — the dot is the state. |
+| Dot | Ingress origin. Filled green is live and driving a session, hollow dim is idle, filled red is an unresolved remote. Known devices show a glyph-derived icon instead of a dot — `phone` for Android/iOS (e.g., Pixel 8a) and `laptop` for `terminal`/`laptop`/`monitor` (e.g., `tty2`, linux/macOS). Unknown origins fallback to a plain dot; alerts always stay as a red dot + X. Icon stroke/fill still encodes the state. |
 | Diamond | Tmux destination. Filled green has a client attached, hollow dim is open. No empty placeholder diamonds are drawn — the strip shows exactly one diamond per tmux session. |
 | Thread | Live is a taut green line from dot to its diamond. Idle is a short dim sag that stops in the field. Alert is a short red stub that ends in an X and never reaches a diamond. |
 | Footer | How many live vs idle origins, whether any are unresolved, and whether `sshd` is listening. |

@@ -141,6 +141,77 @@ return function(shared, repo_root)
     return device.ageSeconds or 0
   end
 
+  local function device_icon_kind(device)
+    -- Prefer the glyph from fetch_sessions (phone/laptop/monitor/terminal/alert) but
+    -- also handle the two names the user cares about explicitly: any tty* and
+    -- the Pixel 8. Anything else falls back to a plain dot so the panel stays
+    -- quiet until a known device appears.
+    local glyph = device.glyph or ""
+    local name = (device.name or ""):lower()
+    if glyph == "phone" or name:find("pixel") then return "phone" end
+    if glyph == "laptop" or glyph == "monitor" or glyph == "terminal" or name:match("^tty%d*") then
+      return "laptop"
+    end
+    return nil
+  end
+
+  local function draw_phone_icon(cr, cx, cy, color, filled, alpha)
+    local w, h, r = 7.5, 12, 1.4
+    local x, y = cx - w / 2, cy - h / 2
+    shared.rounded_rect(cr, x, y, w, h, r)
+    if filled then
+      shared.set_hex(cr, color, alpha or 1)
+      cairo_fill_preserve(cr)
+      shared.set_hex(cr, color, 1)
+      cairo_set_line_width(cr, 0.9)
+      cairo_stroke(cr)
+    else
+      shared.set_hex(cr, color, 0.96)
+      cairo_set_line_width(cr, 1.15)
+      cairo_stroke(cr)
+    end
+    -- screen
+    shared.set_hex(cr, color, filled and 0.18 or 0.28)
+    cairo_rectangle(cr, x + 1, y + 1.7, w - 2, h - 4.4)
+    cairo_fill(cr)
+    -- home indicator
+    shared.set_hex(cr, color, filled and 1 or 0.85)
+    cairo_arc(cr, cx, y + h - 1.3, 0.7, 0, math.pi * 2)
+    cairo_fill(cr)
+  end
+
+  local function draw_laptop_icon(cr, cx, cy, color, filled, alpha)
+    local sw, sh = 12, 7.2
+    local bw, bh = 14, 2.0
+    local sx, sy = cx - sw / 2, cy - sh / 2 - 1.4
+    local bx, by = cx - bw / 2, cy + sh / 2 + 0.2
+    -- screen
+    shared.rounded_rect(cr, sx, sy, sw, sh, 1.1)
+    if filled then
+      shared.set_hex(cr, color, alpha or 1)
+      cairo_fill_preserve(cr)
+      shared.set_hex(cr, color, 1)
+      cairo_set_line_width(cr, 0.9)
+      cairo_stroke(cr)
+    else
+      shared.set_hex(cr, color, 0.96)
+      cairo_set_line_width(cr, 1.15)
+      cairo_stroke(cr)
+    end
+    -- inner screen
+    shared.set_hex(cr, color, filled and 0.16 or 0.26)
+    cairo_rectangle(cr, sx + 1, sy + 1, sw - 2, sh - 1.8)
+    cairo_fill(cr)
+    -- base
+    shared.set_hex(cr, color, filled and 0.95 or 0.82)
+    cairo_rectangle(cr, bx, by, bw, bh)
+    cairo_fill(cr)
+    -- notch/base line
+    shared.set_hex(cr, color, filled and 1 or 0.9)
+    cairo_rectangle(cr, cx - 1.6, by + bh * 0.5 - 0.3, 3.2, 0.6)
+    cairo_fill(cr)
+  end
+
   local function layout_for(state, height)
     local session_count = state and state.sessions and #state.sessions or 0
     local session_slots = session_count
@@ -243,7 +314,7 @@ return function(shared, repo_root)
       end
     end
 
-    -- ingress dots + labels
+    -- ingress icons/dots + labels: phone/laptop for known devices, dot fallback
     for index, device in ipairs(state.devices) do
       local cx = x + column_center(index, slot_width)
       local age = session_idle_for(device, sessions_by_name)
@@ -253,21 +324,30 @@ return function(shared, repo_root)
       if device.state == 'alert' then color = red
       elseif device.state == 'idle' then color = dim end
       local filled = device.state == 'live' or device.state == 'alert'
-      if filled then
-        shared.set_hex(cr, color, 1)
-        cairo_new_path(cr)
-        cairo_arc(cr, cx, cy, 4.7, 0, math.pi * 2)
-        cairo_fill(cr)
+      local icon = device_icon_kind(device)
+      -- Alerts always keep the red dot + X stub language, never an icon.
+      if device.state == 'alert' then icon = nil end
+      if icon == "phone" then
+        draw_phone_icon(cr, cx, cy, color, filled, filled and 1 or 0.92)
+      elseif icon == "laptop" then
+        draw_laptop_icon(cr, cx, cy, color, filled, filled and 1 or 0.92)
       else
-        shared.set_hex(cr, color, 0.95)
-        cairo_set_line_width(cr, 1.2)
-        cairo_new_path(cr)
-        cairo_arc(cr, cx, cy, 4.7, 0, math.pi * 2)
-        cairo_stroke(cr)
-        shared.set_hex(cr, dim, 0.28)
-        cairo_new_path(cr)
-        cairo_arc(cr, cx, cy, 7.2, 0, math.pi * 2)
-        cairo_stroke(cr)
+        if filled then
+          shared.set_hex(cr, color, 1)
+          cairo_new_path(cr)
+          cairo_arc(cr, cx, cy, 4.7, 0, math.pi * 2)
+          cairo_fill(cr)
+        else
+          shared.set_hex(cr, color, 0.95)
+          cairo_set_line_width(cr, 1.2)
+          cairo_new_path(cr)
+          cairo_arc(cr, cx, cy, 4.7, 0, math.pi * 2)
+          cairo_stroke(cr)
+          shared.set_hex(cr, dim, 0.28)
+          cairo_new_path(cr)
+          cairo_arc(cr, cx, cy, 7.2, 0, math.pi * 2)
+          cairo_stroke(cr)
+        end
       end
       local label = fit_text(cr, device.name, slot_width - 10, 9)
       local lab_color = device.state == 'alert' and red or (device.state == 'live' and text_color or muted)
