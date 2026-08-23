@@ -69,12 +69,18 @@ column below the Git status panel. Its default `gap_x` is 20px and its default
 `gap_y` is 14px, leaving a small screen margin while keeping the tall rail clear
 of the top Linear cards.
 
-The renderer is the Drift instrument. It is transparent like the [Affine
+The renderer is the Constellation instrument. It is transparent like the [Affine
 billing map](billing.md) — no outer frame, panel fill, or card background.
 Height *is* time: a fresh login floats at the top of the field and a stale
 one sinks toward the bottom linearly (0 to 48h). A live login that is
 driving a session sinks with that session's `idleSeconds` instead of its own
-`ageSeconds`, so an old but active session stays high.
+`ageSeconds`, so an old but active session stays high. Origins are stars on
+a faint starfield — glowing phone/laptop icons for known devices (with a
+soft halo), plain star dots otherwise — linked by glowing constellation
+filaments to their destination diamonds. Subtle nebula washes and field
+micro-stars add depth; idle origins show a short fading tail, alerts a red
+burst. Filaments kiss glyph and diamond edges without overlapping, and a
+faint dashed arc links the session diamonds.
 
 The window self-sizes through `${lua_parse sessions_height_spacer}`, the same
 mechanism the [rate limit panel](rate-limit-panel.md) uses. Because it is
@@ -99,8 +105,8 @@ See [Configuration](configuration.md) for the full variable table.
 
 | Element | Meaning |
 | --- | --- |
-| Height | Freshness. Top is now, bottom is stale (sunk). Three faint isobars are only depth guides. |
-| Dot | Ingress origin. Filled green is live and driving a session, hollow dim is idle, filled red is an unresolved remote. Known devices show a glyph-derived icon instead of a dot — `phone` for Android/iOS (e.g., Pixel 8a) and `laptop` for `terminal`/`laptop`/`monitor` (e.g., `tty2`, linux/macOS). Unknown origins fallback to a plain dot; alerts always stay as a red dot + X. Icon stroke/fill still encodes the state. |
-| Diamond | Tmux destination. Filled green has a client attached, hollow dim is open. No empty placeholder diamonds are drawn — the strip shows exactly one diamond per tmux session. |
-| Thread | Live is a taut green line from dot to its diamond. Idle is a short dim sag that stops in the field. Alert is a short red stub that ends in an X and never reaches a diamond. |
+| Height | Freshness. Top is now, bottom is stale (sunk). |
+| Star / icon | Ingress origin on the starfield. Glowing phone (`phone`/Pixel) or laptop (`terminal`/`laptop`/`monitor`/`tty*`) for known devices, plain star dot otherwise; filled green is live, hollow dim is idle, filled red with burst is unresolved. Halo and fill encode state. |
+| Diamond | Tmux destination. Glowing filled green when attached, hollow dim when open. No empty placeholder diamonds — exactly one per real session. A faint dashed arc links them. |
+| Filament | Live is a glowing green constellation line from icon/star to its diamond, kissing each edge. Idle is a short fading tail. Alert has no filament — its burst sits at the star. |
 | Footer | How many live vs idle origins, whether any are unresolved, and whether `sshd` is listening. |
