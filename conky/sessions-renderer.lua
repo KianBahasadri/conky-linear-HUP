@@ -351,6 +351,53 @@ return function(shared, repo_root)
     cairo_set_line_cap(cr, CAIRO_LINE_CAP_BUTT)
   end
 
+  local function segment_dist(px, py, x1, y1, x2, y2)
+    local l2 = (x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1)
+    if l2 == 0 then return math.sqrt((px - x1) * (px - x1) + (py - y1) * (py - y1)) end
+    local t = ((px - x1) * (x2 - x1) + (py - y1) * (y2 - y1)) / l2
+    if t < 0 then t = 0 elseif t > 1 then t = 1 end
+    local px2 = x1 + t * (x2 - x1)
+    local py2 = y1 + t * (y2 - y1)
+    return math.sqrt((px - px2) * (px - px2) + (py - py2) * (py - py2))
+  end
+
+  local function draw_filament(cr, x1, y1, x2, y2, col, alpha, diamonds, target, panel_cx)
+    alpha = alpha or 0.52
+    local hit = false
+    for _, d in ipairs(diamonds) do
+      if math.abs(d[1] - target.x) > 0.5 or math.abs(d[2] - target.y) > 0.5 then
+        if segment_dist(d[1], d[2], x1, y1, x2, y2) < 12 then hit = true; break end
+      end
+    end
+    if not hit then constellation_gradient(cr, x1, y1, x2, y2, col, alpha); return end
+    local mx, my = (x1 + x2) * 0.5, (y1 + y2) * 0.5
+    local dx, dy = x2 - x1, y2 - y1
+    local L = math.sqrt(dx * dx + dy * dy)
+    if L < 1 then constellation_gradient(cr, x1, y1, x2, y2, col, alpha); return end
+    local nx, ny = dx / L, dy / L
+    local perpx, perpy = -ny, nx
+    local sign = mx < panel_cx and -1 or 1
+    local qx, qy = mx + perpx * 28 * sign, my + perpy * 28 * sign
+    local c1x, c1y = x1 + 2/3 * (qx - x1), y1 + 2/3 * (qy - y1)
+    local c2x, c2y = x2 + 2/3 * (qx - x2), y2 + 2/3 * (qy - y2)
+    local function qpath()
+      cairo_move_to(cr, x1, y1); cairo_curve_to(cr, c1x, c1y, c2x, c2y, x2, y2)
+    end
+    local function stroke_q(width, stops)
+      local pat = cairo_pattern_create_linear and cairo_pattern_create_linear(x1, y1, x2, y2) or nil
+      if pat then
+        for _, s in ipairs(stops) do local r, g, b = hex_rgb(s[2]); cairo_pattern_add_color_stop_rgba(pat, s[1], r, g, b, s[3]) end
+        cairo_set_source(cr, pat); cairo_set_line_width(cr, width); cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND); qpath(); cairo_stroke(cr)
+        if cairo_pattern_destroy then cairo_pattern_destroy(pat) end
+      else shared.set_hex(cr, col, alpha); cairo_set_line_width(cr, width); qpath(); cairo_stroke(cr) end
+    end
+    stroke_q(6.0, {{0,'f8fafc',0.12},{0.38,'f8fafc',0.12},{0.66,col,0.085*alpha/0.50},{1,col,0.085*alpha/0.50}})
+    stroke_q(2.8, {{0,'f8fafc',0.22},{0.38,'f8fafc',0.22},{0.66,col,0.16*alpha/0.50},{1,col,0.16*alpha/0.50}})
+    stroke_q(1.0, {{0,'f8fafc',0.62},{0.38,'f8fafc',0.62},{0.58,col,alpha},{1,col,alpha}})
+    shared.set_hex(cr,'f8fafc',0.16); cairo_set_line_width(cr,0.45); cairo_set_line_cap(cr,CAIRO_LINE_CAP_ROUND); qpath(); cairo_stroke(cr)
+    cairo_set_line_cap(cr,CAIRO_LINE_CAP_BUTT)
+  end
+
   local function idle_tail(cr, cx, cy)
     if cairo_pattern_create_linear then
       local pat = cairo_pattern_create_linear(cx, cy + 5, cx, cy + 32)
@@ -503,12 +550,16 @@ return function(shared, repo_root)
     local sessions_by_name = {}
     for _, s in ipairs(state.sessions) do sessions_by_name[s.name] = s end
 
-    -- positions (same-repo groups stay contiguous; bump a group to next row if it wouldn't fit)
+    -- positions — same-repo groups stay contiguous; bump a group to next row
+    -- if it wouldn't fit, then cool centred constellation rows with a gentle
+    -- honeycomb stagger + shallow bowl so the whole diamond field reads like a
+    -- cockpit radar formation instead of a boring grid.
     local star_pos = {}
     local star_list = {}
     local diamond_list = {}
     local session_positions = {}
     local slot_for_session = {}
+    local row_for_slot = {}
     do
       local n = #state.sessions
       local row, col = 0, 0
@@ -527,21 +578,51 @@ return function(shared, repo_root)
           if col >= slot_columns then row = row + 1; col = 0 end
           slot = slot + 1
           slot_for_session[k] = slot
+          row_for_slot[slot] = row
           col = col + 1
           if col >= slot_columns and k ~= n then row = row + 1; col = 0 end
         end
         i = j
       end
-      for index, session in ipairs(state.sessions) do
-        local s = slot_for_session[index] or index
-        local cx = x + column_center(s, slot_width)
-        local cy = y + layout.destination_top + destination_row_height * math.floor((s - 1) / slot_columns) + 46
-        session_positions[session.name] = { x = cx, y = cy }
-        table.insert(diamond_list, {cx, cy})
+      local rows = {}
+      for idx, session in ipairs(state.sessions) do
+        local s = slot_for_session[idx] or idx
+        local r = row_for_slot[s] or math.floor((s - 1) / slot_columns)
+        if not rows[r] then rows[r] = {} end
+        table.insert(rows[r], { session = session, slot = s, idx = idx })
+      end
+      local panel_cx = x + panel_width / 2
+      for r, arr in pairs(rows) do
+        table.sort(arr, function(a, b) return a.slot < b.slot end)
+        local count = #arr
+        local spacing
+        if count == 1 then spacing = 0
+        elseif count == 2 then spacing = 96
+        else spacing = 74 end
+        local stagger = (r % 2 == 1) and 14 or 0
+        local row_base_y = y + layout.destination_top + destination_row_height * r + 46 + (r % 2 == 1 and 7 or 0)
+        local max_off = (count - 1) / 2 * spacing
+        for k, item in ipairs(arr) do
+          local off = (k - (count + 1) / 2) * spacing + stagger
+          if off >  panel_width/2 - 34 then off =  panel_width/2 - 34 end
+          if off < -panel_width/2 + 34 then off = -panel_width/2 + 34 end
+          local bow = 0
+          if max_off > 0 then bow = (1 - math.abs(off - stagger) / max_off) * 9 end
+          if count == 2 then bow = bow * 0.55 end
+          local cx = panel_cx + off
+          local cy = row_base_y + bow
+          session_positions[item.session.name] = { x = cx, y = cy }
+          table.insert(diamond_list, {cx, cy})
+        end
       end
     end
     for index, device in ipairs(state.devices) do
-      local cx = x + column_center(index, slot_width)
+      local cx
+      if #state.devices == 1 then
+        cx = x + panel_width / 2
+      else
+        cx = x + column_center(index, slot_width)
+      end
       local age = session_idle_for(device, sessions_by_name)
       local frac = drift_fraction(age)
       local cy = y + layout.field_top + 16 + frac * (layout.field_height - 32)
@@ -626,7 +707,7 @@ return function(shared, repo_root)
           local b = diamond_inset(live_target, nx, ny)
           local x1, y1, x2, y2 = inset_line(entry.cx, entry.cy, target.x, target.y, a, b)
           local col = sess and live_target and repo_color_for(sess) or green
-          constellation_gradient(cr, x1, y1, x2, y2, col, 0.52)
+          draw_filament(cr, x1, y1, x2, y2, col, 0.52, diamond_list, target, x + panel_width / 2)
         end
       end
     end
@@ -686,10 +767,14 @@ return function(shared, repo_root)
 
     -- diamonds + labels (live tinted by repo, same colour on filament)
     for index, session in ipairs(state.sessions) do
-      local s = slot_for_session[index] or index
-      local cx = x + column_center(s, slot_width)
-      local row = math.floor((s - 1) / slot_columns)
-      local cy = y + layout.destination_top + row * destination_row_height + 46
+      local pos = session_positions[session.name]
+      local cx, cy
+      if pos then cx, cy = pos.x, pos.y
+      else
+        local s = slot_for_session[index] or index
+        cx = x + column_center(s, slot_width)
+        cy = y + layout.destination_top + math.floor((s - 1) / slot_columns) * destination_row_height + 46
+      end
       local live = session.attached ~= nil
       local col = repo_color_for(session)
       draw_diamond(cr, cx, cy, live and 'live' or 'idle', col)
