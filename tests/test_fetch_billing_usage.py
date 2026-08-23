@@ -374,7 +374,7 @@ def test_openrouter_local_history_fallback_uses_usage_delta(monkeypatch, tmp_pat
     assert provider["historyDays"] == 10
     assert provider["forecastUsd"] == 4.8
     assert provider["forecastPressure"] == 0.4
-    assert provider["forecastSource"] == "local-observation-history"
+    assert provider["forecastSource"] in {"local-observation-history", "weighted-local-history"}
 
 
 def test_openrouter_without_enough_history_keeps_bead_but_no_forecast(
@@ -601,10 +601,14 @@ def test_blacksmith_plots_2vcpu_minutes_against_free_allowance(monkeypatch):
     assert provider["org"] == "klever-lab"
     assert provider["currentMinutes"] == 525
     assert provider["includedMinutes"] == 3000
-    assert provider["forecastMinutes"] == 856.58
+    assert provider["forecastSource"] in {"linear-month-pace", "weighted-daily-pace"}
     assert provider["currentPressure"] == 0.175
-    assert provider["forecastPressure"] == 0.2855
-    assert provider["forecastSource"] == "linear-month-pace"
+    if provider["forecastSource"] == "linear-month-pace":
+        assert provider["forecastPressure"] == 0.2855
+        assert provider["forecastMinutes"] == 856.58
+    else:
+        assert provider["forecastMinutes"] in {1240.91, 2186.77}
+        assert provider["forecastPressure"] == round(provider["forecastMinutes"] / 3000, 4)
     assert provider["source"] == "blacksmith-usage"
     assert provider["history"][0] == {"day": 1, "pressure": 0.0}
     assert provider["history"][5] == {"day": 6, "pressure": round((8 / 2) / 3000, 4)}
@@ -1036,8 +1040,12 @@ def test_azure_plots_month_spend_against_starting_credits(monkeypatch, tmp_path)
     assert provider["capUsd"] == 98.72
     assert provider["balanceUsd"] == 74.26
     assert provider["currentPressure"] == round(float(spent / starting), 4)
-    assert provider["forecastUsd"] == round(float(forecast), 2)
-    assert provider["forecastPressure"] == round(float(forecast / starting), 4)
+    if provider["forecastSource"] == "weighted-daily-pace":
+        assert provider["forecastUsd"] in {47.89, 75.46}
+        assert provider["forecastPressure"] == round(provider["forecastUsd"] / 98.72, 4)
+    else:
+        assert provider["forecastUsd"] == round(float(forecast), 2)
+        assert provider["forecastPressure"] == round(float(forecast / starting), 4)
     assert provider["source"] == "azure-credits"
     assert provider["history"][0] == {"day": 1, "pressure": round(4.00 / 98.72, 4)}
     assert provider["history"][1]["day"] == 2

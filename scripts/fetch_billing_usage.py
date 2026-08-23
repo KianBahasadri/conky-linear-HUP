@@ -204,6 +204,127 @@ def request_json(url, *, headers=None, payload=None, timeout=20):
         raise ProviderError(f"request failed{suffix}: {error.__class__.__name__}") from error
 
 
+def forecast_decay():
+    raw = os.environ.get("BILLING_FORECAST_DECAY", "").strip()
+    if raw:
+        try:
+            value = Decimal(raw)
+            if Decimal(0) < value < Decimal(1):
+                return value
+        except (InvalidOperation, ValueError):
+            pass
+    raw_half = os.environ.get("BILLING_FORECAST_HALF_LIFE_DAYS", "").strip()
+    half = None
+    if raw_half:
+        try:
+            half = Decimal(raw_half)
+            if half <= 0:
+                half = None
+        except (InvalidOperation, ValueError):
+            half = None
+    if half is None:
+        half = Decimal(2)
+    import math
+
+    decay_float = math.pow(0.5, 1.0 / float(half))
+    return Decimal(str(decay_float))
+
+
+def _history_day_count(history, period):
+    count = 0
+    by_day = {}
+    for sample in history:
+        try:
+            day = int(sample.get("day"))
+            pressure = Decimal(str(sample.get("pressure")))
+        except (TypeError, ValueError, InvalidOperation):
+            continue
+        if 1 <= day < period["day"]:
+            by_day[day] = pressure
+    count = len(by_day)
+    if count:
+        return count
+    return 1 if not history else max(1, len(history))
+
+
+def weighted_pressure_rate(current_pressure, history, period):
+    if not history:
+        return None
+    if _history_day_count(history, period) < 3:
+        return None
+    try:
+        cur = Decimal(str(current_pressure))
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+    if cur < 0:
+        cur = Decimal(0)
+    pressure_by_day = {}
+    for sample in history:
+        try:
+            day = int(sample.get("day"))
+            pressure = Decimal(str(sample.get("pressure")))
+        except (TypeError, ValueError, InvalidOperation):
+            continue
+        if 1 <= day < period["day"]:
+            pressure_by_day[day] = pressure
+    observed = [(0, Decimal(0))]
+    for day in sorted(pressure_by_day):
+        observed.append((day, pressure_by_day[day]))
+    observed.append((period["day"], cur))
+    observed.sort(key=lambda item: item[0])
+    for idx in range(1, len(observed)):
+        if observed[idx][1] < observed[idx - 1][1]:
+            observed[idx] = (observed[idx][0], observed[idx - 1][1])
+    decay = forecast_decay()
+    try:
+        decay_dec = Decimal(str(decay))
+    except (InvalidOperation, ValueError):
+        return None
+    if not (Decimal(0) < decay_dec < Decimal(1)):
+        return None
+    weighted_sum = Decimal(0)
+    weight_sum = Decimal(0)
+    for idx in range(1, len(observed)):
+        prev_day, prev_pressure = observed[idx - 1]
+        cur_day, cur_pressure_point = observed[idx]
+        gap = cur_day - prev_day
+        if gap <= 0:
+            continue
+        delta = cur_pressure_point - prev_pressure
+        if delta < 0:
+            delta = Decimal(0)
+        daily = delta / Decimal(gap)
+        for offset in range(1, gap + 1):
+            day_number = prev_day + offset
+            days_ago = period["day"] - day_number
+            weight = decay_dec ** days_ago if days_ago > 0 else Decimal(1)
+            weighted_sum += daily * weight
+            weight_sum += weight
+    if weight_sum == 0:
+        return None
+    return weighted_sum / weight_sum
+
+
+def weighted_month_forecast(current, period, history, cap):
+    if cap is None or cap <= 0:
+        return None
+    try:
+        cur_dec = Decimal(str(current))
+        cap_dec = Decimal(str(cap))
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+    if cap_dec <= 0:
+        return None
+    current_pressure = cur_dec / cap_dec if cap_dec != 0 else Decimal(0)
+    rate = weighted_pressure_rate(current_pressure, history, period)
+    if rate is None:
+        return None
+    forecast_pressure = current_pressure + rate * Decimal(period["daysRemaining"])
+    if forecast_pressure < current_pressure:
+        forecast_pressure = current_pressure
+    return forecast_pressure * cap_dec
+
+
 def linear_month_forecast(current, period):
     if period["day"] <= 0:
         return current
@@ -219,12 +340,24 @@ def metered_provider(
     current,
     period,
     source,
+    history=None,
 ):
     if cap is None or cap <= 0:
         raise ValueError(f"{provider_id} cap must be greater than zero")
     current = max(Decimal(0), current)
-    forecast = linear_month_forecast(current, period)
-    forecast = max(current, forecast)
+    weighted = None
+    if history is not None:
+        try:
+            weighted = weighted_month_forecast(current, period, history, cap)
+        except Exception:
+            weighted = None
+    if weighted is not None:
+        forecast = max(current, weighted)
+        forecast_source = "weighted-daily-pace"
+    else:
+        forecast = linear_month_forecast(current, period)
+        forecast = max(current, forecast)
+        forecast_source = "linear-month-pace"
     return {
         "id": provider_id,
         "code": code,
@@ -240,7 +373,7 @@ def metered_provider(
         "forecastPressure": rounded(forecast / cap),
         "forecastAvailable": True,
         "source": source,
-        "forecastSource": "linear-month-pace",
+        "forecastSource": forecast_source,
         "detail": f"${float(current):.2f} now · ${float(forecast):.2f} EOM · ${float(cap):.2f} cap",
     }
 
@@ -530,6 +663,8 @@ def aws_provider(period, timeout, force=False):
             f"AWS: using daily cached usage from {cached_date} "
             f"(TTL {ttl}s, age {age_seconds}s; ${float(current):.2f} / ${float(cap):.2f})"
         )
+        store = load_observation_history()
+        history = map_history_from_store(store, "aws", period)
         provider = metered_provider(
             "aws",
             "AWS",
@@ -539,6 +674,7 @@ def aws_provider(period, timeout, force=False):
             current,
             period,
             "aws-cached",
+            history=history,
         )
         provider["capSource"] = cached_cap_source
         if cached_budget_name:
@@ -548,6 +684,8 @@ def aws_provider(period, timeout, force=False):
     log_event("AWS: daily refresh needed or no cache; fetching fresh cost & budget data from AWS APIs...")
     cap, cap_source, budget_name = resolve_aws_cap(timeout)
     current = fetch_aws_current(period, timeout)
+    store = load_observation_history()
+    history = map_history_from_store(store, "aws", period)
     provider = metered_provider(
         "aws",
         "AWS",
@@ -557,6 +695,7 @@ def aws_provider(period, timeout, force=False):
         current,
         period,
         "aws",
+        history=history,
     )
     provider["capSource"] = cap_source
     if budget_name:
@@ -999,8 +1138,19 @@ def azure_provider(period, timeout):
     except ProviderError as error:
         log_event(f"Azure daily spend unavailable: {clean_error(error)}")
 
-    forecast = linear_month_forecast(spent, period)
-    forecast = max(spent, forecast)
+    current_pressure = spent / starting if starting else Decimal(0)
+    weighted_rate = weighted_pressure_rate(current_pressure, history, period)
+    if weighted_rate is not None:
+        forecast_pressure = current_pressure + weighted_rate * Decimal(period["daysRemaining"])
+        if forecast_pressure < current_pressure:
+            forecast_pressure = current_pressure
+        forecast = forecast_pressure * starting
+        forecast_source = "weighted-daily-pace"
+    else:
+        forecast = linear_month_forecast(spent, period)
+        forecast = max(spent, forecast)
+        forecast_pressure = forecast / starting if starting else Decimal(0)
+        forecast_source = burn_source
     projected = max(Decimal(0), starting - forecast)
     provider = {
         "id": "azure",
@@ -1013,14 +1163,14 @@ def azure_provider(period, timeout):
         "currentUsd": rounded(spent, 2),
         "capUsd": rounded(starting, 2),
         "balanceUsd": rounded(remaining, 2),
-        "dailyBurnUsd": rounded(spent / Decimal(max(period["day"], 1)), 4),
+        "dailyBurnUsd": rounded(weighted_rate * starting if weighted_rate is not None else spent / Decimal(max(period["day"], 1)), 4) if starting else rounded(spent / Decimal(max(period["day"], 1)), 4),
         "forecastUsd": rounded(forecast, 2),
         "projectedBalanceUsd": rounded(projected, 2),
-        "currentPressure": rounded(spent / starting),
-        "forecastPressure": rounded(forecast / starting),
+        "currentPressure": rounded(current_pressure),
+        "forecastPressure": rounded(forecast_pressure),
         "forecastAvailable": True,
         "source": "azure-credits",
-        "forecastSource": burn_source,
+        "forecastSource": forecast_source,
         "history": history,
         "detail": (
             f"${float(spent):.2f} now · ${float(forecast):.2f} EOM · "
@@ -1294,6 +1444,54 @@ def burn_from_local_history(samples):
     return None, 0
 
 
+def weighted_openrouter_burn(samples, period):
+    if len(samples) < 2:
+        return None
+    deltas = []
+    sorted_samples = sorted(samples, key=lambda s: s.get("date") or "")
+    for idx in range(1, len(sorted_samples)):
+        prev = sorted_samples[idx - 1]
+        cur = sorted_samples[idx]
+        try:
+            prev_val = Decimal(str(prev.get("totalUsageUsd")))
+            cur_val = Decimal(str(cur.get("totalUsageUsd")))
+            cur_date = date.fromisoformat(str(cur.get("date")))
+            prev_date = date.fromisoformat(str(prev.get("date")))
+        except (ValueError, TypeError, InvalidOperation):
+            continue
+        gap = (cur_date - prev_date).days
+        if gap <= 0:
+            continue
+        delta = cur_val - prev_val
+        if delta < 0:
+            continue
+        rate = delta / Decimal(gap)
+        deltas.append((cur_date, rate, gap))
+    if not deltas:
+        return None
+    decay = forecast_decay()
+    weighted_sum = Decimal(0)
+    weight_sum = Decimal(0)
+    for cur_date, rate, gap in deltas:
+        days_ago = (period["today"] - cur_date).days
+        if days_ago < 0:
+            continue
+        segments = []
+        for offset in range(1, gap + 1):
+            day_ago = days_ago - (gap - offset)
+            weight = (decay ** day_ago) if day_ago > 0 else Decimal(1)
+            segments.append(weight)
+        avg_weight = sum(segments, Decimal(0)) / Decimal(len(segments)) if segments else Decimal(1)
+        weighted_sum += rate * avg_weight
+        weight_sum += avg_weight
+    if weight_sum == 0:
+        return None
+    span = (date.fromisoformat(sorted_samples[-1]["date"]) - date.fromisoformat(sorted_samples[0]["date"])).days
+    if span < 1:
+        span = 1
+    return weighted_sum / weight_sum, span
+
+
 def openrouter_provider(period, timeout, observed_at):
     log_event("OpenRouter: fetching credits and trailing usage...")
     api_key = os.environ.get("OPENROUTER_API_KEY", "").strip()
@@ -1307,6 +1505,16 @@ def openrouter_provider(period, timeout, observed_at):
     )
     history_days = 0
     daily_burn = None
+    weighted_local = None
+    try:
+        weighted_local = weighted_openrouter_burn(samples, period)
+    except Exception:
+        weighted_local = None
+    if weighted_local is not None:
+        daily_burn, history_days = weighted_local
+        burn_source = "weighted-local-history"
+    else:
+        burn_source = "local-observation-history"
     try:
         daily_burn = fetch_openrouter_daily_burn(
             api_key, period["localNow"], timeout
@@ -1318,9 +1526,14 @@ def openrouter_provider(period, timeout, observed_at):
             log_event(f"RATE LIMIT / THROTTLED: OpenRouter analytics throttled: {clean_error(error)}; using local history")
         else:
             log_event(f"OpenRouter analytics unavailable: {clean_error(error)}; using local history")
-    if daily_burn is None:
-        daily_burn, history_days = burn_from_local_history(samples)
-        burn_source = "local-observation-history"
+        if daily_burn is None and weighted_local is not None:
+            daily_burn, history_days = weighted_local
+            burn_source = "weighted-local-history"
+        elif daily_burn is None:
+            fallback = burn_from_local_history(samples)
+            if fallback[0] is not None:
+                daily_burn, history_days = fallback
+                burn_source = "local-observation-history"
 
     balance = credits["balance"]
     forecast_available = daily_burn is not None
@@ -1498,7 +1711,15 @@ def github_actions_provider(period, timeout):
         else:
             included_usage += quantity
 
-    forecast = max(included_usage, linear_month_forecast(included_usage, period))
+    store = load_observation_history()
+    history_pressures = map_history_from_store(store, "github_actions", period)
+    weighted = weighted_month_forecast(included_usage, period, history_pressures, allowance)
+    if weighted is not None:
+        forecast = max(included_usage, weighted)
+        forecast_source = "weighted-daily-pace"
+    else:
+        forecast = max(included_usage, linear_month_forecast(included_usage, period))
+        forecast_source = "linear-month-pace"
     current_payable = max(Decimal(0), current_payable)
     detail = (
         f"{float(included_usage):,.0f} / {float(allowance):,.0f} min · "
@@ -1526,7 +1747,7 @@ def github_actions_provider(period, timeout):
         "forecastPressure": rounded(forecast / allowance),
         "forecastAvailable": True,
         "source": "github-billing-usage",
-        "forecastSource": "linear-month-pace",
+        "forecastSource": forecast_source,
         "detail": detail,
     }
     log_event(
@@ -1600,7 +1821,16 @@ def blacksmith_provider(period, timeout):
     # is x64 2vCPU minutes. Divide by 2 to plot the same unit the 3,000-minute
     # free tier is denominated in.
     consumed = billable / Decimal(2)
-    forecast = max(consumed, linear_month_forecast(consumed, period))
+    history_points = blacksmith_history_pressures(
+        payload.get("daily") or [], period, allowance
+    )
+    weighted = weighted_month_forecast(consumed, period, history_points, allowance)
+    if weighted is not None:
+        forecast = max(consumed, weighted)
+        forecast_source = "weighted-daily-pace"
+    else:
+        forecast = max(consumed, linear_month_forecast(consumed, period))
+        forecast_source = "linear-month-pace"
     org = str(
         ((payload.get("installation") or {}).get("installation_name") or "")
     ).strip() or os.environ.get("BILLING_BLACKSMITH_ORG", "").strip()
@@ -1621,10 +1851,8 @@ def blacksmith_provider(period, timeout):
         "forecastPressure": rounded(forecast / allowance),
         "forecastAvailable": True,
         "source": "blacksmith-usage",
-        "forecastSource": "linear-month-pace",
-        "history": blacksmith_history_pressures(
-            payload.get("daily") or [], period, allowance
-        ),
+        "forecastSource": forecast_source,
+        "history": history_points,
         "detail": (
             f"{float(consumed):,.0f} / {float(allowance):,.0f} min · "
             f"{float(forecast):,.0f} EOM"

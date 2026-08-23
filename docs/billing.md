@@ -39,11 +39,17 @@ geometry is unusual, but the underlying axes are conventional:
 
 AWS is normalized against its live monthly COST budget. The component never
 adds provider dollar values together. Current pressure is month-to-date spend
-divided by that budget. The forecast uses current calendar pace:
+divided by that budget. The forecast uses a weighted daily pace so more recent
+days pull harder, with simple calendar pace as fallback when history is short:
 
 ```text
-forecast spend = current spend × days in month ÷ current day
+forecast spend = current spend + weighted_daily_rate × days remaining
+weighted_daily_rate = weighted average of per-day deltas (decay ≈ 6-day half-life)
+fallback when not enough history: current spend × days in month ÷ current day
 ```
+
+Tune with `BILLING_FORECAST_HALF_LIFE_DAYS` (default `2`) or `BILLING_FORECAST_DECAY`
+(`0 < decay < 1`, half-life wins when set).
 
 The AWS ceiling is `BudgetLimit` from the Budgets API. The Billing
 console's default budget, which only excludes Credit and Refund record types,

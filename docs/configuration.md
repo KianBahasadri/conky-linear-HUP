@@ -158,6 +158,8 @@ The transparent HUD is generated on every monitor. It reads local Linux telemetr
 | `BILLING_GITHUB_ACTIONS_ENABLED` | Set to `1` to plot the authenticated `gh` user's private-repository standard-runner minutes against the plan allowance; the token needs `user` scope |
 | `BILLING_BLACKSMITH_ENABLED` | Set to `1` to plot Blacksmith x64 2vCPU minutes against the advertised 3,000-minute free allowance |
 | `BILLING_BLACKSMITH_ORG` | Optional GitHub org login passed to `blacksmith usage --org`; otherwise the CLI's current org is used |
+| `BILLING_FORECAST_HALF_LIFE_DAYS` | Weighted forecast half-life in days (default `2`); larger = slower, more like simple pace |
+| `BILLING_FORECAST_DECAY` | Optional direct per-day decay `0 < x < 1`; when set, overrides `BILLING_FORECAST_HALF_LIFE_DAYS` |
 
 Only configured providers are fetched. AWS uses boto3 with the IAM user from
 `scripts/apply_aws_billing_iam.sh`; Azure uses the authenticated Azure CLI;
