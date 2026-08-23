@@ -420,25 +420,67 @@ return function(shared, repo_root)
 
   local function draw_filament(cr, x1, y1, x2, y2, col, alpha, diamonds, target, panel_cx)
     alpha = alpha or 0.52
-    local hit = false
+    local clearance = 22
+    local dx, dy = x2 - x1, y2 - y1
+    local l2 = dx * dx + dy * dy
+    if l2 < 1 then constellation_gradient(cr, x1, y1, x2, y2, col, alpha); return end
+    local len = math.sqrt(l2)
+
+    local best_obs = nil
+    local max_deflect = 0
+    local best_qx, best_qy = 0, 0
+
     for _, d in ipairs(diamonds) do
       if math.abs(d[1] - target.x) > 0.5 or math.abs(d[2] - target.y) > 0.5 then
-        if segment_dist(d[1], d[2], x1, y1, x2, y2) < 12 then hit = true; break end
+        local t = ((d[1] - x1) * dx + (d[2] - y1) * dy) / l2
+        if t > 0.04 and t < 0.96 then
+          local px = x1 + t * dx
+          local py = y1 + t * dy
+          local dist = math.sqrt((d[1] - px) * (d[1] - px) + (d[2] - py) * (d[2] - py))
+          if dist < clearance then
+            local ux, uy
+            if dist > 0.1 then
+              ux = (px - d[1]) / dist
+              uy = (py - d[2]) / dist
+            else
+              local nx = -dy / len
+              local ny = dx / len
+              local sign = (px < panel_cx) and -1 or 1
+              if nx * sign < 0 then nx, ny = -nx, -ny end
+              ux, uy = nx, ny
+            end
+            local wx = d[1] + ux * clearance
+            local wy = d[2] + uy * clearance
+            local deltax = wx - px
+            local deltay = wy - py
+            local denom = math.max(0.15, 2 * t * (1 - t))
+            local qx = px + deltax / denom
+            local qy = py + deltay / denom
+            local deflect = math.sqrt(deltax * deltax + deltay * deltay)
+            if deflect > max_deflect then
+              max_deflect = deflect
+              best_obs = d
+              best_qx = qx
+              best_qy = qy
+            end
+          end
+        end
       end
     end
-    if not hit then constellation_gradient(cr, x1, y1, x2, y2, col, alpha); return end
-    local mx, my = (x1 + x2) * 0.5, (y1 + y2) * 0.5
-    local dx, dy = x2 - x1, y2 - y1
-    local L = math.sqrt(dx * dx + dy * dy)
-    if L < 1 then constellation_gradient(cr, x1, y1, x2, y2, col, alpha); return end
-    local nx, ny = dx / L, dy / L
-    local perpx, perpy = -ny, nx
-    local sign = mx < panel_cx and -1 or 1
-    local qx, qy = mx + perpx * 28 * sign, my + perpy * 28 * sign
-    local c1x, c1y = x1 + 2/3 * (qx - x1), y1 + 2/3 * (qy - y1)
-    local c2x, c2y = x2 + 2/3 * (qx - x2), y2 + 2/3 * (qy - y2)
+
+    if not best_obs then
+      constellation_gradient(cr, x1, y1, x2, y2, col, alpha)
+      return
+    end
+
+    local c1x = x1 + 2/3 * (best_qx - x1)
+    local c1y = y1 + 2/3 * (best_qy - y1)
+    local c2x = x2 + 2/3 * (best_qx - x2)
+    local c2y = y2 + 2/3 * (best_qy - y2)
+
     local function qpath()
-      cairo_move_to(cr, x1, y1); cairo_curve_to(cr, c1x, c1y, c2x, c2y, x2, y2)
+      cairo_move_to(cr, x1, y1)
+      cairo_curve_to(cr, c1x, c1y, c2x, c2y, x2, y2)
     end
     local function stroke_q(width, stops)
       local pat = cairo_pattern_create_linear and cairo_pattern_create_linear(x1, y1, x2, y2) or nil
@@ -446,7 +488,7 @@ return function(shared, repo_root)
         for _, s in ipairs(stops) do local r, g, b = hex_rgb(s[2]); cairo_pattern_add_color_stop_rgba(pat, s[1], r, g, b, s[3]) end
         cairo_set_source(cr, pat); cairo_set_line_width(cr, width); cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND); qpath(); cairo_stroke(cr)
         if cairo_pattern_destroy then cairo_pattern_destroy(pat) end
-      else shared.set_hex(cr, col, alpha); cairo_set_line_width(cr, width); qpath(); cairo_stroke(cr) end
+      else shared.set_hex(cr, col, alpha); cairo_set_line_width(cr, width); cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND); qpath(); cairo_stroke(cr) end
     end
     stroke_q(6.0, {{0,'f8fafc',0.12},{0.38,'f8fafc',0.12},{0.66,col,0.085*alpha/0.50},{1,col,0.085*alpha/0.50}})
     stroke_q(2.8, {{0,'f8fafc',0.22},{0.38,'f8fafc',0.22},{0.66,col,0.16*alpha/0.50},{1,col,0.16*alpha/0.50}})
@@ -657,14 +699,12 @@ return function(shared, repo_root)
         table.insert(rows[r], { session = session, slot = s, idx = idx })
       end
       local panel_cx = x + panel_width / 2
+      local row_staggers = { 0, 26, -26, 13, -13 }
       for r, arr in pairs(rows) do
         table.sort(arr, function(a, b) return a.slot < b.slot end)
         local count = #arr
-        local spacing
-        if count == 1 then spacing = 0
-        elseif count == 2 then spacing = 190
-        else spacing = 175 end
-        local stagger = (r % 2 == 1) and 14 or 0
+        local spacing = 156
+        local stagger = row_staggers[(r % #row_staggers) + 1]
         local row_base_y = y + layout.destination_top + destination_row_height * r + 76 + (r % 2 == 1 and 7 or 0)
         local max_off = (count - 1) / 2 * spacing
         for k, item in ipairs(arr) do
@@ -837,8 +877,10 @@ return function(shared, repo_root)
       if pos then cx, cy = pos.x, pos.y
       else
         local s = slot_for_session[index] or index
-        cx = x + column_center(s, slot_width)
-        cy = y + layout.destination_top + math.floor((s - 1) / slot_columns) * destination_row_height + 46
+        local r = row_for_slot[s] or math.floor((s - 1) / slot_columns)
+        local stagger = row_staggers[(r % #row_staggers) + 1]
+        cx = x + column_center(s, slot_width) + stagger
+        cy = y + layout.destination_top + r * destination_row_height + 46
       end
       local live = session.attached ~= nil
       local col = repo_color_for(session)

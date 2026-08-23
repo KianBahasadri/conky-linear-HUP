@@ -79,8 +79,7 @@ a faint starfield spanning the full transparent bay — glowing phone/laptop
 icons for known devices (with a soft halo), plain star dots otherwise — linked
 by glowing constellation filaments to their destination diamonds. Subtle nebula
 washes and micro-stars add depth; idle origins show a short fading tail, alerts
-a red burst, with a 24px clear margin at the top and a 48px clear margin at the bottom. Filaments kiss
-glyph and diamond edges without overlapping, and a faint dashed arc links the
+a red burst, with a 24px clear margin at the top and a 48px clear margin at the bottom. Destination diamonds are arranged in staggered formation across rows so no diamond sits directly above or below another, filaments curve around intermediate diamonds to prevent clipping, and a faint dashed arc links the
 session diamonds.
 
 The window self-sizes through `${lua_parse sessions_height_spacer}`, the same
