@@ -1251,6 +1251,13 @@ def test_collect_logs_throttling_and_errors(monkeypatch, tmp_path):
         "blacksmith_usage",
         lambda _period, _timeout: (_ for _ in ()).throw(billing.ProviderError("HTTP 429 Too Many Requests")),
     )
+    # Isolated test expects only the throttled provider — AWS is reachable in
+    # the local env via credentials, but isolate_cache sets BILLING_AWS_ENABLED=0
+    # which only disables the flag. If the real key is still in the env,
+    # aws_enabled() still returns True via the key fallback, so clear it.
+    monkeypatch.delenv("BILLING_AWS_ACCESS_KEY_ID", raising=False)
+    monkeypatch.delenv("BILLING_AWS_SECRET_ACCESS_KEY", raising=False)
+    monkeypatch.delenv("BILLING_AWS_PROFILE", raising=False)
 
     output = billing.collect(date(2026, 8, 19))
     assert output["ok"] is False

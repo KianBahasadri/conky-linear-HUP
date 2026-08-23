@@ -971,6 +971,7 @@ for line in "${monitor_lines[@]}"; do
     linear_gap_y="$LINEAR_PRIMARY_GAP_Y"
     is_primary=1
   fi
+  : "$is_primary"
 
   rate_limit_frame_for_monitor "$monitor_height" "$monitor_gap_x" "$linear_gap_y"
   billing_placement_for_monitor "$monitor_height" "$linear_gap_y"
