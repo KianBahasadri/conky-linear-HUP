@@ -1,8 +1,7 @@
 conky.config = {
-  -- bottom_left so gap_y pins the bottom edge: the panel grows upward as
-  -- sessions appear and keeps the baseline it shares with the skyline's
-  -- plinth. The start script sets gap_y to that line, and gap_x so the right
-  -- edge meets the rate limit panel's left edge.
+  -- bottom_left keeps the tall rail in the lower-left column. The start script
+  -- supplies the per-monitor gap values; the panel grows upward from its
+  -- bottom margin as extra sources or sessions appear.
   alignment = 'bottom_left',
   background = true,
   border_width = 0,
@@ -16,13 +15,13 @@ conky.config = {
   draw_shades = false,
   extra_newline = false,
   font = 'JetBrains Mono:size=10',
-  gap_x = 4,
-  gap_y = 321,
+  gap_x = 20,
+  gap_y = 14,
   -- Floor only; actual height is driven by ${lua_parse sessions_height_spacer},
   -- and the start script seeds it from fetch_sessions.py --print-overlay-height.
-  minimum_height = 130,
-  minimum_width = 456,
-  maximum_width = 456,
+  minimum_height = 760,
+  minimum_width = 360,
+  maximum_width = 360,
   no_buffers = true,
   own_window = true,
   own_window_argb_visual = true,

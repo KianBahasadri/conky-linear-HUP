@@ -43,13 +43,11 @@ def test_device_for_treats_the_console_as_local():
     )
 
 
-def test_overlay_height_follows_the_taller_column():
-    assert sessions.overlay_height(3, 1) == sessions.overlay_height(1, 3)
-    assert sessions.overlay_height(0, 0) == sessions.overlay_height(1, 0)
-    assert (
-        sessions.overlay_height(4, 0) - sessions.overlay_height(3, 0)
-        == sessions.PANEL_ROW_HEIGHT
-    )
+def test_overlay_height_keeps_three_slots_and_expands_for_more_data():
+    assert sessions.overlay_height(0, 0) == sessions.PANEL_MIN_HEIGHT
+    assert sessions.overlay_height(3, 3) == sessions.PANEL_MIN_HEIGHT
+    assert sessions.overlay_height(4, 3) > sessions.overlay_height(3, 3)
+    assert sessions.overlay_height(3, 4) > sessions.overlay_height(3, 3)
 
 
 def test_relative_age_units():

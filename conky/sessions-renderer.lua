@@ -2,20 +2,26 @@ return function(shared, repo_root)
   local sessions_path = repo_root .. '/cache/sessions.json'
   local font = 'JetBrains Mono'
 
-  local panel_width = 456
-  local radius = 18
+  local panel_width = 360
+  local panel_min_height = 760
 
-  -- Layout. Must match scripts/fetch_sessions.py overlay_height().
-  local row_height = 52       -- one inbound device row
-  local card_height = 40      -- one tmux session card
-  local card_gap = 12
-  local chrome_height = 78    -- header + divider + footer around the rows
-  local content_top = 62      -- panel top -> first row
-  local jack_x = 164          -- panel-mount jack the cable leaves from
-  local socket_x = 196        -- left edge of the session cards
+  -- The tall rail keeps a generous source field above a roomy destination
+  -- field. Three slots remain visible even when the live state is sparse.
+  local card_height = 82
+  local card_gap = 14
+  local device_row = 72
+  local source_top = 132
+  local card_x = 208
+  local jack_x = 178
+  local minimum_source_rows = 3
+  local minimum_session_slots = 3
+  local destination_gap = 45
+  local status_gap = 22
+  local footer_height = 70
 
-  local cyan = '00e5ff'
   local violet = '8b5cf6'
+  local cyan = '00e5ff'
+  local teal = '00f5d4'
   local green = '39ff88'
   local red = 'f87171'
   local muted = '94a3b8'
@@ -35,7 +41,6 @@ return function(shared, repo_root)
     if not start then
       return {}
     end
-
     local depth = 1
     local index = start + 1
     while index <= #content and depth > 0 do
@@ -100,14 +105,20 @@ return function(shared, repo_root)
       ok = true,
       devices = devices,
       sessions = sessions,
-      -- `sshdListening` is a JSON bool, so it needs its own match.
       sshd = content:match('"sshdListening"%s*:%s*true') ~= nil,
     }
   end
 
   local function panel_height(state)
-    local rows = math.max(1, #state.devices, #state.sessions)
-    return chrome_height + rows * row_height
+    local device_count = state and state.devices and #state.devices or 0
+    local session_count = state and state.sessions and #state.sessions or 0
+    local source_rows = math.max(minimum_source_rows, device_count)
+    local session_slots = math.max(minimum_session_slots, session_count)
+    local destination_divider = source_top + source_rows * device_row + 1
+    local card_top = destination_divider + destination_gap
+    local cards_bottom = card_top + session_slots * (card_height + card_gap) - card_gap
+    local status_divider = cards_bottom + status_gap
+    return math.max(panel_min_height, status_divider + footer_height)
   end
 
   local function flat_text(cr, label, x, baseline, size, color, alpha, align)
@@ -148,6 +159,38 @@ return function(shared, repo_root)
     cairo_pattern_destroy(pattern)
   end
 
+  local function draw_frame(cr, x, y, width, height, accent, secondary)
+    shared.rounded_rect(cr, x + 4, y + 7, width, height, 18)
+    shared.set_hex(cr, accent, 0.10)
+    cairo_fill(cr)
+
+    shared.rounded_rect(cr, x + 2, y + 3, width, height, 18)
+    shared.set_hex(cr, accent, 0.15)
+    cairo_set_line_width(cr, 8)
+    cairo_stroke(cr)
+
+    shared.rounded_rect(cr, x + 1, y + 2, width, height, 18)
+    shared.set_hex(cr, secondary, 0.22)
+    cairo_set_line_width(cr, 4)
+    cairo_stroke(cr)
+
+    shared.rounded_rect(cr, x, y, width, height, 18)
+    fill_gradient(cr, x, y, x, y + height, {
+      { 0.00, '0d1a30', 0.88 },
+      { 0.06, '050d1c', 0.82 },
+      { 0.80, '020617', 0.80 },
+      { 1.00, '08111f', 0.85 },
+    })
+    shared.set_hex(cr, accent, 0.88)
+    cairo_set_line_width(cr, 2)
+    cairo_stroke(cr)
+
+    shared.rounded_rect(cr, x + 8, y + 8, width - 16, height - 16, 12)
+    shared.set_hex(cr, secondary, 0.22)
+    cairo_set_line_width(cr, 1)
+    cairo_stroke(cr)
+  end
+
   local function bead(cr, x, y, size, color, alpha)
     alpha = alpha or 1
     shared.set_hex(cr, color, 0.22 * alpha)
@@ -158,40 +201,10 @@ return function(shared, repo_root)
     cairo_fill(cr)
   end
 
-  local function draw_frame(cr, x, y, height, accent)
-    shared.rounded_rect(cr, x + 4, y + 7, panel_width, height, radius)
-    shared.set_hex(cr, accent, 0.10)
-    cairo_fill(cr)
-
-    shared.rounded_rect(cr, x + 2, y + 3, panel_width, height, radius)
-    shared.set_hex(cr, accent, 0.16)
-    cairo_set_line_width(cr, 8)
-    cairo_stroke(cr)
-
-    shared.rounded_rect(cr, x + 1, y + 2, panel_width, height, radius)
-    shared.set_hex(cr, violet, 0.22)
-    cairo_set_line_width(cr, 4)
-    cairo_stroke(cr)
-
-    shared.rounded_rect(cr, x, y, panel_width, height, radius)
-    shared.set_hex(cr, '020617', 0.59)
-    cairo_fill_preserve(cr)
-    shared.set_hex(cr, accent, 0.70)
-    cairo_set_line_width(cr, 2)
-    cairo_stroke(cr)
-
-    shared.rounded_rect(cr, x + 8, y + 8, panel_width - 16, height - 16, radius - 6)
-    shared.set_hex(cr, violet, 0.22)
-    cairo_set_line_width(cr, 1)
-    cairo_stroke(cr)
-  end
-
-  -- A ~13px icon for what is on the other end of the wire.
   local function device_glyph(cr, kind, x, y, color, alpha)
     cairo_new_path(cr)
     shared.set_hex(cr, color, alpha or 1)
     cairo_set_line_width(cr, 1.2)
-
     if kind == 'phone' then
       shared.rounded_rect(cr, x - 4.5, y - 7, 9, 14, 2)
       cairo_stroke(cr)
@@ -242,200 +255,302 @@ return function(shared, repo_root)
   local function jack(cr, x, y, color, live)
     cairo_new_path(cr)
     shared.set_hex(cr, color, live and 0.16 or 0.08)
-    cairo_set_line_width(cr, 4.5)
-    cairo_arc(cr, x, y, 5.4, 0, math.pi * 2)
+    cairo_set_line_width(cr, 4.2)
+    cairo_arc(cr, x, y, 5, 0, math.pi * 2)
     cairo_stroke(cr)
-
     shared.set_hex(cr, color, live and 0.95 or 0.34)
-    cairo_set_line_width(cr, 1.4)
-    cairo_arc(cr, x, y, 5.4, 0, math.pi * 2)
+    cairo_set_line_width(cr, 1.2)
+    cairo_arc(cr, x, y, 5, 0, math.pi * 2)
     cairo_stroke(cr)
-
     if live then
-      bead(cr, x, y, 2.4, color, 1)
+      bead(cr, x, y, 2.2, color, 1)
     else
       shared.set_hex(cr, '020617', 0.9)
-      cairo_arc(cr, x, y, 2.4, 0, math.pi * 2)
+      cairo_arc(cr, x, y, 2.2, 0, math.pi * 2)
       cairo_fill(cr)
     end
   end
 
-  -- A patch cable: slack bezier from a jack to a session card, with flow beads
-  -- so a live link reads as carrying something.
   local function cable(cr, x1, y1, x2, y2, color)
     local lift = math.max(26, math.abs(x2 - x1) * 0.42)
     local c1x, c1y = x1 + lift, y1
     local c2x, c2y = x2 - lift, y2
-
     local function path()
       cairo_new_path(cr)
       cairo_move_to(cr, x1, y1)
       cairo_curve_to(cr, c1x, c1y, c2x, c2y, x2, y2)
     end
-
     cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND)
     shared.set_hex(cr, color, 0.13)
-    cairo_set_line_width(cr, 5.5)
+    cairo_set_line_width(cr, 5)
     path()
     cairo_stroke(cr)
-
     local pattern = cairo_pattern_create_linear(x1, y1, x2, y2)
     local r0, g0, b0 = shared.shade_rgb(color, -0.10)
     local r1, g1, b1 = shared.shade_rgb(color, 0.30)
     cairo_pattern_add_color_stop_rgba(pattern, 0, r0, g0, b0, 0.50)
     cairo_pattern_add_color_stop_rgba(pattern, 1, r1, g1, b1, 0.90)
     cairo_set_source(cr, pattern)
-    cairo_set_line_width(cr, 1.7)
+    cairo_set_line_width(cr, 1.6)
     path()
     cairo_stroke(cr)
     cairo_pattern_destroy(pattern)
     cairo_set_line_cap(cr, CAIRO_LINE_CAP_BUTT)
-
     for index = 0, 1 do
       local t = 0.34 + index * 0.24
       local mt = 1 - t
       local bx = mt ^ 3 * x1 + 3 * mt ^ 2 * t * c1x + 3 * mt * t ^ 2 * c2x + t ^ 3 * x2
       local by = mt ^ 3 * y1 + 3 * mt ^ 2 * t * c1y + 3 * mt * t ^ 2 * c2y + t ^ 3 * y2
-      bead(cr, bx, by, 2.1, color, 0.9 - index * 0.22)
+      bead(cr, bx, by, 1.9, color, 0.9 - index * 0.22)
     end
   end
 
   local function status_dot(cr, x, y, state)
     cairo_new_path(cr)
     local color = green
-    if state == 'alert' then
-      color = red
-    elseif state == 'idle' then
-      color = dim
-    end
-
+    if state == 'alert' then color = red
+    elseif state == 'idle' then color = dim end
     if state == 'alert' then
       shared.set_hex(cr, color, 0.22)
-      cairo_arc(cr, x, y, 6.5, 0, math.pi * 2)
+      cairo_arc(cr, x, y, 5.5, 0, math.pi * 2)
       cairo_fill(cr)
     end
-    bead(cr, x, y, 3.0, color, state == 'idle' and 0.6 or 1.0)
+    bead(cr, x, y, 2.6, color, state == 'idle' and 0.6 or 1.0)
   end
 
-  local function draw_session_card(cr, session, x, y, width)
-    local live = session.attached ~= nil
-    local tone = live and green or dim
+  local function session_source(state, session_name)
+    for _, device in ipairs(state.devices) do
+      if device.session == session_name then
+        return device.name
+      end
+    end
+    return nil
+  end
 
+  local function draw_session_card(cr, state, session, x, y, width, index)
+    local live = session and session.attached ~= nil
+    local tone = live and green or dim
     shared.rounded_rect(cr, x, y, width, card_height, 8)
     fill_gradient(cr, x, y, x, y + card_height, {
-      { 0.00, '0d1a30', live and 0.80 or 0.55 },
-      { 1.00, '020617', live and 0.72 or 0.50 },
+      { 0.00, '0d1a30', live and 0.86 or 0.58 },
+      { 1.00, '020617', live and 0.78 or 0.50 },
     })
-    shared.set_hex(cr, tone, live and 0.55 or 0.24)
-    cairo_set_line_width(cr, 1.1)
+    shared.set_hex(cr, tone, live and 0.66 or 0.28)
+    cairo_set_line_width(cr, 1.2)
     cairo_stroke(cr)
 
-    shared.set_hex(cr, tone, live and 0.85 or 0.30)
-    cairo_rectangle(cr, x + 1, y + 6, 2.4, card_height - 12)
+    shared.set_hex(cr, tone, live and 0.90 or 0.30)
+    cairo_rectangle(cr, x + 1, y + 8, 2.6, card_height - 16)
     cairo_fill(cr)
 
-    lit_text(cr, session.name, x + 12, y + 16, 10.5,
-      live and text_color or muted, live and 1.0 or 0.7)
-    flat_text(cr, live and 'attached' or 'detached', x + width - 10, y + 16, 7,
-      tone, live and 0.9 or 0.6, 'right')
+    flat_text(cr, string.format('SOCKET %02d', index), x + 12, y + 16, 6.3,
+      violet, 0.80)
+    flat_text(cr, live and 'ATTACHED' or (session and 'DETACHED' or 'AVAILABLE'),
+      x + width - 10, y + 16, 6.4, tone, live and 0.92 or 0.62, 'right')
 
-    local detail = string.format('%dw · %dp  %s', session.windows, session.panes, session.path)
-    cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
-    cairo_set_font_size(cr, 6.8)
-    flat_text(cr, shared.truncate_title(cr, detail, width - 20), x + 12, y + 28, 6.8, muted, 0.62)
+    if session then
+      lit_text(cr, session.name, x + 12, y + 37, 11,
+        live and text_color or muted, live and 1.0 or 0.72)
+      cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
+      cairo_set_font_size(cr, 6.8)
+      flat_text(cr, shared.truncate_title(cr, session.path, width - 24),
+        x + 12, y + 53, 6.8, muted, 0.68)
+      flat_text(cr, string.format('%dw / %dp', session.windows, session.panes),
+        x + 12, y + 68, 6.6, dim, 0.78)
+      local via = session_source(state, session.name) or session.attached
+      if via then
+        flat_text(cr, shared.truncate_title(cr, 'via ' .. via, width - 24),
+          x + width - 10, y + 68, 6.4, teal, 0.78, 'right')
+      else
+        flat_text(cr, 'no inbound route', x + width - 10, y + 68, 6.4,
+          dim, 0.62, 'right')
+      end
+    else
+      flat_text(cr, 'OPEN SOCKET', x + 12, y + 37, 9.0, muted, 0.62)
+      flat_text(cr, 'waiting for tmux', x + 12, y + 53, 6.8, muted, 0.52)
+      flat_text(cr, 'no inbound route', x + width - 10, y + 68, 6.4,
+        dim, 0.62, 'right')
+    end
   end
 
-  local function draw_device_row(cr, device, x, y)
+  local function draw_source_row(cr, device, x, y, index)
     local tone = green
     if device.state == 'alert' then
       tone = red
     elseif device.state == 'idle' then
       tone = dim
     end
-    local strong = device.state ~= 'idle'
+    local active = device.state ~= 'idle'
 
-    device_glyph(cr, device.glyph, x + 32, y, tone, strong and 0.95 or 0.5)
-    lit_text(cr, device.name, x + 48, y - 1, 9,
-      device.state == 'live' and text_color or muted, strong and 1.0 or 0.7)
-    flat_text(cr, device.os, x + 48, y + 10, 6.6, muted, 0.58)
-    flat_text(cr, device.age, x + 138, y + 10, 6.6, dim, 0.6, 'right')
-    jack(cr, x + jack_x, y, tone, device.session ~= nil)
-    status_dot(cr, x + 150, y - 4, device.state)
+    shared.set_hex(cr, 'cbd5e1', 0.075)
+    cairo_set_line_width(cr, 1)
+    cairo_move_to(cr, x + 22, y + 50)
+    cairo_line_to(cr, x + panel_width - 22, y + 50)
+    cairo_stroke(cr)
+
+    device_glyph(cr, device.glyph, x + 30, y + 14, tone, active and 0.95 or 0.48)
+    flat_text(cr, string.format('IN %02d', index), x + 48, y - 1, 6.2, violet, 0.72)
+    cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
+    cairo_set_font_size(cr, 8.7)
+    lit_text(cr, shared.truncate_title(cr, device.name, 96), x + 48, y + 16,
+      8.7, active and text_color or muted, active and 1.0 or 0.72)
+    flat_text(cr, device.os, x + 48, y + 31, 6.5, muted, 0.62)
+    flat_text(cr, device.age, x + 154, y + 31, 6.5, dim, 0.68, 'right')
+
+    jack(cr, x + jack_x, y + 14, tone, device.session ~= nil)
+    status_dot(cr, x + jack_x + 16, y + 6, device.state)
+    flat_text(cr, device.session and ('route ' .. device.session) or 'unpatched',
+      x + 48, y + 45, 6.4, active and tone or dim, active and 0.82 or 0.58)
+  end
+
+  local function layout_for(state)
+    local device_count = state and state.devices and #state.devices or 0
+    local session_count = state and state.sessions and #state.sessions or 0
+    local source_rows = math.max(minimum_source_rows, device_count)
+    local session_slots = math.max(minimum_session_slots, session_count)
+    local destination_divider = source_top + source_rows * device_row + 1
+    local card_top = destination_divider + destination_gap
+    local cards_bottom = card_top + session_slots * (card_height + card_gap) - card_gap
+    local status_divider = cards_bottom + status_gap
+    return {
+      source_rows = source_rows,
+      session_slots = session_slots,
+      destination_divider = destination_divider,
+      card_top = card_top,
+      status_divider = status_divider,
+      height = math.max(panel_min_height, status_divider + footer_height),
+    }
   end
 
   local function draw_panel(cr, state, x, y, height)
+    local layout = layout_for(state)
+    local card_width = panel_width - card_x - 20
     local alert = false
+    local live_count = 0
+    local idle_count = 0
     for _, device in ipairs(state.devices) do
-      if device.state == 'alert' then
-        alert = true
-      end
+      if device.state == 'alert' then alert = true end
+      if device.state == 'live' then live_count = live_count + 1 end
+      if device.state == 'idle' then idle_count = idle_count + 1 end
     end
 
-    draw_frame(cr, x, y, height, alert and red or cyan)
-    flat_text(cr, 'SESSIONS', x + 22, y + 30, 10, 'dbeafe', 0.85)
-    flat_text(cr, string.format('%d IN · %d TMUX', #state.devices, #state.sessions),
-      x + panel_width - 22, y + 30, 8, muted, 0.62, 'right')
+    draw_frame(cr, x, y, panel_width, height, alert and red or cyan, violet)
 
-    shared.set_hex(cr, violet, 0.28)
+    -- Quiet vertical rails make the extra height feel intentional instead of
+    -- leaving a large empty rounded rectangle.
+    shared.set_hex(cr, cyan, 0.16)
     cairo_set_line_width(cr, 1)
-    cairo_move_to(cr, x + 20, y + 42)
-    cairo_line_to(cr, x + panel_width - 20, y + 42)
+    cairo_move_to(cr, x + 14, y + 22)
+    cairo_line_to(cr, x + 14, y + height - 22)
+    cairo_stroke(cr)
+    shared.set_hex(cr, violet, 0.22)
+    cairo_move_to(cr, x + 18, y + 22)
+    cairo_line_to(cr, x + 18, y + height - 22)
     cairo_stroke(cr)
 
-    local top = y + content_top
-    local card_w = panel_width - socket_x - 24
+    flat_text(cr, 'PATCH BAY', x + 30, y + 31, 11, 'dbeafe', 0.92)
+    flat_text(cr, 'TMUX / INBOUND ROUTING', x + 30, y + 48, 7, muted, 0.66)
+    flat_text(cr, string.format('%02d IN / %02d TMUX', #state.devices, #state.sessions),
+      x + panel_width - 22, y + 31, 7, muted, 0.72, 'right')
+    flat_text(cr, 'LEFT RAIL', x + panel_width - 22, y + 48, 6.4,
+      violet, 0.78, 'right')
+    shared.set_hex(cr, cyan, 0.24)
+    cairo_set_line_width(cr, 1)
+    cairo_move_to(cr, x + 22, y + 67)
+    cairo_line_to(cr, x + panel_width - 22, y + 67)
+    cairo_stroke(cr)
 
-    flat_text(cr, 'INBOUND', x + 24, top - 4, 7, violet, 0.72)
-    flat_text(cr, 'TMUX', x + socket_x, top - 4, 7, violet, 0.72)
+    flat_text(cr, 'INBOUND SOURCES', x + 30, y + 91, 7, violet, 0.84)
+    flat_text(cr, 'SOURCE / ORIGIN', x + 48, y + 108, 6.1, dim, 0.74)
+    flat_text(cr, 'AGE', x + 154, y + 108, 6.1, dim, 0.74, 'right')
+    flat_text(cr, 'JACK', x + jack_x + 4, y + 108, 6.1, dim, 0.74, 'center')
 
-    -- Cards first, so the cables land on top of their edges.
     local card_tops = {}
-    for index, session in ipairs(state.sessions) do
-      local cy = top + (index - 1) * (card_height + card_gap)
-      card_tops[session.name] = cy
-      draw_session_card(cr, session, x + socket_x, cy, card_w)
+    for index = 1, layout.session_slots do
+      local session = state.sessions[index]
+      local cy = y + layout.card_top + (index - 1) * (card_height + card_gap)
+      if session then card_tops[session.name] = cy end
+      draw_session_card(cr, state, session, x + card_x, cy, card_width, index)
+      jack(cr, x + card_x + 1, cy + card_height / 2,
+        session and session.attached and green or dim,
+        session and session.attached ~= nil)
     end
 
-    if #state.sessions == 0 then
-      flat_text(cr, 'no tmux server', x + socket_x, top + 18, 8, dim, 0.55)
+    local device_jacks = {}
+    for index, device in ipairs(state.devices) do
+      local sy = y + source_top + (index - 1) * device_row + 14
+      device_jacks[device.name] = { x = x + jack_x, y = sy }
+      if device.session and card_tops[device.session] then
+        local tone = device.state == 'alert' and red or green
+        cable(cr, x + jack_x + 6, sy, x + card_x + 1,
+          card_tops[device.session] + card_height / 2, tone)
+      elseif device.state == 'alert' then
+        local stub_x = x + card_x - 12
+        cable(cr, x + jack_x + 6, sy, stub_x, sy, red)
+        shared.set_hex(cr, red, 0.9)
+        cairo_set_line_width(cr, 1.4)
+        cairo_move_to(cr, stub_x - 3, sy - 3.5)
+        cairo_line_to(cr, stub_x + 3, sy + 3.5)
+        cairo_move_to(cr, stub_x + 3, sy - 3.5)
+        cairo_line_to(cr, stub_x - 3, sy + 3.5)
+        cairo_stroke(cr)
+      end
     end
 
     for index, device in ipairs(state.devices) do
-      local dy = top + (index - 1) * row_height + 14
-      draw_device_row(cr, device, x, dy)
-      if device.session and card_tops[device.session] then
-        local tone = device.state == 'alert' and red or green
-        cable(cr, x + jack_x + 6, dy, x + socket_x - 1,
-          card_tops[device.session] + card_height / 2, tone)
-      end
+      draw_source_row(cr, device, x, y + source_top + (index - 1) * device_row, index)
     end
-
     if #state.devices == 0 then
-      flat_text(cr, 'no logins', x + 32, top + 18, 8, dim, 0.55)
+      flat_text(cr, 'no inbound sources', x + 30, y + source_top + 20, 7, dim, 0.62)
     end
 
-    local footer = state.sshd and 'tailscale ssh · sshd:22 open'
-      or 'tailscale ssh · sshd:22 closed'
-    flat_text(cr, footer, x + 22, y + height - 14, 6.8, dim, 0.55)
+    shared.set_hex(cr, violet, 0.28)
+    cairo_set_line_width(cr, 1)
+    cairo_move_to(cr, x + 22, y + layout.destination_divider)
+    cairo_line_to(cr, x + panel_width - 22, y + layout.destination_divider)
+    cairo_stroke(cr)
+    flat_text(cr, 'TMUX DESTINATIONS', x + 30, y + layout.destination_divider + 24,
+      7, violet, 0.84)
+    flat_text(cr, 'SOCKETS / WORKTREES', x + panel_width - 22,
+      y + layout.destination_divider + 24, 6.2, dim, 0.72, 'right')
+
+    shared.set_hex(cr, violet, 0.24)
+    cairo_set_line_width(cr, 1)
+    cairo_move_to(cr, x + 22, y + layout.status_divider)
+    cairo_line_to(cr, x + panel_width - 22, y + layout.status_divider)
+    cairo_stroke(cr)
+    flat_text(cr, 'ROUTING STATUS', x + 30, y + height - 46, 6.6, violet, 0.78)
+    flat_text(cr, string.format('%02d LIVE', live_count), x + 30, y + height - 25,
+      8, green, 0.92)
+    flat_text(cr, string.format('%02d IDLE', idle_count), x + 106, y + height - 25,
+      8, dim, 0.84)
+    if alert then
+      flat_text(cr, 'UNKNOWN', x + 182, y + height - 25, 6.6, red, 0.95)
+    end
+    flat_text(cr, 'TAILSCALE SSH', x + panel_width - 22, y + height - 46, 6.6,
+      muted, 0.58, 'right')
+    flat_text(cr, state.sshd and 'SSHD:22 OPEN' or 'SSHD:22 CLOSED',
+      x + panel_width - 22, y + height - 25, 6.6, dim, 0.74, 'right')
   end
 
   local function draw_error(cr, state, x, y)
-    local height = chrome_height + row_height
-    draw_frame(cr, x, y, height, red)
-    flat_text(cr, 'SESSIONS', x + 22, y + 30, 10, 'dbeafe', 0.85)
+    draw_frame(cr, x, y, panel_width, panel_min_height, red, violet)
+    flat_text(cr, 'PATCH BAY', x + 30, y + 31, 11, 'dbeafe', 0.92)
+    flat_text(cr, 'SESSION DATA UNAVAILABLE', x + 30, y + 48, 7, muted, 0.66)
+    shared.set_hex(cr, red, 0.24)
+    cairo_set_line_width(cr, 1)
+    cairo_move_to(cr, x + 22, y + 67)
+    cairo_line_to(cr, x + panel_width - 22, y + 67)
+    cairo_stroke(cr)
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
     cairo_set_font_size(cr, 8)
-    flat_text(cr, shared.truncate_title(cr, state.error, panel_width - 48),
-      x + 24, y + 70, 8, muted, 0.7)
+    flat_text(cr, shared.truncate_title(cr, state.error or 'error', panel_width - 60),
+      x + 30, y + 112, 8, muted, 0.76)
   end
 
-  -- Conky grows the window to this; the panel is bottom-anchored, so it grows
-  -- upward and the baseline it shares with the skyline's plinth stays put.
   local function needed_height()
     local state = read_state()
-    if not state.ok then
-      return chrome_height + row_height + 8
-    end
+    if not state.ok then return panel_min_height + 8 end
     return panel_height(state) + 8
   end
 
@@ -445,31 +560,20 @@ return function(shared, repo_root)
 
   local function draw()
     local surface, should_destroy_surface = shared.create_surface()
-    if not surface then
-      return
-    end
-
+    if not surface then return end
     local cr = cairo_create(surface)
     local state = read_state()
-
-    -- The launcher puts this window's bottom edge on the same line as the
-    -- skyline's plinth, so the panel is drawn flush with it.
     local x = math.max(4, (conky_window.width - panel_width) / 2)
     if state.ok then
-      local height = panel_height(state)
-      draw_panel(cr, state, x, math.max(4, conky_window.height - height - 4), height)
+      local h = panel_height(state)
+      draw_panel(cr, state, x, math.max(4, conky_window.height - h - 4), h)
     else
-      draw_error(cr, state, x, 4)
+      local h = panel_min_height
+      draw_error(cr, state, x, math.max(4, conky_window.height - h - 4))
     end
-
     cairo_destroy(cr)
-    if should_destroy_surface and cairo_surface_destroy then
-      cairo_surface_destroy(surface)
-    end
+    if should_destroy_surface and cairo_surface_destroy then cairo_surface_destroy(surface) end
   end
 
-  return {
-    draw = draw,
-    height_spacer = height_spacer,
-  }
+  return { draw = draw, height_spacer = height_spacer }
 end

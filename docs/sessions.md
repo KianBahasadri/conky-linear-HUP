@@ -52,27 +52,23 @@ that is the normal state between sessions, not an error.
 
 ## Placement
 
-Alignment is **`bottom_left`**. The panel is 456px wide, matching billing and
-weather, and is placed against the same measurements the
-[GitHub overlay](github.md) uses:
-
-- `gap_x` puts its right edge on the rate limit panel's left edge.
-- `gap_y` puts its bottom edge on the skyline's roof line.
-
-So the bay and the panel-and-skyline stack share a seam and a baseline — one
-horizontal line across the screen rather than three objects at three heights.
+Alignment is **`bottom_left`**. The panel is 360px wide and occupies the lower-left
+column below the Git status panel. Its default `gap_x` is 20px and its default
+`gap_y` is 14px, leaving a small screen margin while keeping the tall rail clear
+of the top Linear cards.
 
 The window self-sizes through `${lua_parse sessions_height_spacer}`, the same
 mechanism the [rate limit panel](rate-limit-panel.md) uses. Because it is
-bottom-anchored it grows *upward* as devices and sessions appear, so the shared
-baseline holds. `minimum_height` is only a floor, seeded at launch from
-`fetch_sessions.py --print-overlay-height`.
+bottom-anchored it grows *upward* as devices and sessions appear. The live layout
+keeps three source rows and three destination sockets visible, with a 760px
+minimum height; additional rows extend the window upward. `minimum_height` is
+seeded at launch from `fetch_sessions.py --print-overlay-height`.
 
 | Variable | Purpose |
 | --- | --- |
 | `SESSIONS_OVERLAY_ENABLED` | `0` disables overlay + fetch loop |
-| `SESSIONS_GAP_X` | Left offset in px; **empty = meet the rate limit panel's left edge** |
-| `SESSIONS_GAP_Y` | Bottom offset in px; **empty = share the skyline's baseline** |
+| `SESSIONS_GAP_X` | Left offset in px (default `20`) |
+| `SESSIONS_GAP_Y` | Bottom offset in px (default `14`) |
 | `SESSIONS_REFRESH_SECONDS` | Fetch interval (default `20`) |
 
 See [Configuration](configuration.md) for the full variable table.

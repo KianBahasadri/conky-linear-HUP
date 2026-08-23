@@ -27,8 +27,16 @@ SESSIONS_PATH = CACHE_DIR / "sessions.json"
 LOG_PATH = CACHE_DIR / "conky-sessions.log"
 
 # Must match the layout math in conky/sessions-renderer.lua.
-PANEL_ROW_HEIGHT = 52
-PANEL_CHROME_HEIGHT = 78
+PANEL_MIN_HEIGHT = 760
+PANEL_SOURCE_TOP = 132
+PANEL_DEVICE_ROW_HEIGHT = 72
+PANEL_MIN_SOURCE_ROWS = 3
+PANEL_CARD_HEIGHT = 82
+PANEL_CARD_GAP = 14
+PANEL_MIN_SESSION_SLOTS = 3
+PANEL_DESTINATION_GAP = 45
+PANEL_STATUS_GAP = 22
+PANEL_FOOTER_HEIGHT = 70
 
 # Tailscale OS strings -> the glyph the renderer draws.
 OS_GLYPHS = {
@@ -262,9 +270,16 @@ def overlay_height(device_count, session_count):
     """Conky minimum_height for the panel.
 
     Must match the layout math in conky/sessions-renderer.lua.
+    The panel keeps three source rows and three destination sockets visible so
+    the tall left rail remains useful when the live state is sparse.
     """
-    rows = max(1, device_count, session_count)
-    return PANEL_CHROME_HEIGHT + rows * PANEL_ROW_HEIGHT
+    source_rows = max(PANEL_MIN_SOURCE_ROWS, device_count)
+    session_slots = max(PANEL_MIN_SESSION_SLOTS, session_count)
+    destination_divider = PANEL_SOURCE_TOP + source_rows * PANEL_DEVICE_ROW_HEIGHT + 1
+    card_top = destination_divider + PANEL_DESTINATION_GAP
+    cards_bottom = card_top + session_slots * (PANEL_CARD_HEIGHT + PANEL_CARD_GAP) - PANEL_CARD_GAP
+    status_divider = cards_bottom + PANEL_STATUS_GAP
+    return max(PANEL_MIN_HEIGHT, status_divider + PANEL_FOOTER_HEIGHT)
 
 
 def current_overlay_height():

@@ -1,9 +1,9 @@
 # Session overlay design study
 
 Concepts for a panel showing active tmux sessions and active remote logins.
-`02-patch-bay.png` shipped — see [Sessions overlay](../sessions.md) for the
-overlay it became. This file is the survey it was picked from, kept for the
-alternatives and the reasoning.
+`08-tall-left-rail.png` is the current shipped direction — see
+[Sessions overlay](../sessions.md) for the implementation. This file is the
+survey it was picked from, kept for the alternatives and the reasoning.
 
 Render with:
 
@@ -50,6 +50,7 @@ Two consequences:
 | `04-radar.png` | Ingress radar | Bearing per device, radius = staleness, sweep + blips |
 | `05-patch-bay-alert.png` | Patch bay, unknown device | Alert state: dead-ended cable, red frame, master caption |
 | `06-annunciator.png` | Master caution panel | Cross-cutting bonus: aggregates every overlay's alarm state |
+| `08-tall-left-rail.png` | Tall left rail | A roomier vertical bay with explicit source rows, sockets, and long-form routes |
 
 ### Pane micro-maps
 
@@ -80,6 +81,19 @@ uv run python scripts/render_desktop.py --monitor 0 --overlay linear --overlay r
 uv run --with pycairo python docs/session-mockups/render_layout_v2.py /tmp/norail.png
 uv run --with pycairo python docs/session-mockups/render_layout_v3.py /tmp/norail.png
 ```
+
+The tall-left-rail concept is rendered with:
+
+```bash
+uv run --with pycairo python docs/session-mockups/render_tall_left_rail.py \
+  docs/session-mockups/placement-layout-v3.png
+```
+
+It writes the close-up `08-tall-left-rail.png` and the full-monitor placement
+`placement-tall-left-rail.png`. The concept is deliberately placed below the
+Git status panel on the far left: its 360px width is only modestly wider than
+the current bay, while its 760px height gives the inbound-to-tmux cables room
+to read as routes instead of a compressed row.
 
 Head 0 leaves two usable holes: the band between the Linear cards (bottom 288)
 and the rate limit panel (top 769), and the right column's gap between the

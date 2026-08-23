@@ -99,12 +99,12 @@ GITHUB_LINEAR_CLEARANCE="${GITHUB_LINEAR_CLEARANCE:-14}"
 # Clearance between the roof line and the panel's top edge. The provider title
 # chips straddle that edge, riding 9px above it.
 GITHUB_ROOF_CLEARANCE="${GITHUB_ROOF_CLEARANCE:-11}"
-SESSIONS_GAP_X="${SESSIONS_GAP_X-}"
-SESSIONS_GAP_Y="${SESSIONS_GAP_Y-}"
+# The tall bay owns the lower-left column rather than sharing the skyline seam.
+SESSIONS_GAP_X="${SESSIONS_GAP_X:-20}"
+SESSIONS_GAP_Y="${SESSIONS_GAP_Y:-14}"
 SESSIONS_REFRESH_SECONDS="${SESSIONS_REFRESH_SECONDS:-20}"
 SESSIONS_OVERLAY_ENABLED="${SESSIONS_OVERLAY_ENABLED:-1}"
-# Matches billing and weather, so the bay joins an existing panel width.
-SESSIONS_PANEL_WIDTH=456
+SESSIONS_PANEL_WIDTH=360
 WEATHER_GAP_X="${WEATHER_GAP_X:-6}"
 WEATHER_GAP_Y="${WEATHER_GAP_Y:-6}"
 WEATHER_REFRESH_SECONDS="${WEATHER_REFRESH_SECONDS:-600}"
@@ -630,12 +630,7 @@ overlay_gap_x() {
       fi
       ;;
     sessions)
-      if [[ -n "$SESSIONS_GAP_X" ]]; then
-        printf "%s\n" "$SESSIONS_GAP_X"
-      else
-        # Right edge meets the left edge of the panel-and-skyline stack.
-        printf "%s\n" "$((RATE_LIMIT_FRAME_LEFT - SESSIONS_PANEL_WIDTH))"
-      fi
+      printf "%s\n" "$SESSIONS_GAP_X"
       ;;
     weather) printf "%s\n" "$WEATHER_GAP_X" ;;
     resource-monitor) printf "%s\n" "$RESOURCE_MONITOR_GAP_X" ;;
@@ -806,12 +801,7 @@ overlay_gap_y() {
       fi
       ;;
     sessions)
-      if [[ -n "$SESSIONS_GAP_Y" ]]; then
-        printf "%s\n" "$SESSIONS_GAP_Y"
-      else
-        # Same baseline as the roof, so one line runs across the screen.
-        printf "%s\n" "$((MONITOR_HEIGHT - GITHUB_ROOF_BASELINE))"
-      fi
+      printf "%s\n" "$SESSIONS_GAP_Y"
       ;;
     weather) printf "%s\n" "$WEATHER_GAP_Y" ;;
     resource-monitor)
