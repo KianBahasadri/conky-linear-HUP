@@ -275,31 +275,20 @@ return function(shared, repo_root)
   local function draw_nebula(cr, x, y, layout)
     local fh = layout and layout.field_height or drift_full_height
     radial_hex(cr, x + panel_width * 0.50, y + drift_top + fh * 0.18, 0, 520, {
-      {0,    'f8fafc', 0.075}, {0.28, '94a3b8', 0.036}, {0.60, '64748b', 0.018}, {1, '000000', 0},
+      {0,    'f8fafc', 0.035}, {0.28, '94a3b8', 0.018}, {0.60, '64748b', 0.009}, {1, '000000', 0},
     })
     radial_hex(cr, x + 76, y + drift_top + 42, 0, 210, {
-      {0, '94a3b8', 0.050}, {1, '000000', 0},
+      {0, '94a3b8', 0.022}, {1, '000000', 0},
     })
     radial_hex(cr, x + panel_width * 0.74, y + drift_top + fh * 0.52, 0, 260, {
-      {0, '39ff88', 0.032}, {0.45, '38bdf8', 0.022}, {1, '000000', 0},
+      {0, '39ff88', 0.014}, {0.45, '38bdf8', 0.010}, {1, '000000', 0},
     })
     radial_hex(cr, x + panel_width * 0.26, y + drift_top + fh * 0.36, 0, 200, {
-      {0, 'a78bfa', 0.032}, {0.52, 'f472b6', 0.016}, {1, '000000', 0},
+      {0, 'a78bfa', 0.014}, {0.52, 'f472b6', 0.007}, {1, '000000', 0},
     })
     radial_hex(cr, x + panel_width * 0.50, y + drift_top + fh * 0.78, 0, 180, {
-      {0, 'facc15', 0.022}, {1, '000000', 0},
+      {0, 'facc15', 0.009}, {1, '000000', 0},
     })
-    if cairo_pattern_create_radial then
-      local cx, cy = x + panel_width / 2, y + drift_top + fh / 2
-      local r0, r1 = fh * 0.32, fh * 0.98
-      local pat = cairo_pattern_create_radial(cx, cy, r0, cx, cy, r1)
-      cairo_pattern_add_color_stop_rgba(pat, 0, 0, 0, 0, 0)
-      cairo_pattern_add_color_stop_rgba(pat, 1, 0, 0, 0, 0.14)
-      cairo_set_source(cr, pat)
-      cairo_rectangle(cr, x + content_left, y + drift_top, panel_width - (content_left*2) + 12, fh + 18)
-      cairo_fill(cr)
-      if cairo_pattern_destroy then cairo_pattern_destroy(pat) end
-    end
   end
 
   local function draw_field_stars(cr, x, y, layout, slot_width, star_pos, diamond_pos)
