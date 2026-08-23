@@ -72,7 +72,7 @@ of the top Linear cards.
 The renderer is the Drift instrument. It is transparent like the [Affine
 billing map](billing.md) — no outer frame, panel fill, or card background.
 Height *is* time: a fresh login floats at the top of the field and a stale
-one sinks toward the bottom on a log scale (0 to 48h). A live login that is
+one sinks toward the bottom linearly (0 to 48h). A live login that is
 driving a session sinks with that session's `idleSeconds` instead of its own
 `ageSeconds`, so an old but active session stays high.
 

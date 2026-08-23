@@ -120,9 +120,8 @@ return function(shared, repo_root)
   local function drift_fraction(age_seconds)
     age_seconds = age_seconds or 0
     if age_seconds <= 0 then return 0.03 end
-    local minutes = age_seconds / 60
-    local max_minutes = 48 * 60
-    local f = math.log(1 + minutes) / math.log(1 + max_minutes)
+    local max_seconds = 48 * 3600
+    local f = age_seconds / max_seconds
     if f < 0 then f = 0 end
     if f > 1 then f = 1 end
     return 0.03 + f * 0.92
