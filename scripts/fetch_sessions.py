@@ -16,6 +16,7 @@ import re
 import subprocess
 import sys
 from datetime import datetime, timezone
+from math import ceil
 from pathlib import Path
 
 import fetch_common as common
@@ -28,14 +29,11 @@ LOG_PATH = CACHE_DIR / "conky-sessions.log"
 
 # Must match the layout math in conky/sessions-renderer.lua.
 PANEL_MIN_HEIGHT = 760
-PANEL_SOURCE_TOP = 132
-PANEL_DEVICE_ROW_HEIGHT = 72
-PANEL_MIN_SOURCE_ROWS = 3
-PANEL_CARD_HEIGHT = 82
-PANEL_CARD_GAP = 14
-PANEL_MIN_SESSION_SLOTS = 3
-PANEL_DESTINATION_GAP = 45
-PANEL_STATUS_GAP = 22
+PANEL_SOURCE_TOP = 112
+PANEL_SOURCE_ROW_HEIGHT = 88
+PANEL_SOURCE_COLUMNS = 3
+PANEL_ROUTE_GAP = 350
+PANEL_DESTINATION_ROW_HEIGHT = 104
 PANEL_FOOTER_HEIGHT = 70
 
 # Tailscale OS strings -> the glyph the renderer draws.
@@ -270,16 +268,20 @@ def overlay_height(device_count, session_count):
     """Conky minimum_height for the panel.
 
     Must match the layout math in conky/sessions-renderer.lua.
-    The panel keeps three source rows and three destination sockets visible so
-    the tall left rail remains useful when the live state is sparse.
+    The panel keeps three horizontal source slots and three destination sockets
+    visible so the vertical route remains useful when the live state is sparse.
     """
-    source_rows = max(PANEL_MIN_SOURCE_ROWS, device_count)
-    session_slots = max(PANEL_MIN_SESSION_SLOTS, session_count)
-    destination_divider = PANEL_SOURCE_TOP + source_rows * PANEL_DEVICE_ROW_HEIGHT + 1
-    card_top = destination_divider + PANEL_DESTINATION_GAP
-    cards_bottom = card_top + session_slots * (PANEL_CARD_HEIGHT + PANEL_CARD_GAP) - PANEL_CARD_GAP
-    status_divider = cards_bottom + PANEL_STATUS_GAP
-    return max(PANEL_MIN_HEIGHT, status_divider + PANEL_FOOTER_HEIGHT)
+    source_rows = max(1, ceil(max(1, device_count) / PANEL_SOURCE_COLUMNS))
+    session_slots = max(PANEL_SOURCE_COLUMNS, session_count)
+    session_rows = max(1, ceil(session_slots / PANEL_SOURCE_COLUMNS))
+    content_height = (
+        PANEL_SOURCE_TOP
+        + source_rows * PANEL_SOURCE_ROW_HEIGHT
+        + PANEL_ROUTE_GAP
+        + session_rows * PANEL_DESTINATION_ROW_HEIGHT
+        + PANEL_FOOTER_HEIGHT
+    )
+    return max(PANEL_MIN_HEIGHT, content_height)
 
 
 def current_overlay_height():

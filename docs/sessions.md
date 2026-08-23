@@ -1,8 +1,9 @@
 # Sessions overlay
 
-A patch bay: inbound logins on the left, tmux sessions on the right, and a patch
-cable for every login that is driving one. It answers "who is on this machine and
-what are they attached to" in one read. The concept survey it came out of,
+A patch bay: inbound logins run across the top, tmux sessions run across the
+bottom, and a vertical patch cable connects every login that is driving one. It
+answers "who is on this machine and what are they attached to" in one read. The
+concept survey it came out of,
 including the alternatives that were not built, is the
 [session overlay design study](session-mockups/NOTES.md).
 
@@ -57,12 +58,17 @@ column below the Git status panel. Its default `gap_x` is 20px and its default
 `gap_y` is 14px, leaving a small screen margin while keeping the tall rail clear
 of the top Linear cards.
 
+The renderer follows the resource monitor's transparent HUD treatment: it paints
+no outer frame, panel fill, inset rim, or session-card background. Only flat
+labels, device glyphs, sockets, traces, and status lines are drawn.
+
 The window self-sizes through `${lua_parse sessions_height_spacer}`, the same
 mechanism the [rate limit panel](rate-limit-panel.md) uses. Because it is
 bottom-anchored it grows *upward* as devices and sessions appear. The live layout
-keeps three source rows and three destination sockets visible, with a 760px
-minimum height; additional rows extend the window upward. `minimum_height` is
-seeded at launch from `fetch_sessions.py --print-overlay-height`.
+keeps three horizontal slots in the top source row and three destination sockets
+in the bottom row visible, with a 760px minimum height; additional source or
+destination rows extend the window upward. `minimum_height` is seeded at launch
+from `fetch_sessions.py --print-overlay-height`.
 
 | Variable | Purpose |
 | --- | --- |
@@ -79,6 +85,6 @@ See [Configuration](configuration.md) for the full variable table.
 | --- | --- |
 | Device glyph | Phone, laptop, monitor or console, from the peer's OS; a warning triangle for an unidentified remote |
 | Jack | Lit when that login is attached to a tmux session, dark when it is not |
-| Cable | Which session the login is driving; the beads ride from the jack toward the card |
-| Card stripe | Green while a session has a client attached, dim once every client detaches |
+| Cable | Which session the login is driving; the beads travel vertically from the top jack to the bottom socket |
+| Socket underline | Green while a session has a client attached, dim once every client detaches |
 | Footer | Whether `sshd` is listening, next to the Tailscale SSH path that actually carries the logins |
