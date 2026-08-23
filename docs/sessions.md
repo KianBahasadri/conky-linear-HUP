@@ -75,12 +75,13 @@ Height *is* time: a fresh login floats at the top of the field and a stale
 one sinks toward the bottom linearly (0 to 48h). A live login that is
 driving a session sinks with that session's `idleSeconds` instead of its own
 `ageSeconds`, so an old but active session stays high. Origins are stars on
-a faint starfield — glowing phone/laptop icons for known devices (with a
-soft halo), plain star dots otherwise — linked by glowing constellation
-filaments to their destination diamonds. Subtle nebula washes and field
-micro-stars add depth; idle origins show a short fading tail, alerts a red
-burst. Filaments kiss glyph and diamond edges without overlapping, and a
-faint dashed arc links the session diamonds.
+a faint starfield spanning the full transparent bay — glowing phone/laptop
+icons for known devices (with a soft halo), plain star dots otherwise — linked
+by glowing constellation filaments to their destination diamonds. Subtle nebula
+washes and micro-stars add depth; idle origins show a short fading tail, alerts
+a red burst, with a 24px clear margin at the top and a 48px clear margin at the bottom. Filaments kiss
+glyph and diamond edges without overlapping, and a faint dashed arc links the
+session diamonds.
 
 The window self-sizes through `${lua_parse sessions_height_spacer}`, the same
 mechanism the [rate limit panel](rate-limit-panel.md) uses. Because it is

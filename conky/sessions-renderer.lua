@@ -14,6 +14,8 @@ return function(shared, repo_root)
   local destination_row_height = 110
   local footer_height = 0
   local diamond_zone_height = 330
+  local visual_top_buffer = 24
+  local visual_bottom_buffer = 48
 
   local green = '39ff88'
   local red = 'f87171'
@@ -294,13 +296,15 @@ return function(shared, repo_root)
   local function draw_field_stars(cr, x, y, layout, slot_width, star_pos, diamond_pos)
     local seed = 42
     local function rnd() seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296 end
-    local density = (panel_width * layout.field_height) / (520 * 520)
+    local top_buffer, bottom_buffer = 16, 16
+    local starfield_height = math.max(1, layout.height - top_buffer - bottom_buffer)
+    local density = (panel_width * starfield_height) / (520 * 520)
     local total = math.floor(118 * density + 0.5)
     if total < 72 then total = 72 end
     if total > 155 then total = 155 end
     for _ = 1, total do
       local sx = x + 10 + rnd() * (panel_width - 20)
-      local sy = y + 10 + rnd() * (layout.field_height + 34)
+      local sy = y + top_buffer + rnd() * starfield_height
       local too_close = false
       for _, p in ipairs(star_pos) do
         local dx, dy = sx - p[1], sy - p[2]
@@ -583,7 +587,7 @@ return function(shared, repo_root)
     local diamond_reserved = math.max(diamond_zone_height, session_rows * destination_row_height)
     local reserved = diamond_reserved + footer_height
     local field_height = height - field_top - reserved
-    if field_height < drift_min_height then
+    if field_height < drift_min_height and height >= panel_min_height then
       field_height = drift_min_height
       height = field_top + field_height + reserved
     end
@@ -874,7 +878,8 @@ return function(shared, repo_root)
     local x = math.max(4, (conky_window.width - panel_width) / 2)
     if state.ok then
       local h = panel_height(state)
-      draw_panel(cr, state, x, math.max(4, conky_window.height - h - 4), h)
+      local visual_height = h - visual_top_buffer - visual_bottom_buffer
+      draw_panel(cr, state, x, math.max(4, conky_window.height - h - 4) + visual_top_buffer, visual_height)
     else
       local h = panel_min_height
       draw_error(cr, state, x, math.max(4, conky_window.height - h - 4))
