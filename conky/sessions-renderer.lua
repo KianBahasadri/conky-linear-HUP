@@ -160,17 +160,15 @@ return function(shared, repo_root)
     local x, y = cx - w / 2, cy - h / 2
     shared.rounded_rect(cr, x, y, w, h, r)
     if filled then
-      shared.set_hex(cr, color, alpha or 1)
-      cairo_fill_preserve(cr)
       shared.set_hex(cr, color, 1)
-      cairo_set_line_width(cr, 0.9)
+      cairo_set_line_width(cr, 1.15)
       cairo_stroke(cr)
     else
       shared.set_hex(cr, color, 0.96)
       cairo_set_line_width(cr, 1.15)
       cairo_stroke(cr)
     end
-    -- screen
+    -- screen: transparent tint so the icon reads as an outlined shell with a screen, same as the gray idle version
     shared.set_hex(cr, color, filled and 0.18 or 0.28)
     cairo_rectangle(cr, x + 1, y + 1.7, w - 2, h - 4.4)
     cairo_fill(cr)
@@ -185,13 +183,11 @@ return function(shared, repo_root)
     local bw, bh = 14, 2.0
     local sx, sy = cx - sw / 2, cy - sh / 2 - 1.4
     local bx, by = cx - bw / 2, cy + sh / 2 + 0.2
-    -- screen
+    -- screen: hollow outline + transparent inner screen for both states so filled reads as a green outline with a tinted screen like the gray idle
     shared.rounded_rect(cr, sx, sy, sw, sh, 1.1)
     if filled then
-      shared.set_hex(cr, color, alpha or 1)
-      cairo_fill_preserve(cr)
       shared.set_hex(cr, color, 1)
-      cairo_set_line_width(cr, 0.9)
+      cairo_set_line_width(cr, 1.15)
       cairo_stroke(cr)
     else
       shared.set_hex(cr, color, 0.96)
@@ -199,7 +195,7 @@ return function(shared, repo_root)
       cairo_stroke(cr)
     end
     -- inner screen
-    shared.set_hex(cr, color, filled and 0.16 or 0.26)
+    shared.set_hex(cr, color, filled and 0.18 or 0.26)
     cairo_rectangle(cr, sx + 1, sy + 1, sw - 2, sh - 1.8)
     cairo_fill(cr)
     -- base
@@ -373,7 +369,7 @@ return function(shared, repo_root)
       local label = fit_text(cr, device.name, slot_width - 10, 9)
       local lab_color = device.state == 'alert' and red or (device.state == 'live' and text_color or muted)
       local lab_alpha = device.state == 'idle' and 0.62 or 0.96
-      flat_text(cr, label, cx, cy + 17, 9, lab_color, lab_alpha, 'center')
+      flat_text(cr, label, cx, cy - 12, 9, lab_color, lab_alpha, 'center')
     end
     if #state.devices == 0 then
       flat_text(cr, 'no inbound', x + panel_width / 2, y + layout.field_top + layout.field_height / 2, 9, dim, 0.62, 'center')
