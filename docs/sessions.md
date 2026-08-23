@@ -43,7 +43,7 @@ them. That chain — device, then session — is the thing the panel draws.
 and OS strings are taken from it. The tailnet account identity in that payload is
 deliberately left alone.
 
-Two cases worth knowing:
+Three cases worth knowing:
 
 - **tmux's own panes appear in `who`**, registered with utmp as `tmux(PID).%N`.
   They are not inbound logins, and counting them as unidentified remotes turns
@@ -51,6 +51,13 @@ Two cases worth knowing:
 - **A remote login with no tailnet identity** is the state worth making loud. It
   gets the `alert` state, which switches the panel's accent to red and draws a
   warning glyph instead of a device icon.
+- **The local VT (`tty2`) is filtered** — it sits `2d` idle and would sink to the
+  bottom while its Kittty `pts/*` clients drive `tmux` on `xterm-kitty`. `who`
+  never lists those `pts/N` as logins, so the `tty`→`session` join misses them.
+  `fetch_sessions.py` instead synthesizes a `laptop` ingress per orphan `tmux`
+  client (`pts/1`, `pts/8`, …) using the tailnet Self HostName (`kianWorkLaptop`)
+  and the session's `idleSeconds` so the dot floats at the top and the diamond
+  fills green.
 
 With no tmux server running the sessions column says so rather than going blank;
 that is the normal state between sessions, not an error.

@@ -270,20 +270,41 @@ return function(shared, repo_root)
       session_positions[session.name] = { x = cx, y = cy }
     end
 
-    -- threads: height is time
+    -- threads: height is time (one device may drive multiple sessions — e.g. a
+    -- single laptop dot with several kitty pts clients). Draw one green
+    -- thread per attached session so a device only shows up once but still
+    -- connects to all its diamonds.
     for index, device in ipairs(state.devices) do
       local cx = x + column_center(index, slot_width)
       local age = session_idle_for(device, sessions_by_name)
       local frac = drift_fraction(age)
       local cy = y + layout.field_top + 16 + frac * (layout.field_height - 32)
-      local target = device.session and session_positions[device.session] or nil
-      if target and device.state ~= 'alert' then
+      local is_live = device.state == 'live' and device.state ~= 'alert'
+      local targets = {}
+      if is_live then
+        if device.session and session_positions[device.session] then
+          table.insert(targets, session_positions[device.session])
+        end
+        for _, sess in ipairs(state.sessions) do
+          if sess.attached and sess.attached:find(device.name, 1, true) then
+            local pos = session_positions[sess.name]
+            if pos then
+              local already = false
+              for _, t in ipairs(targets) do if t == pos then already = true break end end
+              if not already then table.insert(targets, pos) end
+            end
+          end
+        end
+      end
+      if #targets > 0 and device.state ~= 'alert' then
         shared.set_hex(cr, green, 0.85)
         cairo_set_line_width(cr, 1.15)
         cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND)
-        cairo_move_to(cr, cx, cy + 5)
-        cairo_line_to(cr, target.x, target.y - 7)
-        cairo_stroke(cr)
+        for _, target in ipairs(targets) do
+          cairo_move_to(cr, cx, cy + 5)
+          cairo_line_to(cr, target.x, target.y - 7)
+          cairo_stroke(cr)
+        end
       elseif device.state == 'alert' then
         local stub_len = math.min(86, layout.field_bottom - cy - 8)
         if stub_len < 16 then stub_len = 16 end

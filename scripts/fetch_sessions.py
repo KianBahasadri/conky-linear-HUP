@@ -236,9 +236,16 @@ def collect():
     now = datetime.now(timezone.utc).timestamp()
 
     devices = []
+    seen_ttys = set()
     for login in logins():
+        # Drop local VT logins (tty2 etc.) — they sink as 2-day-old idle dots and
+        # never match a kitty tmux client (which lives on pts/N). The user's
+        # laptop is instead represented by the pts/* kitty clients themselves.
+        if login["tty"].startswith("tty"):
+            continue
         name, os_name, glyph, unknown = device_for(login, peers, local_host)
         session = clients.get(login["tty"])
+        seen_ttys.add(login["tty"])
         age_seconds = None
         if login["since"]:
             try:
@@ -269,6 +276,53 @@ def collect():
             "ageSeconds": age_seconds if age_seconds is not None else 0,
             "state": state,
         })
+
+    # Local kitty tmux clients (e.g. pts/1, pts/8 via xterm-kitty) are not
+    # registered in utmp, so `who` never shows them and the tty->session
+    # join misses them. Treat any tmux client whose tty is not already a
+    # login device as a synthetic laptop ingress — this replaces the stale
+    # tty2 dot and makes kitty-driven sessions appear connected. A single
+    # physical laptop may have multiple pts clients; group by HostName so the
+    # device only shows up once at most and all its sessions are marked
+    # attached to that one dot.
+    orphans_by_host = {}
+    for tty, session in clients.items():
+        if tty in seen_ttys:
+            continue
+        if session not in sessions:
+            continue
+        base_name = local_host or "laptop"
+        orphans_by_host.setdefault(base_name, []).append((tty, session))
+
+    for base_name, pairs in orphans_by_host.items():
+        # Pick the freshest session for the dot's vertical position.
+        pairs.sort(key=lambda p: sessions[p[1]].get("idleSeconds", 0))
+        freshest_tty, freshest_session = pairs[0]
+        idle_seconds = sessions[freshest_session].get("idleSeconds", 0) or 0
+        age_seconds = idle_seconds
+        age = relative_age(age_seconds)
+        # If a real login device already uses this name (unlikely), keep it;
+        # otherwise the synthetic laptop is the sole entry for this host.
+        if any(d["name"] == base_name for d in devices):
+            continue
+        devices.append({
+            "name": base_name,
+            "os": "local",
+            "glyph": "laptop",
+            "tty": freshest_tty,
+            "session": freshest_session,
+            "age": age,
+            "ageSeconds": age_seconds,
+            "state": "live",
+        })
+        seen_ttys.add(freshest_tty)
+        for _, sess_name in pairs:
+            # Mark every session that this host drives as attached to the
+            # single laptop dot so its diamond fills and a thread can be drawn.
+            if base_name not in sessions[sess_name]["attached"]:
+                sessions[sess_name]["attached"].append(base_name)
+        for t, _ in pairs:
+            seen_ttys.add(t)
 
     # Alerts first, then live links, then idle: the panel reads top-down.
     order = {"alert": 0, "live": 1, "idle": 2}
