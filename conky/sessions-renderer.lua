@@ -397,9 +397,7 @@ return function(shared, repo_root)
       end
       local lab = fit_text(cr, session.name, slot_width - 12, 9)
       flat_text(cr, lab, cx, cy + 22, 9, live and text_color or dim, live and 0.96 or 0.62, 'center')
-      if live then
-        flat_text(cr, string.format('%dw', session.windows), cx, cy + 34, 8, dim, 0.62, 'center')
-      else
+      if not live then
         flat_text(cr, 'open', cx, cy + 34, 8, dim, 0.48, 'center')
       end
     end
