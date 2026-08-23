@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="620" height="280" viewBox="0 0 620 280" role="img">
+<style>
+  svg { font-family: "DejaVu Sans Mono", "Liberation Mono", monospace; shape-rendering: geometricPrecision; }
+  .horizon { fill: none; stroke: #4a6a73; stroke-width: 0.9; stroke-opacity: 0.42; stroke-linecap: round; }
+  .pierce { fill: none; stroke: #55ef8b; stroke-width: 1.9; stroke-linecap: round; }
+  .stub { fill: none; stroke: #f87171; stroke-width: 1.3; stroke-linecap: butt; }
+  .dot-live { fill: #55ef8b; stroke: #55ef8b; stroke-width: 1; }
+  .dot-idle { fill: none; stroke: #5a7280; stroke-width: 1.35; }
+  .dot-unresolved { fill: #f87171; stroke: #f87171; stroke-width: 1; }
+  .dia-live { fill: #55ef8b; stroke: #55ef8b; stroke-width: 1; }
+  .dia-idle { fill: none; stroke: #5a7280; stroke-width: 1.15; }
+  .lab { font-size: 7px; letter-spacing: 0.35px; text-anchor: middle; }
+  .lab-live { fill: #55ef8b; fill-opacity: 0.96; }
+  .lab-idle { fill: #6b8290; fill-opacity: 0.92; }
+  .lab-unresolved { fill: #f87171; fill-opacity: 0.96; }
+  .lab-dest-live { fill: #55ef8b; fill-opacity: 0.96; }
+  .lab-dest-idle { fill: #5a7280; fill-opacity: 0.9; }
+</style>
+<line x1="36" y1="140" x2="584" y2="140" class="horizon"/>
+<line x1="170" y1="107.2" x2="170" y2="172" class="pierce"/>
+<line x1="450" y1="107.2" x2="450" y2="140" class="stub"/>
+<circle cx="170" cy="102" r="4.8" class="dot-live"/>
+<circle cx="310" cy="102" r="4.8" class="dot-idle"/>
+<circle cx="450" cy="102" r="4.8" class="dot-unresolved"/>
+<polygon points="170,172 176,178 170,184 164,178" class="dia-live"/>
+<polygon points="310,172 316,178 310,184 304,178" class="dia-idle"/>
+<polygon points="450,172 456,178 450,184 444,178" class="dia-idle"/>
+<text x="170" y="86" class="lab lab-live">Pixel 8a</text>
+<text x="310" y="86" class="lab lab-idle">tty2</text>
+<text x="450" y="86" class="lab lab-unresolved">10.0.0.99</text>
+<text x="170" y="200" class="lab lab-dest-live">0</text>
+<text x="310" y="200" class="lab lab-dest-idle">build</text>
+<text x="450" y="200" class="lab lab-dest-idle">notes</text>
+</svg>

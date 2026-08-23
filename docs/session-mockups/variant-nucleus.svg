@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="620" height="280" viewBox="0 0 620 280" role="img">
+<style>
+  svg { font-family: "DejaVu Sans Mono", "Liberation Mono", monospace; shape-rendering: geometricPrecision; }
+  .ring-live { fill: none; stroke: #55ef8b; stroke-width: 1.7; stroke-linecap: round; }
+  .ring-idle { fill: none; stroke: #455a64; stroke-width: 1.5; stroke-linecap: round; }
+  .spoke-live { fill: none; stroke: #55ef8b; stroke-width: 1.6; stroke-linecap: round; }
+  .stub-unres { fill: none; stroke: #f87171; stroke-width: 1.6; stroke-linecap: round; }
+  .dot-live { fill: #55ef8b; }
+  .dot-idle { fill: #455a64; }
+  .dot-unres { fill: #f87171; }
+  .pane-live { fill: #55ef8b; }
+  .pane-idle { fill: #455a64; }
+  .lab { font-size: 7px; text-anchor: middle; dominant-baseline: alphabetic; letter-spacing: 0.25px; }
+  .lab-live { fill: #55ef8b; }
+  .lab-idle { fill: #455a64; }
+  .lab-unres { fill: #f87171; }
+</style>
+<circle cx="170" cy="62" r="5.2" class="dot-live"/>
+<circle cx="310" cy="62" r="5.2" class="dot-idle"/>
+<circle cx="450" cy="62" r="5.2" class="dot-unres"/>
+<line x1="170" y1="69" x2="170" y2="180" class="spoke-live"/>
+<line x1="450" y1="69" x2="450" y2="112" class="stub-unres"/>
+<path d="M 188.38 193.62 A 26 26 0 1 1 151.62 193.62" class="ring-live"/>
+<circle cx="170" cy="212" r="2" class="pane-live"/>
+<path d="M 312.27 186.10 A 26 26 0 0 1 312.27 237.90" class="ring-idle"/>
+<path d="M 307.73 237.90 A 26 26 0 0 1 307.73 186.10" class="ring-idle"/>
+<circle cx="303" cy="212" r="1.7" class="pane-idle"/>
+<circle cx="310" cy="212" r="1.7" class="pane-idle"/>
+<circle cx="317" cy="212" r="1.7" class="pane-idle"/>
+<path d="M 468.38 193.62 A 26 26 0 1 1 431.62 193.62" class="ring-idle"/>
+<circle cx="445.5" cy="212" r="1.7" class="pane-idle"/>
+<circle cx="454.5" cy="212" r="1.7" class="pane-idle"/>
+<text x="170" y="82" class="lab lab-live">Pixel 8a</text>
+<text x="310" y="82" class="lab lab-idle">tty2</text>
+<text x="450" y="82" class="lab lab-unres">10.0.0.99</text>
+<text x="170" y="252" class="lab lab-live">0</text>
+<text x="310" y="252" class="lab lab-idle">build</text>
+<text x="450" y="252" class="lab lab-idle">notes</text>
+</svg>

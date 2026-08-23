@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="620" height="280" viewBox="0 0 620 280" role="img">
+<style>
+  svg { font-family: "DejaVu Sans Mono", "Liberation Mono", monospace; shape-rendering: geometricPrecision; }
+  .fil-live { fill: none; stroke: #55ef8b; stroke-width: 1.9; stroke-linecap: round; }
+  .fil-idle { fill: none; stroke: #455a64; stroke-width: 1; stroke-linecap: round; stroke-dasharray: 2.8 5; stroke-opacity: 0.95; }
+  .fil-unresolved { fill: none; stroke: #f87171; stroke-width: 1.4; stroke-linecap: round; stroke-dasharray: 3.6 6; stroke-opacity: 0.98; }
+  .dot-live { fill: #55ef8b; stroke: #55ef8b; stroke-width: 1; }
+  .dot-idle { fill: none; stroke: #455a64; stroke-width: 1.35; }
+  .dot-unresolved { fill: #f87171; stroke: #f87171; stroke-width: 1; }
+  .dia-live { fill: #55ef8b; stroke: #55ef8b; stroke-width: 1; }
+  .dia-idle { fill: none; stroke: #455a64; stroke-width: 1.15; }
+  .lab { font-size: 7px; letter-spacing: 0.35px; text-anchor: middle; dominant-baseline: alphabetic; }
+  .lab-live { fill: #55ef8b; fill-opacity: 0.96; }
+  .lab-idle { fill: #6b8290; fill-opacity: 0.92; }
+  .lab-unresolved { fill: #f87171; fill-opacity: 0.96; }
+  .lab-dest-live { fill: #55ef8b; fill-opacity: 0.96; }
+  .lab-dest-idle { fill: #5a7280; fill-opacity: 0.9; }
+</style>
+<line x1="170" y1="73.2" x2="170" y2="205.8" class="fil-live"/>
+<line x1="310" y1="73.2" x2="310" y2="118" class="fil-idle"/>
+<line x1="450" y1="73.2" x2="450" y2="108" class="fil-unresolved"/>
+<circle cx="170" cy="68" r="4.8" class="dot-live"/>
+<circle cx="310" cy="68" r="4.8" class="dot-idle"/>
+<circle cx="450" cy="68" r="4.8" class="dot-unresolved"/>
+<polygon points="170,206 176,212 170,218 164,212" class="dia-live"/>
+<polygon points="310,206 316,212 310,218 304,212" class="dia-idle"/>
+<polygon points="450,206 456,212 450,218 444,212" class="dia-idle"/>
+<text x="170" y="84" class="lab lab-live">Pixel 8a</text>
+<text x="310" y="84" class="lab lab-idle">tty2</text>
+<text x="450" y="84" class="lab lab-unresolved">10.0.0.99</text>
+<text x="170" y="197" class="lab lab-dest-live">0</text>
+<text x="310" y="197" class="lab lab-dest-idle">build</text>
+<text x="450" y="197" class="lab lab-dest-idle">notes</text>
+</svg>

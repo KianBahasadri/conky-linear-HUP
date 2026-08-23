@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#05080c">
+<title>Patch Bay — Quiet Instruments</title>
+<style>
+  :root { color-scheme: dark; --bg:#05080c; --ink:#e8f0f1; --muted:#6e8388; --dim:#3a4d53; --green:#55ef8b; --red:#f87171; --cyan:#55dce7; }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;min-height:100vh;color:var(--ink);background:var(--bg);font-family:"DejaVu Sans Mono","Liberation Mono",monospace}
+  a{color:inherit}
+  .wrap{width:min(1100px,calc(100% - 40px));margin:0 auto;padding:28px 0 64px}
+  header{padding:22px 0 28px;border-bottom:1px solid rgba(110,131,136,.14)}
+  .kicker{color:var(--cyan);font-size:9px;letter-spacing:.18em}
+  h1{margin:14px 0 14px;font-size:clamp(36px,5vw,54px);line-height:.95;letter-spacing:-.06em;font-weight:700}
+  h1 i{color:var(--green);font-style:normal}
+  .lede{max-width:620px;margin:0;color:var(--muted);font-family:system-ui,sans-serif;font-size:15px;line-height:1.6}
+  .key{margin:18px 0 0;color:var(--muted);font-size:8px;letter-spacing:.08em;line-height:1.6}
+  .key b{color:var(--ink);font-weight:600}
+  .key .g{color:var(--green)} .key .r{color:var(--red)} .key .s{color:var(--muted)}
+  main{padding-top:28px}
+  .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+  figure{margin:0;padding:18px 14px 14px;border:1px solid rgba(110,131,136,.13);background:rgba(9,16,20,.55)}
+  figure img{display:block;width:100%;height:auto;cursor:zoom-in}
+  figcaption{margin-top:12px;border-top:1px solid rgba(110,131,136,.10);padding-top:10px}
+  figcaption strong{display:block;font-size:11px;letter-spacing:-.02em}
+  figcaption span{display:block;margin-top:4px;color:var(--muted);font-family:system-ui,sans-serif;font-size:12px;line-height:1.5}
+  figcaption em{color:var(--dim);font-style:normal;font-family:"DejaVu Sans Mono",monospace;font-size:7px;letter-spacing:.06em}
+  .note{margin-top:28px;padding-top:14px;border-top:1px solid rgba(110,131,136,.13);color:var(--dim);font-size:8px;letter-spacing:.06em;line-height:1.6}
+  dialog{width:min(900px,calc(100% - 24px));padding:8px;border:1px solid rgba(110,131,136,.22);background:#080c0f}
+  dialog::backdrop{background:rgba(0,4,7,.84);backdrop-filter:blur(8px)}
+  dialog img{display:block;width:100%}
+  .close{display:block;margin:0 0 8px auto;border:1px solid rgba(110,131,136,.22);background:transparent;color:var(--muted);padding:6px 10px;font-size:8px;cursor:pointer}
+  .close:hover{color:var(--ink)}
+  @media(max-width:760px){ .wrap{width:min(100% - 20px,560px)} .grid{grid-template-columns:1fr} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="kicker">SESSION OVERLAY / PATCH BAY STUDY</div>
+    <h1>Quiet <i>instruments.</i></h1>
+    <p class="lede">Five minimal objects. No frames, no headers, no legends inside the art. Every line is a route, every dot is an endpoint, every color is a state. Like the billing diamond, the geometry is the data.</p>
+    <div class="key"><b class="g">green filled</b> linked &nbsp;&middot;&nbsp; <b class="s">slate hollow</b> idle or open &nbsp;&middot;&nbsp; <b class="r">red</b> unresolved &nbsp;&nbsp; <span style="opacity:.55">top dots are ingress origins, bottom diamonds are tmux destinations, vertical is the route</span></div>
+  </header>
+
+  <main>
+    <div class="grid">
+      <figure>
+        <img data-zoom src="variant-harp.svg" alt="Harp — three vertical filaments">
+        <figcaption><strong>Harp</strong><span>The simplest possible map. Taut green for a live link, dim stub for idle, broken red stub for unresolved. Length is connectivity, not decoration.</span><em>DOT = ORIGIN / DIAMOND = SESSION / LINE = ROUTE</em></figcaption>
+      </figure>
+      <figure>
+        <img data-zoom src="variant-horizon.svg" alt="Horizon — privilege surface">
+        <figcaption><strong>Horizon</strong><span>One horizontal is the boundary. A live route pierces it. An unresolved identity stops at it and cannot cross. The surface is the trust model.</span><em>LINE CROSSES = VERIFIED / STOPS AT LINE = UNRESOLVED</em></figcaption>
+      </figure>
+      <figure>
+        <img data-zoom src="variant-drift.svg" alt="Drift — sinking with age">
+        <figcaption><strong>Drift</strong><span>Height is freshness. Fresh stays high, stale sinks. The link sags with it. Time becomes position without a clock.</span><em>HEIGHT = RECENCY / SINKING = STALENESS</em></figcaption>
+      </figure>
+      <figure>
+        <img data-zoom src="variant-nucleus.svg" alt="Nucleus — rings encode panes">
+        <figcaption><strong>Nucleus</strong><span>Each session is a ring. Arc segments are windows, ticks are panes. The route is a spoke. Structure is visible without text.</span><em>ARCS = WINDOWS / TICKS = PANES / SPOKE = ATTACHMENT</em></figcaption>
+      </figure>
+      <figure style="grid-column:1 / -1;max-width:540px">
+        <img data-zoom src="variant-echo.svg" alt="Echo — history as glow">
+        <figcaption><strong>Echo</strong><span>A live route glows. The faint ghost above the dot is its recent past. No history, no glow. The cloud is memory.</span><em>GLOW = HISTORY / GHOST = RECENT PAST</em></figcaption>
+      </figure>
+    </div>
+
+    <div class="note">Mock data in every object: Pixel 8a &rarr; session 0 is linked, tty2 is idle with no session, 10.0.0.99 is an unresolved remote with no Tailscale identity. Open sessions (build, notes) are hollow. No mockup contains a title, legend, or frame — the page is the only chrome.<br>Open in Firefox: <code>file://docs/session-mockups/patch-bay-concept-gallery.html</code></div>
+  </main>
+</div>
+
+<dialog id="zoom" aria-label="Enlarged mockup"><button class="close" type="button">CLOSE</button><img alt=""></dialog>
+<script>
+  const d=document.getElementById('zoom'), zi=d.querySelector('img'), cb=d.querySelector('.close');
+  document.querySelectorAll('img[data-zoom]').forEach(i=>i.addEventListener('click',()=>{zi.src=i.src;zi.alt=i.alt;d.showModal()}));
+  cb.addEventListener('click',()=>d.close()); d.addEventListener('click',e=>{if(e.target===d)d.close()});
+</script>
+</body>
+</html>

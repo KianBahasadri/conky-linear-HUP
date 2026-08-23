@@ -28,11 +28,13 @@ SESSIONS_PATH = CACHE_DIR / "sessions.json"
 LOG_PATH = CACHE_DIR / "conky-sessions.log"
 
 # Must match the layout math in conky/sessions-renderer.lua.
+# Drift keeps a fixed sinking field for ingress origins and a fixed bottom row
+# for tmux destinations. Height only grows when a second destination row is
+# needed.
 PANEL_MIN_HEIGHT = 760
-PANEL_SOURCE_TOP = 112
-PANEL_SOURCE_ROW_HEIGHT = 88
+PANEL_DRIFT_TOP = 112
+PANEL_DRIFT_HEIGHT = 358
 PANEL_SOURCE_COLUMNS = 3
-PANEL_ROUTE_GAP = 350
 PANEL_DESTINATION_ROW_HEIGHT = 104
 PANEL_FOOTER_HEIGHT = 70
 
@@ -103,13 +105,22 @@ def tmux_sessions():
         if len(fields) < 4:
             continue
         name, windows, path, activity = fields[:4]
+        idle_seconds = None
+        if activity.isdigit():
+            try:
+                idle_seconds = int(now - float(activity))
+                if idle_seconds < 0:
+                    idle_seconds = 0
+            except (ValueError, OverflowError):
+                idle_seconds = None
         sessions[name] = {
             "name": name,
             "windows": int(windows) if windows.isdigit() else 1,
             "panes": 0,
             "path": shorten_path(path),
             "attached": [],
-            "idle": relative_age(now - float(activity)) if activity.isdigit() else "",
+            "idle": relative_age(idle_seconds) if idle_seconds is not None else "",
+            "idleSeconds": idle_seconds if idle_seconds is not None else 0,
         }
 
     panes = tmux("list-panes", "-a", "-F", "#{session_name}")
@@ -228,7 +239,15 @@ def collect():
     for login in logins():
         name, os_name, glyph, unknown = device_for(login, peers, local_host)
         session = clients.get(login["tty"])
-        age = relative_age(now - login["since"]) if login["since"] else ""
+        age_seconds = None
+        if login["since"]:
+            try:
+                age_seconds = int(now - login["since"])
+                if age_seconds < 0:
+                    age_seconds = 0
+            except (ValueError, OverflowError):
+                age_seconds = None
+        age = relative_age(age_seconds) if age_seconds is not None else ""
 
         if unknown:
             state = "alert"
@@ -247,6 +266,7 @@ def collect():
             "tty": login["tty"],
             "session": session,
             "age": age,
+            "ageSeconds": age_seconds if age_seconds is not None else 0,
             "state": state,
         })
 
@@ -268,16 +288,17 @@ def overlay_height(device_count, session_count):
     """Conky minimum_height for the panel.
 
     Must match the layout math in conky/sessions-renderer.lua.
-    The panel keeps three horizontal source slots and three destination sockets
-    visible so the vertical route remains useful when the live state is sparse.
+    Drift keeps a fixed sinking field; the bottom socket row is only reserved
+    when at least one tmux session exists.
     """
-    source_rows = max(1, ceil(max(1, device_count) / PANEL_SOURCE_COLUMNS))
-    session_slots = max(PANEL_SOURCE_COLUMNS, session_count)
-    session_rows = max(1, ceil(session_slots / PANEL_SOURCE_COLUMNS))
+    if session_count == 0:
+        session_rows = 0
+    else:
+        session_slots = max(PANEL_SOURCE_COLUMNS, session_count)
+        session_rows = max(1, ceil(session_slots / PANEL_SOURCE_COLUMNS))
     content_height = (
-        PANEL_SOURCE_TOP
-        + source_rows * PANEL_SOURCE_ROW_HEIGHT
-        + PANEL_ROUTE_GAP
+        PANEL_DRIFT_TOP
+        + PANEL_DRIFT_HEIGHT
         + session_rows * PANEL_DESTINATION_ROW_HEIGHT
         + PANEL_FOOTER_HEIGHT
     )

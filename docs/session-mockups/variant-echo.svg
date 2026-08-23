@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 280" role="img">
+<defs>
+<linearGradient id="redFade" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0%" stop-color="#f87171" stop-opacity="1"/>
+<stop offset="68%" stop-color="#f87171" stop-opacity="0.42"/>
+<stop offset="100%" stop-color="#f87171" stop-opacity="0"/>
+</linearGradient>
+<style>
+.l{font-family:"JetBrains Mono","SFMono-Regular",Consolas,monospace;font-size:7px;letter-spacing:0.4px;text-anchor:middle}
+</style>
+</defs>
+<line x1="155" y1="22" x2="155" y2="40" stroke="#55ef8b" stroke-width="5" stroke-linecap="round" opacity="0.10"/>
+<line x1="155" y1="22" x2="155" y2="40" stroke="#55ef8b" stroke-width="1.9" stroke-linecap="round" opacity="0.38"/>
+<line x1="155" y1="57.5" x2="155" y2="222" stroke="#55ef8b" stroke-width="5" stroke-linecap="round" opacity="0.10"/>
+<line x1="155" y1="57.5" x2="155" y2="222" stroke="#55ef8b" stroke-width="1.9" stroke-linecap="round" opacity="1"/>
+<line x1="465" y1="57.5" x2="465" y2="160" stroke="url(#redFade)" stroke-width="1.9" stroke-linecap="round"/>
+<circle cx="155" cy="51.5" r="3.4" fill="#55ef8b"/>
+<circle cx="310" cy="51.5" r="2.8" fill="#455a64" opacity="0.42"/>
+<circle cx="465" cy="51.5" r="3.2" fill="#f87171"/>
+<polygon points="155,222 163,230 155,238 147,230" fill="none" stroke="#55ef8b" stroke-width="5" opacity="0.10" stroke-linejoin="round"/>
+<polygon points="155,222 163,230 155,238 147,230" fill="#55ef8b" fill-opacity="0.14" stroke="#55ef8b" stroke-width="1.4" stroke-linejoin="round"/>
+<polygon points="310,222 318,230 310,238 302,230" fill="none" stroke="#455a64" stroke-width="1.2" stroke-linejoin="round" opacity="0.9"/>
+<polygon points="465,222 473,230 465,238 457,230" fill="none" stroke="#455a64" stroke-width="1.2" stroke-linejoin="round" opacity="0.9"/>
+<text x="155" y="14" class="l" fill="#55ef8b">Pixel 8a</text>
+<text x="310" y="14" class="l" fill="#455a64">tty2</text>
+<text x="465" y="14" class="l" fill="#f87171">10.0.0.99</text>
+<text x="155" y="254" class="l" fill="#55ef8b">0</text>
+<text x="310" y="254" class="l" fill="#455a64">build</text>
+<text x="465" y="254" class="l" fill="#455a64">notes</text>
+</svg>

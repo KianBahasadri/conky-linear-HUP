@@ -1,9 +1,10 @@
 # Sessions overlay
 
-A patch bay: inbound logins run across the top, tmux sessions run across the
-bottom, and a vertical patch cable connects every login that is driving one. It
-answers "who is on this machine and what are they attached to" in one read. The
-concept survey it came out of,
+A Drift patch bay: height is time. Fresh origins float at the top of the
+field, stale ones sink, and a taut line connects every live login to the tmux
+session it is driving. Idle origins show a short sag, unresolved remotes a
+broken red stub. It answers "who is on this machine, what are they attached
+to, and how stale is it" in one read. The concept survey it came out of,
 including the alternatives that were not built, is the
 [session overlay design study](session-mockups/NOTES.md).
 
@@ -32,8 +33,11 @@ them. That chain — device, then session — is the thing the panel draws.
 - `devices`: one per inbound login. `name` is the tailnet device where the origin
   resolves to a peer, otherwise the tty (local) or the raw address (unknown).
   `state` is `live` (driving a session), `idle` (no session), or `alert`.
+  `age` is a human string and `ageSeconds` is the numeric login age that drives
+  the drift.
 - `sessions`: one per tmux session, with window and pane counts, working
-  directory, and which devices are attached.
+  directory, which devices are attached, and `idle` / `idleSeconds` for the
+  time since that session last had activity.
 
 `tailscale status --json` is called once, not per address, and only device names
 and OS strings are taken from it. The tailnet account identity in that payload is
@@ -58,17 +62,20 @@ column below the Git status panel. Its default `gap_x` is 20px and its default
 `gap_y` is 14px, leaving a small screen margin while keeping the tall rail clear
 of the top Linear cards.
 
-The renderer follows the resource monitor's transparent HUD treatment: it paints
-no outer frame, panel fill, inset rim, or session-card background. Only flat
-labels, device glyphs, sockets, traces, and status lines are drawn.
+The renderer is the Drift instrument. It is transparent like the [Affine
+billing map](billing.md) — no outer frame, panel fill, or card background.
+Height *is* time: a fresh login floats at the top of the field and a stale
+one sinks toward the bottom on a log scale (0 to 48h). A live login that is
+driving a session sinks with that session's `idleSeconds` instead of its own
+`ageSeconds`, so an old but active session stays high.
 
 The window self-sizes through `${lua_parse sessions_height_spacer}`, the same
 mechanism the [rate limit panel](rate-limit-panel.md) uses. Because it is
-bottom-anchored it grows *upward* as devices and sessions appear. The live layout
-keeps three horizontal slots in the top source row and three destination sockets
-in the bottom row visible, with a 760px minimum height; additional source or
-destination rows extend the window upward. `minimum_height` is seeded at launch
-from `fetch_sessions.py --print-overlay-height`.
+bottom-anchored the field grows upward. The field is a fixed 358px drift at
+minimum; an extra row of tmux destinations beyond three will make the window
+taller than its 760px minimum, and the socket row is hidden entirely when no
+tmux server is running. `minimum_height` is seeded at launch from
+`fetch_sessions.py --print-overlay-height`.
 
 | Variable | Purpose |
 | --- | --- |
@@ -83,8 +90,8 @@ See [Configuration](configuration.md) for the full variable table.
 
 | Element | Meaning |
 | --- | --- |
-| Device glyph | Phone, laptop, monitor or console, from the peer's OS; a warning triangle for an unidentified remote |
-| Jack | Lit when that login is attached to a tmux session, dark when it is not |
-| Cable | Which session the login is driving; the beads travel vertically from the top jack to the bottom socket |
-| Socket underline | Green while a session has a client attached, dim once every client detaches |
-| Footer | Whether `sshd` is listening, next to the Tailscale SSH path that actually carries the logins |
+| Height | Freshness. Top is now, bottom is stale (sunk). Three faint isobars are only depth guides. |
+| Dot | Ingress origin. Filled green is live and driving a session, hollow dim is idle, filled red is an unresolved remote. No OS glyph is drawn — the dot is the state. |
+| Diamond | Tmux destination. Filled green has a client attached, hollow dim is open. |
+| Thread | Live is a taut green line from dot to its diamond. Idle is a short dim sag that stops in the field. Alert is a short red stub that ends in an X and never reaches a diamond. |
+| Footer | How many live vs idle origins, whether any are unresolved, and whether `sshd` is listening. |
