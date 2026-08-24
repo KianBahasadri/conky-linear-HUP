@@ -379,9 +379,9 @@ return function(shared, repo_root)
       cairo_move_to(cr, x1, y1); cairo_line_to(cr, x2, y2); cairo_stroke(cr)
       if cairo_pattern_destroy then cairo_pattern_destroy(pat) end
     end
-    stroke_gradient(6.0, {{0, 'f8fafc', 0.12}, {0.38, 'f8fafc', 0.12}, {0.66, col, 0.085 * alpha / 0.50}, {1, col, 0.085 * alpha / 0.50}})
-    stroke_gradient(2.8, {{0, 'f8fafc', 0.22}, {0.38, 'f8fafc', 0.22}, {0.66, col, 0.16 * alpha / 0.50}, {1, col, 0.16 * alpha / 0.50}})
-    stroke_gradient(1.0, {{0, 'f8fafc', 0.62}, {0.38, 'f8fafc', 0.62}, {0.58, col, alpha}, {1, col, alpha}})
+    stroke_gradient(6.0, {{0, 'f8fafc', 0.12}, {0.60, col, 0.085 * alpha / 0.50}, {1, col, 0.085 * alpha / 0.50}})
+    stroke_gradient(2.8, {{0, 'f8fafc', 0.22}, {0.60, col, 0.16 * alpha / 0.50}, {1, col, 0.16 * alpha / 0.50}})
+    stroke_gradient(1.0, {{0, 'f8fafc', 0.62}, {0.54, col, alpha}, {1, col, alpha}})
     shared.set_hex(cr, 'f8fafc', 0.16)
     cairo_set_line_width(cr, 0.45)
     cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND)
@@ -471,9 +471,9 @@ return function(shared, repo_root)
         if cairo_pattern_destroy then cairo_pattern_destroy(pat) end
       else shared.set_hex(cr, col, alpha); cairo_set_line_width(cr, width); cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND); qpath(); cairo_stroke(cr) end
     end
-    stroke_q(6.0, {{0,'f8fafc',0.12},{0.38,'f8fafc',0.12},{0.66,col,0.085*alpha/0.50},{1,col,0.085*alpha/0.50}})
-    stroke_q(2.8, {{0,'f8fafc',0.22},{0.38,'f8fafc',0.22},{0.66,col,0.16*alpha/0.50},{1,col,0.16*alpha/0.50}})
-    stroke_q(1.0, {{0,'f8fafc',0.62},{0.38,'f8fafc',0.62},{0.58,col,alpha},{1,col,alpha}})
+    stroke_q(6.0, {{0,'f8fafc',0.12},{0.60,col,0.085*alpha/0.50},{1,col,0.085*alpha/0.50}})
+    stroke_q(2.8, {{0,'f8fafc',0.22},{0.60,col,0.16*alpha/0.50},{1,col,0.16*alpha/0.50}})
+    stroke_q(1.0, {{0,'f8fafc',0.62},{0.54,col,alpha},{1,col,alpha}})
     shared.set_hex(cr,'f8fafc',0.16); cairo_set_line_width(cr,0.45); cairo_set_line_cap(cr,CAIRO_LINE_CAP_ROUND); qpath(); cairo_stroke(cr)
     cairo_set_line_cap(cr,CAIRO_LINE_CAP_BUTT)
   end
