@@ -711,7 +711,7 @@ return function(shared, repo_root)
       end
       local age = session_idle_for(device, sessions_by_name)
       local frac = drift_fraction(age)
-      local cy = y + layout.field_top + 16 + frac * (layout.field_height - 32)
+      local cy = y + layout.field_top + 36 + frac * (layout.field_height - 32)
       table.insert(star_pos, {cx, cy})
       table.insert(star_list, {device = device, cx = cx, cy = cy, index = index})
     end
@@ -843,7 +843,7 @@ return function(shared, repo_root)
       if lx < x + 6 then lx = x + 6 end
       if lx + ext.x_advance > x + panel_width - 6 then lx = x + panel_width - 6 - ext.x_advance end
       shared.set_hex(cr, lab_color, lab_alpha)
-      cairo_move_to(cr, lx, cy - 18)
+      cairo_move_to(cr, lx, cy - 16)
       cairo_show_text(cr, label)
     end
     if #state.devices == 0 then
