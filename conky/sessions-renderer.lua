@@ -274,25 +274,6 @@ return function(shared, repo_root)
     cairo_rectangle(cr, cx - 1.85, by + bh * 0.5 - 0.35, 3.8, 0.65); cairo_fill(cr)
   end
 
-  local function draw_nebula(cr, x, y, layout)
-    local fh = layout and layout.field_height or drift_full_height
-    radial_hex(cr, x + panel_width * 0.50, y + drift_top + fh * 0.18, 0, 520, {
-      {0,    'f8fafc', 0.035}, {0.28, '94a3b8', 0.018}, {0.60, '64748b', 0.009}, {1, '000000', 0},
-    })
-    radial_hex(cr, x + 76, y + drift_top + 42, 0, 210, {
-      {0, '94a3b8', 0.022}, {1, '000000', 0},
-    })
-    radial_hex(cr, x + panel_width * 0.74, y + drift_top + fh * 0.52, 0, 260, {
-      {0, '39ff88', 0.014}, {0.45, '38bdf8', 0.010}, {1, '000000', 0},
-    })
-    radial_hex(cr, x + panel_width * 0.26, y + drift_top + fh * 0.36, 0, 200, {
-      {0, 'a78bfa', 0.014}, {0.52, 'f472b6', 0.007}, {1, '000000', 0},
-    })
-    radial_hex(cr, x + panel_width * 0.50, y + drift_top + fh * 0.78, 0, 180, {
-      {0, 'facc15', 0.009}, {1, '000000', 0},
-    })
-  end
-
   local function draw_field_stars(cr, x, y, layout, slot_width, star_pos, diamond_pos)
     local seed = 42
     local function rnd() seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296 end
@@ -735,8 +716,7 @@ return function(shared, repo_root)
       table.insert(star_list, {device = device, cx = cx, cy = cy, index = index})
     end
 
-    -- depth: nebula + field stars (behind everything)
-    draw_nebula(cr, x, y, layout)
+    -- depth: field stars (behind everything)
     draw_field_stars(cr, x, y, layout, slot_width, star_pos, diamond_list)
 
     -- constellation arc linking diamonds (faint skeleton)
