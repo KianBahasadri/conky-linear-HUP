@@ -85,8 +85,10 @@ session diamonds.
 The window self-sizes through `${lua_parse sessions_height_spacer}`, the same
 mechanism the [rate limit panel](rate-limit-panel.md) uses. Because it is
 bottom-anchored the field grows upward. The expanded drift field fills the lower-left space below Git, and destinations
-are bottom-aligned within their zone. An extra row of tmux destinations beyond
-three will make the window taller than its 790px minimum, and the socket row is hidden entirely when no
+are bottom-aligned within their zone. Ingress points use a substantial 72px
+vertical inset while preserving the same lower drift endpoint. An extra row of
+tmux destinations beyond three will make the window taller than its 790px
+minimum, and the socket row is hidden entirely when no
 tmux server is running. Only real tmux sessions produce diamonds — empty
 placeholder sockets are never drawn, so a single session shows a single
 diamond, not a padded row of three. `minimum_height` is seeded at launch from

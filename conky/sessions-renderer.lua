@@ -16,6 +16,7 @@ return function(shared, repo_root)
   local diamond_zone_height = 330
   local visual_top_buffer = 24
   local visual_bottom_buffer = 48
+  local ingress_vertical_nudge = 72
 
   local green = '39ff88'
   local red = 'f87171'
@@ -711,7 +712,7 @@ return function(shared, repo_root)
       end
       local age = session_idle_for(device, sessions_by_name)
       local frac = drift_fraction(age)
-      local cy = y + layout.field_top + 36 + frac * (layout.field_height - 32)
+      local cy = y + layout.field_top + 36 + ingress_vertical_nudge + frac * (layout.field_height - 32 - ingress_vertical_nudge)
       table.insert(star_pos, {cx, cy})
       table.insert(star_list, {device = device, cx = cx, cy = cy, index = index})
     end
