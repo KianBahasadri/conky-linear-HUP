@@ -975,11 +975,13 @@ return function(shared, repo_root)
     })
 
     if fill_width > 0 then
-      -- A sliver of fill still has to read as a rounded end, so never draw the
-      -- liquid narrower than the tube is tall.
-      local active_width = math.max(bar_height, fill_width)
+      -- A sub-bar-height sliver cannot keep the full end radius: the arc
+      -- centers of shared.rounded_rect would land outside the shape and render
+      -- garbage, so the rounding shrinks with the width.
+      local active_width = fill_width
+      local fill_radius = math.min(radius, active_width / 2)
 
-      shared.rounded_rect(cr, x, bar_y, active_width, bar_height, radius)
+      shared.rounded_rect(cr, x, bar_y, active_width, bar_height, fill_radius)
       fill_gradient(cr, x, bar_y, x, bar_y + bar_height, {
         { 0.00, accent, 1, -0.38 },
         { 0.18, accent, 1, 0.46 },
