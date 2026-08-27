@@ -121,8 +121,12 @@ Pioneer env vars (`PIONEER_API_KEY`, `PIONEER_USAGE_LABEL`, `PIONEER_MONTHLY_CRE
 | `WEATHER_GAP_Y` | Vertical gap from the bottom screen edge (default `6`) |
 | `WEATHER_REFRESH_SECONDS` | Weather and air-quality refresh interval |
 | `WEATHER_TIMEOUT_SECONDS` | Timeout for each provider request |
+| `WORKOUTS_UNITS` | `metric` (default) or `imperial`; formats the training section's distances and paces |
+| `WORKOUTS_REFRESH_SECONDS` | TCX re-scan interval (default `900`); local files, no network |
 
 Location resolution prefers exact coordinates, then `WEATHER_LOCATION`, then an approximate public-IP location. Exact coordinates are recommended for local conditions.
+
+The panel's lower training section summarizes workouts uploaded from the phone (see [Workout data source](workout-data-source.md)): last workout with distance, duration, pace, and heart rate or cadence when recorded, rolling 7-day totals, and a sparkline of the last 14 workouts' distances. With no workouts uploaded it shows a muted placeholder instead.
 
 ## System resource monitor
 

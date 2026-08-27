@@ -52,6 +52,7 @@ RATE_LIMIT_PANEL_LOG_PATH="$CACHE_DIR/conky-rate-limit-panel.log"
 MINECRAFT_LOG_PATH="$CACHE_DIR/conky-minecraft.log"
 GITHUB_LOG_PATH="$CACHE_DIR/conky-github.log"
 WEATHER_LOG_PATH="$CACHE_DIR/conky-weather.log"
+WORKOUTS_LOG_PATH="$CACHE_DIR/conky-workouts.log"
 RESOURCE_MONITOR_LOG_PATH="$CACHE_DIR/conky-resource-monitor.log"
 BILLING_LOG_PATH="$CACHE_DIR/conky-billing.log"
 GIT_LOG_PATH="$CACHE_DIR/conky-git.log"
@@ -67,6 +68,7 @@ COMMANDCODE_FETCH_PID="$CACHE_DIR/commandcode-fetch-loop.pid"
 MINECRAFT_FETCH_PID="$CACHE_DIR/minecraft-fetch-loop.pid"
 GITHUB_FETCH_PID="$CACHE_DIR/github-fetch-loop.pid"
 WEATHER_FETCH_PID="$CACHE_DIR/weather-fetch-loop.pid"
+WORKOUTS_FETCH_PID="$CACHE_DIR/workouts-fetch-loop.pid"
 BILLING_FETCH_PID="$CACHE_DIR/billing-fetch-loop.pid"
 GIT_FETCH_PID="$CACHE_DIR/git-fetch-loop.pid"
 SESSIONS_FETCH_PID="$CACHE_DIR/sessions-fetch-loop.pid"
@@ -109,6 +111,7 @@ WEATHER_GAP_X="${WEATHER_GAP_X:-6}"
 WEATHER_GAP_Y="${WEATHER_GAP_Y:-6}"
 WEATHER_REFRESH_SECONDS="${WEATHER_REFRESH_SECONDS:-600}"
 WEATHER_OVERLAY_ENABLED="${WEATHER_OVERLAY_ENABLED:-1}"
+WORKOUTS_REFRESH_SECONDS="${WORKOUTS_REFRESH_SECONDS:-900}"
 RESOURCE_MONITOR_GAP_X="${RESOURCE_MONITOR_GAP_X:-0}"
 # Empty means follow Linear's per-monitor gap_y so gauge tops stay flush with cards.
 RESOURCE_MONITOR_GAP_Y="${RESOURCE_MONITOR_GAP_Y:-}"
@@ -135,7 +138,7 @@ GENERATE_ONLY=0
 MONITOR_HAS_PRIMARY=0
 
 overlay_keys=(linear rate-limit-panel minecraft github weather resource-monitor billing git sessions)
-fetch_keys=(linear codex claude cursor gemini grok opencode commandcode minecraft github weather billing git sessions)
+fetch_keys=(linear codex claude cursor gemini grok opencode commandcode minecraft github weather workouts billing git sessions)
 
 declare -A overlay_disabled_name=(
   [linear]="linear"
@@ -165,6 +168,7 @@ declare -A overlay_log_path=(
   [minecraft]="$MINECRAFT_LOG_PATH"
   [github]="$GITHUB_LOG_PATH"
   [weather]="$WEATHER_LOG_PATH"
+  [workouts]="$WORKOUTS_LOG_PATH"
   [resource-monitor]="$RESOURCE_MONITOR_LOG_PATH"
   [billing]="$BILLING_LOG_PATH"
   [git]="$GIT_LOG_PATH"
@@ -194,6 +198,7 @@ declare -A fetch_label=(
   [minecraft]="Minecraft"
   [github]="GitHub"
   [weather]="Weather"
+  [workouts]="Workouts"
   [billing]="Billing"
   [git]="Git"
   [sessions]="Sessions"
@@ -210,6 +215,7 @@ declare -A fetch_overlay_key=(
   [minecraft]="minecraft"
   [github]="github"
   [weather]="weather"
+  [workouts]="weather"
   [billing]="billing"
   [git]="git"
   [sessions]="sessions"
@@ -229,6 +235,7 @@ declare -A fetch_interval=(
   [minecraft]="$MINECRAFT_REFRESH_SECONDS"
   [github]="$GITHUB_REFRESH_SECONDS"
   [weather]="$WEATHER_REFRESH_SECONDS"
+  [workouts]="$WORKOUTS_REFRESH_SECONDS"
   [billing]="$BILLING_REFRESH_SECONDS"
   [git]="$GIT_REFRESH_SECONDS"
   [sessions]="$SESSIONS_REFRESH_SECONDS"
@@ -245,6 +252,7 @@ declare -A fetch_script=(
   [minecraft]="$ROOT/scripts/fetch_minecraft_status.py"
   [github]="$ROOT/scripts/fetch_github_contributions.py"
   [weather]="$ROOT/scripts/fetch_weather.py"
+  [workouts]="$ROOT/scripts/fetch_workouts.py"
   [billing]="$ROOT/scripts/fetch_billing_usage.py"
   [git]="$ROOT/scripts/fetch_git_status.py"
   [sessions]="$ROOT/scripts/fetch_sessions.py"
@@ -261,6 +269,7 @@ declare -A fetch_pid_file=(
   [minecraft]="$MINECRAFT_FETCH_PID"
   [github]="$GITHUB_FETCH_PID"
   [weather]="$WEATHER_FETCH_PID"
+  [workouts]="$WORKOUTS_FETCH_PID"
   [billing]="$BILLING_FETCH_PID"
   [git]="$GIT_FETCH_PID"
   [sessions]="$SESSIONS_FETCH_PID"
@@ -480,6 +489,7 @@ done
 pkill -f "$ROOT/scripts/fetch_minecraft_status.py" 2>/dev/null || true
 pkill -f "$ROOT/scripts/fetch_github_contributions.py" 2>/dev/null || true
 pkill -f "$ROOT/scripts/fetch_weather.py" 2>/dev/null || true
+pkill -f "$ROOT/scripts/fetch_workouts.py" 2>/dev/null || true
 pkill -f "$ROOT/scripts/fetch_billing_usage.py" 2>/dev/null || true
 pkill -f "$ROOT/scripts/fetch_git_status.py" 2>/dev/null || true
 log_overlay linear "stopped existing matching Conky processes"
@@ -751,7 +761,7 @@ billing_placement_for_monitor() {
   fi
   if overlay_enabled weather; then
     [[ "$weather_gap" =~ ^-?[0-9]+$ ]] || weather_gap=6
-    weather_text_top=$(( monitor_h - weather_gap - 276 ))
+    weather_text_top=$(( monitor_h - weather_gap - 417 ))
     weather_chip_top=$(( weather_text_top + 74 ))
     BILLING_RESOLVED_GAP_Y=$(( weather_chip_top - 268 - BILLING_WEATHER_GAP ))
     if (( BILLING_RESOLVED_GAP_Y < band_top )); then

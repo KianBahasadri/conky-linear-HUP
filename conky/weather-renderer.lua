@@ -1,8 +1,9 @@
 return function(shared, repo_root)
   local weather_path = repo_root .. '/cache/weather-status.json'
+  local workouts_path = repo_root .. '/cache/workouts-status.json'
   local font = 'JetBrains Mono'
   local panel_width = 424
-  local panel_height = 181
+  local panel_height = 322
   local radius = 18
 
   local function json_string(content, key, fallback)
@@ -59,6 +60,43 @@ return function(shared, repo_root)
       best_window = json_string(best_body, 'label', 'Now'),
       best_detail = json_string(best_body, 'detail', ''),
       attribution = json_string(content, 'attribution', 'Open-Meteo / CAMS'),
+    }
+  end
+
+  local function read_workouts()
+    local content = shared.read_file(workouts_path)
+    if not content or content:match('"ok"%s*:%s*true') == nil then
+      local error_text = content and json_string(content, 'error', '') or ''
+      return {
+        ok = false,
+        error = error_text ~= '' and error_text or 'No workouts uploaded yet',
+      }
+    end
+
+    local recent_body = content:match('"recent"%s*:%s*%[(.-)%]%s*}') or ''
+    local recent = {}
+    for entry in recent_body:gmatch('%{([^}]*)%}') do
+      table.insert(recent, {
+        distance_units = json_number(entry, 'distanceUnits'),
+        is_last = entry:match('"isLast"%s*:%s*true') ~= nil,
+      })
+    end
+
+    return {
+      ok = true,
+      workout_count = json_number(content, 'workoutCount'),
+      last_sport = json_string(content, 'lastSport', 'Workout'),
+      last_date = json_string(content, 'lastDateText', ''),
+      last_distance = json_string(content, 'lastDistanceText', '--'),
+      last_duration = json_string(content, 'lastDurationText', '--'),
+      last_pace = json_string(content, 'lastPaceText', '--'),
+      last_heart_rate = json_string(content, 'lastHeartRateText', ''),
+      last_cadence = json_string(content, 'lastCadenceText', ''),
+      week_runs = json_number(content, 'weekRuns'),
+      week_distance = json_string(content, 'weekDistanceText', '--'),
+      week_duration = json_string(content, 'weekDurationText', '--'),
+      week_pace = json_string(content, 'weekPaceText', '--'),
+      recent = recent,
     }
   end
 
@@ -224,6 +262,113 @@ return function(shared, repo_root)
     return lines
   end
 
+  local function draw_workouts(cr, workouts, x, y, accent, secondary)
+    shared.set_hex(cr, secondary, 0.26)
+    cairo_set_line_width(cr, 1)
+    cairo_move_to(cr, x + 18, y + 172)
+    cairo_line_to(cr, x + panel_width - 18, y + 172)
+    cairo_stroke(cr)
+
+    if not workouts.ok then
+      cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL)
+      cairo_set_font_size(cr, 10)
+      shared.set_hex(cr, 'f8fafc', 0.42)
+      cairo_move_to(cr, x + 25, y + 212)
+      cairo_show_text(cr, shared.truncate_title(cr, 'TRAINING  ' .. workouts.error, panel_width - 50))
+      return
+    end
+
+    shared.set_hex(cr, secondary, 0.26)
+    cairo_set_line_width(cr, 1)
+    cairo_move_to(cr, x + 212, y + 182)
+    cairo_line_to(cr, x + 212, y + 252)
+    cairo_stroke(cr)
+
+    local last_label = workouts.last_sport == 'Run' and 'LAST RUN'
+      or 'LAST ' .. string.upper(workouts.last_sport)
+    draw_label(cr, last_label, x + 25, y + 192)
+    cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
+    cairo_set_font_size(cr, 20)
+    shared.set_hex(cr, 'f8fafc', 0.95)
+    cairo_move_to(cr, x + 24, y + 216)
+    cairo_show_text(cr, workouts.last_distance)
+
+    cairo_set_font_size(cr, 10)
+    shared.set_hex(cr, 'f8fafc', 0.66)
+    cairo_move_to(cr, x + 25, y + 234)
+    cairo_show_text(cr, shared.truncate_title(
+      cr,
+      table.concat(
+        {
+          workouts.last_date,
+          workouts.last_duration,
+          workouts.last_pace,
+        },
+        ' · '
+      ),
+      178
+    ))
+
+    cairo_set_font_size(cr, 9)
+    shared.set_hex(cr, accent, 0.78)
+    cairo_move_to(cr, x + 25, y + 250)
+    cairo_show_text(cr, shared.truncate_title(
+      cr,
+      workouts.last_heart_rate ~= '' and 'HR ' .. workouts.last_heart_rate
+        or (workouts.last_cadence ~= '' and workouts.last_cadence or ''),
+      178
+    ))
+
+    draw_label(cr, 'THIS WEEK', x + 232, y + 192)
+    cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
+    cairo_set_font_size(cr, 20)
+    shared.set_hex(cr, 'f8fafc', 0.95)
+    cairo_move_to(cr, x + 231, y + 216)
+    cairo_show_text(cr, workouts.week_distance)
+
+    cairo_set_font_size(cr, 10)
+    shared.set_hex(cr, 'f8fafc', 0.66)
+    cairo_move_to(cr, x + 232, y + 234)
+    cairo_show_text(cr, shared.truncate_title(
+      cr,
+      table.concat(
+        {
+          workouts.week_runs .. (workouts.week_runs == 1 and ' run' or ' runs'),
+          workouts.week_duration,
+        },
+        ' · '
+      ),
+      174
+    ))
+
+    local entries = workouts.recent
+    if #entries == 0 then
+      return
+    end
+    local left, right = x + 25, x + panel_width - 25
+    local slot = (right - left) / #entries
+    local bar_width = math.min(16, slot * 0.62)
+    local baseline = y + 302
+    local max_distance = 0
+    for _, entry in ipairs(entries) do
+      max_distance = math.max(max_distance, entry.distance_units)
+    end
+    for index, entry in ipairs(entries) do
+      local bar_height = max_distance > 0
+        and math.max(3, entry.distance_units / max_distance * 30)
+        or 3
+      local bar_x = left + slot * (index - 1) + (slot - bar_width) / 2
+      shared.rounded_rect(cr, bar_x, baseline - bar_height, bar_width, bar_height, 3)
+      shared.set_hex(cr, accent, entry.is_last and 1 or 0.34)
+      cairo_fill(cr)
+    end
+    cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL)
+    cairo_set_font_size(cr, 8)
+    shared.set_hex(cr, 'f8fafc', 0.42)
+    cairo_move_to(cr, left, y + 316)
+    cairo_show_text(cr, 'LAST ' .. #entries .. ' WORKOUTS')
+  end
+
   local function draw_error(cr, status, x, y)
     draw_frame(cr, x, y, 'f87171', 'ff4d00')
 
@@ -245,7 +390,7 @@ return function(shared, repo_root)
     cairo_show_text(cr, 'Set WEATHER_LOCATION or coordinates in .env')
   end
 
-  local function draw_status(cr, status, x, y)
+  local function draw_status(cr, status, workouts, x, y)
     local accent = status.run_color
     local secondary = status.aqi_color
     draw_frame(cr, x, y, accent, secondary)
@@ -337,6 +482,8 @@ return function(shared, repo_root)
     shared.set_hex(cr, 'f8fafc', 0.48)
     cairo_move_to(cr, x + panel_width - 24 - location_extents.width, y + 165)
     cairo_show_text(cr, location_text)
+
+    draw_workouts(cr, workouts, x, y, accent, secondary)
   end
 
   local function draw()
@@ -347,10 +494,11 @@ return function(shared, repo_root)
 
     local cr = cairo_create(surface)
     local status = read_status()
+    local workouts = read_workouts()
     local x = math.max(8, conky_window.width - panel_width - 12)
     local y = math.max(12, conky_window.height - panel_height - 12)
     if status.ok then
-      draw_status(cr, status, x, y)
+      draw_status(cr, status, workouts, x, y)
     else
       draw_error(cr, status, x, y)
     end

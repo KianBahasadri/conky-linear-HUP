@@ -28,6 +28,7 @@
 - `cache/github-contributions.json`: GitHub contribution days consumed by the Cairo renderer. Each entry carries the `level` (0-4) that GitHub puts on the cell and the real `count` scraped from its tooltip; the skyline extrudes the count.
 - `cache/sessions.json`: inbound logins joined to tmux sessions, consumed by the Cairo renderer. Device names and OS strings come from `tailscale status`; no tailnet account identity is stored.
 - `cache/weather-status.json`: normalized weather, air quality, and running guidance consumed by the Cairo renderer.
+- `cache/workouts-status.json`: workout summaries parsed from the TCX files in `cache/workouts/` (uploaded from the phone; see [Workout data source](workout-data-source.md)). Consumed by the weather panel's training section: last workout, rolling 7-day totals, and the last 14 workouts' distances for the sparkline bars. Heart rate and cadence are per-workout optionals.
 - `cache/git-status.json`: local git fleet status consumed by the Cairo renderer. Each repo may include `actions` (`run` / `fail` / `ok` / empty) for the name-line pip.
 - `cache/git-repo-discovery.json`: auto-discovered home repos with recent commits (TTL `GIT_SCAN_TTL_SECONDS`).
 - `cache/git-actions-cache.json`: per-path GitHub Actions pip state from `gh run list`; running TTL `GIT_ACTIONS_RUNNING_TTL_SECONDS`, completed TTL `GIT_ACTIONS_TTL_SECONDS`.
@@ -44,6 +45,7 @@
 - `cache/conky-minecraft.log`: Minecraft fetch, launcher, and Minecraft Conky output.
 - `cache/conky-github.log`: GitHub fetch, launcher, and GitHub Conky output.
 - `cache/conky-weather.log`: weather fetch, launcher, and weather Conky output.
+- `cache/conky-workouts.log`: workout summary fetch output.
 - `cache/conky-billing.log`: billing provider fetches, launcher placement, fallback notices, and billing Conky output.
 - `cache/conky-git.log`: git status fetch, launcher, and git Conky output.
 - `cache/conky-sessions.log`: session scans, launcher placement, and sessions Conky output.
@@ -57,6 +59,7 @@
 - Minecraft: `60s`
 - GitHub: `1800s`
 - Weather and air quality: `600s`
+- Workouts: `900s` (override with `WORKOUTS_REFRESH_SECONDS`); local TCX parse, no network
 - Billing: `900s` (override with `BILLING_REFRESH_SECONDS`); AWS Cost Explorer is cached daily (`86400s` / `BILLING_AWS_CACHE_TTL_SECONDS`) to avoid per-query API fees on daily-refreshed backend data
 - Sessions: `20s` (override with `SESSIONS_REFRESH_SECONDS`)
 - Git status: `30s` (override with `GIT_REFRESH_SECONDS`)

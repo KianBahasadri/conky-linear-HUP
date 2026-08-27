@@ -1,0 +1,21 @@
+[Unit]
+Description=rclone WebDAV server for phone workout uploads
+
+[Service]
+ExecStart=/usr/bin/rclone serve webdav -vv /home/kian/conky-linear-HUP/cache/workouts --addr 127.0.0.1:9876 --htpasswd /home/kian/.config/rclone/webdav.htpasswd
+Restart=on-failure
+RestartSec=10
+NoNewPrivileges=yes
+UMask=0077
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallFilter=@system-service
+SystemCallArchitectures=native
+RestrictNamespaces=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+IPAddressDeny=any
+IPAddressAllow=127.0.0.0/8 100.64.0.0/10
+
+[Install]
+WantedBy=default.target
