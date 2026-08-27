@@ -12,6 +12,8 @@ from pathlib import Path
 
 import fetch_common as common
 
+from fetch_common import parse_iso_epoch
+
 
 ROOT = Path(__file__).resolve().parents[1]
 CACHE_DIR = ROOT / "cache"
@@ -336,6 +338,8 @@ def render_cards(tasks, state_names, lookback_hours):
         for task in tasks
         if is_recently_done(task, now, lookback_hours) and not is_cancelled_or_duplicate(task)
     ]
+    # Green cards read newest-to-oldest, so most recently completed first.
+    recently_done.sort(key=lambda task: parse_iso_epoch(task.get("completedAt")), reverse=True)
     upcoming_competitions = [
         task
         for task in tasks
@@ -394,6 +398,7 @@ def render_cards(tasks, state_names, lookback_hours):
                 if competition_upcoming
                 else "",
                 "backlogDueSoon": backlog_due_soon,
+                "completedAtEpoch": 0,
             }
             cards_by_title_and_done[group_key] = card
             cards.append(card)
@@ -436,11 +441,18 @@ def render_cards(tasks, state_names, lookback_hours):
 
         card["backlogDueSoon"] = card.get("backlogDueSoon", False) or backlog_due_soon
 
+        if task_done:
+            # Fade timing keys off the newest completion among merged issues.
+            completed_epoch = parse_iso_epoch(task.get("completedAt"))
+            if completed_epoch > card["completedAtEpoch"]:
+                card["completedAtEpoch"] = completed_epoch
+
         if task.get("state", {}).get("name") == "In Progress" and not task_done:
             card["state"] = "In Progress"
 
     return {
         "updatedAt": datetime.now(timezone.utc).isoformat(),
+        "doneLookbackSeconds": lookback_hours * 3600,
         "cards": cards,
     }
 

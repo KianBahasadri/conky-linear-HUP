@@ -205,6 +205,86 @@ def test_emoji_from_project_icon_ignores_non_emoji_icons():
     assert linear.emoji_from_project_icon(":latin_small_letter_a:") == ""
 
 
+def _iso_at(moment):
+    return moment.isoformat()
+
+
+def _done_issue(identifier, title, completed_at, **kwargs):
+    issue = _issue(identifier, title, "Done", state_type="completed", **kwargs)
+    issue["completedAt"] = completed_at
+    return issue
+
+
+def test_render_cards_emits_completed_at_epoch():
+    from datetime import datetime, timedelta, timezone
+
+    now = datetime.now(timezone.utc)
+    tasks = [
+        _issue("ABC-1", "Still open", "Todo"),
+        _done_issue(
+            "ABC-2", "Freshly done", _iso_at(now - timedelta(hours=2))
+        ),
+    ]
+
+    payload = linear.render_cards(tasks, {"Todo", "In Progress"}, lookback_hours=18)
+
+    cards_by_id = {card["identifier"]: card for card in payload["cards"]}
+    assert cards_by_id["ABC-1"]["completedAtEpoch"] == 0
+    assert cards_by_id["ABC-2"]["completedAtEpoch"] == int((now - timedelta(hours=2)).timestamp())
+    # Lifetime is exposed payload-wide for the renderer's fade math.
+    assert payload["doneLookbackSeconds"] == 18 * 3600
+
+
+def test_render_cards_lookback_drops_expired_completions():
+    from datetime import datetime, timedelta, timezone
+
+    now = datetime.now(timezone.utc)
+    tasks = [
+        _done_issue("ABC-1", "Long ago", _iso_at(now - timedelta(hours=30))),
+    ]
+
+    payload = linear.render_cards(tasks, {"Todo", "In Progress"}, lookback_hours=18)
+
+    assert payload["cards"] == []
+
+
+def test_render_cards_merged_card_keeps_newest_completion():
+    from datetime import datetime, timedelta, timezone
+
+    now = datetime.now(timezone.utc)
+    same_title = "Shared done work"
+    tasks = [
+        _done_issue("ABC-1", same_title, _iso_at(now - timedelta(hours=3))),
+        _done_issue("ABC-2", same_title, _iso_at(now - timedelta(hours=1))),
+    ]
+
+    payload = linear.render_cards(tasks, {"Todo", "In Progress"}, lookback_hours=18)
+
+    card = payload["cards"][0]
+    # Newest completion among merged issues drives the fade.
+    assert card["completedAtEpoch"] == int((now - timedelta(hours=1)).timestamp())
+
+
+def test_render_cards_orders_done_cards_newest_first():
+    from datetime import datetime, timedelta, timezone
+
+    now = datetime.now(timezone.utc)
+    tasks = [
+        _issue("ABC-1", "Still open", "Todo"),
+        _done_issue("ABC-2", "Done first", _iso_at(now - timedelta(hours=5))),
+        _done_issue("ABC-3", "Done last", _iso_at(now - timedelta(hours=1))),
+        _done_issue("ABC-4", "Done middle", _iso_at(now - timedelta(hours=3))),
+    ]
+
+    payload = linear.render_cards(tasks, {"Todo", "In Progress"}, lookback_hours=18)
+
+    done_identifiers = [
+        card["identifier"] for card in payload["cards"] if card["done"]
+    ]
+    # Cards flow top-down, left-right, so newest completion must come first.
+    assert done_identifiers == ["ABC-3", "ABC-4", "ABC-2"]
+
+
 def test_render_cards_carries_project_icon():
     tasks = [
         _issue("ABC-1", "Comp work", "Todo", project="Competitions", project_icon=":trophy:"),

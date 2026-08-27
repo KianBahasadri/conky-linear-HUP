@@ -45,6 +45,9 @@ return function(shared, repo_root)
     end
 
     local error_message = shared.match_json_string(content, 'error')
+    -- Payload-level lifetime of done cards in seconds; precomputed by the
+    -- fetcher from LINEAR_DONE_LOOKBACK_HOURS so the renderer stays dumb.
+    local done_lookback_seconds = tonumber(content:match('"doneLookbackSeconds"%s*:%s*([%d%.]+)') or '')
     local cards = {}
     for object in content:gmatch('{%s-"identifier".-}') do
       local identifier = shared.match_json_string(object, 'identifier')
@@ -60,6 +63,9 @@ return function(shared, repo_root)
       local competition_due_date = shared.match_json_string(object, 'competitionDueDate')
       local backlog_due_soon = object:match('"backlogDueSoon"%s*:%s*(true)') ~= nil
       local urgent = object:match('"urgent"%s*:%s*(true)') ~= nil
+      -- Lua patterns have no optional groups: pull completedAtEpoch either as
+      -- digits or as 0 (the fetcher's sentinel for "no completion timestamp").
+      local completed_at_epoch = tonumber(object:match('"completedAtEpoch"%s*:%s*(%d+)') or '0')
 
       if title then
         table.insert(cards, {
@@ -76,6 +82,7 @@ return function(shared, repo_root)
           competition_due_date = competition_due_date and shared.unescape_json_string(competition_due_date) or '',
           backlog_due_soon = backlog_due_soon,
           urgent = urgent,
+          completed_at_epoch = completed_at_epoch,
         })
       end
     end
@@ -83,6 +90,7 @@ return function(shared, repo_root)
     return {
       cards = cards,
       error = error_message and shared.unescape_json_string(error_message) or '',
+      done_lookback_seconds = done_lookback_seconds,
     }
   end
 
@@ -175,43 +183,50 @@ return function(shared, repo_root)
     cairo_show_text(cr, shared.truncate_title(cr, message, width - 48))
   end
 
-  local function draw_urgent_badge(cr, x, y)
+  local function draw_urgent_badge(cr, x, y, fade)
     shared.rounded_rect(cr, x, y, urgent_badge_size, urgent_badge_size, 3)
-    shared.set_hex(cr, urgent_color, 0.96)
+    shared.set_hex(cr, urgent_color, 0.96 * fade)
     cairo_fill(cr)
 
     -- Bar and dot are cut in the card's body color, the way Linear's icon shows
     -- the surface through the mark.
     local stem_width = 2.4
     local stem_x = x + (urgent_badge_size - stem_width) / 2
-    shared.set_hex(cr, '020617', 0.92)
+    shared.set_hex(cr, '020617', 0.92 * fade)
     cairo_rectangle(cr, stem_x, y + 2.6, stem_width, 5.2)
     cairo_rectangle(cr, stem_x, y + 9.2, stem_width, 2.4)
     cairo_fill(cr)
   end
 
-  local function draw_card(cr, card, x, y)
+  local function draw_card(cr, card, x, y, fade)
+    -- Fresh done cards sit at full strength and every stroke and glyph dims
+    -- together on one straight line down to nothing as the lookback expires;
+    -- active work stays untouched at fade = 1.
+    local function ink(hex, alpha)
+      shared.set_hex(cr, hex, (alpha or 1) * fade)
+    end
+
     local accent = card.done and '39ff88' or card.due_today and 'ff1a1a' or '00e5ff'
     local accent_secondary = card.done and '00f5d4' or card.due_today and 'ff4d00' or '8b5cf6'
 
     shared.rounded_rect(cr, x + 4, y + 7, card_width, card_height, radius)
-    shared.set_hex(cr, accent, 0.12)
+    ink(accent, 0.12)
     cairo_fill(cr)
 
     shared.rounded_rect(cr, x + 2, y + 3, card_width, card_height, radius)
-    shared.set_hex(cr, accent, 0.16)
+    ink(accent, 0.16)
     cairo_set_line_width(cr, 8)
     cairo_stroke(cr)
 
     shared.rounded_rect(cr, x + 1, y + 2, card_width, card_height, radius)
-    shared.set_hex(cr, accent, 0.26)
+    ink(accent, 0.26)
     cairo_set_line_width(cr, 4)
     cairo_stroke(cr)
 
     shared.rounded_rect(cr, x, y, card_width, card_height, radius)
-    shared.set_hex(cr, '020617', 0.59)
+    ink('020617', 0.59)
     cairo_fill_preserve(cr)
-    shared.set_hex(cr, accent, 0.70)
+    ink(accent, 0.70)
     cairo_set_line_width(cr, 2)
     cairo_stroke(cr)
 
@@ -228,11 +243,11 @@ return function(shared, repo_root)
     end
 
     shared.rounded_rect(cr, x + 7, y + 7, card_width - 14, card_height - 14, radius - 6)
-    shared.set_hex(cr, accent_secondary, 0.22)
+    ink(accent_secondary, 0.22)
     cairo_set_line_width(cr, 1)
     cairo_stroke(cr)
 
-    shared.set_hex(cr, accent, 0.22)
+    ink(accent, 0.22)
     cairo_set_line_width(cr, 1)
     cairo_move_to(cr, x + 22, y + 18)
     cairo_line_to(cr, x + 48, y + 18)
@@ -241,16 +256,16 @@ return function(shared, repo_root)
 
     -- Kept clear of the footer row so the trace underlines the due date instead
     -- of striking through it.
-    shared.set_hex(cr, accent_secondary, 0.18)
+    ink(accent_secondary, 0.18)
     cairo_move_to(cr, x + card_width - 22, y + card_height - 14)
     cairo_line_to(cr, x + card_width - 48, y + card_height - 14)
     cairo_line_to(cr, x + card_width - 58, y + card_height - 24)
     cairo_stroke(cr)
 
-    shared.set_hex(cr, accent, 0.34)
+    ink(accent, 0.34)
     cairo_arc(cr, x + 58, y + 28, 2, 0, math.pi * 2)
     cairo_fill(cr)
-    shared.set_hex(cr, accent_secondary, 0.28)
+    ink(accent_secondary, 0.28)
     cairo_arc(cr, x + card_width - 58, y + card_height - 24, 2, 0, math.pi * 2)
     cairo_fill(cr)
 
@@ -275,24 +290,34 @@ return function(shared, repo_root)
     cairo_text_extents(cr, project_text, project_extents)
     local project_x = x + (card_width - icon_step - project_extents.width) / 2
 
-    shared.set_hex(cr, accent, 0.88)
+    ink(accent, 0.88)
     cairo_move_to(cr, project_x + icon_step - project_extents.x_bearing, y + project_offset_y)
     cairo_show_text(cr, project_text)
 
     if card.project_icon ~= '' then
       cairo_select_font_face(cr, emoji_font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL)
       cairo_set_font_size(cr, project_icon_size)
-      -- Color glyphs carry their own palette; the source only sets opacity.
-      shared.set_hex(cr, 'f8fafc', 0.95)
+      -- Color glyphs carry their own palette and alpha, so the fill source only
+      -- sets opacity for them and cannot express a fade. Raster the glyph into
+      -- a group and paint it back scaled by the card's fade instead; active
+      -- cards (fade = 1) skip the round trip and draw straight to the surface.
+      ink('f8fafc', 0.95)
+      if fade < 1 then
+        cairo_push_group(cr)
+      end
       cairo_move_to(cr, project_x, y + project_offset_y)
       cairo_show_text(cr, card.project_icon)
+      if fade < 1 then
+        cairo_pop_group_to_source(cr)
+        cairo_paint_with_alpha(cr, fade)
+      end
     end
 
     -- The badge claims the footer's right edge; the due date falls in beside it.
     local footer_right = x + card_width - 22
     local footer_reserved = 0
     if card.urgent then
-      draw_urgent_badge(cr, footer_right - urgent_badge_size, y + meta_offset_y - 11)
+      draw_urgent_badge(cr, footer_right - urgent_badge_size, y + meta_offset_y - 11, fade)
       footer_reserved = urgent_badge_size + urgent_badge_gap
       footer_right = footer_right - footer_reserved
     end
@@ -311,7 +336,7 @@ return function(shared, repo_root)
       local due_extents = cairo_text_extents_t:create()
       cairo_text_extents(cr, visible_due_date, due_extents)
       due_width = due_extents.width
-      shared.set_hex(cr, accent, 0.88)
+      ink(accent, 0.88)
       cairo_move_to(cr, footer_right - due_extents.width - due_extents.x_bearing, y + meta_offset_y)
       cairo_show_text(cr, visible_due_date)
       identifier_max_width = math.max(40, card_width - 62 - footer_reserved - due_extents.width)
@@ -328,7 +353,7 @@ return function(shared, repo_root)
       cairo_text_extents(cr, label_text, label_extents)
       local label_x = x + (card_width - label_extents.width) / 2 - label_extents.x_bearing
 
-      shared.set_hex(cr, '94a3b8', 0.76)
+      ink('94a3b8', 0.76)
       cairo_move_to(cr, label_x, y + meta_offset_y)
       cairo_show_text(cr, label_text)
 
@@ -338,7 +363,7 @@ return function(shared, repo_root)
 
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL)
     cairo_set_font_size(cr, meta_font_size)
-    shared.set_hex(cr, '94a3b8', 0.76)
+    ink('94a3b8', 0.76)
     cairo_move_to(cr, x + 22, y + meta_offset_y)
     cairo_show_text(cr, shared.truncate_title(cr, card.identifier, identifier_max_width))
 
@@ -364,13 +389,13 @@ return function(shared, repo_root)
       local text_x = x + (card_width - extents.width) / 2 - extents.x_bearing
       local text_y = first_baseline + (index - 1) * title_line_height
 
-      shared.set_hex(cr, accent, 0.24)
+      ink(accent, 0.24)
       cairo_move_to(cr, text_x - 1, text_y)
       cairo_show_text(cr, line)
       cairo_move_to(cr, text_x + 1, text_y)
       cairo_show_text(cr, line)
 
-      shared.set_hex(cr, 'f8fafc', 1)
+      ink('f8fafc', 1)
       cairo_move_to(cr, text_x, text_y)
       cairo_show_text(cr, line)
     end
@@ -398,6 +423,9 @@ return function(shared, repo_root)
     end
 
     local per_row = cards_per_row_for(conky_window.width)
+    -- Default matches the fetcher's LINEAR_DONE_LOOKBACK_HOURS fallback.
+    local done_lookback = state.done_lookback_seconds or 18 * 3600
+    local now_epoch = os.time()
 
     for index, card in ipairs(cards) do
       local row = math.floor((index - 1) / per_row)
@@ -408,7 +436,15 @@ return function(shared, repo_root)
       local x = start_x + column * (card_width + card_gap)
       local y = top_padding + row * (card_height + row_gap)
 
-      draw_card(cr, card, x, y)
+      local fade = 1
+      if card.done then
+        -- Epoch 0 means no known completion (legacy cache); hold full strength
+        -- rather than reading an infinite age and blinking straight to zero.
+        local age = card.completed_at_epoch > 0 and now_epoch - card.completed_at_epoch or 0
+        fade = 1 - shared.clamp(age / done_lookback, 0, 1)
+      end
+
+      draw_card(cr, card, x, y, fade)
     end
 
     cairo_destroy(cr)
