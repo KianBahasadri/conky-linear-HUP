@@ -6,7 +6,6 @@ overlay already computes into one press-to-test legend panel, so "is anything
 wrong" is a single glance instead of a scan across three monitors.
 """
 
-import math
 import os
 import sys
 
@@ -16,7 +15,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.normpath(os.path.join(HERE, "..", "billing-mockups", "trajectory_variants")))
 import render_variants as rv
 
-from render_sessions import GREEN, AMBER, RED, MUTED, DIM, TEXT, VIOLET, LILAC, TEAL, CYAN, header
+from render_sessions import GREEN, AMBER, RED, MUTED, DIM, TEXT, VIOLET, header
 
 # (legend, state, source overlay)
 LEGENDS = [

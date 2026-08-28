@@ -3,8 +3,6 @@ import os
 import subprocess
 from pathlib import Path
 
-import pytest
-
 import fetch_git_status as git_status
 
 

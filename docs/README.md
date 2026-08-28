@@ -23,6 +23,7 @@
   - [Ambient concept notes](billing-mockups/ambient_variants/NOTES.md) — four calm and breach signal systems
   - [Geometric concept notes](billing-mockups/geometric_variants/NOTES.md) — four shape-based budget studies
 - [Testing](testing.md) — run the Python test suite
+- [Maintenance](maintenance.md) — implementation cleanup and retained compatibility paths
 
 ## Layout
 

@@ -52,7 +52,6 @@ RATE_LIMIT_PANEL_LOG_PATH="$CACHE_DIR/conky-rate-limit-panel.log"
 MINECRAFT_LOG_PATH="$CACHE_DIR/conky-minecraft.log"
 GITHUB_LOG_PATH="$CACHE_DIR/conky-github.log"
 WEATHER_LOG_PATH="$CACHE_DIR/conky-weather.log"
-WORKOUTS_LOG_PATH="$CACHE_DIR/conky-workouts.log"
 RESOURCE_MONITOR_LOG_PATH="$CACHE_DIR/conky-resource-monitor.log"
 BILLING_LOG_PATH="$CACHE_DIR/conky-billing.log"
 GIT_LOG_PATH="$CACHE_DIR/conky-git.log"
@@ -168,7 +167,6 @@ declare -A overlay_log_path=(
   [minecraft]="$MINECRAFT_LOG_PATH"
   [github]="$GITHUB_LOG_PATH"
   [weather]="$WEATHER_LOG_PATH"
-  [workouts]="$WORKOUTS_LOG_PATH"
   [resource-monitor]="$RESOURCE_MONITOR_LOG_PATH"
   [billing]="$BILLING_LOG_PATH"
   [git]="$GIT_LOG_PATH"
@@ -884,9 +882,8 @@ launch_overlay() {
   local monitor_gap_x="$4"
   local linear_gap_y="$5"
   local config_path="$6"
-  local -a launch_env=()
 
-  setsid env ${launch_env[@]+"${launch_env[@]}"} conky -c "$config_path" >> "${overlay_log_path[$key]}" 2>&1 < /dev/null &
+  setsid conky -c "$config_path" >> "${overlay_log_path[$key]}" 2>&1 < /dev/null &
 
   case "$key" in
     linear)
@@ -976,12 +973,9 @@ for line in "${monitor_lines[@]}"; do
   monitor_height="${BASH_REMATCH[2]}"
   monitor_gap_x=$(((width - OVERLAY_WIDTH) / 2))
   linear_gap_y="$LINEAR_GAP_Y"
-  is_primary=0
   if [[ "$line" =~ ^[[:space:]]*[0-9]+:[[:space:]]*[^[:space:]]*\* ]] || { [[ "$MONITOR_HAS_PRIMARY" -eq 0 ]] && [[ "$index" -eq "$LINEAR_PRIMARY_MONITOR_INDEX" ]]; }; then
     linear_gap_y="$LINEAR_PRIMARY_GAP_Y"
-    is_primary=1
   fi
-  : "$is_primary"
 
   rate_limit_frame_for_monitor "$monitor_height" "$monitor_gap_x" "$linear_gap_y"
   billing_placement_for_monitor "$monitor_height" "$linear_gap_y"

@@ -434,30 +434,6 @@ return function(shared, repo_root)
     return string.format('%.0fB', bytes)
   end
 
-  local function format_duration(seconds)
-    if not seconds or seconds <= 0 then
-      return '--'
-    end
-    local days = math.floor(seconds / 86400)
-    local hours = math.floor((seconds % 86400) / 3600)
-    local minutes = math.floor((seconds % 3600) / 60)
-    if days > 0 then
-      return string.format('%dd %02dh', days, hours)
-    end
-    if hours > 0 then
-      return string.format('%dh %02dm', hours, minutes)
-    end
-    return string.format('%dm', minutes)
-  end
-
-  local function format_gib_fraction(used, total)
-    local gib = 1024 * 1024 * 1024
-    if not total or total <= 0 then
-      return '--'
-    end
-    return string.format('%.0f/%.0fG', (used or 0) / gib, total / gib)
-  end
-
   local function usage_color(percent, normal_color)
     if percent >= 85 then
       return colors.red
@@ -466,14 +442,6 @@ return function(shared, repo_root)
       return colors.amber
     end
     return normal_color
-  end
-
-  local function draw_text(cr, value, x, y, size, color, alpha, weight)
-    cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, weight or CAIRO_FONT_WEIGHT_NORMAL)
-    cairo_set_font_size(cr, size)
-    shared.set_hex(cr, color, alpha or 1)
-    cairo_move_to(cr, x, y)
-    cairo_show_text(cr, value or '')
   end
 
   local function draw_centered_text(cr, value, center_x, y, size, color, alpha, weight)
@@ -731,63 +699,6 @@ return function(shared, repo_root)
         height,
         series.color,
         series.maximum
-      )
-    end
-  end
-
-  local function draw_readout(cr, label, value, x, y, color, cell_width)
-    local label_size = 8
-    local value_size = 11
-    local text_value = value or ''
-
-    draw_text(cr, label, x, y, label_size, colors.muted, 0.86, CAIRO_FONT_WEIGHT_BOLD)
-
-    cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
-    cairo_set_font_size(cr, value_size)
-    local value_extents = cairo_text_extents_t:create()
-    cairo_text_extents(cr, text_value, value_extents)
-
-    -- Right-align within the cell so long values cannot spill into the next column.
-    local value_x = x + cell_width - value_extents.width - value_extents.x_bearing
-    if value_x < x then
-      value_x = x
-    end
-
-    draw_text(cr, text_value, value_x, y, value_size, color or colors.text, 0.98, CAIRO_FONT_WEIGHT_BOLD)
-  end
-
-  -- Fill readouts in column-major order so paired metrics stack vertically
-  -- under the gauges (LOAD/UP, //home, IN/OUT). Middle column is wider for
-  -- long disk fractions so they do not collide with IN/OUT.
-  local function draw_readout_grid(cr, items, origin_x, origin_y, grid_width, cols, row_height)
-    cols = cols or 3
-    local rows = math.max(1, math.ceil(#items / cols))
-    local weights = { 0.30, 0.40, 0.30 }
-    local weight_sum = 0
-    for col = 1, cols do
-      weight_sum = weight_sum + (weights[col] or (1 / cols))
-    end
-    local col_widths = {}
-    local col_origins = {}
-    local cursor = origin_x
-    for col = 0, cols - 1 do
-      local width = grid_width * ((weights[col + 1] or (1 / cols)) / weight_sum)
-      col_widths[col] = width
-      col_origins[col] = cursor
-      cursor = cursor + width
-    end
-    local cell_pad = 3
-    for index, item in ipairs(items) do
-      local col = math.floor((index - 1) / rows)
-      local row = (index - 1) % rows
-      draw_readout(
-        cr,
-        item.label,
-        item.value,
-        col_origins[col] + cell_pad,
-        origin_y + row * row_height,
-        item.color,
-        col_widths[col] - cell_pad * 2
       )
     end
   end

@@ -14,8 +14,6 @@ import cairo
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.normpath(os.path.join(HERE, "..", "github-mockups")))
-sys.path.insert(0, os.path.normpath(os.path.join(HERE, "..", "billing-mockups", "trajectory_variants")))
-import render_variants as rv
 import render_placement as rp
 import render_skyline as sky
 

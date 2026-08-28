@@ -186,13 +186,6 @@ def format_date_text(stamp, now):
     return local_stamp.strftime("%b %-d")
 
 
-def pace_seconds(duration_seconds, distance_meters, units):
-    distance_units = distance_meters / units["distanceDivisor"]
-    if distance_units < 0.05:
-        return 0.0
-    return duration_seconds / distance_units
-
-
 def build_status(workouts, units, now=None):
     if now is None:
         now = datetime.now().astimezone()

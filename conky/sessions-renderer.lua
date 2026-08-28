@@ -390,16 +390,6 @@ return function(shared, repo_root)
     cairo_set_line_cap(cr, CAIRO_LINE_CAP_BUTT)
   end
 
-  local function segment_dist(px, py, x1, y1, x2, y2)
-    local l2 = (x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1)
-    if l2 == 0 then return math.sqrt((px - x1) * (px - x1) + (py - y1) * (py - y1)) end
-    local t = ((px - x1) * (x2 - x1) + (py - y1) * (y2 - y1)) / l2
-    if t < 0 then t = 0 elseif t > 1 then t = 1 end
-    local px2 = x1 + t * (x2 - x1)
-    local py2 = y1 + t * (y2 - y1)
-    return math.sqrt((px - px2) * (px - px2) + (py - py2) * (py - py2))
-  end
-
   local function draw_filament(cr, x1, y1, x2, y2, col, alpha, diamonds, target, panel_cx)
     alpha = alpha or 0.52
     local clearance = 22

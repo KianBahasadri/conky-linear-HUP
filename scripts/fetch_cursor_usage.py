@@ -16,7 +16,6 @@ OUTPUT_PATH = CACHE_DIR / "cursor-usage.json"
 RENDER_PATH = CACHE_DIR / "cursor-usage-render.tsv"
 LOG_PATH = CACHE_DIR / "conky-rate-limit-panel.log"
 DEFAULT_AUTH_NAME = "auth.json"
-CURSOR_AUTH_STORE_DIR = Path.home() / ".local" / "share" / "clusterfork-auth" / "cursor"
 API_BASE_URL = "https://api2.cursor.sh/aiserver.v1.DashboardService"
 USER_AGENT = "cursor/3.7.21"
 MONTHLY_WINDOW_SECONDS = 31 * 24 * 60 * 60

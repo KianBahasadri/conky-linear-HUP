@@ -11,7 +11,6 @@ Only device names and OS strings are taken from Tailscale. The tailnet account
 identity in that payload is deliberately left alone.
 """
 import json
-import os
 import re
 import subprocess
 import sys

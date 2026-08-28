@@ -138,7 +138,7 @@ The panel's lower training section summarizes workouts uploaded from the phone (
 | `RESOURCE_HISTORY_SAMPLES` | Samples retained for sparklines; defaults to `90` |
 | `RESOURCE_NET_GAUGE_WINDOW` | Moving-average window (samples) for the NET gauge; defaults to `6` |
 
-The transparent HUD is generated on every monitor. It reads local Linux telemetry for CPU, memory, network throughput, `/` and `/home` disk usage, load average, and uptime. Each display retains its own recent samples for the active Conky session. NET sparkline scale uses the max IN/OUT rate recorded in the last 7 days (`cache/resource-net-peaks.tsv`). Bottom readouts fill a 3-column grid in column-major order under the gauges (LOAD/UP, `/`/`/home`, IN/OUT); see [Layout](README.md#layout).
+The transparent HUD is generated on every monitor. It displays CPU and memory gauges, a combined network gauge, and CPU/RAM/IN/OUT traces. Each display retains its own recent samples for the active Conky session. NET sparkline scale uses the max IN/OUT rate recorded in the last 7 days (`cache/resource-net-peaks.tsv`). Disk, load, uptime, and bottom readout values are not rendered; see [Layout](README.md#layout).
 
 ## Affine billing map
 

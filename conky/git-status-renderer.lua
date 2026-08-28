@@ -13,7 +13,6 @@ return function(shared, repo_root)
   local row_height = geometry.row_height
   -- Inside the frame: tight top/bottom padding around repo rows (no header bar).
   local content_top = geometry.content_top
-  local content_bottom = geometry.content_bottom
   -- Outside the frame: octocat + refresh age sit bottom-right below the box.
   local footer_gap = geometry.footer_gap
   local footer_height = geometry.footer_height
@@ -248,29 +247,6 @@ return function(shared, repo_root)
     shared.set_hex(cr, secondary, 0.22)
     cairo_set_line_width(cr, 1)
     cairo_stroke(cr)
-  end
-
-  local function draw_chip(cr, label, x, y, width, color)
-    shared.rounded_rect(cr, x, y, width, 18, 6)
-    shared.set_hex(cr, '020617', 0.96)
-    cairo_fill_preserve(cr)
-    shared.set_hex(cr, color, 0.84)
-    cairo_set_line_width(cr, 1.5)
-    cairo_stroke(cr)
-
-    cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
-    cairo_set_font_size(cr, 10)
-    local extents = cairo_text_extents_t:create()
-    cairo_text_extents(cr, label, extents)
-    shared.set_hex(cr, color, 1)
-    cairo_move_to(cr, x + (width - extents.width) / 2 - extents.x_bearing, y + 13)
-    cairo_show_text(cr, label)
-  end
-
-  local function chip_width_for(cr, label)
-    cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
-    cairo_set_font_size(cr, 10)
-    return math.max(52, text_width(cr, label) + 16)
   end
 
   local function draw_right_text(cr, value, right_x, y, color, alpha)

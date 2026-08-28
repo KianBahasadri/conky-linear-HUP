@@ -290,14 +290,6 @@ def read_local_rate_limit_samples():
     return samples
 
 
-def read_latest_local_rate_limits():
-    """Return the newest local sample for callers that only need one profile."""
-    samples = read_local_rate_limit_samples()
-    if samples:
-        return max(samples, key=lambda sample: sample["eventEpoch"])
-    return None
-
-
 def local_rate_limits_have_future_window(rate_limits, now):
     for key in ("primary", "secondary"):
         window = rate_limits.get(key)

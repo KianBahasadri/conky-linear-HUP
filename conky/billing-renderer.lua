@@ -388,10 +388,6 @@ return function(shared, repo_root)
     cairo_set_line_cap(cr, CAIRO_LINE_CAP_BUTT)
   end
 
-  local function glow_line(cr, x1, y1, x2, y2, color, width, alpha)
-    glow_segments(cr, { { x1, y1, x2, y2 } }, color, width, alpha)
-  end
-
   local function dotted_glow_line(cr, x1, y1, x2, y2, color, width, alpha)
     local dx, dy = x2 - x1, y2 - y1
     local distance = math.sqrt(dx * dx + dy * dy)

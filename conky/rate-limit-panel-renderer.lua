@@ -22,7 +22,6 @@ return function(shared, repo_root)
   local bar_height = 8
   local bar_text_gap = 14
   local bar_countdown_width = 54
-  local bar_pair_gap = 0
   -- Insets keep title chips (drawn at y-9) and the frame glow (y+7) inside the
   -- Conky window. Must stay in sync with fetch_common.rate_limit_panel_window_height.
   local panel_top_inset = 12
@@ -558,38 +557,6 @@ return function(shared, repo_root)
     }
   end
 
-  local function find_selected_account(accounts, provider)
-    for _, account in ipairs(accounts or {}) do
-      if string.lower(account.provider or '') == string.lower(provider) and account.is_selected then
-        return account
-      end
-    end
-    for _, account in ipairs(accounts or {}) do
-      if string.lower(account.provider or '') == string.lower(provider) then
-        return account
-      end
-    end
-    return nil
-  end
-
-  local function get_primary_pace_window(account)
-    if not account then return nil end
-    for _, window in ipairs(account.windows or {}) do
-      if normalized_window_label(window) == 'weekly' then
-        return window
-      end
-    end
-    for _, window in ipairs(account.windows or {}) do
-      if normalized_window_label(window) == 'auto' then
-        return window
-      end
-    end
-    if account.windows and #account.windows > 0 then
-      return account.windows[1]
-    end
-    return nil
-  end
-
   local function calculate_provider_average_pace(accounts, provider)
     local provider_lower = string.lower(provider)
     local include_free = provider_is_free_only(accounts, provider_lower)
@@ -654,59 +621,6 @@ return function(shared, repo_root)
     end
     local sign = avg_delta < 0 and '-' or '+'
     return string.format('%s: %s%.0f%%', string.upper(provider_name), sign, math.abs(avg_delta))
-  end
-
-  local function calculate_weekly_pace(accounts)
-    local expected_total = 0
-    local actual_total = 0
-    local weekly_count = 0
-
-    for _, account in ipairs(accounts or {}) do
-      if not is_free_account(account) then
-        local weekly = find_weekly_window(account)
-        if weekly then
-          local weekly_pace = calculate_window_pace(weekly, window_duration(weekly))
-
-          if weekly_pace then
-            expected_total = expected_total + weekly_pace.expected
-            actual_total = actual_total + weekly_pace.actual
-            weekly_count = weekly_count + 1
-          end
-        end
-      end
-    end
-
-    if weekly_count == 0 then
-      return nil
-    end
-
-    local expected = expected_total / weekly_count
-    local actual = actual_total / weekly_count
-    local delta = actual - expected
-    local state = 'neutral'
-
-    if delta >= pace_threshold then
-      state = 'over'
-    elseif expected >= pace_threshold and delta <= -pace_threshold then
-      state = 'under'
-    end
-
-    return {
-      expected = expected,
-      actual = actual,
-      delta = delta,
-      state = state,
-    }
-  end
-
-  local function pace_chip_color(pace)
-    if pace and pace.state == 'over' then
-      return 'f87171'
-    end
-    if pace and pace.state == 'under' then
-      return '39ff88'
-    end
-    return '00e5ff'
   end
 
   local function hex_rgb(hex)
@@ -1424,27 +1338,6 @@ return function(shared, repo_root)
       draw_title_chip(cr, chip.label, chip.color, chip_x, y)
       chip_x = chip_x + widths[i] + title_chip_gap
     end
-  end
-
-  local function draw_pace_chip(cr, pace, x, y)
-    if not pace then
-      return
-    end
-
-    local color = pace_chip_color(pace)
-    local sign = pace.delta < 0 and '-' or '+'
-    local label = string.format('PACE: %s%.0f%%', sign, math.abs(pace.delta))
-
-    cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
-    cairo_set_font_size(cr, 15)
-
-    local extents = cairo_text_extents_t:create()
-    cairo_text_extents(cr, label, extents)
-    local chip_width = extents.width + 24
-    local chip_x = x + (panel_width - chip_width) / 2
-    local chip_y = y - 9
-
-    draw_chip(cr, label, color, chip_x, chip_y, chip_width)
   end
 
   local function draw_rate_limit_panel(cr, usage, x, y)

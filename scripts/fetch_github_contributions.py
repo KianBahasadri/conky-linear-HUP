@@ -226,11 +226,6 @@ def parse_contributions(html):
     return entries[-371:]
 
 
-def parse_contributions_graphql_entries(entries):
-    entries = sorted(entries, key=lambda item: item["date"])
-    return entries
-
-
 def main():
     common.load_env()
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
