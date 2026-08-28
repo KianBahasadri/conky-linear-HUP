@@ -193,8 +193,9 @@ def pace_seconds(duration_seconds, distance_meters, units):
     return duration_seconds / distance_units
 
 
-def build_status(workouts, units):
-    now = datetime.now().astimezone()
+def build_status(workouts, units, now=None):
+    if now is None:
+        now = datetime.now().astimezone()
     status = {
         "ok": True,
         "stale": False,

@@ -138,9 +138,6 @@ def test_build_status_last_and_week(monkeypatch):
     now = datetime(2026, 8, 27, 12, 0, 0).astimezone()
     monkeypatch.setattr(workouts, "WEEK_WINDOW", timedelta(days=7))
 
-    def fake_now():
-        return now
-
     run_10k = {
         "file": "a.tcx",
         "sport": "Running",
@@ -178,7 +175,7 @@ def test_build_status_last_and_week(monkeypatch):
         "avgCadence": 61,
     }
 
-    status = workouts.build_status([ride_old, run_10k, run_5k], metric_units())
+    status = workouts.build_status([ride_old, run_10k, run_5k], metric_units(), now)
 
     assert status["ok"] is True
     assert status["workoutCount"] == 3
@@ -212,7 +209,7 @@ def test_build_status_week_window_excludes_old(monkeypatch):
         "avgCadence": None,
     }
 
-    status = workouts.build_status([old_run], metric_units())
+    status = workouts.build_status([old_run], metric_units(), now)
 
     assert status["weekRuns"] == 0
     assert status["weekDistanceText"] == "0.0 km"
