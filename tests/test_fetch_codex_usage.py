@@ -254,6 +254,69 @@ def test_reached_api_quota_overrides_stale_window_percentage():
     assert account["windows"][0]["remainingPercent"] == 0
 
 
+def test_reached_limit_pins_only_the_blocking_window():
+    now = int(datetime.now(timezone.utc).timestamp())
+    primary_reset = now + 2700
+    weekly_reset = now + 589000
+    auth = {"label": "ricky", "email": "", "account_id": ""}
+    usage = {
+        "plan_type": "plus",
+        "rate_limit": {
+            "allowed": False,
+            "limit_reached": True,
+            "primary_window": {
+                "used_percent": 100,
+                "limit_window_seconds": codex.FIVE_HOUR_WINDOW_SECONDS,
+                "reset_after_seconds": 2700,
+                "reset_at": primary_reset,
+            },
+            "secondary_window": {
+                "used_percent": 16,
+                "limit_window_seconds": codex.WEEKLY_WINDOW_SECONDS,
+                "reset_after_seconds": 589000,
+                "reset_at": weekly_reset,
+            },
+        },
+        "rate_limit_upsell": {
+            "banner_type": "plus_rate_limit_reached",
+            "reset_at": primary_reset,
+        },
+    }
+
+    account = codex.normalize_usage(auth, usage, False)
+
+    assert [item["usedPercent"] for item in account["windows"]] == [100.0, 16.0]
+    assert account["windows"][1]["remainingPercent"] == 84.0
+
+
+def test_reached_limit_without_upsell_pins_the_fullest_window():
+    now = int(datetime.now(timezone.utc).timestamp())
+    auth = {"label": "ricky", "email": "", "account_id": ""}
+    usage = {
+        "plan_type": "plus",
+        "rate_limit": {
+            "allowed": False,
+            "limit_reached": True,
+            "primary_window": {
+                "used_percent": 100,
+                "limit_window_seconds": codex.FIVE_HOUR_WINDOW_SECONDS,
+                "reset_after_seconds": 2700,
+                "reset_at": now + 2700,
+            },
+            "secondary_window": {
+                "used_percent": 16,
+                "limit_window_seconds": codex.WEEKLY_WINDOW_SECONDS,
+                "reset_after_seconds": 589000,
+                "reset_at": now + 589000,
+            },
+        },
+    }
+
+    account = codex.normalize_usage(auth, usage, False)
+
+    assert [item["usedPercent"] for item in account["windows"]] == [100.0, 16.0]
+
+
 def test_local_weekly_primary_window_matches_api_weekly_window():
     now = int(datetime.now(timezone.utc).timestamp())
     reset_at = now + 3600
@@ -281,6 +344,25 @@ def test_local_weekly_primary_window_matches_api_weekly_window():
     assert accounts[0]["localRateLimits"] is True
     assert accounts[0]["windows"][0]["label"] == "weekly"
     assert accounts[0]["windows"][0]["usedPercent"] == 100.0
+
+
+def test_exhausted_local_sample_pins_only_the_blocking_window():
+    now = int(datetime.now(timezone.utc).timestamp())
+    sample = {
+        "eventEpoch": now,
+        "path": Path("/tmp/rollout-ricky.jsonl"),
+        "rateLimits": {
+            "plan_type": "plus",
+            "primary": {"used_percent": 100, "window_minutes": 300, "resets_at": now + 2700},
+            "secondary": {"used_percent": 16, "window_minutes": 10080, "resets_at": now + 589000},
+        },
+        "exhausted": True,
+    }
+
+    windows = codex.local_rate_limit_windows(sample)
+
+    assert [window["label"] for window in windows] == ["5h", "weekly"]
+    assert [window["usedPercent"] for window in windows] == [100.0, 16.0]
 
 
 def test_rollout_usage_limit_error_marks_latest_sample_exhausted(tmp_path, monkeypatch):

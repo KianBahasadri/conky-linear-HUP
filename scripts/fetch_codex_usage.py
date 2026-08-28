@@ -32,6 +32,7 @@ LONG_WINDOW_THRESHOLD_SECONDS = 24 * 60 * 60
 DEGENERATE_RETRIES = 4
 LOCAL_RATE_LIMIT_MAX_AGE_SECONDS = 21600
 LOCAL_WINDOW_RESET_TOLERANCE_SECONDS = 5
+WINDOW_RESET_MATCH_TOLERANCE_SECONDS = 5
 
 
 log_event = common.make_logger(LOG_PATH, "fetch_codex_usage")
@@ -305,6 +306,12 @@ def local_rate_limits_have_future_window(rate_limits, now):
     return False
 
 
+def clamped_used_percent(window):
+    if not isinstance(window, dict):
+        return None
+    return max(0.0, min(100.0, as_float(window.get("used_percent"))))
+
+
 def local_rate_limit_windows(local_rate_limits):
     if not local_rate_limits:
         return []
@@ -312,13 +319,22 @@ def local_rate_limit_windows(local_rate_limits):
     rate_limits = local_rate_limits["rateLimits"]
     now = int(datetime.now(timezone.utc).timestamp())
     exhausted = local_rate_limits.get("exhausted", False)
+    raw_windows = (("5h", rate_limits.get("primary")), ("weekly", rate_limits.get("secondary")))
+
+    blocking_percent = None
+    if exhausted:
+        # A rollout never says which window tripped the usage_limit_exceeded
+        # error, but the blocker is always the fullest one; the other window's
+        # percentage is still accurate and must not be pinned to 100.
+        percents = [percent for percent in (clamped_used_percent(window) for _, window in raw_windows) if percent is not None]
+        blocking_percent = max(percents) if percents else None
+
     windows = []
-    primary = normalize_local_rate_limit_window("5h", rate_limits.get("primary"), now, exhausted=exhausted)
-    secondary = normalize_local_rate_limit_window("weekly", rate_limits.get("secondary"), now, exhausted=exhausted)
-    if primary:
-        windows.append(primary)
-    if secondary:
-        windows.append(secondary)
+    for label, window in raw_windows:
+        forced = blocking_percent is not None and clamped_used_percent(window) == blocking_percent
+        normalized = normalize_local_rate_limit_window(label, window, now, exhausted=forced)
+        if normalized:
+            windows.append(normalized)
     return windows
 
 
@@ -408,8 +424,9 @@ def normalize_window(label, window, fetched_at, exhausted=False):
     limit_window_seconds = as_int(window.get("limit_window_seconds"))
     used_percent = max(0.0, min(100.0, as_float(window.get("used_percent"))))
     if exhausted:
-        # The API's reached/allowed flags are authoritative when the numeric
-        # percentage is stale or inconsistent with the account's actual state.
+        # Only the blocking window is pinned: its numeric percentage can lag
+        # the account-level reached/allowed flags by a turn, while every other
+        # window's percentage is already accurate.
         used_percent = 100.0
     reset_at = as_float(window.get("reset_at"))
     reset_after_seconds = as_int(window.get("reset_after_seconds"))
@@ -497,6 +514,29 @@ def log_final_account(account):
     log_event(" ".join(fields))
 
 
+def account_blocking_reset_at(usage):
+    """Reset time of the window actually blocking the account, per the upsell banner."""
+    upsell = usage.get("rate_limit_upsell") if isinstance(usage, dict) else None
+    if isinstance(upsell, dict):
+        reset_at = as_int(upsell.get("reset_at"))
+        if reset_at > 0:
+            return reset_at
+    return None
+
+
+def window_blocks_account(window, fetched_at, blocking_reset):
+    if blocking_reset is None or not isinstance(window, dict):
+        return False
+
+    reset_at = as_float(window.get("reset_at"))
+    if reset_at <= 0:
+        reset_after_seconds = as_int(window.get("reset_after_seconds"))
+        if reset_after_seconds <= 0:
+            return False
+        reset_at = fetched_at.timestamp() + reset_after_seconds
+    return abs(reset_at - blocking_reset) <= WINDOW_RESET_MATCH_TOLERANCE_SECONDS
+
+
 def normalize_usage(auth, usage, is_selected):
     rate_limit = usage.get("rate_limit") or {}
     plan_type = usage.get("plan_type", "")
@@ -504,6 +544,18 @@ def normalize_usage(auth, usage, is_selected):
     windows = []
     labels_seen = set()
     exhausted = rate_limit.get("limit_reached") is True or rate_limit.get("allowed") is False
+    blocking_reset = account_blocking_reset_at(usage) if exhausted else None
+
+    fallback_blocking_percent = None
+    if exhausted and blocking_reset is None:
+        # Responses without the banner never name the blocker either; the
+        # fullest window is the one that tripped the account-level flags.
+        percents = [
+            percent
+            for percent in (clamped_used_percent(rate_limit.get(key)) for key in ("primary_window", "secondary_window"))
+            if percent is not None
+        ]
+        fallback_blocking_percent = max(percents) if percents else None
 
     if is_paid_plan(plan_type) and meaningful_window_count(usage) == 0:
         return {
@@ -519,7 +571,13 @@ def normalize_usage(auth, usage, is_selected):
         }
 
     for label, key in (("5h", "primary_window"), ("weekly", "secondary_window")):
-        normalized = normalize_window(label, rate_limit.get(key), fetched_at, exhausted=exhausted)
+        window = rate_limit.get(key)
+        forced = window_blocks_account(window, fetched_at, blocking_reset) or (
+            blocking_reset is None
+            and fallback_blocking_percent is not None
+            and clamped_used_percent(window) == fallback_blocking_percent
+        )
+        normalized = normalize_window(label, window, fetched_at, exhausted=forced)
         if not normalized:
             continue
         if normalized["label"] in labels_seen:
