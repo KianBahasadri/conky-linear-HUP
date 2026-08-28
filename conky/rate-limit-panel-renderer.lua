@@ -608,10 +608,9 @@ return function(shared, repo_root)
               end
             end
           elseif provider_lower == 'codex' then
-            -- Codex renamed the window this pace reads: the span that used to
-            -- arrive as the weekly window now comes through as 5h. Weekly is
-            -- still the fallback for accounts the rename has not reached.
-            local window = find_five_hour_window(account) or find_weekly_window(account)
+            -- Prefer the weekly bar when both windows exist. Some accounts only
+            -- expose the 5h bar, so keep it as the fallback.
+            local window = find_weekly_window(account) or find_five_hour_window(account)
             if window then
               local pace = calculate_window_pace(window, window_duration(window))
               if pace then
