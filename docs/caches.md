@@ -59,7 +59,7 @@
 - Minecraft: `60s`
 - GitHub: `1800s`
 - Weather and air quality: `600s`
-- Workouts: `900s` (override with `WORKOUTS_REFRESH_SECONDS`); local TCX parse, no network
+- Workouts: `20s` (override with `WORKOUTS_REFRESH_SECONDS`); local TCX parse, no network
 - Billing: `900s` (override with `BILLING_REFRESH_SECONDS`); AWS Cost Explorer is cached daily (`86400s` / `BILLING_AWS_CACHE_TTL_SECONDS`) to avoid per-query API fees on daily-refreshed backend data
 - Sessions: `20s` (override with `SESSIONS_REFRESH_SECONDS`)
 - Git status: `30s` (override with `GIT_REFRESH_SECONDS`)

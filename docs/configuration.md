@@ -122,7 +122,7 @@ Pioneer env vars (`PIONEER_API_KEY`, `PIONEER_USAGE_LABEL`, `PIONEER_MONTHLY_CRE
 | `WEATHER_REFRESH_SECONDS` | Weather and air-quality refresh interval |
 | `WEATHER_TIMEOUT_SECONDS` | Timeout for each provider request |
 | `WORKOUTS_UNITS` | `metric` (default) or `imperial`; formats the training section's distances and paces |
-| `WORKOUTS_REFRESH_SECONDS` | TCX re-scan interval (default `900`); local files, no network |
+| `WORKOUTS_REFRESH_SECONDS` | TCX re-scan interval (default `20`); local files, no network |
 
 Location resolution prefers exact coordinates, then `WEATHER_LOCATION`, then an approximate public-IP location. Exact coordinates are recommended for local conditions.
 
