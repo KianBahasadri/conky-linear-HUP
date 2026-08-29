@@ -1100,6 +1100,50 @@ return function(shared, repo_root)
     }
   end
 
+  local function draw_account_error(cr, account, x, y)
+    local detail = account.error and account.error ~= '' and account.error or 'quota data unavailable'
+    local label = 'ERROR: ' .. detail .. ' / RETRYING'
+    local error_area_width = panel_width - account_row_x - panel_first_bar_x - bar_area_side_margin
+    local max_label_width = math.max(80, error_area_width - 24)
+
+    cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
+    cairo_set_font_size(cr, 9)
+    label = shared.truncate_title(cr, string.upper(label), max_label_width)
+    local extents = cairo_text_extents_t:create()
+    cairo_text_extents(cr, label, extents)
+
+    local badge_x = x + panel_first_bar_x
+    local badge_y = y + 9
+    local badge_height = 14
+    local badge_width = math.min(error_area_width, math.max(160, extents.width + 20))
+
+    shared.rounded_rect(cr, badge_x + 0.5, badge_y + 2, badge_width, badge_height, 4)
+    shared.set_hex(cr, '000000', 0.34)
+    cairo_fill(cr)
+
+    shared.rounded_rect(cr, badge_x, badge_y + 1, badge_width, badge_height, 4)
+    shared.set_hex(cr, '000000', 0.28)
+    cairo_fill(cr)
+
+    shared.rounded_rect(cr, badge_x, badge_y, badge_width, badge_height, 4)
+    fill_gradient(cr, badge_x, badge_y, badge_x, badge_y + badge_height, {
+      { 0.00, '7f1d1d', 0.99 },
+      { 0.48, '4c1018', 0.99 },
+      { 1.00, '25070d', 0.99 },
+    })
+
+    shared.rounded_rect(cr, badge_x, badge_y, badge_width, badge_height, 4)
+    shared.set_hex(cr, 'fb7185', 0.96)
+    cairo_set_line_width(cr, 1.2)
+    cairo_stroke(cr)
+
+    draw_lit_text(cr, label, badge_x + 10, badge_y + 10, 9, 'fca5a5', {
+      alpha = 0.98,
+      shadow = 0.55,
+      relief = 'soft',
+    })
+  end
+
   local function get_row_windows(account)
     local provider = provider_name(account)
     local windows = account.windows or {}
@@ -1224,7 +1268,10 @@ return function(shared, repo_root)
     })
 
     local num_bars = #row_windows
-    if num_bars == 0 then return end
+    if num_bars == 0 then
+      draw_account_error(cr, account, x, y)
+      return
+    end
 
     local show_bar_pace = not is_free or pace_includes_free == true
     local bar_y = y + 15
