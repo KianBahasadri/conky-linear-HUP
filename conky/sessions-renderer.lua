@@ -97,6 +97,10 @@ return function(shared, repo_root)
     return tonumber(object:match('"' .. key .. '"%s*:%s*(%-?%d+)')) or 0
   end
 
+  local function bool_field(object, key)
+    return object:match('"' .. key .. '"%s*:%s*true') ~= nil
+  end
+
   local function read_state()
     local content = shared.read_file(sessions_path)
     if not content then
@@ -129,6 +133,10 @@ return function(shared, repo_root)
         attached = attached ~= '' and attached or nil,
         idle = field(object, 'idle') or '',
         idleSeconds = number_field(object, 'idleSeconds'),
+        codeviewPresent = bool_field(object, 'codeviewPresent'),
+        codeviewRunning = bool_field(object, 'codeviewRunning'),
+        codeviewPort = number_field(object, 'codeviewPort'),
+        codeviewIndexAge = number_field(object, 'codeviewIndexAge'),
       })
     end
     return { ok = true, devices = devices, sessions = sessions, sshd = content:match('"sshdListening"%s*:%s*true') ~= nil }
@@ -555,6 +563,93 @@ return function(shared, repo_root)
     end
   end
 
+  -- Codeview moon: rides the session diamond. A live dashboard daemon keeps a
+  -- moon on a slow orbit (angle from os.time(), so the drift advances one small
+  -- step per redraw tick at the 2s update_interval); the phase erodes as the
+  -- repo's index ages and resets on a rescan; a daemon that died with
+  -- daemon.json left behind parks a dark eclipse moon on a broken ring.
+  local MOON_ORBIT_RX = 15.5
+  local MOON_ORBIT_RY = 6.2
+  local MOON_ORBIT_TILT = -18 * math.pi / 180
+  -- 420s per revolution at the 1s update_interval is ~0.86 degrees (~0.23 px)
+  -- per redraw: a continuous slow drift, never a visible jump.
+  local MOON_PERIOD = 420
+  local MOON_FRESH_SECONDS = 1800
+  local MOON_AGING_SECONDS = 7200
+
+  local function moon_point(cx, cy, angle)
+    local ca, sa = math.cos(angle), math.sin(angle)
+    local ct, st = math.cos(MOON_ORBIT_TILT), math.sin(MOON_ORBIT_TILT)
+    return cx + MOON_ORBIT_RX * ca * ct - MOON_ORBIT_RY * sa * st,
+           cy + MOON_ORBIT_RX * ca * st + MOON_ORBIT_RY * sa * ct
+  end
+
+  local function draw_orbit_ring(cr, cx, cy, col, alpha, dashed)
+    cairo_save(cr)
+    cairo_translate(cr, cx, cy)
+    cairo_rotate(cr, MOON_ORBIT_TILT)
+    cairo_scale(cr, MOON_ORBIT_RX, MOON_ORBIT_RY)
+    if dashed then
+      cairo_set_dash(cr, {0.55, 0.95}, 0)
+    end
+    shared.set_hex(cr, col, alpha)
+    cairo_set_line_width(cr, 0.85 / ((MOON_ORBIT_RX + MOON_ORBIT_RY) / 2))
+    cairo_arc(cr, 0, 0, 1, 0, math.pi * 2)
+    cairo_stroke(cr)
+    if dashed then
+      cairo_set_dash(cr, {}, 0)
+    end
+    cairo_restore(cr)
+  end
+
+  local function moon_phase(session)
+    local age = session.codeviewIndexAge or 0
+    if age < 0 or age < MOON_FRESH_SECONDS then
+      return 'full'
+    end
+    if age < MOON_AGING_SECONDS then
+      return 'gibbous'
+    end
+    return 'crescent'
+  end
+
+  local function draw_codeview_moon(cr, session, cx, cy, live, col)
+    if not session.codeviewPresent then
+      return
+    end
+    if session.codeviewRunning then
+      local dir = (hash_string(repo_key(session):lower()) % 2 == 0) and 1 or -1
+      local angle = (os.time() % MOON_PERIOD) / MOON_PERIOD * math.pi * 2 * dir
+      draw_orbit_ring(cr, cx, cy, col, live and 0.30 or 0.20, false)
+      local mx, my = moon_point(cx, cy, angle)
+      radial_hex(cr, mx, my, 0, 7, {{0, col, 0.22}, {1, col, 0}})
+      shared.set_hex(cr, col, 0.95)
+      cairo_arc(cr, mx, my, 2.4, 0, math.pi * 2)
+      cairo_fill(cr)
+      shared.set_hex(cr, 'ffffff', 0.85)
+      cairo_arc(cr, mx - 0.55, my - 0.65, 0.62, 0, math.pi * 2)
+      cairo_fill(cr)
+      local phase = moon_phase(session)
+      if phase ~= 'full' then
+        local offset = phase == 'gibbous' and 1.5 or 2.5
+        shared.set_hex(cr, '020617', 0.78)
+        cairo_arc(cr, mx + offset * 0.6, my - offset * 0.55, phase == 'gibbous' and 1.9 or 2.5, 0, math.pi * 2)
+        cairo_fill(cr)
+      end
+    else
+      local mx, my = moon_point(cx, cy, math.pi * 0.75)
+      draw_orbit_ring(cr, cx, cy, red, 0.22, true)
+      radial_hex(cr, mx, my, 0, 7, {{0, red, 0.16}, {1, red, 0}})
+      shared.set_hex(cr, '160b0d', 0.96)
+      cairo_arc(cr, mx, my, 2.5, 0, math.pi * 2)
+      cairo_fill(cr)
+      shared.set_hex(cr, red, 0.9)
+      cairo_set_line_width(cr, 0.8)
+      cairo_arc(cr, mx, my, 2.5, 0, math.pi * 2)
+      cairo_stroke(cr)
+    end
+  end
+
   local function draw_diamond_arc(cr, positions)
     if #positions < 2 then return end
     table.sort(positions, function(a,b) return a[1] < b[1] end)
@@ -856,6 +951,7 @@ return function(shared, repo_root)
       local live = session.attached ~= nil
       local col = repo_color_for(session)
       draw_diamond(cr, cx, cy, live and 'live' or 'idle', col)
+      draw_codeview_moon(cr, session, cx, cy, live, col)
       local lab = fit_text(cr, session.name, slot_width - 12, 9)
       local r = live and 8.2 or 6.6
       flat_text(cr, lab, cx, cy + r + 13, live and 9 or 8.4, live and text_color or muted, live and 0.90 or 0.72, 'center')

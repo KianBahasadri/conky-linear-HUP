@@ -1,3 +1,5 @@
+import os
+
 import fetch_sessions as sessions
 
 
@@ -104,3 +106,99 @@ def test_tailnet_peers_maps_every_address_and_ignores_account_identity(monkeypat
     assert peers["100.123.102.71"] == ("kianWorkLaptop", "linux")
     # Only names and OS strings are taken; nothing carries the account identity.
     assert all("@" not in value for pair in peers.values() for value in pair)
+
+
+def make_codeview_repo(tmp_path, daemon='{"pid": 4242, "port": 48290}'):
+    repo = tmp_path / "fleet-repo"
+    (repo / ".codeview" / "cache").mkdir(parents=True)
+    (repo / ".codeview" / "daemon.json").write_text(daemon, encoding="utf-8")
+    index_file = repo / ".codeview" / "cache" / "summary.json"
+    index_file.write_text("{}", encoding="utf-8")
+    os.utime(index_file, (997_000, 997_000))
+    return repo
+
+
+def test_codeview_state_reports_a_live_daemon(tmp_path, monkeypatch):
+    repo = make_codeview_repo(tmp_path)
+    monkeypatch.setattr(
+        sessions, "proc_cmdline",
+        lambda pid: "python3 /home/kian/.config/clusterfork/scripts/codeview/server.py --port 48290",
+    )
+    monkeypatch.setattr(sessions.os, "kill", lambda pid, sig: None)
+
+    # A pane parked in a subdirectory still finds the repo root by walking up.
+    state = sessions.codeview_state(str(repo / "scripts" / "deep"), now=1_000_000)
+    assert state == {
+        "present": True,
+        "running": True,
+        "port": 48290,
+        "indexAgeSeconds": 3_000,
+    }
+
+
+def test_codeview_state_flags_a_dead_daemon_as_an_eclipse(tmp_path, monkeypatch):
+    repo = make_codeview_repo(tmp_path)
+
+    def dead(pid, sig):
+        raise ProcessLookupError
+
+    monkeypatch.setattr(sessions.os, "kill", dead)
+    state = sessions.codeview_state(str(repo), now=1_000_000)
+    assert state == {
+        "present": True,
+        "running": False,
+        "port": 48290,
+        "indexAgeSeconds": 3_000,
+    }
+
+
+def test_codeview_state_rejects_a_recycled_pid(tmp_path, monkeypatch):
+    repo = make_codeview_repo(tmp_path)
+    monkeypatch.setattr(sessions.os, "kill", lambda pid, sig: None)
+    monkeypatch.setattr(sessions, "proc_cmdline", lambda pid: "kitty pts")
+
+    state = sessions.codeview_state(str(repo), now=1_000_000)
+    assert state["present"] is True
+    assert state["running"] is False
+
+
+def test_codeview_state_absent_without_a_dashboard(tmp_path):
+    assert sessions.codeview_state(str(tmp_path), now=1_000_000) is None
+
+
+def test_tmux_sessions_attaches_codeview_fields(tmp_path, monkeypatch):
+    repo = make_codeview_repo(tmp_path)
+    listing = f"build\t1\t{repo}\t1234567890"
+
+    def fake_tmux(*args):
+        return listing if args[0] == "list-sessions" else ""
+
+    monkeypatch.setattr(sessions, "tmux", fake_tmux)
+    monkeypatch.setattr(
+        sessions, "proc_cmdline",
+        lambda pid: "python3 server.py --port 48290",
+    )
+    monkeypatch.setattr(sessions.os, "kill", lambda pid, sig: None)
+
+    record = sessions.tmux_sessions()["build"]
+    assert record["codeviewPresent"] is True
+    assert record["codeviewRunning"] is True
+    assert record["codeviewPort"] == 48290
+    assert record["codeviewIndexAgeSeconds"] >= 0
+
+
+def test_tmux_sessions_marks_repos_without_codeview_absent(tmp_path, monkeypatch):
+    plain = tmp_path / "plain-repo"
+    plain.mkdir()
+    listing = f"notes\t2\t{plain}\t1234567890"
+
+    def fake_tmux(*args):
+        return listing if args[0] == "list-sessions" else ""
+
+    monkeypatch.setattr(sessions, "tmux", fake_tmux)
+
+    record = sessions.tmux_sessions()["notes"]
+    assert record["codeviewPresent"] is False
+    assert record["codeviewRunning"] is False
+    assert record["codeviewPort"] == 0
+    assert record["codeviewIndexAgeSeconds"] == -1

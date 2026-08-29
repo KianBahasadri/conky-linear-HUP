@@ -17,6 +17,7 @@
 - [Git status overlay](git.md) — local repo fleet (branch, dirty, ahead/behind, Actions pip)
 - [Sessions overlay](sessions.md) — tmux sessions and the inbound logins driving them
 - [Session overlay design study](session-mockups/NOTES.md) — the concept survey the patch bay was picked from
+- [Codeview moon study](codeview-mockups/codeview-moon-gallery.html) — running codeview daemons as moons around fleet repo stars
 - [Contribution skyline study](github-mockups/NOTES.md) — the projection study behind the skyline
 - [Billing panel design archive](billing-mockups/README.md) — preserved Affine Month Map mockup, alternatives, and Cairo sources
   - [Trajectory concept notes](billing-mockups/trajectory_variants/NOTES.md) — four time-and-cap transformations

@@ -11,6 +11,7 @@ Only device names and OS strings are taken from Tailscale. The tailnet account
 identity in that payload is deliberately left alone.
 """
 import json
+import os
 import re
 import subprocess
 import sys
@@ -25,6 +26,12 @@ ROOT = Path(__file__).resolve().parents[1]
 CACHE_DIR = ROOT / "cache"
 SESSIONS_PATH = CACHE_DIR / "sessions.json"
 LOG_PATH = CACHE_DIR / "conky-sessions.log"
+
+# codeview dashboard daemon marker (see clusterfork's bin/codeview). A session
+# whose repo has <repo>/.codeview/daemon.json with a live pid gets a moon on
+# its diamond in the patch bay renderer.
+CODEVIEW_DIR_NAME = ".codeview"
+CODEVIEW_SCAN_DEPTH = 6
 
 # Must match the layout math in conky/sessions-renderer.lua.
 # Drift keeps a fixed sinking field for ingress origins and a fixed bottom row
@@ -106,6 +113,105 @@ def repo_from_path(path):
     return Path(expanded).name or expanded
 
 
+def pid_alive(pid):
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+
+
+def proc_cmdline(pid):
+    """Space-joined cmdline, or None where /proc is unavailable."""
+    try:
+        raw = Path(f"/proc/{pid}/cmdline").read_bytes()
+    except OSError:
+        return None
+    return raw.replace(b"\x00", b" ").decode("utf-8", "replace")
+
+
+def codeview_index_age(repo_dir, now):
+    """Seconds since the newest file under <repo>/.codeview/cache, or None."""
+    cache_dir = Path(repo_dir) / CODEVIEW_DIR_NAME / "cache"
+    newest = None
+    try:
+        for path in cache_dir.glob("*.json"):
+            mtime = path.stat().st_mtime
+            newest = mtime if newest is None else max(newest, mtime)
+    except OSError:
+        return None
+    if newest is None:
+        return None
+    return max(0, int(now - newest))
+
+
+def codeview_state_from_daemon(repo_dir, daemon_path, now):
+    """Flattened daemon state for the renderer's regex JSON parser."""
+    try:
+        info = json.loads(daemon_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(info, dict) or not isinstance(info.get("pid"), int):
+        return None
+    running = pid_alive(info["pid"])
+    cmdline = proc_cmdline(info["pid"])
+    if running and cmdline is not None and "server.py" not in cmdline:
+        running = False
+    port = info.get("port")
+    index_age = codeview_index_age(repo_dir, now)
+    return {
+        "present": True,
+        "running": running,
+        "port": port if isinstance(port, int) else 0,
+        "indexAgeSeconds": index_age if index_age is not None else -1,
+    }
+
+
+def codeview_state(start_dir, now):
+    """codeview daemon state for a session's working directory, or None.
+
+    The repo root is found by walking up from the pane's cwd, so a session
+    parked in a subdirectory still finds <repo>/.codeview/daemon.json. A
+    daemon counts as running only if the pid answers and its cmdline still
+    looks like the codeview server — the same test bin/codeview status uses.
+    """
+    try:
+        current = Path(start_dir).expanduser().resolve()
+    except (OSError, ValueError, RuntimeError):
+        return None
+    for _ in range(CODEVIEW_SCAN_DEPTH):
+        daemon = current / CODEVIEW_DIR_NAME / "daemon.json"
+        if daemon.is_file():
+            return codeview_state_from_daemon(current, daemon, now)
+        parent = current.parent
+        if parent == current:
+            return None
+        current = parent
+    return None
+
+
+def codeview_fields(start_dir, now):
+    """The four flat session fields the Lua side parses; absent-safe."""
+    state = codeview_state(start_dir, now)
+    if state is None:
+        return {
+            "codeviewPresent": False,
+            "codeviewRunning": False,
+            "codeviewPort": 0,
+            "codeviewIndexAgeSeconds": -1,
+        }
+    return {
+        "codeviewPresent": state["present"],
+        "codeviewRunning": state["running"],
+        "codeviewPort": state["port"],
+        "codeviewIndexAgeSeconds": state["indexAgeSeconds"],
+    }
+
+
 def tmux_sessions():
     """name -> session record. Empty when no tmux server is running."""
     listing = tmux(
@@ -117,6 +223,7 @@ def tmux_sessions():
 
     now = datetime.now(timezone.utc).timestamp()
     sessions = {}
+    codeview_by_path = {}
     for line in listing.splitlines():
         fields = line.split("\t")
         if len(fields) < 4:
@@ -130,7 +237,7 @@ def tmux_sessions():
                     idle_seconds = 0
             except (ValueError, OverflowError):
                 idle_seconds = None
-        sessions[name] = {
+        record = {
             "name": name,
             "windows": int(windows) if windows.isdigit() else 1,
             "panes": 0,
@@ -140,6 +247,11 @@ def tmux_sessions():
             "idle": relative_age(idle_seconds) if idle_seconds is not None else "",
             "idleSeconds": idle_seconds if idle_seconds is not None else 0,
         }
+        # One codeview probe per distinct session path per fetch cycle.
+        if path not in codeview_by_path:
+            codeview_by_path[path] = codeview_fields(path, now)
+        record.update(codeview_by_path[path])
+        sessions[name] = record
 
     panes = tmux("list-panes", "-a", "-F", "#{session_name}")
     if panes:

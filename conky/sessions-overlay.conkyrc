@@ -30,7 +30,10 @@ conky.config = {
   own_window_hints = 'undecorated,below,sticky,skip_taskbar,skip_pager',
   own_window_transparent = true,
   own_window_type = 'desktop',
-  update_interval = 10,
+  -- 1s tick: the codeview moon's 420s orbit advances ~0.86 degrees (~0.23 px)
+  -- per redraw, which reads as a continuous slow drift. The fetch loop is on
+  -- its own 20s timer, so this only costs redraws, not rescans.
+  update_interval = 1,
   use_xft = true,
   lua_load = './conky/overlay-entrypoint.lua',
   lua_draw_hook_post = 'draw_sessions',

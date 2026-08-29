@@ -37,7 +37,8 @@ them. That chain — device, then session — is the thing the panel draws.
   the drift.
 - `sessions`: one per tmux session, with window and pane counts, working
   directory, which devices are attached, and `idle` / `idleSeconds` for the
-  time since that session last had activity.
+  time since that session last had activity. Each session also carries flat
+  `codeview*` fields (see [Codeview moons](#codeview-moons)).
 
 `tailscale status --json` is called once, not per address, and only device names
 and OS strings are taken from it. The tailnet account identity in that payload is
@@ -61,6 +62,41 @@ Three cases worth knowing:
 
 With no tmux server running the sessions column says so rather than going blank;
 that is the normal state between sessions, not an error.
+
+## Codeview moons
+
+Each session diamond can wear a moon: the mark of a running codeview dashboard
+daemon for that session's repo (codeview is clusterfork's per-repo introspection
+dashboard; the design study is
+[codeview-mockups/codeview-moon-gallery.html](codeview-mockups/codeview-moon-gallery.html)).
+
+`fetch_sessions.py` probes `<repo>/.codeview/daemon.json` once per distinct
+session path per cycle, walking up from the pane's working directory so a pane
+parked in a subdirectory still finds the repo root. A daemon counts as running
+only if the recorded pid answers and its cmdline still looks like the codeview
+server — the same test `bin/codeview status` uses. The per-session fields are
+flat for the renderer's regex JSON parser: `codeviewPresent`, `codeviewRunning`,
+`codeviewPort`, and `codeviewIndexAgeSeconds` (age of the newest file under
+`.codeview/cache/`, `-1` when unknown).
+
+What the moon shows:
+
+- **Orbiting moon** (tinted with the repo's fleet color, same hash as the
+  diamond and filaments) — the dashboard daemon is serving.
+- **Phase** — full under 30 minutes of index age, gibbous under 2 hours,
+  crescent beyond; a rescan or `codeview reload` resets it to full. The moon
+  dims with the phase.
+- **Eclipse** — a dark parked moon with a red rim on a broken ring: the daemon
+  died but `daemon.json` is still there. No moon at all means the repo has no
+  dashboard.
+
+Motion: the moon's angle is `os.time() / 420s × 360°`, recomputed on every
+Cairo draw, so nothing accumulates across redraws or restarts. The sessions
+window ticks at `update_interval = 1` (in `conky/sessions-overlay.conkyrc`),
+which advances the orbit ~0.86° (about a quarter pixel) per frame — a
+continuous slow drift rather than visible steps. The fetch loop stays on its
+own 20 s timer; the 1 s tick only costs redraws (≤ 0.5 % CPU observed).
+Orbit direction flips per repo name hash so neighboring moons diverge.
 
 ## Placement
 
@@ -111,4 +147,5 @@ See [Configuration](configuration.md) for the full variable table.
 | Star / icon | Ingress origin on the starfield. Glowing phone (`phone`/Pixel) or laptop (`terminal`/`laptop`/`monitor`/`tty*`) for known devices, plain star dot otherwise; filled green is live, hollow dim is idle, filled red with burst is unresolved. Halo and fill encode state. |
 | Diamond | Tmux destination. Glowing filled green when attached, hollow dim when open. No empty placeholder diamonds — exactly one per real session. A faint dashed arc links them. |
 | Filament | Live is a glowing green constellation line from icon/star to its diamond, kissing each edge. Idle is a short fading tail. Alert has no filament — its burst sits at the star. |
+| Moon | Codeview dashboard daemon for the session's repo. Orbiting = serving (tint = repo color), phase = index age, dark parked moon with red rim = dead daemon, absent = no dashboard. See [Codeview moons](#codeview-moons). |
 | Footer | How many live vs idle origins, whether any are unresolved, and whether `sshd` is listening. |
