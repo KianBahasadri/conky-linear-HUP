@@ -346,6 +346,222 @@ def test_local_weekly_primary_window_matches_api_weekly_window():
     assert accounts[0]["windows"][0]["usedPercent"] == 100.0
 
 
+def test_normalize_usage_includes_gpt_reserve_as_third_window():
+    now = int(datetime.now(timezone.utc).timestamp())
+    auth = {"label": "ricky", "email": "", "account_id": ""}
+    usage = {
+        "plan_type": "plus",
+        "rate_limit": {
+            "allowed": True,
+            "limit_reached": False,
+            "primary_window": {
+                "used_percent": 0,
+                "limit_window_seconds": codex.FIVE_HOUR_WINDOW_SECONDS,
+                "reset_after_seconds": 17631,
+                "reset_at": now + 17631,
+            },
+            "secondary_window": {
+                "used_percent": 16,
+                "limit_window_seconds": codex.WEEKLY_WINDOW_SECONDS,
+                "reset_after_seconds": 586334,
+                "reset_at": now + 586334,
+            },
+        },
+        "additional_rate_limits": [
+            {
+                "limit_name": "gpt-reserve",
+                "metered_feature": "base_model_inference",
+                "rate_limit": {
+                    "allowed": True,
+                    "limit_reached": False,
+                    "primary_window": {
+                        "used_percent": 0,
+                        "limit_window_seconds": codex.WEEKLY_WINDOW_SECONDS,
+                        "reset_after_seconds": 604800,
+                        "reset_at": now + 604800,
+                    },
+                    "secondary_window": None,
+                },
+            }
+        ],
+    }
+
+    account = codex.normalize_usage(auth, usage, False)
+
+    assert [item["label"] for item in account["windows"]] == ["5h", "weekly", "reserve"]
+    assert account["windows"][2]["usedPercent"] == 0.0
+    assert account["windows"][2]["remainingPercent"] == 100.0
+    assert account["windows"][2]["windowSeconds"] == codex.WEEKLY_WINDOW_SECONDS
+
+
+def test_reserve_window_prefers_weekly_when_both_windows_exist():
+    now = int(datetime.now(timezone.utc).timestamp())
+    auth = {"label": "ricky", "email": "", "account_id": ""}
+    usage = {
+        "plan_type": "plus",
+        "rate_limit": {
+            "allowed": True,
+            "limit_reached": False,
+            "primary_window": {
+                "used_percent": 10,
+                "limit_window_seconds": codex.FIVE_HOUR_WINDOW_SECONDS,
+                "reset_after_seconds": 3600,
+                "reset_at": now + 3600,
+            },
+            "secondary_window": {
+                "used_percent": 20,
+                "limit_window_seconds": codex.WEEKLY_WINDOW_SECONDS,
+                "reset_after_seconds": 86400,
+                "reset_at": now + 86400,
+            },
+        },
+        "additional_rate_limits": [
+            {
+                "limit_name": "gpt-reserve",
+                "metered_feature": "base_model_inference",
+                "rate_limit": {
+                    "primary_window": {
+                        "used_percent": 5,
+                        "limit_window_seconds": codex.FIVE_HOUR_WINDOW_SECONDS,
+                        "reset_after_seconds": 1800,
+                        "reset_at": now + 1800,
+                    },
+                    "secondary_window": {
+                        "used_percent": 8,
+                        "limit_window_seconds": codex.WEEKLY_WINDOW_SECONDS,
+                        "reset_after_seconds": 500000,
+                        "reset_at": now + 500000,
+                    },
+                },
+            }
+        ],
+    }
+
+    account = codex.normalize_usage(auth, usage, False)
+
+    assert [item["label"] for item in account["windows"]] == ["5h", "weekly", "reserve"]
+    assert account["windows"][2]["usedPercent"] == 8.0
+    assert account["windows"][2]["windowSeconds"] == codex.WEEKLY_WINDOW_SECONDS
+
+
+def test_non_reserve_additional_limits_are_ignored():
+    now = int(datetime.now(timezone.utc).timestamp())
+    auth = {"label": "ahmad", "email": "", "account_id": ""}
+    usage = {
+        "plan_type": "plus",
+        "rate_limit": {
+            "allowed": True,
+            "limit_reached": False,
+            "primary_window": {
+                "used_percent": 10,
+                "limit_window_seconds": codex.FIVE_HOUR_WINDOW_SECONDS,
+                "reset_after_seconds": 3600,
+                "reset_at": now + 3600,
+            },
+            "secondary_window": {
+                "used_percent": 20,
+                "limit_window_seconds": codex.WEEKLY_WINDOW_SECONDS,
+                "reset_after_seconds": 86400,
+                "reset_at": now + 86400,
+            },
+        },
+        "additional_rate_limits": [
+            {
+                "limit_name": "codex_other",
+                "metered_feature": "codex_other",
+                "rate_limit": {
+                    "primary_window": {
+                        "used_percent": 70,
+                        "limit_window_seconds": 900,
+                        "reset_after_seconds": 900,
+                        "reset_at": now + 900,
+                    }
+                },
+            }
+        ],
+    }
+
+    account = codex.normalize_usage(auth, usage, False)
+
+    assert [item["label"] for item in account["windows"]] == ["5h", "weekly"]
+
+
+def test_reached_limit_does_not_pin_reserve_window():
+    now = int(datetime.now(timezone.utc).timestamp())
+    primary_reset = now + 2700
+    weekly_reset = now + 589000
+    reserve_reset = now + 604800
+    auth = {"label": "ricky", "email": "", "account_id": ""}
+    usage = {
+        "plan_type": "plus",
+        "rate_limit": {
+            "allowed": False,
+            "limit_reached": True,
+            "primary_window": {
+                "used_percent": 100,
+                "limit_window_seconds": codex.FIVE_HOUR_WINDOW_SECONDS,
+                "reset_after_seconds": 2700,
+                "reset_at": primary_reset,
+            },
+            "secondary_window": {
+                "used_percent": 16,
+                "limit_window_seconds": codex.WEEKLY_WINDOW_SECONDS,
+                "reset_after_seconds": 589000,
+                "reset_at": weekly_reset,
+            },
+        },
+        "rate_limit_upsell": {
+            "banner_type": "plus_rate_limit_reached",
+            "reset_at": primary_reset,
+        },
+        "additional_rate_limits": [
+            {
+                "limit_name": "gpt-reserve",
+                "metered_feature": "base_model_inference",
+                "rate_limit": {
+                    "allowed": True,
+                    "limit_reached": False,
+                    "primary_window": {
+                        "used_percent": 0,
+                        "limit_window_seconds": codex.WEEKLY_WINDOW_SECONDS,
+                        "reset_after_seconds": 604800,
+                        "reset_at": reserve_reset,
+                    },
+                    "secondary_window": None,
+                },
+            }
+        ],
+    }
+
+    account = codex.normalize_usage(auth, usage, False)
+
+    assert [item["usedPercent"] for item in account["windows"]] == [100.0, 16.0, 0.0]
+    assert account["windows"][2]["label"] == "reserve"
+
+
+def test_local_rate_limits_preserve_reserve_window():
+    now = int(datetime.now(timezone.utc).timestamp())
+    reserve = window("reserve", 0, now + 604800, codex.WEEKLY_WINDOW_SECONDS)
+    accounts = [
+        {
+            "ok": True,
+            "label": "ricky",
+            "planType": "plus",
+            "windows": [
+                window("5h", 80, now + 12000, codex.FIVE_HOUR_WINDOW_SECONDS),
+                window("weekly", 39, now + 520000, codex.WEEKLY_WINDOW_SECONDS),
+                reserve,
+            ],
+        }
+    ]
+
+    codex.apply_local_rate_limits(accounts, local_rate_limits(now))
+
+    assert [item["label"] for item in accounts[0]["windows"]] == ["5h", "weekly", "reserve"]
+    assert [item["usedPercent"] for item in accounts[0]["windows"]] == [82.0, 39.0, 0]
+    assert accounts[0]["windows"][2] is reserve
+
+
 def test_exhausted_local_sample_pins_only_the_blocking_window():
     now = int(datetime.now(timezone.utc).timestamp())
     sample = {

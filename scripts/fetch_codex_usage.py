@@ -384,6 +384,11 @@ def is_paid_plan(plan_type):
     return str(plan_type or "").lower() in ("plus", "pro", "team", "enterprise")
 
 
+def is_reserve_limit(item):
+    name = str((item or {}).get("limit_name") or "").strip().lower()
+    return "reserve" in name
+
+
 def retry_degenerate_usage(auth, label, usage):
     best_usage = usage
     best_score = meaningful_window_count(usage)
@@ -439,7 +444,14 @@ def normalize_window(label, window, fetched_at, exhausted=False):
     normalized_label = label
     if label == "5h" and reset_after_seconds > LONG_WINDOW_THRESHOLD_SECONDS:
         normalized_label = "weekly"
-    window_seconds = limit_window_seconds if limit_window_seconds > 0 else WEEKLY_WINDOW_SECONDS if normalized_label == "weekly" else FIVE_HOUR_WINDOW_SECONDS
+    if limit_window_seconds > 0:
+        window_seconds = limit_window_seconds
+    elif normalized_label == "weekly" or (
+        normalized_label == "reserve" and reset_after_seconds > LONG_WINDOW_THRESHOLD_SECONDS
+    ):
+        window_seconds = WEEKLY_WINDOW_SECONDS
+    else:
+        window_seconds = FIVE_HOUR_WINDOW_SECONDS
 
     return {
         "label": normalized_label,
@@ -578,6 +590,12 @@ def normalize_usage(auth, usage, is_selected):
         labels_seen.add(normalized["label"])
         windows.append(normalized)
 
+    for reserve_window in reserve_usage_windows(usage, fetched_at):
+        if reserve_window["label"] in labels_seen:
+            continue
+        labels_seen.add(reserve_window["label"])
+        windows.append(reserve_window)
+
     return {
         "ok": True,
         "endpointFresh": True,
@@ -599,6 +617,33 @@ def normalize_error(label, message, is_selected=False):
         "isSelected": is_selected,
         "windows": [],
     }
+
+
+def reserve_usage_windows(usage, fetched_at):
+    additional = usage.get("additional_rate_limits") if isinstance(usage, dict) else None
+    if not isinstance(additional, list):
+        return []
+
+    windows = []
+    for item in additional:
+        if not isinstance(item, dict) or not is_reserve_limit(item):
+            continue
+        rate_limit = item.get("rate_limit")
+        if not isinstance(rate_limit, dict):
+            continue
+        candidates = []
+        for key in ("primary_window", "secondary_window"):
+            # Reserve is a fallback pool. Account-level reached/allowed flags
+            # pin the main 5h/weekly blocker, not this window.
+            normalized = normalize_window("reserve", rate_limit.get(key), fetched_at)
+            if normalized:
+                candidates.append(normalized)
+        if not candidates:
+            continue
+        weekly = [window for window in candidates if window["windowSeconds"] > LONG_WINDOW_THRESHOLD_SECONDS]
+        windows.append(weekly[0] if weekly else candidates[0])
+        break
+    return windows
 
 
 def matching_local_window_count(account, local_windows):
@@ -702,7 +747,14 @@ def apply_local_rate_limits(accounts, local_rate_limits):
             continue
 
         previous_values = format_usage_windows(best_account.get("windows") or [])
+        previous_reserve = [
+            window
+            for window in best_account.get("windows") or []
+            if window.get("label") == "reserve"
+        ]
         best_account["windows"] = windows
+        if previous_reserve and not any(window.get("label") == "reserve" for window in windows):
+            best_account["windows"] = list(windows) + previous_reserve
         best_account["localRateLimits"] = True
         best_account["localRateLimitsPath"] = str(local_sample["path"])
         best_account["localRateLimitsUpdatedAt"] = datetime.fromtimestamp(

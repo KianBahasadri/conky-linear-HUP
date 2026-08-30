@@ -59,6 +59,9 @@ return function(shared, repo_root)
     if normalized_window_label(window) == 'weekly' then
       return weekly_window_seconds
     end
+    if normalized_window_label(window) == 'reserve' then
+      return weekly_window_seconds
+    end
     if normalized_window_label(window) == 'monthly' then
       if window.window_seconds and window.window_seconds > 0 then
         return window.window_seconds
@@ -1069,8 +1072,8 @@ return function(shared, repo_root)
       return 'ff8f73', 'fcd34d', 'c85f49', '81392e'
     end
 
-    -- Bright cyan 5h, rich navy weekly.
-    return '00e5ff', '8b5cf6', '2563eb', '1e3a8a'
+    -- Bright cyan 5h, rich navy weekly, teal reserve.
+    return '00e5ff', '8b5cf6', '2563eb', '1e3a8a', '22d3ee', '0e7490'
   end
 
   -- Match the left row inset so panel content has equal side padding.
@@ -1159,7 +1162,7 @@ return function(shared, repo_root)
       return {}
     end
 
-    if provider == 'opencode' or provider == 'commandcode' then
+    if provider == 'opencode' or provider == 'commandcode' or provider == 'codex' then
       local result = {}
       for _, w in ipairs(windows) do
         if normalized_window_label(w) == '5h' then table.insert(result, w) end
@@ -1169,6 +1172,9 @@ return function(shared, repo_root)
       end
       for _, w in ipairs(windows) do
         if normalized_window_label(w) == 'monthly' then table.insert(result, w) end
+      end
+      for _, w in ipairs(windows) do
+        if normalized_window_label(w) == 'reserve' then table.insert(result, w) end
       end
       return result
     end
@@ -1290,6 +1296,12 @@ return function(shared, repo_root)
       end
     elseif provider_name(account) == 'gemini' then
       overlay_labels = { 'Gemini', 'Other' }
+    elseif provider_name(account) == 'codex' then
+      for i, window in ipairs(row_windows) do
+        if normalized_window_label(window) == 'reserve' then
+          overlay_labels[i] = 'RESERVE'
+        end
+      end
     end
 
     for i, window in ipairs(row_windows) do
