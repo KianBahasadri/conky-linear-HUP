@@ -809,11 +809,17 @@ return function(shared, repo_root)
     local is_neutral = pace.state == 'neutral'
     local opacity = is_neutral and pace_marker_opacity_neutral or pace_marker_opacity
 
+    -- 12px tick centered on the 8px tube: pokes 2px above and 2px below, so
+    -- it reads as a marker planted on the bar. Drawn after the bar's clip is
+    -- released so the protrusion is not cut off.
+    local tick_height = 12
+    local tick_y = bar_y + math.floor((bar_height - tick_height) / 2 + 0.5)
+
     -- Fade the ends so the tick sits on the tube's curve instead of cutting
     -- straight across it; the position itself is unchanged.
     cairo_set_antialias(cr, CAIRO_ANTIALIAS_NONE)
-    cairo_rectangle(cr, marker_left, bar_y, pace_marker_width, bar_height)
-    fill_gradient(cr, marker_left, bar_y, marker_left, bar_y + bar_height, {
+    cairo_rectangle(cr, marker_left, tick_y, pace_marker_width, tick_height)
+    fill_gradient(cr, marker_left, tick_y, marker_left, tick_y + tick_height, {
       { 0.00, pace_marker_color, opacity * 0.36 },
       { 0.45, pace_marker_color, opacity },
       { 1.00, pace_marker_color, opacity * 0.36 },
@@ -929,21 +935,22 @@ return function(shared, repo_root)
       end
     end
 
-    -- Quarter dividers, faded top and bottom so they look painted onto the
-    -- curve rather than cut through a flat face. Ticks under the fill are
-    -- skipped so the liquid covers them as it rises.
-    cairo_set_line_width(cr, 1)
-    local tick_gap = bw / 4
+    -- Quarter dividers as small dots centered on the tube, so they read as
+    -- painted markers rather than lines cut through the glass. Dots under the
+    -- fill are skipped so the liquid covers them as it rises.
+    local dot_size = 2
+    local dot_gap = bw / 4
+    -- The cyan Codex 5h and gold Claude 5h dots sit on bright bars and read
+    -- loud at full opacity; dim only those, everything else stays at full
+    -- strength.
+    local dot_opacity = (accent_secondary == '00e5ff' or accent_secondary == '22d3ee' or accent_secondary == 'fcd34d') and 0.5 or 1.0
     for tick = 1, 3 do
-      local tick_x = x + tick * tick_gap
-      if tick_x > x + fill_width + 1 then
-        cairo_move_to(cr, tick_x, bar_y)
-        cairo_line_to(cr, tick_x, bar_y + bar_height)
-        stroke_gradient(cr, x, bar_y, x, bar_y + bar_height, {
-          { 0.00, accent_secondary, 1.0 },
-          { 0.45, accent_secondary, 1.0 },
-          { 1.00, accent_secondary, 1.0 },
-        })
+      local dot_x = x + tick * dot_gap
+      if dot_x > x + fill_width + 1 then
+        shared.set_hex(cr, accent_secondary, dot_opacity)
+        cairo_rectangle(cr, dot_x - math.floor(dot_size / 2),
+          bar_y + math.floor((bar_height - dot_size) / 2 + 0.5), dot_size, dot_size)
+        cairo_fill(cr)
       end
     end
 
@@ -968,11 +975,13 @@ return function(shared, repo_root)
       { 1.00, '000000', 0.30 },
     })
 
+    cairo_restore(cr)
+
+    -- Pace marker drawn after the bar's clip is released so the 12px tick can
+    -- poke above the tube instead of being cut off at the bar's edge.
     if show_pace and not refresh_mode then
       draw_pace_marker(cr, calculate_window_pace(window, window_duration(window)), x, bar_y, bw)
     end
-
-    cairo_restore(cr)
 
     -- Rim: bright along the top, dim at the equator, half bright underneath.
     shared.rounded_rect(cr, x, bar_y, bw, bar_height, radius)
@@ -1065,7 +1074,7 @@ return function(shared, repo_root)
 
     if is_free then
       if provider_name(account) == 'codex' then
-        return '2563eb', '1e3a8a', '2563eb', '1e3a8a'
+        return '2563eb', '00e5ff', '2563eb', '1e3a8a'
       end
       return '94a3b8', '64748b', '94a3b8', '64748b'
     end
@@ -1076,7 +1085,7 @@ return function(shared, repo_root)
     end
 
     -- Bright cyan 5h, rich navy weekly, teal reserve.
-    return '00e5ff', '8b5cf6', '2563eb', '1e3a8a', '22d3ee', '0e7490'
+    return '00e5ff', '22d3ee', '2563eb', '1e3a8a', '22d3ee', '0e7490'
   end
 
   -- Match the left row inset so panel content has equal side padding.
