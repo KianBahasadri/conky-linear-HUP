@@ -930,18 +930,21 @@ return function(shared, repo_root)
     end
 
     -- Quarter dividers, faded top and bottom so they look painted onto the
-    -- curve rather than cut through a flat face.
+    -- curve rather than cut through a flat face. Ticks under the fill are
+    -- skipped so the liquid covers them as it rises.
     cairo_set_line_width(cr, 1)
     local tick_gap = bw / 4
     for tick = 1, 3 do
       local tick_x = x + tick * tick_gap
-      cairo_move_to(cr, tick_x, bar_y)
-      cairo_line_to(cr, tick_x, bar_y + bar_height)
-      stroke_gradient(cr, x, bar_y, x, bar_y + bar_height, {
-        { 0.00, accent_secondary, 0.04 },
-        { 0.45, accent_secondary, 0.30 },
-        { 1.00, accent_secondary, 0.04 },
-      })
+      if tick_x > x + fill_width + 1 then
+        cairo_move_to(cr, tick_x, bar_y)
+        cairo_line_to(cr, tick_x, bar_y + bar_height)
+        stroke_gradient(cr, x, bar_y, x, bar_y + bar_height, {
+          { 0.00, accent_secondary, 1.0 },
+          { 0.45, accent_secondary, 1.0 },
+          { 1.00, accent_secondary, 1.0 },
+        })
+      end
     end
 
     -- One reflection running the length of the glass, tapered at both ends.
