@@ -5,15 +5,16 @@ import fetch_linear_tasks as linear
 
 
 def test_linear_overlay_height_scales_with_rows():
-    # 4 cards/row at the default 1540px overlay width.
+    # 5 cards/row at the default 1540px overlay width.
     assert linear.linear_overlay_height(0) == linear.EMPTY_HEIGHT
-    assert linear.linear_overlay_height(1) == 138
-    assert linear.linear_overlay_height(4) == 138
-    assert linear.linear_overlay_height(5) == 268
-    assert linear.linear_overlay_height(12) == 398
-    assert linear.linear_overlay_height(13) == 528
-    assert linear.linear_overlay_height(16) == 528
-    assert linear.linear_overlay_height(17) == 658
+    assert linear.linear_overlay_height(1) == 100
+    assert linear.linear_overlay_height(4) == 100
+    assert linear.linear_overlay_height(5) == 100
+    assert linear.linear_overlay_height(6) == 196
+    assert linear.linear_overlay_height(12) == 292
+    assert linear.linear_overlay_height(13) == 292
+    assert linear.linear_overlay_height(16) == 388
+    assert linear.linear_overlay_height(17) == 388
 
 
 def test_linear_overlay_height_uses_window_width():

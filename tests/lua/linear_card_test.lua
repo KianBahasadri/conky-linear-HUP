@@ -36,7 +36,7 @@ end
 
 -- Missing cache file: read_file returns nil -> empty state -> empty height.
 os.remove(cache_root .. '/cache/linear-cards.json')
-eq(spacer_for('{}'), '${voffset 100}', 'missing cache falls back to empty height')
+eq(spacer_for('{}'), '${voffset 96}', 'missing cache falls back to empty height')
 
 local function cards_json(count, extra)
   local parts = {}
@@ -46,18 +46,19 @@ local function cards_json(count, extra)
   return table.concat(parts, ',') .. (extra or '')
 end
 
--- Grid math at the default window width (1540): four cards of width 318 with
--- gap 24 fit per row; one row is top_padding + card_height + bottom_padding.
-eq(spacer_for(cards_json(1)), '${voffset 138}', 'one card = one row')
-eq(spacer_for(cards_json(4)), '${voffset 138}', 'four cards still one row')
-eq(spacer_for(cards_json(5)), '${voffset 268}', 'five cards wrap to two rows')
+-- Grid math at the default window width (1540): five contiguous cards of width
+-- 268 fit per row; one row is top_padding + card_height + bottom_padding.
+eq(spacer_for(cards_json(1)), '${voffset 100}', 'one card = one row')
+eq(spacer_for(cards_json(4)), '${voffset 100}', 'four cards still one row')
+eq(spacer_for(cards_json(5)), '${voffset 100}', 'five cards still one row')
+eq(spacer_for(cards_json(6)), '${voffset 196}', 'six cards wrap to two rows')
 
 -- A due-today unfinished card hides everything not due/done/backlog/competition.
-local plain_five = ',' .. cards_json(5):sub(2)
-eq(spacer_for('{"identifier":"R","title":"red","dueToday":true}' .. plain_five),
-  '${voffset 138}', 'red card filters hidden cards from the height math')
-eq(spacer_for('{"identifier":"R","title":"red","dueToday":true,"done":true}' .. plain_five),
-  '${voffset 268}', 'done card does not trigger the filter')
+local plain_six = ',' .. cards_json(6):sub(2)
+eq(spacer_for('{"identifier":"R","title":"red","dueToday":true}' .. plain_six),
+  '${voffset 100}', 'red card filters hidden cards from the height math')
+eq(spacer_for('{"identifier":"R","title":"red","dueToday":true,"done":true}' .. plain_six),
+  '${voffset 196}', 'done card does not trigger the filter')
 
 if failures > 0 then
   print(failures .. ' failure(s)')

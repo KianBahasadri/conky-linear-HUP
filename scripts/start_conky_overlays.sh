@@ -929,8 +929,8 @@ read_monitor_lines monitor_lines
 
 LINEAR_MINIMUM_HEIGHT="$(linear_overlay_height 2>>"$LINEAR_LOG_PATH" || true)"
 if [[ ! "$LINEAR_MINIMUM_HEIGHT" =~ ^[0-9]+$ ]]; then
-  log_overlay linear "could not compute linear overlay height; using 528"
-  LINEAR_MINIMUM_HEIGHT=528
+  log_overlay linear "could not compute linear overlay height; using 292"
+  LINEAR_MINIMUM_HEIGHT=292
 fi
 log_overlay linear "linear overlay minimum_height=$LINEAR_MINIMUM_HEIGHT (from current cards)"
 

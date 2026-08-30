@@ -23,13 +23,13 @@ LOG_PATH = CACHE_DIR / "conky-linear.log"
 API_URL = "https://api.linear.app/graphql"
 
 # Keep in sync with conky/linear-card-renderer.lua layout constants.
-CARD_WIDTH = 318
-CARD_HEIGHT = 110
-CARD_GAP = 24
-ROW_GAP = 20
-TOP_PADDING = 12
-BOTTOM_PADDING = 16  # soft glow / In Progress outline below last row
-EMPTY_HEIGHT = 100
+CARD_WIDTH = 268
+CARD_HEIGHT = 84
+CARD_GAP = 0
+ROW_GAP = 12
+TOP_PADDING = 8
+BOTTOM_PADDING = 8  # In Progress edge marker below the last row
+EMPTY_HEIGHT = 96
 OVERLAY_WIDTH = 1540
 
 

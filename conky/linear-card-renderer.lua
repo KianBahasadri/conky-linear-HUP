@@ -1,41 +1,36 @@
 return function(shared, repo_root)
   local cards_path = repo_root .. '/cache/linear-cards.json'
-  local card_width = 318
-  local card_height = 110
-  local card_gap = 24
-  local row_gap = 20
-  local top_padding = 12
-  -- Extra space below the last row for soft glow / In Progress outline.
-  local bottom_padding = 16
-  local empty_height = 100
-  local radius = 18
+  local card_width = 268
+  local card_height = 84
+  local card_gap = 0
+  local row_gap = 12
+  local top_padding = 8
+  -- Extra space below the last row for the In Progress edge marker.
+  local bottom_padding = 8
+  local empty_height = 96
   local font = 'JetBrains Mono'
   -- JetBrains Mono has no emoji glyphs, and the cairo toy text API does not fall
   -- back per glyph, so project icons need their own family.
   local emoji_font = 'Noto Color Emoji'
-  local font_size = 16
-  local line_height = 22
-  local project_font_size = 11
+  local font_size = 15
+  local line_height = 18
+  local project_font_size = 10
   -- Emoji glyphs are taller than their nominal size, so run them a step smaller
   -- than the project name to keep both inside the card's inner border.
-  local project_icon_size = 10
-  local project_icon_gap = 5
-  local compact_font_size = 14
-  local compact_line_height = 19
+  local project_icon_size = 9
+  local project_icon_gap = 4
+  local compact_font_size = 13
+  local compact_line_height = 16
   -- Baseline of the header row that carries the project icon and name.
-  local project_offset_y = 19
+  local project_offset_y = 15
   -- Identifier and due date share a footer row, mirroring the project row's inset.
-  local meta_font_size = 9
-  local meta_offset_y = card_height - 15
-  -- Linear marks urgent issues with an orange rounded square carrying a knocked
+  local meta_font_size = 10
+  local meta_offset_y = card_height - 9
+  -- Linear marks urgent issues with an orange square carrying a knocked
   -- out exclamation mark; it rides the footer row's right edge.
   local urgent_color = 'ff7236'
-  local urgent_badge_size = 14
+  local urgent_badge_size = 12
   local urgent_badge_gap = 8
-  -- The header baseline and the footer row are inset by roughly the same amount
-  -- from their edges, so centring the title on the card leaves even gaps either
-  -- side. Retune this if project_offset_y or meta_offset_y moves.
-  local title_offset_y = 0
   local default_window_width = 1540
 
   local function read_cards()
@@ -163,7 +158,7 @@ return function(shared, repo_root)
     local x = (conky_window.width - width) / 2
     local y = top_padding
 
-    shared.rounded_rect(cr, x, y, width, height, radius)
+    cairo_rectangle(cr, x, y, width, height)
     shared.set_hex(cr, '020617', 0.59)
     cairo_fill_preserve(cr)
     shared.set_hex(cr, 'f87171', 0.70)
@@ -184,7 +179,7 @@ return function(shared, repo_root)
   end
 
   local function draw_urgent_badge(cr, x, y, fade)
-    shared.rounded_rect(cr, x, y, urgent_badge_size, urgent_badge_size, 3)
+    cairo_rectangle(cr, x, y, urgent_badge_size, urgent_badge_size)
     shared.set_hex(cr, urgent_color, 0.96 * fade)
     cairo_fill(cr)
 
@@ -209,68 +204,46 @@ return function(shared, repo_root)
     local accent = card.done and '39ff88' or card.due_today and 'ff1a1a' or '00e5ff'
     local accent_secondary = card.done and '00f5d4' or card.due_today and 'ff4d00' or '8b5cf6'
 
-    shared.rounded_rect(cr, x + 4, y + 7, card_width, card_height, radius)
-    ink(accent, 0.12)
+    -- Flat panel construction keeps the grid dense: one body fill, one crisp
+    -- state border, and a slim accent rail instead of a three-layer glow.
+    cairo_rectangle(cr, x, y, card_width, card_height)
+    ink('020617', 0.82)
+    cairo_fill_preserve(cr)
+    ink(accent, 0.78)
+    cairo_set_line_width(cr, 1)
+    cairo_stroke(cr)
+
+    cairo_rectangle(cr, x, y, 3, card_height)
+    ink(accent, 0.92)
     cairo_fill(cr)
 
-    shared.rounded_rect(cr, x + 2, y + 3, card_width, card_height, radius)
-    ink(accent, 0.16)
-    cairo_set_line_width(cr, 8)
-    cairo_stroke(cr)
-
-    shared.rounded_rect(cr, x + 1, y + 2, card_width, card_height, radius)
-    ink(accent, 0.26)
-    cairo_set_line_width(cr, 4)
-    cairo_stroke(cr)
-
-    shared.rounded_rect(cr, x, y, card_width, card_height, radius)
-    ink('020617', 0.59)
-    cairo_fill_preserve(cr)
-    ink(accent, 0.70)
-    cairo_set_line_width(cr, 2)
-    cairo_stroke(cr)
-
     if card.state == 'In Progress' and not card.done then
-      shared.rounded_rect(cr, x - 6, y - 6, card_width + 12, card_height + 12, radius + 6)
-      shared.set_hex(cr, 'facc15', 0.18)
-      cairo_set_line_width(cr, 4)
-      cairo_stroke(cr)
-
-      shared.rounded_rect(cr, x - 5, y - 5, card_width + 10, card_height + 10, radius + 5)
-      shared.set_hex(cr, 'facc15', 0.84)
+      -- Keep the active-work state visible after removing the old halo.
+      shared.set_hex(cr, 'facc15', 0.90 * fade)
       cairo_set_line_width(cr, 2)
+      cairo_move_to(cr, x + 1, y + 1)
+      cairo_line_to(cr, x + card_width - 1, y + 1)
       cairo_stroke(cr)
     end
 
-    shared.rounded_rect(cr, x + 7, y + 7, card_width - 14, card_height - 14, radius - 6)
+    cairo_rectangle(cr, x + 8, y + 8, card_width - 16, card_height - 16)
     ink(accent_secondary, 0.22)
     cairo_set_line_width(cr, 1)
     cairo_stroke(cr)
 
-    ink(accent, 0.22)
-    cairo_set_line_width(cr, 1)
-    cairo_move_to(cr, x + 22, y + 18)
-    cairo_line_to(cr, x + 48, y + 18)
-    cairo_line_to(cr, x + 58, y + 28)
+    -- These two rules divide the three information bands without consuming
+    -- another row of height.
+    ink(accent, 0.26)
+    cairo_move_to(cr, x + 12, y + 20)
+    cairo_line_to(cr, x + card_width - 12, y + 20)
     cairo_stroke(cr)
-
-    -- Kept clear of the footer row so the trace underlines the due date instead
-    -- of striking through it.
-    ink(accent_secondary, 0.18)
-    cairo_move_to(cr, x + card_width - 22, y + card_height - 14)
-    cairo_line_to(cr, x + card_width - 48, y + card_height - 14)
-    cairo_line_to(cr, x + card_width - 58, y + card_height - 24)
-    cairo_stroke(cr)
-
-    ink(accent, 0.34)
-    cairo_arc(cr, x + 58, y + 28, 2, 0, math.pi * 2)
-    cairo_fill(cr)
     ink(accent_secondary, 0.28)
-    cairo_arc(cr, x + card_width - 58, y + card_height - 24, 2, 0, math.pi * 2)
-    cairo_fill(cr)
+    cairo_move_to(cr, x + 12, y + card_height - 20)
+    cairo_line_to(cr, x + card_width - 12, y + card_height - 20)
+    cairo_stroke(cr)
 
     local project_name = card.project_name ~= '' and card.project_name or 'No project'
-    local project_max_width = card_width - 44
+    local project_max_width = card_width - 24
     local icon_step = 0
 
     if card.project_icon ~= '' then
@@ -314,15 +287,15 @@ return function(shared, repo_root)
     end
 
     -- The badge claims the footer's right edge; the due date falls in beside it.
-    local footer_right = x + card_width - 22
+    local footer_right = x + card_width - 12
     local footer_reserved = 0
     if card.urgent then
-      draw_urgent_badge(cr, footer_right - urgent_badge_size, y + meta_offset_y - 11, fade)
+      draw_urgent_badge(cr, footer_right - urgent_badge_size, y + meta_offset_y - 9, fade)
       footer_reserved = urgent_badge_size + urgent_badge_gap
       footer_right = footer_right - footer_reserved
     end
 
-    local identifier_max_width = card_width - 44 - footer_reserved
+    local identifier_max_width = card_width - 24 - footer_reserved
     local visible_due_date = ''
     if not card.done and not card.due_today then
       visible_due_date = card.due_date ~= '' and card.due_date or card.competition_due_date
@@ -332,14 +305,14 @@ return function(shared, repo_root)
     if visible_due_date ~= '' then
       -- Set explicitly: the header may have left the emoji font selected.
       cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
-      cairo_set_font_size(cr, project_font_size)
+      cairo_set_font_size(cr, meta_font_size)
       local due_extents = cairo_text_extents_t:create()
       cairo_text_extents(cr, visible_due_date, due_extents)
       due_width = due_extents.width
       ink(accent, 0.88)
       cairo_move_to(cr, footer_right - due_extents.width - due_extents.x_bearing, y + meta_offset_y)
       cairo_show_text(cr, visible_due_date)
-      identifier_max_width = math.max(40, card_width - 62 - footer_reserved - due_extents.width)
+      identifier_max_width = math.max(40, footer_right - (x + 12) - due_extents.width - 8)
     end
 
     if card.label and card.label ~= '' then
@@ -358,13 +331,13 @@ return function(shared, repo_root)
       cairo_show_text(cr, label_text)
 
       local id_right_limit = label_x + label_extents.x_bearing - 8
-      identifier_max_width = math.max(30, math.min(identifier_max_width, id_right_limit - (x + 22)))
+      identifier_max_width = math.max(30, math.min(identifier_max_width, id_right_limit - (x + 12)))
     end
 
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL)
     cairo_set_font_size(cr, meta_font_size)
     ink('94a3b8', 0.76)
-    cairo_move_to(cr, x + 22, y + meta_offset_y)
+    cairo_move_to(cr, x + 12, y + meta_offset_y)
     cairo_show_text(cr, shared.truncate_title(cr, card.identifier, identifier_max_width))
 
     cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD)
@@ -372,28 +345,26 @@ return function(shared, repo_root)
     local title_line_height = line_height
     cairo_set_font_size(cr, title_font_size)
 
-    local lines = shared.wrap_title(cr, card.title, card_width - 36, 3)
+    local lines = shared.wrap_title(cr, card.title, card_width - 24, 3)
     if #lines > 2 then
       title_font_size = compact_font_size
       title_line_height = compact_line_height
       cairo_set_font_size(cr, title_font_size)
-      lines = shared.wrap_title(cr, card.title, card_width - 36, 3)
+      lines = shared.wrap_title(cr, card.title, card_width - 24, 3)
     end
 
     local extents = cairo_text_extents_t:create()
     local total_text_height = #lines * title_line_height
-    local first_baseline = y + (card_height - total_text_height) / 2 + title_font_size + title_offset_y
+    local title_top = y + 22
+    local title_area_height = card_height - 44
+    local first_baseline = title_top
+      + (title_area_height - total_text_height) / 2
+      + title_font_size
 
     for index, line in ipairs(lines) do
       cairo_text_extents(cr, line, extents)
       local text_x = x + (card_width - extents.width) / 2 - extents.x_bearing
       local text_y = first_baseline + (index - 1) * title_line_height
-
-      ink(accent, 0.24)
-      cairo_move_to(cr, text_x - 1, text_y)
-      cairo_show_text(cr, line)
-      cairo_move_to(cr, text_x + 1, text_y)
-      cairo_show_text(cr, line)
 
       ink('f8fafc', 1)
       cairo_move_to(cr, text_x, text_y)
