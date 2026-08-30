@@ -792,7 +792,7 @@ return function(shared, repo_root)
 
   end
 
-  local function draw_pace_marker(cr, pace, x, bar_y, bar_w)
+  local function draw_pace_marker(cr, pace, x, bar_y, bar_w, fill_width, accent)
     if not pace then
       return
     end
@@ -808,6 +808,8 @@ return function(shared, repo_root)
     local marker_left = marker_x - math.floor(pace_marker_width / 2)
     local is_neutral = pace.state == 'neutral'
     local opacity = is_neutral and pace_marker_opacity_neutral or pace_marker_opacity
+    local is_over_cyan_fill = fill_width and fill_width > 0 and marker_x >= x and marker_x <= x + fill_width and accent == '00e5ff'
+    local marker_color = is_over_cyan_fill and '4a0a0a' or pace_marker_color
 
     -- 12px tick centered on the 8px tube: pokes 2px above and 2px below, so
     -- it reads as a marker planted on the bar. Drawn after the bar's clip is
@@ -815,14 +817,12 @@ return function(shared, repo_root)
     local tick_height = 12
     local tick_y = bar_y + math.floor((bar_height - tick_height) / 2 + 0.5)
 
-    -- Fade the ends so the tick sits on the tube's curve instead of cutting
-    -- straight across it; the position itself is unchanged.
     cairo_set_antialias(cr, CAIRO_ANTIALIAS_NONE)
     cairo_rectangle(cr, marker_left, tick_y, pace_marker_width, tick_height)
     fill_gradient(cr, marker_left, tick_y, marker_left, tick_y + tick_height, {
-      { 0.00, pace_marker_color, opacity * 0.36 },
-      { 0.45, pace_marker_color, opacity },
-      { 1.00, pace_marker_color, opacity * 0.36 },
+      { 0.00, marker_color, opacity * 0.36 },
+      { 0.45, marker_color, opacity },
+      { 1.00, marker_color, opacity * 0.36 },
     })
     cairo_set_antialias(cr, CAIRO_ANTIALIAS_DEFAULT)
 
@@ -905,14 +905,27 @@ return function(shared, repo_root)
 
       shared.rounded_rect(cr, x, bar_y, active_width, bar_height, fill_radius)
       fill_gradient(cr, x, bar_y, x, bar_y + bar_height, {
-        { 0.00, accent, 1, -0.38 },
-        { 0.18, accent, 1, 0.46 },
-        { 0.34, accent, 1, 0.10 },
+        { 0.00, accent, 1, -0.10 },
+        { 0.18, accent, 1, 0.50 },
+        { 0.34, accent, 1, 0.16 },
         { 0.52, accent, 1 },
-        { 0.84, accent, 1, -0.52 },
-        { 0.94, accent, 1, -0.56 },
-        { 1.00, accent, 1, -0.18 },
+        { 0.84, accent, 1, -0.18 },
+        { 0.94, accent, 1, -0.22 },
+        { 1.00, accent, 1, -0.05 },
       })
+
+      -- Outline around the fill so the liquid separates from the tube: a
+      -- bright rim on top and sides, dim at the bottom where the liquid sits
+      -- in shadow. Skipped at the ends like the meniscus.
+      if fill_width > 1 and fill_width < bw - 1 then
+        shared.rounded_rect(cr, x + 0.5, bar_y + 0.5, active_width - 1, bar_height - 1, fill_radius)
+        cairo_set_line_width(cr, 1)
+        stroke_gradient(cr, x, bar_y, x, bar_y + bar_height, {
+          { 0.00, accent, 0.90, 0.30 },
+          { 0.40, accent, 0.55 },
+          { 1.00, accent, 0.25, -0.10 },
+        })
+      end
 
       -- Meniscus: a bright leading edge plus the shadow the liquid throws down
       -- the empty tube. Skipped once the fill reaches either end, where there is
@@ -980,7 +993,7 @@ return function(shared, repo_root)
     -- Pace marker drawn after the bar's clip is released so the 12px tick can
     -- poke above the tube instead of being cut off at the bar's edge.
     if show_pace and not refresh_mode then
-      draw_pace_marker(cr, calculate_window_pace(window, window_duration(window)), x, bar_y, bw)
+      draw_pace_marker(cr, calculate_window_pace(window, window_duration(window)), x, bar_y, bw, fill_width, accent)
     end
 
     -- Rim: bright along the top, dim at the equator, half bright underneath.
