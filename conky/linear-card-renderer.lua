@@ -3,7 +3,7 @@ return function(shared, repo_root)
   local card_width = 268
   local card_height = 84
   local card_gap = 0
-  local row_gap = 12
+  local row_gap = 0
   local top_padding = 8
   -- Extra space below the last row for the In Progress edge marker.
   local bottom_padding = 8
