@@ -51,14 +51,14 @@ end
 eq(spacer_for(cards_json(1)), '${voffset 100}', 'one card = one row')
 eq(spacer_for(cards_json(4)), '${voffset 100}', 'four cards still one row')
 eq(spacer_for(cards_json(5)), '${voffset 100}', 'five cards still one row')
-eq(spacer_for(cards_json(6)), '${voffset 196}', 'six cards wrap to two rows')
+eq(spacer_for(cards_json(6)), '${voffset 184}', 'six cards wrap to two rows')
 
 -- A due-today unfinished card hides everything not due/done/backlog/competition.
 local plain_six = ',' .. cards_json(6):sub(2)
 eq(spacer_for('{"identifier":"R","title":"red","dueToday":true}' .. plain_six),
   '${voffset 100}', 'red card filters hidden cards from the height math')
 eq(spacer_for('{"identifier":"R","title":"red","dueToday":true,"done":true}' .. plain_six),
-  '${voffset 196}', 'done card does not trigger the filter')
+  '${voffset 184}', 'done card does not trigger the filter')
 
 if failures > 0 then
   print(failures .. ' failure(s)')
