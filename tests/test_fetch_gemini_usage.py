@@ -224,7 +224,7 @@ def test_selected_account_refreshes_through_agy_after_401(monkeypatch):
     monkeypatch.setattr(
         gemini,
         "normalize_windows",
-        lambda payload: [{"label": "gemini", "usedPercent": 10}],
+        lambda payload, *args, **kwargs: [{"label": "gemini", "usedPercent": 10}],
     )
     monkeypatch.setattr(gemini, "write_account_cache", lambda account: None)
     monkeypatch.setattr(gemini, "refresh_selected_auth", refreshes.append)
