@@ -19,6 +19,7 @@
 - [Session overlay design study](session-mockups/NOTES.md) — the concept survey the patch bay was picked from
 - [Codeview moon study](codeview-mockups/codeview-moon-gallery.html) — running codeview daemons as moons around fleet repo stars
 - [Contribution skyline study](github-mockups/NOTES.md) — the projection study behind the skyline
+- [Contribution city study](github-city-mockups/NOTES.md) — art-deco Cairo variety at the shipped overlay camera
 - [Billing panel design archive](billing-mockups/README.md) — preserved Affine Month Map mockup, alternatives, and Cairo sources
   - [Trajectory concept notes](billing-mockups/trajectory_variants/NOTES.md) — four time-and-cap transformations
   - [Ambient concept notes](billing-mockups/ambient_variants/NOTES.md) — four calm and breach signal systems

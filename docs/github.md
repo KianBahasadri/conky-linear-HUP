@@ -1,13 +1,13 @@
 # GitHub overlay
 
-A 3D contribution skyline: the year of squares extruded into one tower per day,
+A 3D contribution city: the year of squares extruded into one building per day,
 standing on a plinth that sits on the [rate limit panel](rate-limit-panel.md)'s
-top edge so the two objects read as one stack. No frame and no header — the
-desktop shows through between the towers. It replaced a flat left-side rail of
-squares; that rail's own experiments are in
-[GitHub rail blob experiments](github-rail-blob-experiments.md), and the study
-the skyline came out of is the
-[contribution skyline study](github-mockups/NOTES.md).
+top edge so the two objects read as one stack. Quiet days are houses and shops;
+busy days are setback / Chrysler / Empire towers. Cream limestone, lime windows,
+gold cornices — no frame and no header. The desktop shows through between the
+buildings. The study it came out of is the
+[contribution city study](github-city-mockups/NOTES.md); the older green-bar
+lattice is in the [contribution skyline study](github-mockups/NOTES.md).
 
 ## Data
 
@@ -31,9 +31,14 @@ renders: the parser falls back to the level.
   baseline, so it can be stood on something instead of floating.
 - The plinth (`draw_deck`) fills the whole lattice and extrudes downward. Its
   fascia carries the month scale, because below the front edge is the panel.
-- Tower height is proportional to `sqrt(count)`. Linear scaling lets a single
+- Building height is proportional to `sqrt(count)`. Linear scaling lets a single
   outlier day press every other tower flat into the deck.
-- Only two of the four walls ever face the camera, so a tower is three fills.
+- Kind and palette are a hash of the date against height, so neighbouring days
+  differ: house, shop, warehouse, walk-up, gothic, office, glass, setback,
+  Chrysler, Empire, slab. Tops are volumes (hip, dome, lantern, penthouse, tank),
+  not masts.
+- Only two of the four walls ever face the camera, so a shaft is three fills
+  plus windows on the south face.
 - Zero days draw as an outlined plate, which keeps the calendar's shape readable
   through the gaps.
 
