@@ -268,3 +268,58 @@ def test_fleet_codeview_repos_keeps_dead_daemons_as_eclipses(tmp_path, monkeypat
     repos = sessions.fleet_codeview_repos(now=1_000_000)
     assert repos[0]["name"] == "dead-daemon"
     assert repos[0]["codeviewRunning"] is False
+
+
+def test_collect_includes_unattached_codeview_repos_in_sessions(tmp_path, monkeypatch):
+    # Fleet repos with a codeview daemon appear as unattached destination diamonds
+    # at the bottom of the bay, without duplicating existing tmux sessions.
+    with_daemon = make_codeview_repo(tmp_path / "standalone-dashboard")
+    active_repo = make_codeview_repo(tmp_path / "active-repo")
+
+    monkeypatch.setattr(sessions, "logins", lambda: [])
+    monkeypatch.setattr(sessions, "tmux_clients", lambda: {})
+    monkeypatch.setattr(sessions, "tailnet_peers", lambda: ({}, None))
+    monkeypatch.setattr(
+        sessions, "tmux_sessions",
+        lambda: {
+            "active-repo": {
+                "name": "active-repo",
+                "windows": 1,
+                "panes": 1,
+                "path": str(active_repo),
+                "repo": "active-repo",
+                "attached": ["kianWorkLaptop"],
+                "idle": "1m",
+                "idleSeconds": 60,
+                "codeviewPresent": True,
+                "codeviewRunning": True,
+                "codeviewPort": 48290,
+                "codeviewIndexAgeSeconds": 3000,
+            }
+        },
+    )
+    monkeypatch.setattr(
+        sessions, "fleet_repo_paths",
+        lambda: [with_daemon, active_repo],
+    )
+    monkeypatch.setattr(
+        sessions, "proc_cmdline",
+        lambda pid: "python3 /home/kian/.config/clusterfork/scripts/codeview/server.py --port 48290",
+    )
+    monkeypatch.setattr(sessions.os, "kill", lambda pid, sig: None)
+
+    devices, session_list = sessions.collect()
+    assert len(devices) == 0
+    assert len(session_list) == 2
+
+    # Attached session first, unattached standalone repo second
+    active_record = session_list[0]
+    assert active_record["name"] == "active-repo"
+    assert active_record["attached"] == "kianWorkLaptop"
+
+    standalone_record = session_list[1]
+    assert standalone_record["name"] == "standalone-dashboard"
+    assert standalone_record["attached"] == ""
+    assert standalone_record["codeviewPresent"] is True
+    assert standalone_record["codeviewRunning"] is True
+

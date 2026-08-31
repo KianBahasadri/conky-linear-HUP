@@ -124,6 +124,10 @@ return function(shared, repo_root)
     local sessions = {}
     for _, object in ipairs(json_array(content, 'sessions')) do
       local attached = field(object, 'attached') or ''
+      local cv_age = number_field(object, 'codeviewIndexAgeSeconds')
+      if cv_age == 0 and object:match('"codeviewIndexAgeSeconds"') == nil then
+        cv_age = number_field(object, 'codeviewIndexAge')
+      end
       table.insert(sessions, {
         name = field(object, 'name') or '?',
         windows = number_field(object, 'windows'),
@@ -136,21 +140,10 @@ return function(shared, repo_root)
         codeviewPresent = bool_field(object, 'codeviewPresent'),
         codeviewRunning = bool_field(object, 'codeviewRunning'),
         codeviewPort = number_field(object, 'codeviewPort'),
-        codeviewIndexAge = number_field(object, 'codeviewIndexAge'),
+        codeviewIndexAge = cv_age,
       })
     end
-    local codeview = {}
-    for _, object in ipairs(json_array(content, 'codeview')) do
-      table.insert(codeview, {
-        name = field(object, 'name') or '?',
-        path = field(object, 'path') or '',
-        codeviewPresent = bool_field(object, 'codeviewPresent'),
-        codeviewRunning = bool_field(object, 'codeviewRunning'),
-        codeviewPort = number_field(object, 'codeviewPort'),
-        codeviewIndexAge = number_field(object, 'codeviewIndexAgeSeconds'),
-      })
-    end
-    return { ok = true, devices = devices, sessions = sessions, codeview = codeview, sshd = content:match('"sshdListening"%s*:%s*true') ~= nil }
+    return { ok = true, devices = devices, sessions = sessions, sshd = content:match('"sshdListening"%s*:%s*true') ~= nil }
   end
 
   local function panel_height(state)
@@ -661,40 +654,7 @@ return function(shared, repo_root)
     end
   end
 
-  -- Repo star: a fleet repo with a codeview daemon but no tmux session keeps
-  -- a place in the bay. A sparkle star tinted with the repo's fleet color
-  -- wears the same moon the session diamond would have.
-  local function draw_repo_star(cr, cx, cy, col, running)
-    local r = 4.4
-    if running then
-      radial_hex(cr, cx, cy, 0, 16, {{0, col, 0.16},{0.45, col, 0.045},{1, col, 0}})
-      for i = 1, 4 do
-        local a = math.pi / 4 + (i - 1) * math.pi / 2
-        shared.set_hex(cr, col, 0.5)
-        cairo_set_line_width(cr, 1.0)
-        cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND)
-        cairo_move_to(cr, cx + math.cos(a) * r * 0.35, cy + math.sin(a) * r * 0.35)
-        cairo_line_to(cr, cx + math.cos(a) * r * 1.6, cy + math.sin(a) * r * 1.6)
-        cairo_stroke(cr)
-        cairo_set_line_cap(cr, CAIRO_LINE_CAP_BUTT)
-      end
-      shared.set_hex(cr, col, 0.95)
-      cairo_arc(cr, cx, cy, r * 0.62, 0, math.pi * 2)
-      cairo_fill(cr)
-      shared.set_hex(cr, 'ffffff', 0.8)
-      cairo_arc(cr, cx - 0.5, cy - 0.6, 0.62, 0, math.pi * 2)
-      cairo_fill(cr)
-    else
-      radial_hex(cr, cx, cy, 0, 14, {{0, red, 0.16},{1, red, 0}})
-      shared.set_hex(cr, '020617', 0.7)
-      cairo_arc(cr, cx, cy, r * 0.6, 0, math.pi * 2)
-      cairo_fill(cr)
-      shared.set_hex(cr, red, 0.9)
-      cairo_set_line_width(cr, 0.8)
-      cairo_arc(cr, cx, cy, r * 0.6, 0, math.pi * 2)
-      cairo_stroke(cr)
-    end
-  end
+
 
   local function draw_diamond_arc(cr, positions)
     if #positions < 2 then return end
@@ -848,46 +808,7 @@ return function(shared, repo_root)
       table.insert(star_list, {device = device, cx = cx, cy = cy, index = index})
     end
 
-    -- Phantom repo stars: fleet repos with a codeview daemon but no tmux
-    -- session still show up — the moon survives the session closing. They are
-    -- placed in the drift field clear of ingress stars and diamonds.
-    local session_repo_keys = {}
-    for _, session in ipairs(state.sessions) do
-      session_repo_keys[repo_key(session):lower()] = true
-    end
-    local repo_star_list = {}
-    local taken_positions = {}
-    for _, pos in ipairs(star_pos) do taken_positions[#taken_positions + 1] = {pos[1], pos[2]} end
-    for _, pos in ipairs(diamond_list) do taken_positions[#taken_positions + 1] = {pos[1], pos[2]} end
-    for _, repo in ipairs(state.codeview or {}) do
-      if not session_repo_keys[repo.name:lower()] then
-        local cx, cy = x + panel_width / 2, y + layout.field_top + 40
-        local min_dist = 30
-        for attempt = 1, 40 do
-          local candidate
-          if attempt == 1 then
-            candidate = { x + panel_width / 2, y + layout.field_top + 40 }
-          else
-            local col = (attempt - 1) % 3 - 1
-            local row = math.floor((attempt - 1) / 3)
-            local offset_x = col * 110
-            local offset_y = row * 52 + ((attempt % 2) == 0 and 26 or 0)
-            candidate = { x + panel_width / 2 + offset_x, y + layout.field_top + 40 + offset_y }
-          end
-          local clear = true
-          for _, t in ipairs(taken_positions) do
-            local dx, dy = candidate[1] - t[1], candidate[2] - t[2]
-            if dx*dx + dy*dy < min_dist*min_dist then clear = false; break end
-          end
-          if clear then
-            cx, cy = candidate[1], candidate[2]
-            table.insert(taken_positions, {cx, cy})
-            break
-          end
-        end
-        table.insert(repo_star_list, { repo = repo, cx = cx, cy = cy })
-      end
-    end
+
 
     -- depth: field stars (behind everything)
     draw_field_stars(cr, x, y, layout, slot_width, star_pos, diamond_list)
@@ -1023,25 +944,6 @@ return function(shared, repo_root)
       flat_text(cr, 'no inbound', x + panel_width / 2, y + layout.field_top + layout.field_height / 2, 8, dim, 0.52, 'center')
     end
 
-    -- repo stars — codeview daemons whose tmux session is closed still get a
-    -- star with a moon in the drift field (tinted by repo, like the diamond).
-    for _, entry in ipairs(repo_star_list) do
-      local repo = entry.repo
-      local cx, cy = entry.cx, entry.cy
-      local col = repo_palette[(hash_string(repo.name:lower()) % #repo_palette) + 1]
-      draw_repo_star(cr, cx, cy, col, repo.codeviewRunning)
-      draw_codeview_moon(cr, repo, repo.name, cx, cy, false, col)
-      local label = fit_text(cr, repo.name, slot_width - 12, 8)
-      cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL)
-      cairo_set_font_size(cr, 8)
-      local ext = cairo_text_extents_t:create(); cairo_text_extents(cr, label, ext)
-      local lx = cx - ext.x_advance / 2
-      if lx < x + 6 then lx = x + 6 end
-      if lx + ext.x_advance > x + panel_width - 6 then lx = x + panel_width - 6 - ext.x_advance end
-      shared.set_hex(cr, muted, 0.68)
-      cairo_move_to(cr, lx, cy - 15)
-      cairo_show_text(cr, label)
-    end
 
     -- diamonds + labels (live tinted by repo, same colour on filament)
     for index, session in ipairs(state.sessions) do

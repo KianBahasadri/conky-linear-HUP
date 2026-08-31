@@ -605,6 +605,48 @@ def collect():
     order = {"alert": 0, "live": 1, "idle": 2}
     devices.sort(key=lambda device: (order.get(device["state"], 3), device["name"]))
 
+    # Fleet repos with a codeview daemon appear as unattached destination diamonds
+    # at the bottom so their moon remains visible even after tmux closes (or if
+    # opened without tmux).
+    for cv_repo in fleet_codeview_repos(now):
+        repo_name = cv_repo["name"]
+        repo_path = cv_repo["path"]
+        try:
+            resolved_cv_path = Path(repo_path).resolve()
+        except (OSError, RuntimeError, ValueError):
+            resolved_cv_path = None
+
+        def matches_session(s):
+            if (s.get("repo") or "").lower() == repo_name.lower():
+                return True
+            if s["name"].lower() == repo_name.lower():
+                return True
+            if repo_from_path(s.get("path") or "").lower() == repo_name.lower():
+                return True
+            if resolved_cv_path is not None:
+                try:
+                    if Path(s.get("path") or "").expanduser().resolve() == resolved_cv_path:
+                        return True
+                except (OSError, RuntimeError, ValueError):
+                    pass
+            return False
+
+        if not any(matches_session(s) for s in sessions.values()):
+            sessions[repo_name] = {
+                "name": repo_name,
+                "windows": 0,
+                "panes": 0,
+                "path": shorten_path(repo_path),
+                "repo": repo_name,
+                "attached": [],
+                "idle": "",
+                "idleSeconds": 0,
+                "codeviewPresent": True,
+                "codeviewRunning": cv_repo["codeviewRunning"],
+                "codeviewPort": cv_repo["codeviewPort"],
+                "codeviewIndexAgeSeconds": cv_repo["codeviewIndexAgeSeconds"],
+            }
+
     session_list = sorted(
         sessions.values(),
         key=lambda item: (
@@ -616,7 +658,7 @@ def collect():
     for session in session_list:
         session["attached"] = ", ".join(session["attached"])
 
-    return devices, session_list, fleet_codeview_repos(now)
+    return devices, session_list
 
 
 def session_rows_for(sessions):
@@ -704,7 +746,7 @@ def main():
         return 0
 
     try:
-        devices, sessions, codeview = collect()
+        devices, sessions = collect()
         listening = sshd_listening()
         payload = {
             "ok": True,
@@ -712,12 +754,10 @@ def main():
             "sshdListening": listening,
             "devices": devices,
             "sessions": sessions,
-            "codeview": codeview,
         }
         atomic_write_json(SESSIONS_PATH, payload)
         log_event(
             f"updated devices={len(devices)} sessions={len(sessions)} "
-            f"codeview={len(codeview)} "
             f"sshd_listening={listening} height={overlay_height(len(devices), len(sessions), sessions)}"
         )
         return 0
