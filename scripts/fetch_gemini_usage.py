@@ -195,21 +195,17 @@ FIVE_HOUR_SECONDS = 5 * 60 * 60
 
 
 def fetch_quota(auth, project):
+    status, payload = request_json(auth["access_token"], "retrieveUserQuotaSummary", {"project": project})
+    if status in (401, 403):
+        raise GeminiAuthError(f"Gemini retrieveUserQuotaSummary API error: HTTP {status}")
+    if status == 200 and isinstance(payload, dict) and payload.get("groups"):
+        return payload
     status, payload = request_json(auth["access_token"], "retrieveUserQuota", {"project": project})
     if status in (401, 403):
         raise GeminiAuthError(f"Gemini retrieveUserQuota API error: HTTP {status}")
     if status != 200:
         raise RuntimeError(f"Gemini retrieveUserQuota API error: HTTP {status}")
     return payload
-
-
-def fetch_quota_summary(auth, project):
-    status, payload = request_json(auth["access_token"], "retrieveUserQuotaSummary", {"project": project})
-    if status in (401, 403):
-        raise GeminiAuthError(f"Gemini retrieveUserQuotaSummary API error: HTTP {status}")
-    if status == 200 and isinstance(payload, dict) and payload.get("groups"):
-        return payload
-    return fetch_quota(auth, project)
 
 
 def classify_model(model_id, is_pro=True):
@@ -383,7 +379,7 @@ def normalize_error(label, message, is_selected=False):
 def fetch_fresh_account(label, is_selected):
     auth = read_auth(label, is_selected)
     project, load_payload = load_code_assist(auth)
-    quota_payload = fetch_quota_summary(auth, project)
+    quota_payload = fetch_quota(auth, project)
     plan = plan_type(load_payload)
     windows = normalize_windows(quota_payload, is_pro=(plan == "pro"))
     if not windows:
