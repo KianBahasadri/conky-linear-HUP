@@ -1212,7 +1212,9 @@ return function(shared, repo_root)
       local is_free = is_free_account(account)
       local result = {}
       local seen = {}
-      local order = is_free and { 'gemini', 'other', 'flash', 'pro', 'claude' } or { 'flash', 'pro', 'claude', 'other', 'gemini' }
+      local order = is_free
+        and { 'gemini-weekly', 'gemini', 'other-weekly', 'other', '3p-weekly' }
+        or { 'gemini-5h', 'gemini-weekly', 'other-5h', '3p-5h', 'other-weekly', '3p-weekly', 'gemini', 'other' }
       for _, target in ipairs(order) do
         for _, w in ipairs(windows) do
           if normalized_window_label(w) == target and not seen[w] then
@@ -1349,16 +1351,14 @@ return function(shared, repo_root)
     elseif provider_name(account) == 'gemini' then
       for i, window in ipairs(row_windows) do
         local label = normalized_window_label(window)
-        if label == 'flash' then
+        if label:find('gemini') then
+          overlay_labels[i] = 'Gemini'
+        elseif label:find('other') or label:find('3p') or label:find('claude') then
+          overlay_labels[i] = 'Other'
+        elseif label == 'flash' then
           overlay_labels[i] = 'Flash'
         elseif label == 'pro' then
           overlay_labels[i] = 'Pro'
-        elseif label == 'claude' then
-          overlay_labels[i] = 'Claude'
-        elseif label == 'other' then
-          overlay_labels[i] = 'Other'
-        elseif label == 'gemini' then
-          overlay_labels[i] = 'Gemini'
         else
           overlay_labels[i] = string.upper(label:sub(1, 1)) .. label:sub(2)
         end

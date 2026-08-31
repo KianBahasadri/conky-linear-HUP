@@ -191,6 +191,9 @@ def load_code_assist(auth):
     return project, payload
 
 
+FIVE_HOUR_SECONDS = 5 * 60 * 60
+
+
 def fetch_quota(auth, project):
     status, payload = request_json(auth["access_token"], "retrieveUserQuota", {"project": project})
     if status in (401, 403):
@@ -200,35 +203,84 @@ def fetch_quota(auth, project):
     return payload
 
 
+def fetch_quota_summary(auth, project):
+    status, payload = request_json(auth["access_token"], "retrieveUserQuotaSummary", {"project": project})
+    if status in (401, 403):
+        raise GeminiAuthError(f"Gemini retrieveUserQuotaSummary API error: HTTP {status}")
+    if status == 200 and isinstance(payload, dict) and payload.get("groups"):
+        return payload
+    return fetch_quota(auth, project)
+
+
 def classify_model(model_id, is_pro=True):
     model_id = str(model_id or "").lower()
-    if is_pro:
-        if "flash" in model_id:
-            return "flash"
-        if "pro" in model_id:
-            return "pro"
-        if "claude" in model_id:
-            return "claude"
-        return "other"
     if "pro" in model_id or "flash" in model_id:
         return "gemini"
     return "other"
 
 
-def quota_window_seconds(_reset_after_seconds):
-    # retrieveUserQuota exposes a reset timestamp, but not the bucket's
-    # period or start timestamp. A short time until reset therefore does not
-    # prove that the bucket is a daily window; it may simply be near the end
-    # of its weekly cycle. Use the documented weekly Antigravity baseline
-    # instead of guessing from the current countdown.
+def quota_window_seconds(reset_after_seconds):
+    if reset_after_seconds <= FIVE_HOUR_SECONDS:
+        return FIVE_HOUR_SECONDS
     return WEEK_SECONDS
 
 
 def normalize_windows(payload, fetched_at=None, is_pro=True):
     fetched_at = fetched_at or datetime.now(timezone.utc)
     now = int(fetched_at.timestamp())
-    groups = {}
 
+    # 1. Structured groups format from retrieveUserQuotaSummary
+    if isinstance(payload, dict) and payload.get("groups"):
+        windows = []
+        for group in payload.get("groups", []):
+            if not isinstance(group, dict):
+                continue
+            group_name = str(group.get("displayName", "")).lower()
+            is_gemini_group = "gemini" in group_name
+            prefix = "gemini" if is_gemini_group else "other"
+
+            def bucket_sort_key(b):
+                w = str(b.get("window", "")).lower()
+                bid = str(b.get("bucketId", "")).lower()
+                if "5h" in w or "5h" in bid:
+                    return 0
+                if "week" in w or "week" in bid:
+                    return 1
+                return 2
+
+            raw_buckets = [b for b in group.get("buckets", []) if isinstance(b, dict)]
+            sorted_buckets = sorted(raw_buckets, key=bucket_sort_key)
+
+            for bucket in sorted_buckets:
+                reset_at = common.parse_iso_epoch(bucket.get("resetTime"))
+                if reset_at <= now:
+                    continue
+                remaining_fraction = max(0.0, min(1.0, as_float(bucket.get("remainingFraction"))))
+                window_type = str(bucket.get("window", "")).lower()
+                bucket_id = str(bucket.get("bucketId", "")).lower()
+                is_5h = "5h" in window_type or "5h" in bucket_id
+                window_sec = FIVE_HOUR_SECONDS if is_5h else WEEK_SECONDS
+                reset_after_seconds = max(0, reset_at - now)
+                used_percent = round((1 - remaining_fraction) * 100, 1)
+
+                label = f"{prefix}-5h" if is_5h else f"{prefix}-weekly"
+
+                windows.append(
+                    {
+                        "label": label,
+                        "usedPercent": used_percent,
+                        "remainingPercent": max(0, round(100 - used_percent, 1)),
+                        "resetsAt": datetime.fromtimestamp(reset_at, tz=timezone.utc).isoformat(),
+                        "resetAtEpoch": reset_at,
+                        "resetAfterSeconds": reset_after_seconds,
+                        "windowSeconds": window_sec,
+                        "models": [str(group.get("description", "")).strip()],
+                    }
+                )
+        return windows
+
+    # 2. Raw model buckets format fallback from retrieveUserQuota
+    groups = {}
     for bucket in payload.get("buckets", []) if isinstance(payload, dict) else []:
         if not isinstance(bucket, dict):
             continue
@@ -256,7 +308,7 @@ def normalize_windows(payload, fetched_at=None, is_pro=True):
         group["resets"].append(reset_at)
         group["models"].append(model_id)
 
-    order = {"flash": 0, "pro": 1, "claude": 2, "other": 3} if is_pro else {"gemini": 0, "other": 1}
+    order = {"gemini": 0, "other": 1}
     windows = []
     for label, group in sorted(groups.items(), key=lambda item: (order.get(item[0], 5), item[0])):
         remaining_fraction = sum(group["remaining"]) / len(group["remaining"])
@@ -331,7 +383,7 @@ def normalize_error(label, message, is_selected=False):
 def fetch_fresh_account(label, is_selected):
     auth = read_auth(label, is_selected)
     project, load_payload = load_code_assist(auth)
-    quota_payload = fetch_quota(auth, project)
+    quota_payload = fetch_quota_summary(auth, project)
     plan = plan_type(load_payload)
     windows = normalize_windows(quota_payload, is_pro=(plan == "pro"))
     if not windows:

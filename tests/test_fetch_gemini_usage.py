@@ -46,64 +46,112 @@ def test_read_auth_uses_active_item_for_selected_profile(monkeypatch):
     assert inactive["access_token"] == "rotate-antigravity-kian"
 
 
-def test_normalize_windows_separates_flash_pro_claude_and_other_quotas():
+def test_normalize_windows_with_retrieve_user_quota_summary_pro():
     now = datetime(2026, 6, 12, 20, 0, tzinfo=timezone.utc)
     payload = {
-        "buckets": [
+        "groups": [
             {
-                "modelId": "gemini-2.5-flash",
-                "tokenType": "WTUS",
-                "remainingFraction": 0.8,
-                "resetTime": "2026-06-13T20:00:00Z",
+                "displayName": "Gemini Models",
+                "description": "Models within this group: Gemini Flash, Gemini Pro",
+                "buckets": [
+                    {
+                        "bucketId": "gemini-weekly",
+                        "displayName": "Weekly Limit Remaining",
+                        "window": "weekly",
+                        "resetTime": "2026-06-19T20:00:00Z",
+                        "remainingFraction": 0.98,
+                    },
+                    {
+                        "bucketId": "gemini-5h",
+                        "displayName": "Five Hour Limit Remaining",
+                        "window": "5h",
+                        "resetTime": "2026-06-13T01:00:00Z",
+                        "remainingFraction": 0.93,
+                    },
+                ],
             },
             {
-                "modelId": "gemini-3-flash-preview",
-                "tokenType": "REQUESTS",
-                "remainingFraction": 0.6,
-                "resetTime": "2026-06-13T20:00:00Z",
-            },
-            {
-                "modelId": "gemini-3.1-pro-preview",
-                "tokenType": "REQUESTS",
-                "remainingFraction": 0.9,
-                "resetTime": "2026-06-13T18:00:00Z",
-            },
-            {
-                "modelId": "gemini-2.5-pro",
-                "tokenType": "REQUESTS",
-                "remainingFraction": 0,
-                "resetTime": "1970-01-01T00:00:00Z",
-            },
-            {
-                "modelId": "gemini-embedding-001",
-                "tokenType": "REQUESTS",
-                "remainingFraction": 0.1,
-                "resetTime": "2026-06-13T20:00:00Z",
-            },
-            {
-                "modelId": "claude-sonnet-4-6",
-                "tokenType": "WTUS",
-                "remainingFraction": 0.5,
-                "resetTime": "2026-06-13T20:00:00Z",
+                "displayName": "Claude and GPT models",
+                "description": "Models within this group: Claude Opus, Claude Sonnet, GPT-OSS",
+                "buckets": [
+                    {
+                        "bucketId": "3p-weekly",
+                        "displayName": "Weekly Limit Remaining",
+                        "window": "weekly",
+                        "resetTime": "2026-06-19T20:00:00Z",
+                        "remainingFraction": 1.0,
+                    },
+                    {
+                        "bucketId": "3p-5h",
+                        "displayName": "Five Hour Limit Remaining",
+                        "window": "5h",
+                        "resetTime": "2026-06-13T01:00:00Z",
+                        "remainingFraction": 1.0,
+                    },
+                ],
             },
         ]
     }
 
     windows = gemini.normalize_windows(payload, now, is_pro=True)
 
-    assert [window["label"] for window in windows] == ["flash", "pro", "claude", "other"]
-    assert windows[0]["usedPercent"] == 30.0
-    assert windows[0]["models"] == [
-        "gemini-2.5-flash",
-        "gemini-3-flash-preview",
+    assert [window["label"] for window in windows] == [
+        "gemini-5h",
+        "gemini-weekly",
+        "other-5h",
+        "other-weekly",
     ]
-    assert windows[1]["usedPercent"] == 10.0
-    assert windows[1]["models"] == ["gemini-3.1-pro-preview"]
-    assert windows[2]["usedPercent"] == 50.0
-    assert windows[2]["models"] == ["claude-sonnet-4-6"]
-    assert windows[3]["usedPercent"] == 90.0
-    assert windows[3]["models"] == ["gemini-embedding-001"]
+    assert windows[0]["usedPercent"] == 7.0
+    assert windows[0]["windowSeconds"] == gemini.FIVE_HOUR_SECONDS
+    assert windows[1]["usedPercent"] == 2.0
+    assert windows[1]["windowSeconds"] == gemini.WEEK_SECONDS
+    assert windows[2]["usedPercent"] == 0.0
+    assert windows[3]["usedPercent"] == 0.0
+
+
+def test_normalize_windows_with_retrieve_user_quota_summary_free():
+    now = datetime(2026, 6, 12, 20, 0, tzinfo=timezone.utc)
+    payload = {
+        "groups": [
+            {
+                "displayName": "Gemini Models",
+                "description": "Models within this group: Gemini Flash, Gemini Pro",
+                "buckets": [
+                    {
+                        "bucketId": "gemini-weekly",
+                        "displayName": "Weekly Limit Remaining",
+                        "window": "weekly",
+                        "resetTime": "2026-06-17T17:00:00Z",
+                        "remainingFraction": 0.0,
+                    },
+                ],
+            },
+            {
+                "displayName": "Claude and GPT models",
+                "description": "Models within this group: Claude Opus, Claude Sonnet, GPT-OSS",
+                "buckets": [
+                    {
+                        "bucketId": "3p-weekly",
+                        "displayName": "Weekly Limit Remaining",
+                        "window": "weekly",
+                        "resetTime": "2026-06-19T20:00:00Z",
+                        "remainingFraction": 1.0,
+                    },
+                ],
+            },
+        ]
+    }
+
+    windows = gemini.normalize_windows(payload, now, is_pro=False)
+
+    assert [window["label"] for window in windows] == [
+        "gemini-weekly",
+        "other-weekly",
+    ]
+    assert windows[0]["usedPercent"] == 100.0
     assert windows[0]["windowSeconds"] == gemini.WEEK_SECONDS
+    assert windows[1]["usedPercent"] == 0.0
+    assert windows[1]["windowSeconds"] == gemini.WEEK_SECONDS
 
 
 def test_normalize_windows_free_tier_combines_into_two_bars():

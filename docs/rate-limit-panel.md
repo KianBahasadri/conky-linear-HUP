@@ -39,7 +39,7 @@
 ## Gemini
 
 - Accounts are discovered from Antigravity's rotation state in `~/.gemini/antigravity-cli/rotate-auth`. The selected profile reads the live GNOME Keyring item `service=gemini username=antigravity`; inactive profiles read `service=rotate-antigravity username=<profile>`.
-- Usage is fetched from Antigravity's Code Assist API. Pro accounts render four model quota bars: Bar 1 averages all Flash models (`flash`), Bar 2 averages all Pro models (`pro`), Bar 3 averages Claude models (`claude`), and Bar 4 averages other/OSS models (`other`). Free accounts render two bars: Bar 1 averages all Gemini request quotas (`gemini`), while Bar 2 averages all other model quotas (`other`). Paid tiers (such as Google AI Pro) are recognized from the account's `paidTier` subscription.
+- Usage is fetched from Antigravity's Code Assist API (`retrieveUserQuotaSummary`). Pro accounts render four quota bars: Gemini 5-hour (`gemini-5h`), Gemini weekly (`gemini-weekly`), Other/Claude/GPT 5-hour (`other-5h`), and Other/Claude/GPT weekly (`other-weekly`). Free accounts render two weekly bars: Gemini weekly (`gemini-weekly`) and Other weekly (`other-weekly`). Paid tiers (such as Google AI Pro) are recognized from the account's `paidTier` subscription.
 - `GEMINI_ANTIGRAVITY_STATE_DIR` overrides the rotation state directory, `GEMINI_CODE_ASSIST_ENDPOINT` overrides the Antigravity API endpoint, `GEMINI_ANTIGRAVITY_CLI` overrides the `agy` executable, and `GEMINI_AUTH_REFRESH_TIMEOUT_SECONDS` controls the refresh timeout.
 
 ## Grok
