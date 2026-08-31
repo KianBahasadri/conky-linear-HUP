@@ -1347,31 +1347,6 @@ return function(shared, repo_root)
       else
         overlay_labels = { 'AUTO', 'API' }
       end
-    elseif provider_name(account) == 'gemini' then
-      for i, window in ipairs(row_windows) do
-        local label = normalized_window_label(window)
-        if #row_windows >= 3 then
-          if label == 'gemini-5h' or label == '5h' then
-            overlay_labels[i] = 'Gemini 5h'
-          elseif label == 'gemini-weekly' or label == 'weekly' or label == 'gemini' then
-            overlay_labels[i] = 'Gemini Wk'
-          elseif label == 'other-5h' or label == '3p-5h' then
-            overlay_labels[i] = 'Other 5h'
-          elseif label == 'other-weekly' or label == '3p-weekly' or label == 'other' then
-            overlay_labels[i] = 'Other Wk'
-          elseif label:find('gemini') then
-            overlay_labels[i] = 'Gemini'
-          else
-            overlay_labels[i] = 'Other'
-          end
-        else
-          if label:find('gemini') then
-            overlay_labels[i] = 'Gemini'
-          else
-            overlay_labels[i] = 'Other'
-          end
-        end
-      end
     elseif provider_name(account) == 'codex' then
       for i, window in ipairs(row_windows) do
         if normalized_window_label(window) == 'reserve' then
