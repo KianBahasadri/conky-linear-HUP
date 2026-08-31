@@ -1070,8 +1070,8 @@ return function(shared, repo_root)
         -- Bright spring green Gemini, pine Other.
         return '4ade80', '86efac', '318f6a', '1f6b52'
       end
-      -- Bright spring green Gemini 5h, rich emerald Gemini weekly, medium pine Other 5h, deep pine Other weekly.
-      return '4ade80', '86efac', '22c55e', '16a34a', '318f6a', '1f6b52', '1f6b52', '144636'
+      -- Bright spring green Gemini 5h, forest green Gemini weekly, crisp mint Other 5h, deep pine Other weekly.
+      return '4ade80', '86efac', '16a34a', '15803d', '2dd4bf', '0d9488', '134e4a', '042f2e'
     end
 
     if provider_name(account) == 'grok' then
@@ -1350,16 +1350,26 @@ return function(shared, repo_root)
     elseif provider_name(account) == 'gemini' then
       for i, window in ipairs(row_windows) do
         local label = normalized_window_label(window)
-        if label:find('gemini') then
-          overlay_labels[i] = 'Gemini'
-        elseif label:find('other') or label:find('3p') or label:find('claude') then
-          overlay_labels[i] = 'Other'
-        elseif label == 'flash' then
-          overlay_labels[i] = 'Flash'
-        elseif label == 'pro' then
-          overlay_labels[i] = 'Pro'
+        if #row_windows >= 3 then
+          if label == 'gemini-5h' or label == '5h' then
+            overlay_labels[i] = 'Gemini 5h'
+          elseif label == 'gemini-weekly' or label == 'weekly' or label == 'gemini' then
+            overlay_labels[i] = 'Gemini Wk'
+          elseif label == 'other-5h' or label == '3p-5h' then
+            overlay_labels[i] = 'Other 5h'
+          elseif label == 'other-weekly' or label == '3p-weekly' or label == 'other' then
+            overlay_labels[i] = 'Other Wk'
+          elseif label:find('gemini') then
+            overlay_labels[i] = 'Gemini'
+          else
+            overlay_labels[i] = 'Other'
+          end
         else
-          overlay_labels[i] = string.upper(label:sub(1, 1)) .. label:sub(2)
+          if label:find('gemini') then
+            overlay_labels[i] = 'Gemini'
+          else
+            overlay_labels[i] = 'Other'
+          end
         end
       end
     elseif provider_name(account) == 'codex' then
