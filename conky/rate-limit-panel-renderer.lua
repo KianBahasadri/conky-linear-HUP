@@ -1070,8 +1070,8 @@ return function(shared, repo_root)
         -- Bright spring green Gemini, pine Other.
         return '4ade80', '86efac', '318f6a', '1f6b52'
       end
-      -- Google blue Flash, spring green Pro, amber Claude, coral Other.
-      return '38bdf8', '0284c7', '4ade80', '16a34a', 'facc15', 'b45309', 'f87171', 'b91c1c'
+      -- Bright spring green Gemini 5h, rich emerald Gemini weekly, medium pine Other 5h, deep pine Other weekly.
+      return '4ade80', '86efac', '22c55e', '16a34a', '318f6a', '1f6b52', '1f6b52', '144636'
     end
 
     if provider_name(account) == 'grok' then
@@ -1287,7 +1287,6 @@ return function(shared, repo_root)
         or provider_name(account) == 'grok' and '71717a'
         or provider_name(account) == 'opencode' and 'ef4444'
         or provider_name(account) == 'commandcode' and '5543c9'
-        or provider_name(account) == 'gemini' and '38bdf8'
         or first_accent
 
       shared.set_hex(cr, selection_color, 0.20)
