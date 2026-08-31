@@ -200,8 +200,16 @@ def fetch_quota(auth, project):
     return payload
 
 
-def classify_model(model_id):
+def classify_model(model_id, is_pro=True):
     model_id = str(model_id or "").lower()
+    if is_pro:
+        if "flash" in model_id:
+            return "flash"
+        if "pro" in model_id:
+            return "pro"
+        if "claude" in model_id:
+            return "claude"
+        return "other"
     if "pro" in model_id or "flash" in model_id:
         return "gemini"
     return "other"
@@ -216,7 +224,7 @@ def quota_window_seconds(_reset_after_seconds):
     return WEEK_SECONDS
 
 
-def normalize_windows(payload, fetched_at=None):
+def normalize_windows(payload, fetched_at=None, is_pro=True):
     fetched_at = fetched_at or datetime.now(timezone.utc)
     now = int(fetched_at.timestamp())
     groups = {}
@@ -235,7 +243,7 @@ def normalize_windows(payload, fetched_at=None):
         if reset_at <= now:
             continue
 
-        label = classify_model(model_id)
+        label = classify_model(model_id, is_pro=is_pro)
         group = groups.setdefault(
             label,
             {
@@ -248,9 +256,9 @@ def normalize_windows(payload, fetched_at=None):
         group["resets"].append(reset_at)
         group["models"].append(model_id)
 
-    order = {"gemini": 0, "other": 1}
+    order = {"flash": 0, "pro": 1, "claude": 2, "other": 3} if is_pro else {"gemini": 0, "other": 1}
     windows = []
-    for label, group in sorted(groups.items(), key=lambda item: (order.get(item[0], 2), item[0]))[:2]:
+    for label, group in sorted(groups.items(), key=lambda item: (order.get(item[0], 5), item[0])):
         remaining_fraction = sum(group["remaining"]) / len(group["remaining"])
         reset_at = min(group["resets"])
         reset_after_seconds = max(0, reset_at - now)
@@ -271,15 +279,22 @@ def normalize_windows(payload, fetched_at=None):
 
 
 def plan_type(load_payload):
-    tier = load_payload.get("currentTier") if isinstance(load_payload, dict) else {}
-    tier = tier if isinstance(tier, dict) else {}
-    tier_id = str(tier.get("id", "")).lower()
-    tier_name = str(tier.get("name", ""))
-    if "free" in tier_id or "free" in tier_name.lower():
+    if not isinstance(load_payload, dict):
         return "free"
-    if load_payload.get("paidTier") or "pro" in tier_id or "pro" in tier_name.lower():
+    paid_tier = load_payload.get("paidTier") or {}
+    paid_id = str(paid_tier.get("id", "")).lower()
+    paid_name = str(paid_tier.get("name", "")).lower()
+    if "pro" in paid_id or "pro" in paid_name or "ultra" in paid_id or "ultra" in paid_name:
         return "pro"
-    return tier_name or tier_id
+
+    current_tier = load_payload.get("currentTier") or {}
+    curr_id = str(current_tier.get("id", "")).lower()
+    curr_name = str(current_tier.get("name", "")).lower()
+    if "pro" in curr_id or "pro" in curr_name:
+        return "pro"
+    if "free" in curr_id or "free" in curr_name or "plus" in paid_id or "plus" in paid_name:
+        return "free"
+    return paid_name or paid_id or curr_name or curr_id or "free"
 
 
 def safe_cache_label(label):
@@ -317,13 +332,14 @@ def fetch_fresh_account(label, is_selected):
     auth = read_auth(label, is_selected)
     project, load_payload = load_code_assist(auth)
     quota_payload = fetch_quota(auth, project)
-    windows = normalize_windows(quota_payload)
+    plan = plan_type(load_payload)
+    windows = normalize_windows(quota_payload, is_pro=(plan == "pro"))
     if not windows:
         raise RuntimeError("Gemini quota API returned no active request buckets")
     account = {
         "ok": True,
         "label": label,
-        "planType": plan_type(load_payload),
+        "planType": plan,
         "isSelected": is_selected,
         "windows": windows,
     }

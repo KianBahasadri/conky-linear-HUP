@@ -1066,8 +1066,12 @@ return function(shared, repo_root)
     end
 
     if provider_name(account) == 'gemini' then
-      -- Bright spring green Gemini, pine Other.
-      return '4ade80', '86efac', '318f6a', '1f6b52'
+      if is_free then
+        -- Bright spring green Gemini, pine Other.
+        return '4ade80', '86efac', '318f6a', '1f6b52'
+      end
+      -- Google blue Flash, spring green Pro, amber Claude, coral Other.
+      return '38bdf8', '0284c7', '4ade80', '16a34a', 'facc15', 'b45309', 'f87171', 'b91c1c'
     end
 
     if provider_name(account) == 'grok' then
@@ -1106,10 +1110,10 @@ return function(shared, repo_root)
 
   local function make_bar_layout(num_bars)
     local available = panel_width - account_row_x - panel_first_bar_x - bar_area_side_margin
-    local btx = num_bars == 3 and 6 or 8
+    local btx = num_bars >= 3 and 6 or 8
     local bcw = 54
     local text_total = btx + bcw
-    local min_bw = num_bars == 1 and 40 or (num_bars == 3 and 40 or 30)
+    local min_bw = num_bars == 1 and 40 or 30
     local unit = available / num_bars
     local bw = math.max(min_bw, math.floor(unit - text_total))
     -- Fold floor remainder into the bar so unused width does not collect on the right.
@@ -1204,16 +1208,37 @@ return function(shared, repo_root)
       return result
     end
 
+    if provider == 'gemini' then
+      local is_free = is_free_account(account)
+      local result = {}
+      local seen = {}
+      local order = is_free and { 'gemini', 'other', 'flash', 'pro', 'claude' } or { 'flash', 'pro', 'claude', 'other', 'gemini' }
+      for _, target in ipairs(order) do
+        for _, w in ipairs(windows) do
+          if normalized_window_label(w) == target and not seen[w] then
+            table.insert(result, w)
+            seen[w] = true
+          end
+        end
+      end
+      for _, w in ipairs(windows) do
+        if not seen[w] then
+          table.insert(result, w)
+          seen[w] = true
+        end
+      end
+      if is_free and #result > 2 then
+        return { result[1], result[2] }
+      end
+      return result
+    end
+
     local first, second
     for _, window in ipairs(windows) do
       local window_label = normalized_window_label(window)
       if provider == 'cursor' and window_label == 'api' then
         second = window
       elseif provider == 'cursor' and window_label == 'auto' then
-        first = window
-      elseif provider == 'gemini' and window_label == 'other' then
-        second = window
-      elseif provider == 'gemini' and window_label == 'gemini' then
         first = window
       elseif window_label == 'weekly' then
         second = window
@@ -1232,7 +1257,7 @@ return function(shared, repo_root)
     local name = string.upper(account.label)
     local label_x = x + 22
     local is_free = is_free_account(account)
-    local first_accent, first_accent_secondary, second_accent, second_accent_secondary, third_accent, third_accent_secondary = provider_accents(account, is_free)
+    local first_accent, first_accent_secondary, second_accent, second_accent_secondary, third_accent, third_accent_secondary, fourth_accent, fourth_accent_secondary = provider_accents(account, is_free)
     local is_active = account.is_selected
 
     local row_windows = get_row_windows(account)
@@ -1260,6 +1285,7 @@ return function(shared, repo_root)
         or provider_name(account) == 'grok' and '71717a'
         or provider_name(account) == 'opencode' and 'ef4444'
         or provider_name(account) == 'commandcode' and '5543c9'
+        or provider_name(account) == 'gemini' and '38bdf8'
         or first_accent
 
       shared.set_hex(cr, selection_color, 0.20)
@@ -1310,9 +1336,10 @@ return function(shared, repo_root)
     local bar_unit_width = layout.bar_width + layout.text_total
     local bar_area_start = x + panel_first_bar_x
 
-    local accent_list = { first_accent, second_accent, third_accent or second_accent }
-    local accent_secondary_list = { first_accent_secondary, second_accent_secondary, third_accent_secondary or second_accent_secondary }
+    local accent_list = { first_accent, second_accent, third_accent or second_accent, fourth_accent or third_accent or second_accent }
+    local accent_secondary_list = { first_accent_secondary, second_accent_secondary, third_accent_secondary or second_accent_secondary, fourth_accent_secondary or third_accent_secondary or second_accent_secondary }
     local overlay_labels = {}
+    local overlay_label_colors = {}
     if provider_name(account) == 'cursor' then
       if is_free then
         overlay_labels = { 'AUTO (Free)', 'API (Free)' }
@@ -1320,7 +1347,22 @@ return function(shared, repo_root)
         overlay_labels = { 'AUTO', 'API' }
       end
     elseif provider_name(account) == 'gemini' then
-      overlay_labels = { 'Gemini', 'Other' }
+      for i, window in ipairs(row_windows) do
+        local label = normalized_window_label(window)
+        if label == 'flash' then
+          overlay_labels[i] = 'Flash'
+        elseif label == 'pro' then
+          overlay_labels[i] = 'Pro'
+        elseif label == 'claude' then
+          overlay_labels[i] = 'Claude'
+        elseif label == 'other' then
+          overlay_labels[i] = 'Other'
+        elseif label == 'gemini' then
+          overlay_labels[i] = 'Gemini'
+        else
+          overlay_labels[i] = string.upper(label:sub(1, 1)) .. label:sub(2)
+        end
+      end
     elseif provider_name(account) == 'codex' then
       for i, window in ipairs(row_windows) do
         if normalized_window_label(window) == 'reserve' then
@@ -1337,7 +1379,8 @@ return function(shared, repo_root)
       draw_usage_bar(cr, window, bar_x, bar_y, accent, accent_secondary, show_bar_pace, refresh, layout)
 
       if overlay_labels[i] then
-        draw_bar_overlay_label(cr, overlay_labels[i], bar_x, bar_y, i == 1 and '000000' or nil)
+        local text_color = overlay_label_colors[i] or (i == 1 and '000000' or nil)
+        draw_bar_overlay_label(cr, overlay_labels[i], bar_x, bar_y, text_color)
       end
     end
   end

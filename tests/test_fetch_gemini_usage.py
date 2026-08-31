@@ -46,7 +46,7 @@ def test_read_auth_uses_active_item_for_selected_profile(monkeypatch):
     assert inactive["access_token"] == "rotate-antigravity-kian"
 
 
-def test_normalize_windows_combines_flash_and_pro_separately_from_other_quotas():
+def test_normalize_windows_separates_flash_pro_claude_and_other_quotas():
     now = datetime(2026, 6, 12, 20, 0, tzinfo=timezone.utc)
     payload = {
         "buckets": [
@@ -89,7 +89,61 @@ def test_normalize_windows_combines_flash_and_pro_separately_from_other_quotas()
         ]
     }
 
-    windows = gemini.normalize_windows(payload, now)
+    windows = gemini.normalize_windows(payload, now, is_pro=True)
+
+    assert [window["label"] for window in windows] == ["flash", "pro", "claude", "other"]
+    assert windows[0]["usedPercent"] == 30.0
+    assert windows[0]["models"] == [
+        "gemini-2.5-flash",
+        "gemini-3-flash-preview",
+    ]
+    assert windows[1]["usedPercent"] == 10.0
+    assert windows[1]["models"] == ["gemini-3.1-pro-preview"]
+    assert windows[2]["usedPercent"] == 50.0
+    assert windows[2]["models"] == ["claude-sonnet-4-6"]
+    assert windows[3]["usedPercent"] == 90.0
+    assert windows[3]["models"] == ["gemini-embedding-001"]
+    assert windows[0]["windowSeconds"] == gemini.WEEK_SECONDS
+
+
+def test_normalize_windows_free_tier_combines_into_two_bars():
+    now = datetime(2026, 6, 12, 20, 0, tzinfo=timezone.utc)
+    payload = {
+        "buckets": [
+            {
+                "modelId": "gemini-2.5-flash",
+                "tokenType": "WTUS",
+                "remainingFraction": 0.8,
+                "resetTime": "2026-06-13T20:00:00Z",
+            },
+            {
+                "modelId": "gemini-3-flash-preview",
+                "tokenType": "REQUESTS",
+                "remainingFraction": 0.6,
+                "resetTime": "2026-06-13T20:00:00Z",
+            },
+            {
+                "modelId": "gemini-3.1-pro-preview",
+                "tokenType": "REQUESTS",
+                "remainingFraction": 0.9,
+                "resetTime": "2026-06-13T18:00:00Z",
+            },
+            {
+                "modelId": "gemini-embedding-001",
+                "tokenType": "REQUESTS",
+                "remainingFraction": 0.1,
+                "resetTime": "2026-06-13T20:00:00Z",
+            },
+            {
+                "modelId": "claude-sonnet-4-6",
+                "tokenType": "WTUS",
+                "remainingFraction": 0.5,
+                "resetTime": "2026-06-13T20:00:00Z",
+            },
+        ]
+    }
+
+    windows = gemini.normalize_windows(payload, now, is_pro=False)
 
     assert [window["label"] for window in windows] == ["gemini", "other"]
     assert windows[0]["usedPercent"] == 23.3
@@ -98,9 +152,15 @@ def test_normalize_windows_combines_flash_and_pro_separately_from_other_quotas()
         "gemini-3-flash-preview",
         "gemini-3.1-pro-preview",
     ]
-    assert windows[1]["usedPercent"] == 70
+    assert windows[1]["usedPercent"] == 70.0
     assert windows[1]["models"] == ["claude-sonnet-4-6", "gemini-embedding-001"]
-    assert windows[0]["windowSeconds"] == gemini.WEEK_SECONDS
+
+
+def test_plan_type_detects_pro_and_free_tiers():
+    assert gemini.plan_type({"paidTier": {"id": "g1-pro-tier", "name": "Google AI Pro"}, "currentTier": {"id": "free-tier"}}) == "pro"
+    assert gemini.plan_type({"paidTier": {"id": "g1-plus-tier", "name": "Google AI Plus"}, "currentTier": {"id": "free-tier"}}) == "free"
+    assert gemini.plan_type({"currentTier": {"id": "free-tier", "name": "Antigravity"}}) == "free"
+    assert gemini.plan_type({"currentTier": {"id": "standard-tier", "name": "Pro User"}}) == "pro"
 
 
 def test_normalize_windows_uses_fixed_week_for_long_reset():
