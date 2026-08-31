@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 
 import fetch_sessions as sessions
 
@@ -109,7 +110,7 @@ def test_tailnet_peers_maps_every_address_and_ignores_account_identity(monkeypat
 
 
 def make_codeview_repo(tmp_path, daemon='{"pid": 4242, "port": 48290}'):
-    repo = tmp_path / "fleet-repo"
+    repo = Path(tmp_path)
     (repo / ".codeview" / "cache").mkdir(parents=True)
     (repo / ".codeview" / "daemon.json").write_text(daemon, encoding="utf-8")
     index_file = repo / ".codeview" / "cache" / "summary.json"
@@ -202,3 +203,68 @@ def test_tmux_sessions_marks_repos_without_codeview_absent(tmp_path, monkeypatch
     assert record["codeviewRunning"] is False
     assert record["codeviewPort"] == 0
     assert record["codeviewIndexAgeSeconds"] == -1
+
+
+def test_fleet_repo_paths_uses_git_discovery_cache(monkeypatch, tmp_path):
+    # The git panel already scans $HOME for repos; reuse its cache so a repo
+    # with a codeview daemon is found even without a tmux session.
+    cache = tmp_path / "git-repo-discovery.json"
+    cache.write_text(
+        '{"updatedAtEpoch": 1000000, "paths": ["/tmp/alpha", "/tmp/beta"]}',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(sessions, "GIT_DISCOVERY_PATH", cache)
+    monkeypatch.setattr(sessions.time, "time", lambda: 1000000 + 60)
+
+    paths = sessions.fleet_repo_paths()
+    assert paths == [Path("/tmp/alpha"), Path("/tmp/beta")]
+
+
+def test_fleet_repo_paths_uses_pinned_env_first(monkeypatch, tmp_path):
+    cache = tmp_path / "git-repo-discovery.json"
+    cache.write_text(
+        '{"updatedAtEpoch": 1000000, "paths": ["/tmp/alpha"]}',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(sessions, "GIT_DISCOVERY_PATH", cache)
+    monkeypatch.setattr(sessions.time, "time", lambda: 1000000 + 60)
+    monkeypatch.setenv("SESSIONS_CODEVIEW_REPO_PATHS", "/tmp/pinned:/tmp/alpha")
+
+    paths = sessions.fleet_repo_paths()
+    # Pinned first, cache appended without duplicates.
+    assert paths == [Path("/tmp/pinned"), Path("/tmp/alpha")]
+
+
+def test_fleet_codeview_repos_lists_only_daemon_repos(tmp_path, monkeypatch):
+    # Repos without a .codeview/daemon.json are skipped.
+    with_daemon = make_codeview_repo(tmp_path / "with-daemon")
+    (tmp_path / "plain-repo").mkdir()
+
+    monkeypatch.setattr(
+        sessions, "fleet_repo_paths",
+        lambda: [with_daemon, tmp_path / "plain-repo"],
+    )
+    monkeypatch.setattr(
+        sessions, "proc_cmdline",
+        lambda pid: "python3 /home/kian/.config/clusterfork/scripts/codeview/server.py --port 48290",
+    )
+    monkeypatch.setattr(sessions.os, "kill", lambda pid, sig: None)
+
+    repos = sessions.fleet_codeview_repos(now=1_000_000)
+    assert [r["name"] for r in repos] == ["with-daemon"]
+    assert repos[0]["codeviewRunning"] is True
+    assert repos[0]["codeviewIndexAgeSeconds"] == 3_000
+
+
+def test_fleet_codeview_repos_keeps_dead_daemons_as_eclipses(tmp_path, monkeypatch):
+    repo = make_codeview_repo(tmp_path / "dead-daemon")
+    monkeypatch.setattr(sessions, "fleet_repo_paths", lambda: [repo])
+
+    def dead(pid, sig):
+        raise ProcessLookupError
+
+    monkeypatch.setattr(sessions.os, "kill", dead)
+
+    repos = sessions.fleet_codeview_repos(now=1_000_000)
+    assert repos[0]["name"] == "dead-daemon"
+    assert repos[0]["codeviewRunning"] is False

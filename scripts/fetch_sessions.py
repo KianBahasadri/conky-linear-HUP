@@ -15,6 +15,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 from math import ceil
 from pathlib import Path
@@ -29,9 +30,31 @@ LOG_PATH = CACHE_DIR / "conky-sessions.log"
 
 # codeview dashboard daemon marker (see clusterfork's bin/codeview). A session
 # whose repo has <repo>/.codeview/daemon.json with a live pid gets a moon on
-# its diamond in the patch bay renderer.
+# its diamond in the patch bay renderer. Repos without a tmux session are
+# discovered fleet-wide (via the git panel's discovery cache, plus a shallow
+# home scan fallback) so a serving daemon keeps its moon even when the
+# session it was opened from has closed.
 CODEVIEW_DIR_NAME = ".codeview"
 CODEVIEW_SCAN_DEPTH = 6
+CODEVIEW_FLEET_SCAN_MAX_DEPTH = 3
+CODEVIEW_FLEET_SCAN_TIMEOUT = 1.0
+
+# Directories never descended into while scanning $HOME for codeview repos.
+CODEVIEW_SKIP_DIRS = frozenset(
+    {
+        ".cache", ".cargo", ".config", ".cursor", ".docker", ".git",
+        ".local", ".npm", ".nvm", ".pyenv", ".rustup", ".steam",
+        ".thumbnails", ".Trash", ".var", ".venv", "__pycache__",
+        "AppData", "Applications", "Library", "Movies", "Music",
+        "node_modules", "Pictures", "snap", "target", "Trash", "venv",
+        "Videos",
+    }
+)
+
+# The git status fetcher already walks $HOME for repos and caches the list;
+# reuse it instead of scanning the same tree twice.
+GIT_DISCOVERY_PATH = CACHE_DIR / "git-repo-discovery.json"
+GIT_DISCOVERY_MAX_AGE_SECONDS = 30 * 60
 
 # Must match the layout math in conky/sessions-renderer.lua.
 # Drift keeps a fixed sinking field for ingress origins and a fixed bottom row
@@ -210,6 +233,130 @@ def codeview_fields(start_dir, now):
         "codeviewPort": state["port"],
         "codeviewIndexAgeSeconds": state["indexAgeSeconds"],
     }
+
+
+def _git_discovery_paths():
+    """Fleet repo list from the git panel's discovery cache, or None."""
+    try:
+        payload = json.loads(GIT_DISCOVERY_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    paths = payload.get("paths") or []
+    if not paths:
+        return None
+    return [Path(path) for path in paths]
+
+
+def _scan_home_for_codeview(timeout=CODEVIEW_FLEET_SCAN_TIMEOUT):
+    """Shallow $HOME walk for dirs with a .codeview/daemon.json.
+
+    Used when the git discovery cache is missing or stale. A bounded BFS
+    over the same skip-list the git fetcher uses, so a deep or heavy tree
+    cannot fan out.
+    """
+    root_raw = os.environ.get("SESSIONS_CODEVIEW_SCAN_ROOT", "").strip()
+    root = Path(root_raw) if root_raw else Path.home()
+    if not root.is_dir():
+        return []
+    queue = [(root, 0)]
+    found = []
+    deadline = _monotonic() + timeout
+    while queue:
+        if _monotonic() > deadline:
+            break
+        current, depth = queue.pop(0)
+        if depth > CODEVIEW_FLEET_SCAN_MAX_DEPTH:
+            continue
+        try:
+            entries = list(current.iterdir())
+        except OSError:
+            continue
+        for entry in entries:
+            try:
+                is_dir = entry.is_dir() and not entry.is_symlink()
+            except OSError:
+                continue
+            if not is_dir:
+                continue
+            if entry.name in CODEVIEW_SKIP_DIRS:
+                continue
+            if (entry / CODEVIEW_DIR_NAME / "daemon.json").is_file():
+                found.append(entry)
+                continue
+            if depth < CODEVIEW_FLEET_SCAN_MAX_DEPTH:
+                queue.append((entry, depth + 1))
+    found.sort(key=lambda path: str(path).lower())
+    return found
+
+
+def _monotonic():
+    """Monotonic clock for scan deadlines (injectable for tests)."""
+    return time.monotonic()
+
+
+def fleet_repo_paths():
+    """Repo roots worth probing for a codeview daemon.
+
+    Uses the git panel's discovery cache (30 min TTL) so the fleet matches
+    what the git panel shows; falls back to a shallow $HOME scan when the
+    cache is missing or stale. Pinned codeview roots from the environment
+    are always included first.
+    """
+    pinned = os.environ.get("SESSIONS_CODEVIEW_REPO_PATHS", "").strip()
+    pinned_paths = [Path(p) for p in re.split(r"[:\n,]+", pinned) if p.strip()]
+
+    cached = _git_discovery_paths()
+    if cached is not None:
+        try:
+            updated = int(json.loads(GIT_DISCOVERY_PATH.read_text(encoding="utf-8")).get("updatedAtEpoch") or 0)
+        except (OSError, ValueError):
+            updated = 0
+        if updated and time.time() - updated <= GIT_DISCOVERY_MAX_AGE_SECONDS:
+            merged = list(pinned_paths)
+            seen = {str(p).rstrip("/") for p in pinned_paths}
+            for path in cached:
+                key = str(path).rstrip("/")
+                if key not in seen:
+                    seen.add(key)
+                    merged.append(path)
+            return merged
+
+    scanned = _scan_home_for_codeview()
+    merged = list(pinned_paths)
+    seen = {str(p).rstrip("/") for p in pinned_paths}
+    for path in scanned:
+        key = str(path).rstrip("/")
+        if key not in seen:
+            seen.add(key)
+            merged.append(path)
+    return merged
+
+
+def fleet_codeview_repos(now=None):
+    """One record per fleet repo with a .codeview/daemon.json.
+
+    This is what keeps a moon alive after its tmux session closes: the repo
+    is discovered from the fleet list rather than only from session paths,
+    so a serving daemon still shows up as a star with a moon in the bay.
+    """
+    if now is None:
+        now = time.time()
+    records = []
+    for repo in fleet_repo_paths():
+        state = codeview_state(str(repo), now)
+        if state is None:
+            continue
+        name = repo.name or str(repo)
+        records.append({
+            "name": name,
+            "path": str(repo),
+            "codeviewPresent": True,
+            "codeviewRunning": state["running"],
+            "codeviewPort": state["port"],
+            "codeviewIndexAgeSeconds": state["indexAgeSeconds"],
+        })
+    records.sort(key=lambda record: record["name"].lower())
+    return records
 
 
 def tmux_sessions():
@@ -469,7 +616,7 @@ def collect():
     for session in session_list:
         session["attached"] = ", ".join(session["attached"])
 
-    return devices, session_list
+    return devices, session_list, fleet_codeview_repos(now)
 
 
 def session_rows_for(sessions):
@@ -557,7 +704,7 @@ def main():
         return 0
 
     try:
-        devices, sessions = collect()
+        devices, sessions, codeview = collect()
         listening = sshd_listening()
         payload = {
             "ok": True,
@@ -565,10 +712,12 @@ def main():
             "sshdListening": listening,
             "devices": devices,
             "sessions": sessions,
+            "codeview": codeview,
         }
         atomic_write_json(SESSIONS_PATH, payload)
         log_event(
             f"updated devices={len(devices)} sessions={len(sessions)} "
+            f"codeview={len(codeview)} "
             f"sshd_listening={listening} height={overlay_height(len(devices), len(sessions), sessions)}"
         )
         return 0

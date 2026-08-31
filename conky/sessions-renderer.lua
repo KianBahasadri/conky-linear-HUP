@@ -139,7 +139,18 @@ return function(shared, repo_root)
         codeviewIndexAge = number_field(object, 'codeviewIndexAge'),
       })
     end
-    return { ok = true, devices = devices, sessions = sessions, sshd = content:match('"sshdListening"%s*:%s*true') ~= nil }
+    local codeview = {}
+    for _, object in ipairs(json_array(content, 'codeview')) do
+      table.insert(codeview, {
+        name = field(object, 'name') or '?',
+        path = field(object, 'path') or '',
+        codeviewPresent = bool_field(object, 'codeviewPresent'),
+        codeviewRunning = bool_field(object, 'codeviewRunning'),
+        codeviewPort = number_field(object, 'codeviewPort'),
+        codeviewIndexAge = number_field(object, 'codeviewIndexAgeSeconds'),
+      })
+    end
+    return { ok = true, devices = devices, sessions = sessions, codeview = codeview, sshd = content:match('"sshdListening"%s*:%s*true') ~= nil }
   end
 
   local function panel_height(state)
@@ -602,8 +613,8 @@ return function(shared, repo_root)
     cairo_restore(cr)
   end
 
-  local function moon_phase(session)
-    local age = session.codeviewIndexAge or 0
+  local function moon_phase(index_age)
+    local age = index_age or 0
     if age < 0 or age < MOON_FRESH_SECONDS then
       return 'full'
     end
@@ -613,12 +624,12 @@ return function(shared, repo_root)
     return 'crescent'
   end
 
-  local function draw_codeview_moon(cr, session, cx, cy, live, col)
-    if not session.codeviewPresent then
+  local function draw_codeview_moon(cr, record, key, cx, cy, live, col)
+    if not record.codeviewPresent then
       return
     end
-    if session.codeviewRunning then
-      local dir = (hash_string(repo_key(session):lower()) % 2 == 0) and 1 or -1
+    if record.codeviewRunning then
+      local dir = (hash_string(key:lower()) % 2 == 0) and 1 or -1
       local angle = (os.time() % MOON_PERIOD) / MOON_PERIOD * math.pi * 2 * dir
       draw_orbit_ring(cr, cx, cy, col, live and 0.30 or 0.20, false)
       local mx, my = moon_point(cx, cy, angle)
@@ -629,7 +640,7 @@ return function(shared, repo_root)
       shared.set_hex(cr, 'ffffff', 0.85)
       cairo_arc(cr, mx - 0.55, my - 0.65, 0.62, 0, math.pi * 2)
       cairo_fill(cr)
-      local phase = moon_phase(session)
+      local phase = moon_phase(record.codeviewIndexAge)
       if phase ~= 'full' then
         local offset = phase == 'gibbous' and 1.5 or 2.5
         shared.set_hex(cr, '020617', 0.78)
@@ -646,6 +657,41 @@ return function(shared, repo_root)
       shared.set_hex(cr, red, 0.9)
       cairo_set_line_width(cr, 0.8)
       cairo_arc(cr, mx, my, 2.5, 0, math.pi * 2)
+      cairo_stroke(cr)
+    end
+  end
+
+  -- Repo star: a fleet repo with a codeview daemon but no tmux session keeps
+  -- a place in the bay. A sparkle star tinted with the repo's fleet color
+  -- wears the same moon the session diamond would have.
+  local function draw_repo_star(cr, cx, cy, col, running)
+    local r = 4.4
+    if running then
+      radial_hex(cr, cx, cy, 0, 16, {{0, col, 0.16},{0.45, col, 0.045},{1, col, 0}})
+      for i = 1, 4 do
+        local a = math.pi / 4 + (i - 1) * math.pi / 2
+        shared.set_hex(cr, col, 0.5)
+        cairo_set_line_width(cr, 1.0)
+        cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND)
+        cairo_move_to(cr, cx + math.cos(a) * r * 0.35, cy + math.sin(a) * r * 0.35)
+        cairo_line_to(cr, cx + math.cos(a) * r * 1.6, cy + math.sin(a) * r * 1.6)
+        cairo_stroke(cr)
+        cairo_set_line_cap(cr, CAIRO_LINE_CAP_BUTT)
+      end
+      shared.set_hex(cr, col, 0.95)
+      cairo_arc(cr, cx, cy, r * 0.62, 0, math.pi * 2)
+      cairo_fill(cr)
+      shared.set_hex(cr, 'ffffff', 0.8)
+      cairo_arc(cr, cx - 0.5, cy - 0.6, 0.62, 0, math.pi * 2)
+      cairo_fill(cr)
+    else
+      radial_hex(cr, cx, cy, 0, 14, {{0, red, 0.16},{1, red, 0}})
+      shared.set_hex(cr, '020617', 0.7)
+      cairo_arc(cr, cx, cy, r * 0.6, 0, math.pi * 2)
+      cairo_fill(cr)
+      shared.set_hex(cr, red, 0.9)
+      cairo_set_line_width(cr, 0.8)
+      cairo_arc(cr, cx, cy, r * 0.6, 0, math.pi * 2)
       cairo_stroke(cr)
     end
   end
@@ -802,6 +848,47 @@ return function(shared, repo_root)
       table.insert(star_list, {device = device, cx = cx, cy = cy, index = index})
     end
 
+    -- Phantom repo stars: fleet repos with a codeview daemon but no tmux
+    -- session still show up — the moon survives the session closing. They are
+    -- placed in the drift field clear of ingress stars and diamonds.
+    local session_repo_keys = {}
+    for _, session in ipairs(state.sessions) do
+      session_repo_keys[repo_key(session):lower()] = true
+    end
+    local repo_star_list = {}
+    local taken_positions = {}
+    for _, pos in ipairs(star_pos) do taken_positions[#taken_positions + 1] = {pos[1], pos[2]} end
+    for _, pos in ipairs(diamond_list) do taken_positions[#taken_positions + 1] = {pos[1], pos[2]} end
+    for _, repo in ipairs(state.codeview or {}) do
+      if not session_repo_keys[repo.name:lower()] then
+        local cx, cy = x + panel_width / 2, y + layout.field_top + 40
+        local min_dist = 30
+        for attempt = 1, 40 do
+          local candidate
+          if attempt == 1 then
+            candidate = { x + panel_width / 2, y + layout.field_top + 40 }
+          else
+            local col = (attempt - 1) % 3 - 1
+            local row = math.floor((attempt - 1) / 3)
+            local offset_x = col * 110
+            local offset_y = row * 52 + ((attempt % 2) == 0 and 26 or 0)
+            candidate = { x + panel_width / 2 + offset_x, y + layout.field_top + 40 + offset_y }
+          end
+          local clear = true
+          for _, t in ipairs(taken_positions) do
+            local dx, dy = candidate[1] - t[1], candidate[2] - t[2]
+            if dx*dx + dy*dy < min_dist*min_dist then clear = false; break end
+          end
+          if clear then
+            cx, cy = candidate[1], candidate[2]
+            table.insert(taken_positions, {cx, cy})
+            break
+          end
+        end
+        table.insert(repo_star_list, { repo = repo, cx = cx, cy = cy })
+      end
+    end
+
     -- depth: field stars (behind everything)
     draw_field_stars(cr, x, y, layout, slot_width, star_pos, diamond_list)
 
@@ -936,6 +1023,26 @@ return function(shared, repo_root)
       flat_text(cr, 'no inbound', x + panel_width / 2, y + layout.field_top + layout.field_height / 2, 8, dim, 0.52, 'center')
     end
 
+    -- repo stars — codeview daemons whose tmux session is closed still get a
+    -- star with a moon in the drift field (tinted by repo, like the diamond).
+    for _, entry in ipairs(repo_star_list) do
+      local repo = entry.repo
+      local cx, cy = entry.cx, entry.cy
+      local col = repo_palette[(hash_string(repo.name:lower()) % #repo_palette) + 1]
+      draw_repo_star(cr, cx, cy, col, repo.codeviewRunning)
+      draw_codeview_moon(cr, repo, repo.name, cx, cy, false, col)
+      local label = fit_text(cr, repo.name, slot_width - 12, 8)
+      cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL)
+      cairo_set_font_size(cr, 8)
+      local ext = cairo_text_extents_t:create(); cairo_text_extents(cr, label, ext)
+      local lx = cx - ext.x_advance / 2
+      if lx < x + 6 then lx = x + 6 end
+      if lx + ext.x_advance > x + panel_width - 6 then lx = x + panel_width - 6 - ext.x_advance end
+      shared.set_hex(cr, muted, 0.68)
+      cairo_move_to(cr, lx, cy - 15)
+      cairo_show_text(cr, label)
+    end
+
     -- diamonds + labels (live tinted by repo, same colour on filament)
     for index, session in ipairs(state.sessions) do
       local pos = session_positions[session.name]
@@ -951,7 +1058,7 @@ return function(shared, repo_root)
       local live = session.attached ~= nil
       local col = repo_color_for(session)
       draw_diamond(cr, cx, cy, live and 'live' or 'idle', col)
-      draw_codeview_moon(cr, session, cx, cy, live, col)
+      draw_codeview_moon(cr, session, repo_key(session), cx, cy, live, col)
       local lab = fit_text(cr, session.name, slot_width - 12, 9)
       local r = live and 8.2 or 6.6
       flat_text(cr, lab, cx, cy + r + 13, live and 9 or 8.4, live and text_color or muted, live and 0.90 or 0.72, 'center')

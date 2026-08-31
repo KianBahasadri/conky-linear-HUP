@@ -79,6 +79,15 @@ flat for the renderer's regex JSON parser: `codeviewPresent`, `codeviewRunning`,
 `codeviewPort`, and `codeviewIndexAgeSeconds` (age of the newest file under
 `.codeview/cache/`, `-1` when unknown).
 
+A moon survives its session closing. Each cycle also probes the fleet list
+(the git panel's `cache/git-repo-discovery.json`, with a shallow `$HOME` scan
+as fallback) for any repo with a `.codeview/daemon.json`, and the payload
+carries a `codeview` array of those repos. A repo whose tmux session is gone
+still shows in the bay as a repo star — a sparkle tinted with the repo's fleet
+color, wearing the same moon the session diamond would — so a serving dashboard
+is never hidden just because its session ended. `SESSIONS_CODEVIEW_REPO_PATHS`
+pins extra roots and `SESSIONS_CODEVIEW_SCAN_ROOT` overrides the scan root.
+
 What the moon shows:
 
 - **Orbiting moon** (tinted with the repo's fleet color, same hash as the
@@ -148,4 +157,5 @@ See [Configuration](configuration.md) for the full variable table.
 | Diamond | Tmux destination. Glowing filled green when attached, hollow dim when open. No empty placeholder diamonds — exactly one per real session. A faint dashed arc links them. |
 | Filament | Live is a glowing green constellation line from icon/star to its diamond, kissing each edge. Idle is a short fading tail. Alert has no filament — its burst sits at the star. |
 | Moon | Codeview dashboard daemon for the session's repo. Orbiting = serving (tint = repo color), phase = index age, dark parked moon with red rim = dead daemon, absent = no dashboard. See [Codeview moons](#codeview-moons). |
+| Repo star | A fleet repo with a codeview daemon but no tmux session. Sparkle tinted with the repo color, wearing the same moon the diamond would; keeps a dashboard visible after its session closes. |
 | Footer | How many live vs idle origins, whether any are unresolved, and whether `sshd` is listening. |
