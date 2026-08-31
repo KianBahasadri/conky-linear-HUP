@@ -579,13 +579,15 @@ return function(shared, repo_root)
             end
           elseif provider_lower == 'codex' then
             -- Prefer the weekly bar when both windows exist. Some accounts only
-            -- expose the 5h bar, so keep it as the fallback.
+            -- expose the 5h bar, so keep it as the fallback. Pro accounts carry
+            -- 20x the capacity weight of a standard Plus account in the chip average.
             local window = find_weekly_window(account) or find_five_hour_window(account)
             if window then
               local pace = calculate_window_pace(window, window_duration(window))
               if pace then
-                delta_total = delta_total + pace.delta
-                delta_count = delta_count + 1
+                local weight = string.lower(account.plan_type or '') == 'pro' and 20 or 1
+                delta_total = delta_total + pace.delta * weight
+                delta_count = delta_count + weight
               end
             end
           elseif provider_lower == 'opencode' or provider_lower == 'commandcode' then

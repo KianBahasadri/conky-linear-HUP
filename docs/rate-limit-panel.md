@@ -20,7 +20,7 @@
 - When the account-level limit is reached (`limit_reached` / `allowed`), only the blocking window is pinned to 100%: the one whose reset matches the response's `rate_limit_upsell.reset_at`, or the fullest window when the banner is missing (rollout samples always use the fullest window, since they carry no banner). Other windows keep their reported percentages, so an exhausted 5h window no longer pegs the weekly bar.
 - A third `reserve` bar is rendered when `/wham/usage` includes `additional_rate_limits` whose `limit_name` contains `reserve` (today `gpt-reserve`, Luna Reserve). That bucket is a fallback weekly pool, not a refill of the main 5h/weekly windows, so account-level reached/allowed flags never pin it. The bar is labelled `RESERVE` on the tube. Accounts without that extra limit keep two bars.
 - Recent Codex rollout samples are still logged per session for diagnostics, including their values and matching account candidates. They never override a fresh endpoint response, so an older local sample cannot make a bar move backward. Local samples only carry 5h and weekly; an existing reserve window is kept beside them rather than dropped.
-- The `CODEX` chip's pace percentage uses the weekly window when available and falls back to the 5h window only when weekly is absent. Reserve is never the chip's pace source.
+- The `CODEX` chip's pace percentage uses the weekly window when available and falls back to the 5h window only when weekly is absent (Pro accounts are weighted 20x relative to Plus accounts in the average). Reserve is never the chip's pace source.
 
 ## Claude
 
