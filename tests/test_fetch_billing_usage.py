@@ -13,6 +13,9 @@ def isolate_cache(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(billing, "HISTORY_PATH", tmp_path / "billing-history.json")
     monkeypatch.setattr(billing, "AWS_CACHE_PATH", tmp_path / "billing-aws-cache.json")
+    monkeypatch.setattr(
+        billing, "AZURE_CACHE_PATH", tmp_path / "billing-azure-cache.json"
+    )
     monkeypatch.setattr(billing, "log_event", lambda _message: None)
     monkeypatch.setattr(billing.common, "load_env", lambda: None)
     monkeypatch.setenv("BILLING_BLACKSMITH_ENABLED", "0")
@@ -920,6 +923,59 @@ def test_azure_usage_details_fallback_on_cost_management_throttle(monkeypatch):
     assert any("2023-11-01" in url for url in versions)
 
 
+def test_azure_daily_throttle_uses_persistent_cooldown(monkeypatch, tmp_path):
+    isolate_cache(monkeypatch, tmp_path)
+    monkeypatch.setenv("BILLING_AZURE_SUBSCRIPTION_ID", "sub-1")
+    urls = []
+
+    def fake_run_json(command, _timeout):
+        url = _azure_url(command)
+        urls.append(url)
+        if "CostManagement/query" in url:
+            raise billing.ProviderError("az failed: Too Many Requests (429)")
+        if "usageDetails" in url:
+            return {
+                "value": [
+                    {
+                        "properties": {
+                            "date": "2026-08-03",
+                            "costInUSD": "2.50",
+                        }
+                    }
+                ]
+            }
+        raise AssertionError(url)
+
+    monkeypatch.setattr(billing, "run_json", fake_run_json)
+    period = billing.month_period(date(2026, 8, 19))
+
+    assert billing.fetch_azure_daily_usd(period, 5) == {
+        date(2026, 8, 3): Decimal("2.50")
+    }
+    first_cost_queries = sum("CostManagement/query" in url for url in urls)
+    assert first_cost_queries == 2
+    assert billing.azure_daily_cost_management_in_cooldown("sub-1") is True
+    assert billing.azure_daily_cost_management_in_cooldown("sub-2") is False
+
+    assert billing.fetch_azure_daily_usd(period, 5) == {
+        date(2026, 8, 3): Decimal("2.50")
+    }
+    assert sum("CostManagement/query" in url for url in urls) == first_cost_queries
+
+
+def test_azure_cooldown_cache_failure_is_best_effort(monkeypatch, tmp_path):
+    isolate_cache(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        billing.common,
+        "atomic_write_json",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("disk full")),
+    )
+
+    retry_after = billing.start_azure_daily_cost_cooldown("sub-1", now_epoch=100)
+
+    assert retry_after == 100 + billing.AZURE_DAILY_COST_COOLDOWN_SECONDS
+
+
 def test_azure_credit_balance_uses_estimated_usd(monkeypatch):
     monkeypatch.setenv("BILLING_AZURE_SUBSCRIPTION_ID", "sub-1")
     urls = []
@@ -1271,3 +1327,18 @@ def test_collect_logs_throttling_and_errors(monkeypatch, tmp_path):
     assert output["ok"] is False
     assert any("RATE LIMIT / THROTTLED" in msg and "Blacksmith" in msg for msg in events)
 
+
+def test_previous_providers_do_not_cross_billing_periods(monkeypatch, tmp_path):
+    isolate_cache(monkeypatch, tmp_path)
+    billing.STATUS_PATH.write_text(
+        json.dumps(
+            {
+                "periodStart": "2026-08-01",
+                "providers": [{"id": "aws", "currentUsd": 12.34}],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert "aws" in billing.previous_providers(date(2026, 8, 1))
+    assert billing.previous_providers(date(2026, 9, 1)) == {}

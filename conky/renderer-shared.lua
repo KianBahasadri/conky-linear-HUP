@@ -16,6 +16,12 @@ function shared.utf8_char(codepoint)
   if not codepoint or codepoint < 0 then
     return ''
   end
+  -- UTF-16 surrogate code points are not Unicode scalar values.  Encoding a
+  -- lone surrogate would produce invalid UTF-8 and can make Cairo reject the
+  -- rest of a label, so use the replacement character instead.
+  if codepoint >= 0xD800 and codepoint <= 0xDFFF then
+    return '\xef\xbf\xbd'
+  end
   if codepoint < 0x80 then
     return string.char(codepoint)
   end
@@ -56,7 +62,8 @@ function shared.unescape_json_string(value)
     local character = value:sub(index, index)
     if character == '\\' and index < #value then
       local next_character = value:sub(index + 1, index + 1)
-      if next_character == 'n' or next_character == 't' or next_character == 'r' then
+      if next_character == 'n' or next_character == 't' or next_character == 'r'
+          or next_character == 'b' or next_character == 'f' then
         table.insert(parts, ' ')
         index = index + 2
       elseif next_character == '"' then
@@ -102,42 +109,300 @@ function shared.unescape_json_string(value)
   return table.concat(parts)
 end
 
--- Extract a JSON string field value, respecting escaped quotes and backslashes.
--- Non-greedy Lua patterns like "(.-)" stop at the first ", which breaks titles
--- such as: "add \"create new property\" button..."
-function shared.match_json_string(text, key)
+-- The render caches are JSON, but Conky does not ship a JSON module on every
+-- supported Lua build.  Keep the parser deliberately small: it only exposes
+-- direct object-field lookup plus arrays of objects/strings, which is all the
+-- renderers need.  Unlike the old Lua patterns, the scanner understands nested
+-- containers and ignores braces, brackets, and escaped quotes inside strings.
+local function skip_json_whitespace(text, index)
+  while index <= #text and text:sub(index, index):match('%s') do
+    index = index + 1
+  end
+  return index
+end
+
+local function json_string_end(text, start_index)
+  if text:sub(start_index, start_index) ~= '"' then
+    return nil
+  end
+
+  local index = start_index + 1
+  while index <= #text do
+    local character = text:sub(index, index)
+    if character == '\\' then
+      local escape = text:sub(index + 1, index + 1)
+      if escape == 'u' then
+        if not text:sub(index + 2, index + 5):match('^%x%x%x%x$') then
+          return nil
+        end
+        index = index + 6
+      elseif escape:match('^["\\/bfnrt]$') then
+        index = index + 2
+      else
+        return nil
+      end
+    elseif character == '"' then
+      return index
+    elseif character:byte() < 0x20 then
+      return nil
+    else
+      index = index + 1
+    end
+  end
+  return nil
+end
+
+local function json_number_end(text, start_index)
+  local index = start_index
+  if text:sub(index, index) == '-' then
+    index = index + 1
+  end
+
+  local first_digit = text:sub(index, index)
+  if first_digit == '0' then
+    index = index + 1
+    if text:sub(index, index):match('%d') then
+      return nil
+    end
+  elseif first_digit:match('[1-9]') then
+    repeat
+      index = index + 1
+    until not text:sub(index, index):match('%d')
+  else
+    return nil
+  end
+
+  if text:sub(index, index) == '.' then
+    index = index + 1
+    if not text:sub(index, index):match('%d') then
+      return nil
+    end
+    repeat
+      index = index + 1
+    until not text:sub(index, index):match('%d')
+  end
+
+  if text:sub(index, index):match('[eE]') then
+    index = index + 1
+    if text:sub(index, index):match('[+-]') then
+      index = index + 1
+    end
+    if not text:sub(index, index):match('%d') then
+      return nil
+    end
+    repeat
+      index = index + 1
+    until not text:sub(index, index):match('%d')
+  end
+
+  return index - 1
+end
+
+local json_value_end
+
+local function json_object_end(text, start_index, on_member)
+  if text:sub(start_index, start_index) ~= '{' then
+    return nil
+  end
+
+  local index = skip_json_whitespace(text, start_index + 1)
+  if text:sub(index, index) == '}' then
+    return index
+  end
+
+  while index <= #text do
+    local key_start = index
+    local key_end = json_string_end(text, key_start)
+    if not key_end then
+      return nil
+    end
+    local key = shared.unescape_json_string(text:sub(key_start + 1, key_end - 1))
+
+    index = skip_json_whitespace(text, key_end + 1)
+    if text:sub(index, index) ~= ':' then
+      return nil
+    end
+
+    local value_start = skip_json_whitespace(text, index + 1)
+    local value_end = json_value_end(text, value_start)
+    if not value_end then
+      return nil
+    end
+    if on_member then
+      on_member(key, value_start, value_end)
+    end
+
+    index = skip_json_whitespace(text, value_end + 1)
+    local delimiter = text:sub(index, index)
+    if delimiter == '}' then
+      return index
+    end
+    if delimiter ~= ',' then
+      return nil
+    end
+    index = skip_json_whitespace(text, index + 1)
+    if text:sub(index, index) == '}' then
+      return nil
+    end
+  end
+  return nil
+end
+
+local function json_array_end(text, start_index, on_value)
+  if text:sub(start_index, start_index) ~= '[' then
+    return nil
+  end
+
+  local index = skip_json_whitespace(text, start_index + 1)
+  if text:sub(index, index) == ']' then
+    return index
+  end
+
+  while index <= #text do
+    local value_start = index
+    local value_end = json_value_end(text, value_start)
+    if not value_end then
+      return nil
+    end
+    if on_value then
+      on_value(value_start, value_end)
+    end
+
+    index = skip_json_whitespace(text, value_end + 1)
+    local delimiter = text:sub(index, index)
+    if delimiter == ']' then
+      return index
+    end
+    if delimiter ~= ',' then
+      return nil
+    end
+    index = skip_json_whitespace(text, index + 1)
+    if text:sub(index, index) == ']' then
+      return nil
+    end
+  end
+  return nil
+end
+
+json_value_end = function(text, start_index)
+  local character = text:sub(start_index, start_index)
+  if character == '"' then
+    return json_string_end(text, start_index)
+  end
+  if character == '{' then
+    return json_object_end(text, start_index)
+  end
+  if character == '[' then
+    return json_array_end(text, start_index)
+  end
+  if character == '-' or character:match('%d') then
+    return json_number_end(text, start_index)
+  end
+
+  for _, literal in ipairs({ 'true', 'false', 'null' }) do
+    if text:sub(start_index, start_index + #literal - 1) == literal then
+      return start_index + #literal - 1
+    end
+  end
+  return nil
+end
+
+-- Return one direct object's field as JSON source, or nil for missing/malformed
+-- input.  Nested fields with the same name are intentionally ignored.
+function shared.json_field(text, key)
   if not text or not key then
     return nil
   end
 
-  local escaped_key = key:gsub('(%W)', '%%%1')
-  local _, value_start = text:find('"' .. escaped_key .. '"%s*:%s*"')
-  if not value_start then
+  local object_start = skip_json_whitespace(text, 1)
+  if text:sub(object_start, object_start) ~= '{' then
     return nil
   end
 
-  local parts = {}
-  local index = value_start + 1
-  while index <= #text do
-    local character = text:sub(index, index)
-    if character == '\\' then
-      local next_character = text:sub(index + 1, index + 1)
-      if next_character == '' then
-        table.insert(parts, character)
-        break
-      end
-      table.insert(parts, character)
-      table.insert(parts, next_character)
-      index = index + 2
-    elseif character == '"' then
-      break
-    else
-      table.insert(parts, character)
-      index = index + 1
+  local found
+  local object_end = json_object_end(text, object_start, function(candidate, value_start, value_end)
+    if candidate == key and found == nil then
+      found = text:sub(value_start, value_end)
     end
+  end)
+  if not object_end then
+    return nil
+  end
+  if skip_json_whitespace(text, object_end + 1) <= #text then
+    return nil
+  end
+  return found
+end
+
+function shared.json_string(text, key, fallback)
+  local value = shared.json_field(text, key)
+  if not value or value:sub(1, 1) ~= '"' then
+    return fallback
+  end
+  local value_end = json_string_end(value, 1)
+  if value_end ~= #value then
+    return fallback
+  end
+  return shared.unescape_json_string(value:sub(2, -2))
+end
+
+function shared.json_number(text, key, fallback)
+  local value = shared.json_field(text, key)
+  if not value or value == 'null' then
+    return fallback
+  end
+  local number = tonumber(value)
+  if not number or number ~= number or number == math.huge or number == -math.huge then
+    return fallback
+  end
+  return number
+end
+
+function shared.json_boolean(text, key, fallback)
+  local value = shared.json_field(text, key)
+  if value == 'true' then
+    return true
+  end
+  if value == 'false' then
+    return false
+  end
+  return fallback
+end
+
+local function json_array_values(text, key)
+  local array = shared.json_field(text, key)
+  if not array or array:sub(1, 1) ~= '[' then
+    return {}
   end
 
-  return table.concat(parts)
+  local values = {}
+  local array_end = json_array_end(array, 1, function(value_start, value_end)
+    table.insert(values, array:sub(value_start, value_end))
+  end)
+  if array_end ~= #array then
+    return {}
+  end
+  return values
+end
+
+function shared.json_array_objects(text, key)
+  local objects = {}
+  for _, value in ipairs(json_array_values(text, key)) do
+    if value:sub(1, 1) == '{' then
+      table.insert(objects, value)
+    end
+  end
+  return objects
+end
+
+function shared.json_array_strings(text, key)
+  local strings = {}
+  for _, value in ipairs(json_array_values(text, key)) do
+    if value:sub(1, 1) == '"' and json_string_end(value, 1) == #value then
+      table.insert(strings, shared.unescape_json_string(value:sub(2, -2)))
+    end
+  end
+  return strings
 end
 
 function shared.set_hex(cr, hex, alpha)
@@ -202,7 +467,17 @@ function shared.truncate_title(cr, title, max_width)
   local suffix = '...'
   local truncated = title
   while #truncated > 0 do
-    truncated = truncated:sub(1, -2)
+    -- Lua's string slicing is byte-based.  Remove one whole UTF-8 code point so
+    -- truncating emoji or non-ASCII names never hands Cairo invalid text.
+    local index = #truncated
+    while index > 1 do
+      local byte = truncated:byte(index)
+      if not byte or byte < 0x80 or byte >= 0xC0 then
+        break
+      end
+      index = index - 1
+    end
+    truncated = truncated:sub(1, index - 1)
     cairo_text_extents(cr, truncated .. suffix, extents)
     if extents.width <= max_width then
       return truncated .. suffix
@@ -297,7 +572,9 @@ function shared.git_panel_occupied_height(repo_count)
 end
 
 function shared.create_surface()
-  if not conky_window then
+  if not conky_window
+      or (tonumber(conky_window.width) or 0) <= 0
+      or (tonumber(conky_window.height) or 0) <= 0 then
     return nil, false
   end
 

@@ -2,6 +2,18 @@
 
 Copy `.env.example` to `.env` and fill in the overlays you use.
 
+Values already present in the process environment take precedence over `.env`,
+so one-off overrides such as
+`GIT_REFRESH_SECONDS=10 ./scripts/start_conky_overlays.sh` do not require
+editing the file.
+
+## Launcher lifecycle
+
+| Variable | Purpose |
+| --- | --- |
+| `CONKY_LOG_MAX_BYTES` | Rotate a `cache/conky-*.log` at live startup once it reaches this size (default `5242880`, or 5 MiB) |
+| `CONKY_LOG_ROTATIONS` | Number of older generations retained per rotated log (default `2`) |
+
 ## Linear overlay
 
 | Variable | Purpose |
@@ -9,9 +21,9 @@ Copy `.env.example` to `.env` and fill in the overlays you use.
 | `LINEAR_API_KEY` | Linear API key |
 | `LINEAR_OVERLAY_ENABLED` | Set to `0` to disable |
 | `LINEAR_TASK_STATES` | Issue states to include |
-| `LINEAR_TASK_LIMIT` | Max active issues shown |
-| `LINEAR_COMPETITION_TASK_LIMIT` | Max competition-project issues shown |
-| `LINEAR_BACKLOG_DUE_SOON_LIMIT` | Max Backlog issues due within 3 days shown |
+| `LINEAR_TASK_LIMIT` | Per-workflow-state query depth (default/effective max `25`) |
+| `LINEAR_COMPETITION_TASK_LIMIT` | Competition-project query depth (default/effective max `25`) |
+| `LINEAR_BACKLOG_DUE_SOON_LIMIT` | Backlog-due-soon query depth (default/effective max `25`) |
 | `LINEAR_DONE_LOOKBACK_HOURS` | How long completed cards stay visible |
 | `LINEAR_PRIMARY_MONITOR_INDEX` | Monitor index for primary placement |
 | `PRIMARY_WAIT_SECONDS` | Startup wait before placing on the primary monitor |
@@ -100,7 +112,7 @@ Pioneer env vars (`PIONEER_API_KEY`, `PIONEER_USAGE_LABEL`, `PIONEER_MONTHLY_CRE
 | `GITHUB_OVERLAY_ENABLED` | Set to `0` to disable |
 | `GITHUB_GAP_X` | Left offset in px; empty matches the rate limit panel's drawn frame |
 | `GITHUB_GAP_Y` | Bottom offset in px; empty sits the skyline on the rate limit panel |
-| `GITHUB_SKYLINE_HEIGHT` | Requested skyline window height (default `340`) |
+| `GITHUB_SKYLINE_HEIGHT` | Requested skyline window height (default `200`) |
 | `GITHUB_SKYLINE_MIN_HEIGHT` | Floor after the Linear clearance is taken out (default `180`) |
 | `GITHUB_LINEAR_CLEARANCE` | Gap kept between the Linear cards and the skyline (default `14`) |
 | `GITHUB_ROOF_CLEARANCE` | Gap above the rate limit panel's title chips (default `11`) |
@@ -204,8 +216,10 @@ See [Git status overlay](git.md) for layout, severity rules, and the rotating ti
 | Variable | Purpose |
 | --- | --- |
 | `SESSIONS_OVERLAY_ENABLED` | Set to `0` to disable |
-| `SESSIONS_GAP_X` | Left offset in px; empty meets the rate limit panel's left edge |
-| `SESSIONS_GAP_Y` | Bottom offset in px; empty shares the contribution skyline's baseline |
+| `SESSIONS_GAP_X` | Left offset in px (default `4`) |
+| `SESSIONS_GAP_Y` | Bottom offset in px (default `6`) |
 | `SESSIONS_REFRESH_SECONDS` | Fetch interval (default `20`) |
+| `SESSIONS_CODEVIEW_REPO_PATHS` | Optional colon/comma/newline-separated codeview repo roots pinned ahead of fleet discovery |
+| `SESSIONS_CODEVIEW_SCAN_ROOT` | Root for the shallow fallback codeview scan (default `$HOME`) |
 
 See [Sessions overlay](sessions.md) for the login-to-session join and what each element means.

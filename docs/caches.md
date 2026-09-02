@@ -37,6 +37,7 @@
 - `cache/billing-usage-render.tsv`: compact affine-map input consumed by the Lua renderer; it contains no credentials.
 - `cache/billing-history.json`: dated observations for every billing provider. Each successful collect upserts that day's pressure (the affine map's past trail). OpenRouter samples also keep total-usage / balance for the burn-rate fallback. Retained from the earlier of month-start and 30 days ago.
 - `cache/billing-aws-cache.json`: last successful AWS Cost Explorer and Budgets response; daily cache (TTL `BILLING_AWS_CACHE_TTL_SECONDS`, default `86400s`) to avoid Cost Explorer API query charges.
+- `cache/billing-azure-cache.json`: subscription-scoped retry timestamp for the Azure daily Cost Management throttle cooldown; Usage Details remains live while the cooldown is active.
 
 ## Logs
 
@@ -49,6 +50,14 @@
 - `cache/conky-billing.log`: billing provider fetches, launcher placement, fallback notices, and billing Conky output.
 - `cache/conky-git.log`: git status fetch, launcher, and git Conky output.
 - `cache/conky-sessions.log`: session scans, launcher placement, and sessions Conky output.
+
+On a live launcher start, any `cache/conky-*.log` at or above the configured
+size threshold is rotated before new writers start. An oversized log retains
+only a bounded, line-aligned tail, installed through a same-directory temporary
+file. Older numbered generations are shifted and only the configured count is
+retained. A `--generate-only` run appends launcher diagnostics but does not
+rotate logs or disturb their numbered generations. The threshold and retention
+settings are in [Configuration](configuration.md#launcher-lifecycle).
 
 ## Fetch intervals
 

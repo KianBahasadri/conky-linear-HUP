@@ -4,6 +4,27 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 ENV_PATH="$ROOT/.env"
+CACHE_DIR="$ROOT/cache"
+LIFECYCLE_LOCK_PATH="$CACHE_DIR/conky-lifecycle.lock"
+
+if (( $# > 1 )) || { (( $# == 1 )) && [[ "$1" != "--generate-only" ]]; }; then
+  printf 'usage: %s [--generate-only]\n' "$0" >&2
+  exit 2
+fi
+
+# Resolved from this script's absolute directory.
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/conky_lifecycle.sh"
+
+mkdir -p "$CACHE_DIR"
+if [[ "${CONKY_LIFECYCLE_LOCKED:-0}" != "1" ]]; then
+  if ! command -v flock >/dev/null 2>&1; then
+    printf 'flock is not installed (provided by util-linux)\n' >&2
+    exit 1
+  fi
+  exec flock --exclusive --close "$LIFECYCLE_LOCK_PATH" \
+    env CONKY_LIFECYCLE_LOCKED=1 "$SCRIPT_DIR/start_conky_overlays.sh" "$@"
+fi
 
 if [[ -f "$ENV_PATH" ]]; then
   while IFS= read -r env_line || [[ -n "$env_line" ]]; do
@@ -13,6 +34,9 @@ if [[ -f "$ENV_PATH" ]]; then
     env_key="${env_line%%=*}"
     env_value="${env_line#*=}"
     env_key="${env_key//[[:space:]]/}"
+    [[ "$env_key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
+    [[ -v "$env_key" ]] && continue
+
     env_value="${env_value#"${env_value%%[![:space:]]*}"}"
     env_value="${env_value%"${env_value##*[![:space:]]}"}"
 
@@ -22,7 +46,6 @@ if [[ -f "$ENV_PATH" ]]; then
       env_value="${env_value:1:${#env_value}-2}"
     fi
 
-    [[ "$env_key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
     export "$env_key=$env_value"
   done < "$ENV_PATH"
 fi
@@ -46,7 +69,6 @@ BILLING_CONFIG="$ROOT/conky/billing-overlay.conkyrc"
 GIT_CONFIG="$ROOT/conky/git-overlay.conkyrc"
 SESSIONS_CONFIG="$ROOT/conky/sessions-overlay.conkyrc"
 GENERATED_DIR="$ROOT/conky/generated"
-CACHE_DIR="$ROOT/cache"
 LINEAR_LOG_PATH="$CACHE_DIR/conky-linear.log"
 RATE_LIMIT_PANEL_LOG_PATH="$CACHE_DIR/conky-rate-limit-panel.log"
 MINECRAFT_LOG_PATH="$CACHE_DIR/conky-minecraft.log"
@@ -133,8 +155,12 @@ RATE_LIMIT_CHANGED_INTERVAL="${RATE_LIMIT_CHANGED_INTERVAL:-60}"
 RATE_LIMIT_UNCHANGED_INTERVAL="${RATE_LIMIT_UNCHANGED_INTERVAL:-300}"
 # Keep using the short interval for this many seconds after any detected change.
 RATE_LIMIT_RECENT_CHANGE_WINDOW="${RATE_LIMIT_RECENT_CHANGE_WINDOW:-600}"
+CONKY_LOG_MAX_BYTES="${CONKY_LOG_MAX_BYTES:-5242880}"
+CONKY_LOG_ROTATIONS="${CONKY_LOG_ROTATIONS:-2}"
 GENERATE_ONLY=0
 MONITOR_HAS_PRIMARY=0
+GENERATED_CONFIG_COUNT=0
+GENERATION_STAGE_DIR=""
 
 overlay_keys=(linear rate-limit-panel minecraft github weather resource-monitor billing git sessions)
 fetch_keys=(linear codex claude cursor gemini grok opencode commandcode minecraft github weather workouts billing git sessions)
@@ -183,6 +209,12 @@ declare -A overlay_enabled_var=(
   [git]="GIT_OVERLAY_ENABLED"
   [sessions]="SESSIONS_OVERLAY_ENABLED"
 )
+declare -A generated_config_expected=()
+declare -A generated_config_staged=()
+declare -a generated_config_targets=()
+declare -a queued_launch_keys=()
+declare -a queued_launch_configs=()
+declare -a queued_launch_notes=()
 
 declare -A fetch_label=(
   [linear]="Linear"
@@ -316,22 +348,51 @@ log_overlay() {
   log_to "${overlay_log_path[$key]}" "$*"
 }
 
+rotate_oversized_logs() {
+  local log_path
+
+  for log_path in "$CACHE_DIR"/conky-*.log; do
+    if rotate_log_file "$log_path" "$CONKY_LOG_MAX_BYTES" "$CONKY_LOG_ROTATIONS"; then
+      log_to "$log_path" "rotated oversized log to $log_path.1 (limit=${CONKY_LOG_MAX_BYTES}B retained=$CONKY_LOG_ROTATIONS)"
+    fi
+  done
+}
+
 stop_fetch_loop() {
   local fetch_key="$1"
   local pid_file="${fetch_pid_file[$fetch_key]}"
+  local script_path="${fetch_script[$fetch_key]}"
   local label="${fetch_label[$fetch_key]}"
   local log_key="${fetch_overlay_key[$fetch_key]}"
-
-  if [[ ! -f "$pid_file" ]]; then
-    return
-  fi
-
+  local pid_status
+  local pid_from_file
   local pid
-  pid="$(<"$pid_file")"
-  if [[ "$pid" =~ ^[0-9]+$ ]] && kill -0 "$pid" 2>/dev/null; then
-    kill -- -"$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true
+  local -a owned_pids=()
+
+  classify_fetch_loop_pid "$pid_file" "$script_path" "$ROOT"
+  pid_status="$FETCH_LOOP_PID_STATUS"
+  pid_from_file="$FETCH_LOOP_PID"
+  case "$pid_status" in
+    missing|owned) ;;
+    invalid)
+      log_overlay "$log_key" "removed invalid $label fetch-loop pid file: $pid_file"
+      ;;
+    dead)
+      log_overlay "$log_key" "removed stale $label fetch-loop pid file: pid=$pid_from_file"
+      ;;
+    foreign)
+      log_overlay "$log_key" "removed foreign $label fetch-loop pid file without signaling pid=$pid_from_file"
+      ;;
+  esac
+
+  mapfile -t owned_pids < <(matching_fetch_loop_pids "$script_path" "$ROOT")
+  for pid in "${owned_pids[@]}"; do
+    terminate_fetch_loop_pid "$pid" "$script_path" "$ROOT"
     log_overlay "$log_key" "stopped existing $label fetch loop pid=$pid"
-  fi
+    if [[ "$FETCH_LOOP_FORCED_KILL" -eq 1 ]]; then
+      log_overlay "$log_key" "force-killed unresponsive $label fetch loop pid=$pid"
+    fi
+  done
   rm -f "$pid_file"
 }
 
@@ -422,45 +483,145 @@ fi
 mkdir -p "$GENERATED_DIR"
 mkdir -p "$CACHE_DIR"
 
-if [[ ! "$LINEAR_PRIMARY_MONITOR_INDEX" =~ ^[0-9]+$ ]]; then
+cleanup_generation_stage() {
+  local stage_dir="${GENERATION_STAGE_DIR:-}"
+  local -a staged_files=()
+
+  [[ -n "$stage_dir" && "${stage_dir%/*}" == "$GENERATED_DIR" \
+    && "${stage_dir##*/}" == .generation.* && -d "$stage_dir" ]] || return 0
+  shopt -s nullglob
+  staged_files=("$stage_dir"/* "$stage_dir"/.[!.]* "$stage_dir"/..?*)
+  shopt -u nullglob
+  if (( ${#staged_files[@]} > 0 )); then
+    rm -f -- "${staged_files[@]}"
+  fi
+  rmdir -- "$stage_dir"
+  GENERATION_STAGE_DIR=""
+}
+
+GENERATION_STAGE_DIR="$(mktemp -d "$GENERATED_DIR/.generation.XXXXXX")"
+trap cleanup_generation_stage EXIT
+
+validate_positive_integer() {
+  local variable_name="$1"
+  local fallback="$2"
+  local log_key="$3"
+  local value="${!variable_name}"
+
+  if [[ "$value" =~ ^[1-9][0-9]*$ ]]; then
+    return
+  fi
+  log_overlay "$log_key" "invalid $variable_name=$value; using $fallback"
+  printf -v "$variable_name" '%s' "$fallback"
+}
+
+validate_nonnegative_integer() {
+  local variable_name="$1"
+  local fallback="$2"
+  local log_key="$3"
+  local value="${!variable_name}"
+
+  if [[ "$value" =~ ^(0|[1-9][0-9]*)$ ]]; then
+    return
+  fi
+  log_overlay "$log_key" "invalid $variable_name=$value; using $fallback"
+  printf -v "$variable_name" '%s' "$fallback"
+}
+
+validate_integer() {
+  local variable_name="$1"
+  local fallback="$2"
+  local log_key="$3"
+  local value="${!variable_name}"
+
+  if [[ "$value" =~ ^-?(0|[1-9][0-9]*)$ ]]; then
+    return
+  fi
+  log_overlay "$log_key" "invalid $variable_name=$value; using $fallback"
+  printf -v "$variable_name" '%s' "$fallback"
+}
+
+validate_optional_integer() {
+  local variable_name="$1"
+  local fallback="$2"
+  local log_key="$3"
+  local fallback_note="$4"
+  local value="${!variable_name}"
+
+  if [[ -z "$value" || "$value" =~ ^-?(0|[1-9][0-9]*)$ ]]; then
+    return
+  fi
+  log_overlay "$log_key" "invalid $variable_name=$value; using $fallback_note"
+  printf -v "$variable_name" '%s' "$fallback"
+}
+
+if [[ ! "$LINEAR_PRIMARY_MONITOR_INDEX" =~ ^(0|[1-9][0-9]*)$ ]]; then
   log_overlay linear "invalid LINEAR_PRIMARY_MONITOR_INDEX=$LINEAR_PRIMARY_MONITOR_INDEX; using 0"
   LINEAR_PRIMARY_MONITOR_INDEX=0
 fi
 
-if [[ ! "$PRIMARY_WAIT_SECONDS" =~ ^[0-9]+$ ]]; then
+if [[ ! "$PRIMARY_WAIT_SECONDS" =~ ^(0|[1-9][0-9]*)$ ]]; then
   log_overlay linear "invalid PRIMARY_WAIT_SECONDS=$PRIMARY_WAIT_SECONDS; using 20"
   PRIMARY_WAIT_SECONDS=20
 fi
 
-if [[ ! "$RATE_LIMIT_CHANGED_INTERVAL" =~ ^[1-9][0-9]*$ ]]; then
-  log_overlay rate-limit-panel "invalid RATE_LIMIT_CHANGED_INTERVAL=$RATE_LIMIT_CHANGED_INTERVAL; using 60"
-  RATE_LIMIT_CHANGED_INTERVAL=60
+validate_positive_integer RATE_LIMIT_CHANGED_INTERVAL 60 rate-limit-panel
+validate_positive_integer RATE_LIMIT_UNCHANGED_INTERVAL 300 rate-limit-panel
+validate_positive_integer RATE_LIMIT_RECENT_CHANGE_WINDOW 600 rate-limit-panel
+validate_positive_integer MINECRAFT_REFRESH_SECONDS 60 minecraft
+validate_positive_integer GITHUB_REFRESH_SECONDS 1800 github
+validate_positive_integer WEATHER_REFRESH_SECONDS 600 weather
+validate_positive_integer WORKOUTS_REFRESH_SECONDS 20 weather
+validate_positive_integer BILLING_REFRESH_SECONDS 900 billing
+validate_positive_integer GIT_REFRESH_SECONDS 30 git
+validate_positive_integer SESSIONS_REFRESH_SECONDS 20 sessions
+validate_positive_integer CONKY_LOG_MAX_BYTES 5242880 linear
+validate_positive_integer CONKY_LOG_ROTATIONS 2 linear
+validate_integer RATE_LIMIT_PANEL_GAP_Y 6 rate-limit-panel
+validate_positive_integer GITHUB_SKYLINE_HEIGHT 200 github
+validate_positive_integer GITHUB_SKYLINE_MIN_HEIGHT 180 github
+validate_nonnegative_integer GITHUB_LINEAR_CLEARANCE 14 github
+validate_nonnegative_integer GITHUB_ROOF_CLEARANCE 11 github
+validate_integer MINECRAFT_GAP_X 4 minecraft
+validate_integer MINECRAFT_GAP_Y 6 minecraft
+validate_optional_integer GITHUB_GAP_X "" github "automatic placement"
+validate_optional_integer GITHUB_GAP_Y "" github "automatic placement"
+validate_integer SESSIONS_GAP_X 4 sessions
+validate_integer SESSIONS_GAP_Y 6 sessions
+validate_integer WEATHER_GAP_X 6 weather
+validate_integer WEATHER_GAP_Y 6 weather
+validate_integer RESOURCE_MONITOR_GAP_X 0 resource-monitor
+validate_optional_integer RESOURCE_MONITOR_GAP_Y "" resource-monitor "the Linear gap"
+validate_integer GIT_GAP_X 1 git
+validate_optional_integer GIT_GAP_Y 1 git "1"
+if (( CONKY_LOG_ROTATIONS > 10 )); then
+  log_overlay linear "invalid CONKY_LOG_ROTATIONS=$CONKY_LOG_ROTATIONS; using 2"
+  CONKY_LOG_ROTATIONS=2
 fi
 
-if [[ ! "$RATE_LIMIT_UNCHANGED_INTERVAL" =~ ^[1-9][0-9]*$ ]]; then
-  log_overlay rate-limit-panel "invalid RATE_LIMIT_UNCHANGED_INTERVAL=$RATE_LIMIT_UNCHANGED_INTERVAL; using 300"
-  RATE_LIMIT_UNCHANGED_INTERVAL=300
-fi
+fetch_interval[minecraft]="$MINECRAFT_REFRESH_SECONDS"
+fetch_interval[codex]="$RATE_LIMIT_UNCHANGED_INTERVAL"
+fetch_interval[claude]="$RATE_LIMIT_UNCHANGED_INTERVAL"
+fetch_interval[cursor]="$RATE_LIMIT_UNCHANGED_INTERVAL"
+fetch_interval[gemini]="$RATE_LIMIT_UNCHANGED_INTERVAL"
+fetch_interval[grok]="$RATE_LIMIT_UNCHANGED_INTERVAL"
+fetch_interval[opencode]="$RATE_LIMIT_UNCHANGED_INTERVAL"
+fetch_interval[commandcode]="$RATE_LIMIT_UNCHANGED_INTERVAL"
+fetch_interval[github]="$GITHUB_REFRESH_SECONDS"
+fetch_interval[weather]="$WEATHER_REFRESH_SECONDS"
+fetch_interval[workouts]="$WORKOUTS_REFRESH_SECONDS"
+fetch_interval[billing]="$BILLING_REFRESH_SECONDS"
+fetch_interval[git]="$GIT_REFRESH_SECONDS"
+fetch_interval[sessions]="$SESSIONS_REFRESH_SECONDS"
 
-if [[ ! "$RATE_LIMIT_RECENT_CHANGE_WINDOW" =~ ^[1-9][0-9]*$ ]]; then
-  log_overlay rate-limit-panel "invalid RATE_LIMIT_RECENT_CHANGE_WINDOW=$RATE_LIMIT_RECENT_CHANGE_WINDOW; using 600"
-  RATE_LIMIT_RECENT_CHANGE_WINDOW=600
-fi
-
-if [[ -n "$BILLING_GAP_X" && ! "$BILLING_GAP_X" =~ ^-?[0-9]+$ ]]; then
+if [[ -n "$BILLING_GAP_X" && ! "$BILLING_GAP_X" =~ ^-?(0|[1-9][0-9]*)$ ]]; then
   log_overlay billing "invalid BILLING_GAP_X=$BILLING_GAP_X; following resource monitor"
   BILLING_GAP_X=""
 fi
 
-if [[ -n "$BILLING_GAP_Y" && ! "$BILLING_GAP_Y" =~ ^-?[0-9]+$ ]]; then
+if [[ -n "$BILLING_GAP_Y" && ! "$BILLING_GAP_Y" =~ ^-?(0|[1-9][0-9]*)$ ]]; then
   log_overlay billing "invalid BILLING_GAP_Y=$BILLING_GAP_Y; using automatic placement"
   BILLING_GAP_Y=""
-fi
-
-if [[ ! "$BILLING_REFRESH_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
-  log_overlay billing "invalid BILLING_REFRESH_SECONDS=$BILLING_REFRESH_SECONDS; using 900"
-  BILLING_REFRESH_SECONDS=900
-  fetch_interval[billing]="$BILLING_REFRESH_SECONDS"
 fi
 
 log_overlay linear "starting; root=$ROOT generate_only=$GENERATE_ONLY"
@@ -470,35 +631,6 @@ for key in "${overlay_keys[@]}"; do
     log_overlay "$key" "${overlay_disabled_name[$key]} overlay disabled by $enabled_var=${!enabled_var}"
   fi
 done
-
-for key in "${overlay_keys[@]}"; do
-  pkill -f "$GENERATED_DIR/$key-overlay-" 2>/dev/null || true
-  rm -f "$GENERATED_DIR/$key-overlay-"*.conkyrc
-done
-pkill -f "$GENERATED_DIR/codex-overlay-" 2>/dev/null || true
-rm -f "$GENERATED_DIR/codex-overlay-"*.conkyrc
-for key in "${overlay_keys[@]}"; do
-  pkill -f "${overlay_config[$key]}" 2>/dev/null || true
-done
-pkill -f "$ROOT/conky/codex-overlay.conkyrc" 2>/dev/null || true
-for fetch_key in "${fetch_keys[@]}"; do
-  stop_fetch_loop "$fetch_key"
-done
-pkill -f "$ROOT/scripts/fetch_minecraft_status.py" 2>/dev/null || true
-pkill -f "$ROOT/scripts/fetch_github_contributions.py" 2>/dev/null || true
-pkill -f "$ROOT/scripts/fetch_weather.py" 2>/dev/null || true
-pkill -f "$ROOT/scripts/fetch_workouts.py" 2>/dev/null || true
-pkill -f "$ROOT/scripts/fetch_billing_usage.py" 2>/dev/null || true
-pkill -f "$ROOT/scripts/fetch_git_status.py" 2>/dev/null || true
-log_overlay linear "stopped existing matching Conky processes"
-
-if [[ "$GENERATE_ONLY" -eq 0 ]]; then
-  for fetch_key in "${fetch_keys[@]}"; do
-    if overlay_enabled "${fetch_overlay_key[$fetch_key]}"; then
-      start_fetch_loop "$fetch_key"
-    fi
-  done
-fi
 
 linear_overlay_height() {
   run_python "$ROOT/scripts/fetch_linear_tasks.py" --print-overlay-height
@@ -529,56 +661,96 @@ generate_config() {
   local minimum_height="${6:-}"
   local minimum_width="${7:-}"
   local lua_entrypoint="$ROOT/conky/overlay-entrypoint.lua"
+  local staged_config
+  local temporary_config
 
   if [[ "$source_config" == "$BILLING_CONFIG" ]]; then
     lua_entrypoint="$ROOT/conky/billing-entrypoint.lua"
   fi
 
-  while IFS= read -r config_line; do
-    case "$config_line" in
-      "  alignment = "*)
-        printf "%s\n" "$config_line"
-        printf "  xinerama_head = %s,\n" "$monitor_index"
-        ;;
-      "  gap_x = "*)
-        printf "  gap_x = %s,\n" "$monitor_gap_x"
-        ;;
-      "  gap_y = "*)
-        printf "  gap_y = %s,\n" "$monitor_gap_y"
-        ;;
-      "  minimum_height = "*)
-        if [[ -n "$minimum_height" ]]; then
-          printf "  minimum_height = %s,\n" "$minimum_height"
-        else
+  staged_config="$GENERATION_STAGE_DIR/${output_config##*/}"
+  temporary_config="$(mktemp "${staged_config}.tmp.XXXXXX")"
+  if ! {
+    while IFS= read -r config_line; do
+      case "$config_line" in
+        "  alignment = "*)
           printf "%s\n" "$config_line"
-        fi
-        ;;
-      "  minimum_width = "*|"  maximum_width = "*)
-        if [[ -n "$minimum_width" ]]; then
-          printf "%s = %s,\n" "${config_line%% =*}" "$minimum_width"
-        else
+          printf "  xinerama_head = %s,\n" "$monitor_index"
+          ;;
+        "  gap_x = "*)
+          printf "  gap_x = %s,\n" "$monitor_gap_x"
+          ;;
+        "  gap_y = "*)
+          printf "  gap_y = %s,\n" "$monitor_gap_y"
+          ;;
+        "  minimum_height = "*)
+          if [[ -n "$minimum_height" ]]; then
+            printf "  minimum_height = %s,\n" "$minimum_height"
+          else
+            printf "%s\n" "$config_line"
+          fi
+          ;;
+        "  minimum_width = "*|"  maximum_width = "*)
+          if [[ -n "$minimum_width" ]]; then
+            printf "%s = %s,\n" "${config_line%% =*}" "$minimum_width"
+          else
+            printf "%s\n" "$config_line"
+          fi
+          ;;
+        "  lua_load = "*)
+          printf "  lua_load = '%s',\n" "$lua_entrypoint"
+          ;;
+        *"fetch_linear_tasks.py"*) ;;
+        *"fetch_codex_usage.py"*) ;;
+        *"fetch_claude_usage.py"*) ;;
+        *"fetch_cursor_usage.py"*) ;;
+        *"fetch_gemini_usage.py"*) ;;
+        *"fetch_grok_usage.py"*) ;;
+        *"fetch_opencode_usage.py"*) ;;
+        *"fetch_commandcode_usage.py"*) ;;
+        *"fetch_weather.py"*) ;;
+        *"fetch_billing_usage.py"*) ;;
+        *"fetch_git_status.py"*) ;;
+        *)
           printf "%s\n" "$config_line"
-        fi
-        ;;
-      "  lua_load = "*)
-        printf "  lua_load = '%s',\n" "$lua_entrypoint"
-        ;;
-      *"fetch_linear_tasks.py"*) ;;
-      *"fetch_codex_usage.py"*) ;;
-      *"fetch_claude_usage.py"*) ;;
-      *"fetch_cursor_usage.py"*) ;;
-      *"fetch_gemini_usage.py"*) ;;
-      *"fetch_grok_usage.py"*) ;;
-      *"fetch_opencode_usage.py"*) ;;
-      *"fetch_commandcode_usage.py"*) ;;
-      *"fetch_weather.py"*) ;;
-      *"fetch_billing_usage.py"*) ;;
-      *"fetch_git_status.py"*) ;;
-      *)
-        printf "%s\n" "$config_line"
-        ;;
-    esac
-  done < "$source_config" > "$output_config"
+          ;;
+      esac
+    done < "$source_config" > "$temporary_config"
+  }; then
+    rm -f -- "$temporary_config"
+    return 1
+  fi
+  mv -f -- "$temporary_config" "$staged_config"
+  generated_config_expected["$output_config"]=1
+  generated_config_staged["$output_config"]="$staged_config"
+  generated_config_targets+=("$output_config")
+}
+
+install_generated_configs() {
+  local output_config
+
+  for output_config in "${generated_config_targets[@]}"; do
+    mv -f -- "${generated_config_staged[$output_config]}" "$output_config"
+  done
+}
+
+prune_stale_generated_configs() {
+  local key
+  local config_path
+  local -a existing_configs=()
+
+  shopt -s nullglob
+  for key in "${overlay_keys[@]}"; do
+    existing_configs+=("$GENERATED_DIR/$key-overlay-"*.conkyrc)
+  done
+  existing_configs+=("$GENERATED_DIR/codex-overlay-"*.conkyrc)
+  shopt -u nullglob
+
+  for config_path in "${existing_configs[@]}"; do
+    if [[ -z "${generated_config_expected[$config_path]+present}" ]]; then
+      rm -f -- "$config_path"
+    fi
+  done
 }
 
 read_monitor_lines() {
@@ -622,6 +794,41 @@ read_monitor_lines() {
   done
 }
 
+read_cached_monitor_lines() {
+  local -n cached_lines_ref="$1"
+  local line
+  local cache_path="$CACHE_DIR/monitor-layout.json"
+
+  cached_lines_ref=()
+  [[ -f "$cache_path" ]] || return
+  while IFS= read -r line; do
+    [[ -n "$line" ]] && cached_lines_ref+=("$line")
+  done < <(
+    run_python - "$cache_path" <<'PY' 2>> "$LINEAR_LOG_PATH" || true
+import json
+import sys
+from pathlib import Path
+
+try:
+    monitors = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+except (OSError, ValueError):
+    raise SystemExit(0)
+if not isinstance(monitors, list):
+    raise SystemExit(0)
+for position, monitor in enumerate(monitors):
+    if not isinstance(monitor, dict):
+        continue
+    values = [monitor.get(key) for key in ("width", "height", "x", "y")]
+    if any(isinstance(value, bool) or not isinstance(value, int) for value in values):
+        continue
+    width, height, x, y = values
+    if width <= 0 or height <= 0:
+        continue
+    print(f"{position}: +cached-{position} {width}/1x{height}/1{x:+d}{y:+d} cached-{position}")
+PY
+  )
+}
+
 overlay_gap_x() {
   local key="$1"
   local monitor_gap_x="$2"
@@ -655,16 +862,6 @@ overlay_gap_x() {
     git) printf "%s\n" "$GIT_GAP_X" ;;
   esac
 }
-
-if [[ ! "$GITHUB_SKYLINE_HEIGHT" =~ ^[1-9][0-9]*$ ]]; then
-  log_overlay github "invalid GITHUB_SKYLINE_HEIGHT=$GITHUB_SKYLINE_HEIGHT; using 200"
-  GITHUB_SKYLINE_HEIGHT=200
-fi
-
-if [[ ! "$GITHUB_ROOF_CLEARANCE" =~ ^[0-9]+$ ]]; then
-  log_overlay github "invalid GITHUB_ROOF_CLEARANCE=$GITHUB_ROOF_CLEARANCE; using 11"
-  GITHUB_ROOF_CLEARANCE=11
-fi
 
 # The rate limit panel's drawn frame, in screen space. It is narrower than its
 # 1548px window and sits a fixed inset above the window's bottom edge, so the
@@ -875,57 +1072,37 @@ log_generated_overlay() {
   esac
 }
 
-launch_overlay() {
+queue_overlay_launch() {
   local key="$1"
   local monitor_index="$2"
-  local width="$3"
-  local monitor_gap_x="$4"
-  local linear_gap_y="$5"
-  local config_path="$6"
+  local config_path="$3"
 
-  setsid conky -c "$config_path" >> "${overlay_log_path[$key]}" 2>&1 < /dev/null &
-
-  case "$key" in
-    linear)
-      log_overlay linear "launched monitor_index=$monitor_index width=$width gap_x=$monitor_gap_x gap_y=$linear_gap_y config=$config_path pid=$!"
-      ;;
-    rate-limit-panel)
-      log_overlay rate-limit-panel "launched monitor_index=$monitor_index width=$width gap_x=$monitor_gap_x config=$config_path pid=$!"
-      ;;
-    minecraft)
-      log_overlay minecraft "launched monitor_index=$monitor_index width=$width gap_x=$MINECRAFT_GAP_X gap_y=$MINECRAFT_GAP_Y config=$config_path pid=$!"
-      ;;
-    github)
-      log_overlay github "launched monitor_index=$monitor_index width=$RATE_LIMIT_FRAME_WIDTH gap_x=$(overlay_gap_x github "$monitor_gap_x") $(github_placement_note) config=$config_path pid=$!"
-      ;;
-    weather)
-      log_overlay weather "launched monitor_index=$monitor_index width=$width gap_x=$WEATHER_GAP_X gap_y=$WEATHER_GAP_Y config=$config_path pid=$!"
-      ;;
-    resource-monitor)
-      log_overlay resource-monitor "launched monitor_index=$monitor_index width=$width gap_x=$RESOURCE_MONITOR_GAP_X gap_y=$(overlay_gap_y resource-monitor "$linear_gap_y") config=$config_path pid=$!"
-      ;;
-    billing)
-      log_overlay billing "launched monitor_index=$monitor_index width=$width gap_x=$(overlay_gap_x billing "$monitor_gap_x") $(billing_placement_note) config=$config_path pid=$!"
-      ;;
-    git)
-      log_overlay git "launched monitor_index=$monitor_index width=$width gap_x=$GIT_GAP_X gap_y=$(overlay_gap_y git "$linear_gap_y") config=$config_path pid=$!"
-      ;;
-    sessions)
-      log_overlay sessions "launched monitor_index=$monitor_index width=$SESSIONS_PANEL_WIDTH $(sessions_placement_note) config=$config_path pid=$!"
-      ;;
-  esac
+  queued_launch_keys+=("$key")
+  queued_launch_configs+=("$config_path")
+  queued_launch_notes+=("monitor_index=$monitor_index config=$config_path")
 }
 
-launch_fallback_overlay() {
-  local key="$1"
-  local config_path="${overlay_config[$key]}"
+launch_queued_overlays() {
+  local index
+  local key
+  local config_path
 
-  setsid conky -c "$config_path" >> "${overlay_log_path[$key]}" 2>&1 < /dev/null &
-  log_overlay "$key" "launched fallback config=$config_path pid=$!"
+  for index in "${!queued_launch_keys[@]}"; do
+    key="${queued_launch_keys[$index]}"
+    config_path="${queued_launch_configs[$index]}"
+    setsid conky -c "$config_path" >> "${overlay_log_path[$key]}" 2>&1 < /dev/null &
+    log_overlay "$key" "launched ${queued_launch_notes[$index]} pid=$!"
+  done
 }
 
 monitor_lines=()
 read_monitor_lines monitor_lines
+if [[ "$GENERATE_ONLY" -eq 1 && "${#monitor_lines[@]}" -eq 0 ]]; then
+  read_cached_monitor_lines monitor_lines
+  if [[ "${#monitor_lines[@]}" -gt 0 ]]; then
+    log_overlay linear "xrandr unavailable; generating from cached monitor layout"
+  fi
+fi
 
 LINEAR_MINIMUM_HEIGHT="$(linear_overlay_height 2>>"$LINEAR_LOG_PATH" || true)"
 if [[ ! "$LINEAR_MINIMUM_HEIGHT" =~ ^[0-9]+$ ]]; then
@@ -953,19 +1130,19 @@ if [[ ! "$RATE_LIMIT_FRAME_WIDTH" =~ ^[0-9]+$ ]]; then
 fi
 log_overlay github "rate limit frame ${RATE_LIMIT_FRAME_WIDTH}x${RATE_LIMIT_FRAME_HEIGHT} (skyline is sized and placed against it)"
 
-SESSIONS_MINIMUM_HEIGHT=130
+SESSIONS_MINIMUM_HEIGHT=790
 if overlay_enabled sessions; then
   SESSIONS_MINIMUM_HEIGHT="$(sessions_overlay_height 2>>"$SESSIONS_LOG_PATH" || true)"
   if [[ ! "$SESSIONS_MINIMUM_HEIGHT" =~ ^[0-9]+$ ]]; then
-    log_overlay sessions "could not compute sessions overlay height; using 130"
-    SESSIONS_MINIMUM_HEIGHT=130
+    log_overlay sessions "could not compute sessions overlay height; using 790"
+    SESSIONS_MINIMUM_HEIGHT=790
   fi
   log_overlay sessions "sessions overlay minimum_height=$SESSIONS_MINIMUM_HEIGHT (from current devices and sessions)"
 fi
 
 index=0
 for line in "${monitor_lines[@]}"; do
-  if [[ ! "$line" =~ ([0-9]+)\/[0-9]+x([0-9]+)\/[0-9]+\+(-?[0-9]+)\+(-?[0-9]+) ]]; then
+  if [[ ! "$line" =~ ([0-9]+)\/[0-9]+x([0-9]+)\/[0-9]+([+-][0-9]+)([+-][0-9]+) ]]; then
     continue
   fi
 
@@ -996,16 +1173,16 @@ for line in "${monitor_lines[@]}"; do
         extra_height="$SESSIONS_MINIMUM_HEIGHT"
       fi
       generate_config "${overlay_config[$key]}" "$config_path" "$index" "$(overlay_gap_x "$key" "$monitor_gap_x")" "$(overlay_gap_y "$key" "$linear_gap_y")" "$extra_height" "$extra_width"
+      GENERATED_CONFIG_COUNT=$((GENERATED_CONFIG_COUNT + 1))
     fi
   done
 
   for key in "${overlay_keys[@]}"; do
     if overlay_enabled "$key"; then
       config_path="$GENERATED_DIR/$key-overlay-$index.conkyrc"
+      log_generated_overlay "$key" "$index" "$width" "$monitor_gap_x" "$linear_gap_y" "$config_path"
       if [[ "$GENERATE_ONLY" -eq 0 ]]; then
-        launch_overlay "$key" "$index" "$width" "$monitor_gap_x" "$linear_gap_y" "$config_path"
-      else
-        log_generated_overlay "$key" "$index" "$width" "$monitor_gap_x" "$linear_gap_y" "$config_path"
+        queue_overlay_launch "$key" "$index" "$config_path"
       fi
     fi
   done
@@ -1014,30 +1191,72 @@ for line in "${monitor_lines[@]}"; do
 done
 
 if [[ "$index" -eq 0 ]]; then
-  log_overlay linear "no monitors detected from xrandr; using base config"
-  if [[ "$GENERATE_ONLY" -eq 0 ]]; then
-    for key in "${overlay_keys[@]}"; do
-      if overlay_enabled "$key"; then
-        if [[ "$key" == "linear" ]]; then
-          config_path="$GENERATED_DIR/linear-overlay-fallback.conkyrc"
-          generate_config "${overlay_config[$key]}" "$config_path" 0 350 "$LINEAR_PRIMARY_GAP_Y" "$LINEAR_MINIMUM_HEIGHT"
-          setsid conky -c "$config_path" >> "${overlay_log_path[$key]}" 2>&1 < /dev/null &
-          log_overlay linear "launched fallback config=$config_path height=$LINEAR_MINIMUM_HEIGHT pid=$!"
-        elif [[ "$key" == "rate-limit-panel" ]]; then
-          config_path="$GENERATED_DIR/rate-limit-panel-overlay-fallback.conkyrc"
-          generate_config "${overlay_config[$key]}" "$config_path" 0 350 "$RATE_LIMIT_PANEL_GAP_Y" "$RATE_LIMIT_PANEL_MINIMUM_HEIGHT"
-          setsid conky -c "$config_path" >> "${overlay_log_path[$key]}" 2>&1 < /dev/null &
-          log_overlay rate-limit-panel "launched fallback config=$config_path height=$RATE_LIMIT_PANEL_MINIMUM_HEIGHT pid=$!"
-        else
-          launch_fallback_overlay "$key"
-        fi
-      fi
-    done
-  fi
+  log_overlay linear "no monitors detected from xrandr; generating one fallback monitor"
+  width=1920
+  monitor_height=1080
+  monitor_gap_x=350
+  linear_gap_y="$LINEAR_PRIMARY_GAP_Y"
+  rate_limit_frame_for_monitor "$monitor_height" "$monitor_gap_x" "$linear_gap_y"
+  billing_placement_for_monitor "$monitor_height" "$linear_gap_y"
+
+  for key in "${overlay_keys[@]}"; do
+    if ! overlay_enabled "$key"; then
+      continue
+    fi
+    config_path="$GENERATED_DIR/$key-overlay-fallback.conkyrc"
+    extra_height=""
+    extra_width=""
+    case "$key" in
+      linear) extra_height="$LINEAR_MINIMUM_HEIGHT" ;;
+      rate-limit-panel) extra_height="$RATE_LIMIT_PANEL_MINIMUM_HEIGHT" ;;
+      github)
+        extra_height="$GITHUB_RESOLVED_HEIGHT"
+        extra_width="$RATE_LIMIT_FRAME_WIDTH"
+        ;;
+      sessions) extra_height="$SESSIONS_MINIMUM_HEIGHT" ;;
+    esac
+    generate_config "${overlay_config[$key]}" "$config_path" 0 \
+      "$(overlay_gap_x "$key" "$monitor_gap_x")" \
+      "$(overlay_gap_y "$key" "$linear_gap_y")" \
+      "$extra_height" "$extra_width"
+    GENERATED_CONFIG_COUNT=$((GENERATED_CONFIG_COUNT + 1))
+    log_generated_overlay "$key" 0 "$width" "$monitor_gap_x" "$linear_gap_y" "$config_path"
+    if [[ "$GENERATE_ONLY" -eq 0 ]]; then
+      queue_overlay_launch "$key" 0 "$config_path"
+    fi
+  done
+  index=1
 fi
+
+install_generated_configs
+prune_stale_generated_configs
+cleanup_generation_stage
+trap - EXIT
 
 if [[ "$GENERATE_ONLY" -eq 1 ]]; then
-  printf "Generated %s overlay config(s) in %s\n" "$index" "$GENERATED_DIR"
+  printf "Generated %s overlay config(s) for %s monitor(s) in %s\n" \
+    "$GENERATED_CONFIG_COUNT" "$index" "$GENERATED_DIR"
+else
+  for key in "${overlay_keys[@]}"; do
+    terminate_matching_conky_processes "$GENERATED_DIR/$key-overlay-" prefix
+  done
+  terminate_matching_conky_processes "$GENERATED_DIR/codex-overlay-" prefix
+  for key in "${overlay_keys[@]}"; do
+    terminate_matching_conky_processes "${overlay_config[$key]}" exact
+  done
+  terminate_matching_conky_processes "$ROOT/conky/codex-overlay.conkyrc" exact
+  for fetch_key in "${fetch_keys[@]}"; do
+    stop_fetch_loop "$fetch_key"
+  done
+  log_overlay linear "stopped existing matching Conky processes"
+  rotate_oversized_logs
+
+  for fetch_key in "${fetch_keys[@]}"; do
+    if overlay_enabled "${fetch_overlay_key[$fetch_key]}"; then
+      start_fetch_loop "$fetch_key"
+    fi
+  done
+  launch_queued_overlays
 fi
 
-log_overlay linear "finished; generated_configs=$index"
+log_overlay linear "finished; generated_configs=$GENERATED_CONFIG_COUNT monitors=$index"

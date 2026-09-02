@@ -1,6 +1,8 @@
 import json
 from datetime import datetime, timezone
 
+import pytest
+
 import fetch_commandcode_usage as commandcode
 
 
@@ -213,3 +215,51 @@ def test_fetch_account_uses_stale_cache_after_auth_failure(monkeypatch, tmp_path
     assert account["staleCache"] is True
     assert "expired key" in account["error"]
     assert account["windows"][0]["usedPercent"] == 4.0
+
+
+def test_fetch_account_uses_stale_cache_after_empty_usage_payloads(
+    monkeypatch, tmp_path
+):
+    auth_path = tmp_path / "auth.json"
+    write_auth(auth_path)
+    monkeypatch.setattr(commandcode, "CACHE_DIR", tmp_path)
+    commandcode.write_account_cache(
+        {
+            "ok": True,
+            "label": "cmd",
+            "windows": [
+                {"label": "monthly", "usedPercent": 6.0, "remainingPercent": 94.0}
+            ],
+        }
+    )
+
+    def fake_request(_auth, endpoint, query=None):
+        if endpoint == "/alpha/whoami":
+            return 200, whoami_payload()
+        return 200, {}
+
+    monkeypatch.setattr(commandcode, "commandcode_request", fake_request)
+
+    account = commandcode.fetch_account("cmd", auth_path, True)
+
+    assert account["staleCache"] is True
+    assert account["windows"][0]["usedPercent"] == 6.0
+    assert "no usage data" in account["error"]
+
+
+def test_normalize_usage_rejects_null_monthly_values():
+    with pytest.raises(RuntimeError, match="no usage data"):
+        commandcode.normalize_usage(
+            {"label": "cmd"},
+            whoami_payload(),
+            {
+                "credits": {
+                    "monthlyCredits": None,
+                    "purchasedCredits": None,
+                    "freeCredits": None,
+                }
+            },
+            {"data": {}},
+            {"totalCost": None, "totalMonthlyCredits": None},
+            True,
+        )

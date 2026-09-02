@@ -54,15 +54,16 @@ return function(shared, repo_root)
 
   local function parse_entries()
     local content = shared.read_file(github_path)
-    if not content or content:match('"ok"%s*:%s*true') == nil then
+    if not content or not shared.json_boolean(content, 'ok', false) then
       return {}
     end
 
     local entries = {}
-    for object in content:gmatch('{%s-"date".-}') do
-      local year, month, day = object:match('"date"%s*:%s*"(%d+)%-(%d+)%-(%d+)"')
-      local level = tonumber(object:match('"level"%s*:%s*(%d+)')) or 0
-      local count = tonumber(object:match('"count"%s*:%s*(%d+)'))
+    for _, object in ipairs(shared.json_array_objects(content, 'contributions')) do
+      local date = shared.json_string(object, 'date', '')
+      local year, month, day = date:match('^(%d+)%-(%d+)%-(%d+)$')
+      local level = shared.json_number(object, 'level', 0)
+      local count = shared.json_number(object, 'count', nil)
       if not count then
         count = level == 0 and 0 or level * 2
       end

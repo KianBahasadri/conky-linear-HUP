@@ -15,6 +15,7 @@ no compositor, and no running Conky are required.
 
 import argparse
 import json
+import math
 import os
 import re
 import shutil
@@ -55,6 +56,7 @@ OVERLAY_Z_ORDER = [
     "resource-monitor",
     "billing",
     "git",
+    "sessions",
 ]
 
 CONFIG_NAME_RE = re.compile(r"^(?P<key>.+)-overlay-(?P<head>\d+|fallback)\.conkyrc$")
@@ -63,9 +65,9 @@ LUA_PARSE_RE = re.compile(r"\$\{lua_parse\s+([A-Za-z0-9_]+)\s*\}")
 MONITOR_LINE_RE = re.compile(
     r"^\s*(?P<index>\d+):\s*(?P<name>\S+)\s+"
     r"(?P<width>\d+)/\d+x(?P<height>\d+)/\d+"
-    r"\+(?P<x>-?\d+)\+(?P<y>-?\d+)"
+    r"(?P<x>[+-]\d+)(?P<y>[+-]\d+)"
 )
-MONITOR_SPEC_RE = re.compile(r"^(\d+)x(\d+)\+(-?\d+)\+(-?\d+)$")
+MONITOR_SPEC_RE = re.compile(r"^(\d+)x(\d+)([+-]\d+)([+-]\d+)$")
 
 
 class RenderError(Exception):
@@ -164,7 +166,7 @@ def run_lua(lua, cpath, mode, spec_text, out_png=None):
             env={**os.environ, "CONKY_LUA_CPATH": cpath},
         )
     finally:
-        os.unlink(spec_path)
+        Path(spec_path).unlink(missing_ok=True)
 
 
 # --- Conky config parsing --------------------------------------------------
@@ -273,11 +275,79 @@ def parse_monitor_spec(spec):
                 f"bad --monitors entry {part.strip()!r}; expected WxH+X+Y"
             )
         width, height, x, y = (int(value) for value in match.groups())
+        if width <= 0 or height <= 0:
+            raise RenderError(
+                f"bad --monitors entry {part.strip()!r}; width and height must be positive"
+            )
         monitors.append(
             {"index": index, "name": f"head-{index}", "x": x, "y": y,
              "width": width, "height": height}
         )
     return monitors
+
+
+def validate_monitors(monitors, source):
+    """Validate an external monitor-layout value before geometry uses it."""
+    if not isinstance(monitors, list) or not monitors:
+        raise RenderError(f"{source} monitor layout is not a non-empty list")
+
+    required = ("index", "name", "x", "y", "width", "height")
+    indexes = set()
+    validated = []
+    for position, monitor in enumerate(monitors):
+        if not isinstance(monitor, dict):
+            raise RenderError(f"{source} monitor {position} is not an object")
+        missing = [field for field in required if field not in monitor]
+        if missing:
+            raise RenderError(
+                f"{source} monitor {position} is missing {', '.join(missing)}"
+            )
+
+        numeric_fields = ("index", "x", "y", "width", "height")
+        if any(
+            isinstance(monitor[field], bool)
+            or not isinstance(monitor[field], int)
+            for field in numeric_fields
+        ):
+            raise RenderError(f"{source} monitor {position} has a non-integer geometry")
+        if monitor["index"] < 0:
+            raise RenderError(f"{source} monitor {position} has a negative index")
+        if monitor["index"] in indexes:
+            raise RenderError(
+                f"{source} monitor layout repeats index {monitor['index']}"
+            )
+        if monitor["width"] <= 0 or monitor["height"] <= 0:
+            raise RenderError(
+                f"{source} monitor {position} has a non-positive width or height"
+            )
+        if not isinstance(monitor["name"], str) or not monitor["name"]:
+            raise RenderError(f"{source} monitor {position} has no name")
+
+        indexes.add(monitor["index"])
+        validated.append({field: monitor[field] for field in required})
+
+    return validated
+
+
+def write_monitor_cache(monitors):
+    """Atomically save the last live layout without risking a truncated cache."""
+    MONITOR_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        "w",
+        encoding="utf-8",
+        dir=MONITOR_CACHE_PATH.parent,
+        prefix=f".{MONITOR_CACHE_PATH.name}.",
+        suffix=".tmp",
+        delete=False,
+    ) as cache_file:
+        json.dump(monitors, cache_file, indent=2)
+        cache_file.write("\n")
+        temporary_path = Path(cache_file.name)
+
+    try:
+        os.replace(temporary_path, MONITOR_CACHE_PATH)
+    finally:
+        temporary_path.unlink(missing_ok=True)
 
 
 def monitors_from_xrandr():
@@ -316,24 +386,31 @@ def detect_monitors(spec=None):
     The cache is what makes a headless run possible: an agent on a machine with
     no X server still gets the real desktop dimensions.
     """
-    if spec:
-        return parse_monitor_spec(spec), "--monitors"
+    if spec is not None:
+        return validate_monitors(parse_monitor_spec(spec), "--monitors"), "--monitors"
 
     monitors = monitors_from_xrandr()
     if monitors:
-        CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        MONITOR_CACHE_PATH.write_text(
-            json.dumps(monitors, indent=2) + "\n", encoding="utf-8"
-        )
+        monitors = validate_monitors(monitors, "xrandr")
+        try:
+            write_monitor_cache(monitors)
+        except OSError as error:
+            print(
+                f"render_desktop: could not update {MONITOR_CACHE_PATH}: {error}",
+                file=sys.stderr,
+            )
         return monitors, "xrandr"
 
     if MONITOR_CACHE_PATH.is_file():
         try:
             cached = json.loads(MONITOR_CACHE_PATH.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            cached = None
-        if cached:
-            return cached, f"cache ({MONITOR_CACHE_PATH.name})"
+            cached = validate_monitors(cached, "cached")
+        except (OSError, ValueError, RenderError) as error:
+            raise RenderError(
+                f"no live monitor layout and cached layout "
+                f"{MONITOR_CACHE_PATH} is unusable: {error}"
+            ) from error
+        return cached, f"cache ({MONITOR_CACHE_PATH.name})"
 
     raise RenderError(
         "no monitor layout available: xrandr returned nothing and "
@@ -461,6 +538,11 @@ def desktop_bounds(monitors):
     return left, top, right - left, bottom - top
 
 
+def geometry_text(width, height, x, y):
+    """Format dimensions and signed offsets in standard X geometry form."""
+    return f"{width}x{height}{x:+d}{y:+d}"
+
+
 def parse_background(value):
     text = value.lstrip("#")
     if len(text) == 6:
@@ -468,6 +550,53 @@ def parse_background(value):
     if len(text) != 8 or not re.fullmatch(r"[0-9a-fA-F]{8}", text):
         raise RenderError(f"bad --background {value!r}; expected RRGGBB or RRGGBBAA")
     return [int(text[i:i + 2], 16) / 255 for i in (0, 2, 4, 6)]
+
+
+def complete_png(path):
+    """Whether Cairo appears to have finished writing a PNG at *path*."""
+    try:
+        with Path(path).open("rb") as png_file:
+            if png_file.read(8) != b"\x89PNG\r\n\x1a\n":
+                return False
+            png_file.seek(-12, os.SEEK_END)
+            return png_file.read() == b"\x00\x00\x00\x00IEND\xaeB`\x82"
+    except (OSError, ValueError):
+        return False
+
+
+def render_to_png(lua, cpath, spec_text, output_path):
+    """Render through a staged file, preserving the last good output on failure."""
+    output_path = Path(output_path)
+    if output_path.is_symlink():
+        try:
+            output_path = output_path.resolve(strict=True)
+        except (OSError, RuntimeError) as error:
+            raise RenderError(f"output symlink is unusable: {error}") from error
+        if not output_path.is_file():
+            raise RenderError(
+                f"output symlink target is not a regular file: {output_path}"
+            )
+    output_mode = None
+    try:
+        output_mode = output_path.stat().st_mode & 0o7777
+    except FileNotFoundError:
+        pass
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(
+        dir=output_path.parent, prefix=f".{output_path.name}."
+    ) as staging_dir:
+        staged_output = Path(staging_dir) / output_path.name
+        result = run_lua(lua, cpath, "render", spec_text, staged_output)
+        if not complete_png(staged_output):
+            detail = result.stderr.strip() or result.stdout.strip()
+            message = "the Lua render pass did not produce a complete PNG"
+            if detail:
+                message += f":\n{detail}"
+            raise RenderError(message)
+        if output_mode is not None:
+            staged_output.chmod(output_mode)
+        os.replace(staged_output, output_path)
+    return result
 
 
 # --- Live window probe (for --check) ---------------------------------------
@@ -573,7 +702,12 @@ def probe_x11_windows():
 
 
 def run_check(windows):
-    """Match modelled windows to live ones by size, then report the offsets."""
+    """Match modelled windows to live ones by size, then report the offsets.
+
+    Normal windows are placed by the window manager, so only their modelled
+    size and presence are checkable. Conky-positioned windows must also land at
+    the exact modelled coordinates.
+    """
     live = probe_x11_windows()
     if not live:
         raise RenderError(
@@ -581,9 +715,13 @@ def run_check(windows):
         )
 
     remaining = list(live)
-    rows, mismatches = [], 0
+    rows, mismatches, exact = [], 0, 0
+    window_manager_total = sum(
+        window["config"].get("own_window_type") == "normal" for window in windows
+    )
 
     for window in windows:
+        window_manager_positions = window["config"].get("own_window_type") == "normal"
         candidates = [
             candidate
             for candidate in remaining
@@ -591,7 +729,7 @@ def run_check(windows):
             and candidate["height"] == window["height"]
         ]
         if not candidates:
-            rows.append((window, None, None, None))
+            rows.append((window, None, None, None, window_manager_positions))
             mismatches += 1
             continue
 
@@ -603,25 +741,38 @@ def run_check(windows):
         remaining.remove(best)
         delta_x = best["x"] - window["x"]
         delta_y = best["y"] - window["y"]
-        rows.append((window, best, delta_x, delta_y))
+        rows.append((window, best, delta_x, delta_y, window_manager_positions))
+        if window_manager_positions:
+            continue
         if delta_x or delta_y:
             mismatches += 1
+        else:
+            exact += 1
 
     print(f"{'overlay':<20} {'head':>4}  {'modelled':>20}  {'live':>20}  delta")
-    for window, best, delta_x, delta_y in rows:
-        modelled = f"{window['width']}x{window['height']}+{window['x']}+{window['y']}"
+    for window, best, delta_x, delta_y, window_manager_positions in rows:
+        modelled = geometry_text(
+            window["width"], window["height"], window["x"], window["y"]
+        )
         if best is None:
             print(f"{window['key']:<20} {window['head']:>4}  {modelled:>20}  "
                   f"{'(no size match)':>20}  -")
             continue
-        live_text = f"{best['width']}x{best['height']}+{best['x']}+{best['y']}"
-        delta = "exact" if not (delta_x or delta_y) else f"{delta_x:+d}{delta_y:+d}"
+        live_text = geometry_text(
+            best["width"], best["height"], best["x"], best["y"]
+        )
+        if window_manager_positions:
+            delta = f"wm {delta_x:+d}{delta_y:+d}"
+        else:
+            delta = "exact" if not (delta_x or delta_y) else f"{delta_x:+d}{delta_y:+d}"
         print(f"{window['key']:<20} {window['head']:>4}  {modelled:>20}  "
               f"{live_text:>20}  {delta}")
 
     unmatched = len(remaining)
+    conky_positioned_total = len(windows) - window_manager_total
     print(
-        f"\n{len(rows) - mismatches}/{len(rows)} windows match exactly; "
+        f"\n{exact}/{conky_positioned_total} Conky-positioned window(s) match "
+        f"exactly; {window_manager_total} window-manager-positioned; "
         f"{unmatched} live window(s) unaccounted for"
     )
     return 0 if mismatches == 0 and unmatched == 0 else 1
@@ -677,8 +828,8 @@ def build_parser():
 def main(argv=None):
     args = build_parser().parse_args(argv)
 
-    if args.scale <= 0:
-        raise RenderError("--scale must be greater than 0")
+    if not math.isfinite(args.scale) or args.scale <= 0:
+        raise RenderError("--scale must be a finite number greater than 0")
 
     background = parse_background(args.background)
     monitors, monitor_source = detect_monitors(args.monitors)
@@ -735,14 +886,19 @@ def main(argv=None):
         for monitor in monitors:
             print(
                 f"  head {monitor['index']} {monitor['name']}: "
-                f"{monitor['width']}x{monitor['height']}"
-                f"+{monitor['x']}+{monitor['y']}"
+                f"{geometry_text(monitor['width'], monitor['height'], monitor['x'], monitor['y'])}"
             )
-        print(f"\ncanvas: {canvas_w}x{canvas_h} at +{origin_x}+{origin_y}")
+        print(
+            f"\ncanvas: {geometry_text(canvas_w, canvas_h, origin_x, origin_y)}"
+        )
         print(f"\n{'overlay':<20} {'head':>4}  {'window':>22}  hook")
         for window in windows:
-            rect = (f"{window['width']}x{window['height']}"
-                    f"+{window['x'] - origin_x}+{window['y'] - origin_y}")
+            rect = geometry_text(
+                window["width"],
+                window["height"],
+                window["x"] - origin_x,
+                window["y"] - origin_y,
+            )
             print(f"{window['key']:<20} {window['head']:>4}  {rect:>22}  "
                   f"{window['hook']}")
         return 0
@@ -769,14 +925,12 @@ def main(argv=None):
             )
         )
 
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    result = run_lua(lua, cpath, "render", "\n".join(spec_lines) + "\n", args.out)
+    result = render_to_png(
+        lua, cpath, "\n".join(spec_lines) + "\n", args.out
+    )
 
     if result.stderr.strip():
         print(result.stderr.strip(), file=sys.stderr)
-    if result.returncode != 0 and not args.out.is_file():
-        raise RenderError("the Lua render pass failed and wrote no output")
-
     # The worker reports what it actually drew, so a partial render is not
     # summarised as a complete one.
     composited = len(windows)

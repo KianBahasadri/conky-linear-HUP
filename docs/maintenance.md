@@ -10,3 +10,9 @@ The shipped overlays keep private helpers only when they have a runtime caller. 
 - Archive cleanup: unused imports in the session mockup renderers and the empty `docs/billing-mockups/claude-design-review.txt` placeholder.
 
 These removals do not remove compatibility handling, public configuration variables, fetcher-owned workout logging, or preserved design-study source and artwork. Current visible behavior is documented in the owning topic files: [Rate limit panel](rate-limit-panel.md), [Configuration](configuration.md), and [Session overlay design study](session-mockups/NOTES.md).
+
+## Renderer cache and loading seams
+
+JSON-backed renderers share one small structural cache reader in `renderer-shared.lua`. It reads direct fields and arrays while respecting nested containers, escaped quotes, and Unicode surrogate pairs; missing or malformed caches still degrade to each overlay's empty/error state. The rate-limit panel retains both the current nested Codex account cache and the older flattened `bars` shape as fallback adapters.
+
+`overlay-entrypoint.lua` registers every Conky hook but loads only the renderer that a window actually invokes. Renderer state and load failures therefore stay local to that overlay instead of every Conky process eagerly instantiating the full renderer set.

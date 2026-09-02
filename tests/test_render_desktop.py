@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 import pytest
 
 import render_desktop
@@ -7,6 +9,12 @@ import render_desktop
 # measured on.
 PRIMARY_MONITOR = {"index": 0, "name": "HDMI-3", "x": 1920, "y": 0,
                    "width": 1920, "height": 1080}
+
+
+@pytest.mark.parametrize("scale", ["nan", "inf", "-inf", "0"])
+def test_main_rejects_nonfinite_or_nonpositive_scale_before_rendering(scale):
+    with pytest.raises(render_desktop.RenderError, match="finite number greater than 0"):
+        render_desktop.main([f"--scale={scale}"])
 
 
 def config(**overrides):
@@ -166,7 +174,16 @@ def test_discover_overlays_reports_a_missing_generated_directory(tmp_path, monke
 
 
 def test_parse_monitor_spec_reads_a_layout_override():
-    monitors = render_desktop.parse_monitor_spec("1920x1080+0+0, 2560x1440+1920+0")
+    monitors = render_desktop.parse_monitor_spec(
+        "1920x1080-1920+0, 2560x1440+0-200"
+    )
+    assert monitors[0]["x"] == -1920 and monitors[0]["width"] == 1920
+    assert monitors[1] == {"index": 1, "name": "head-1", "x": 0, "y": -200,
+                           "width": 2560, "height": 1440}
+
+
+def test_parse_monitor_spec_reads_positive_coordinates():
+    monitors = render_desktop.parse_monitor_spec("1920x1080+0+0,2560x1440+1920+0")
     assert monitors[0]["x"] == 0 and monitors[0]["width"] == 1920
     assert monitors[1] == {"index": 1, "name": "head-1", "x": 1920, "y": 0,
                            "width": 2560, "height": 1440}
@@ -177,14 +194,51 @@ def test_parse_monitor_spec_rejects_junk():
         render_desktop.parse_monitor_spec("1920x1080")
 
 
+def test_parse_monitor_spec_rejects_an_empty_or_zero_sized_layout():
+    with pytest.raises(render_desktop.RenderError, match="expected WxH"):
+        render_desktop.parse_monitor_spec("")
+    with pytest.raises(render_desktop.RenderError, match="must be positive"):
+        render_desktop.parse_monitor_spec("0x1080+0+0")
+
+
+def test_validate_monitors_rejects_corrupt_external_layouts():
+    with pytest.raises(render_desktop.RenderError, match="non-empty list"):
+        render_desktop.validate_monitors({}, "cached")
+    with pytest.raises(render_desktop.RenderError, match="missing height"):
+        render_desktop.validate_monitors(
+            [{"index": 0, "name": "DP-1", "x": 0, "y": 0, "width": 1920}],
+            "cached",
+        )
+    with pytest.raises(render_desktop.RenderError, match="repeats index 0"):
+        render_desktop.validate_monitors(
+            [
+                {"index": 0, "name": "DP-1", "x": 0, "y": 0,
+                 "width": 1920, "height": 1080},
+                {"index": 0, "name": "DP-2", "x": 1920, "y": 0,
+                 "width": 1920, "height": 1080},
+            ],
+            "cached",
+        )
+
+
+def test_detect_monitors_reports_a_corrupt_cache(tmp_path, monkeypatch):
+    cache_path = tmp_path / "monitor-layout.json"
+    cache_path.write_text('{"not": "a monitor list"}', encoding="utf-8")
+    monkeypatch.setattr(render_desktop, "MONITOR_CACHE_PATH", cache_path)
+    monkeypatch.setattr(render_desktop, "monitors_from_xrandr", lambda: None)
+
+    with pytest.raises(render_desktop.RenderError, match="cached layout.*unusable"):
+        render_desktop.detect_monitors()
+
+
 def test_monitor_line_re_reads_xrandr_listmonitors():
     match = render_desktop.MONITOR_LINE_RE.match(
-        " 0: +*HDMI-3 1920/600x1080/340+1920+0  HDMI-3"
+        " 0: +*HDMI-3 1920/600x1080/340-1920+0  HDMI-3"
     )
     assert match.group("index") == "0"
     assert match.group("name") == "+*HDMI-3"
     assert (match.group("width"), match.group("height")) == ("1920", "1080")
-    assert (match.group("x"), match.group("y")) == ("1920", "0")
+    assert (match.group("x"), match.group("y")) == ("-1920", "+0")
 
 
 def test_desktop_bounds_covers_every_monitor():
@@ -196,6 +250,12 @@ def test_desktop_bounds_covers_every_monitor():
     assert render_desktop.desktop_bounds(monitors) == (0, -200, 5760, 1280)
 
 
+def test_geometry_text_uses_standard_signed_offsets():
+    assert render_desktop.geometry_text(1920, 1080, -1920, 0) == (
+        "1920x1080-1920+0"
+    )
+
+
 def test_parse_background_accepts_rgb_and_rgba():
     assert render_desktop.parse_background("000000") == [0.0, 0.0, 0.0, 1.0]
     assert render_desktop.parse_background("#ffffff00") == [1.0, 1.0, 1.0, 0.0]
@@ -204,3 +264,104 @@ def test_parse_background_accepts_rgb_and_rgba():
 def test_parse_background_rejects_junk():
     with pytest.raises(render_desktop.RenderError, match="expected RRGGBB"):
         render_desktop.parse_background("nope")
+
+
+def test_render_to_png_preserves_previous_output_when_worker_writes_nothing(
+    tmp_path, monkeypatch
+):
+    output = tmp_path / "desktop.png"
+    output.write_bytes(b"previous render")
+    monkeypatch.setattr(
+        render_desktop,
+        "run_lua",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            returncode=1, stdout="", stderr="renderer crashed"
+        ),
+    )
+
+    with pytest.raises(render_desktop.RenderError, match="renderer crashed"):
+        render_desktop.render_to_png("lua", "cpath", "spec", output)
+
+    assert output.read_bytes() == b"previous render"
+
+
+def test_render_to_png_keeps_this_runs_complete_partial_png(
+    tmp_path, monkeypatch
+):
+    output = tmp_path / "desktop.png"
+    output.write_bytes(b"previous render")
+    png = b"\x89PNG\r\n\x1a\nnew pixels\x00\x00\x00\x00IEND\xaeB`\x82"
+
+    def fake_run_lua(_lua, _cpath, _mode, _spec, staged_output):
+        staged_output.write_bytes(png)
+        return SimpleNamespace(
+            returncode=1, stdout="composited\t1\n", stderr="one overlay failed"
+        )
+
+    monkeypatch.setattr(render_desktop, "run_lua", fake_run_lua)
+
+    result = render_desktop.render_to_png("lua", "cpath", "spec", output)
+
+    assert result.returncode == 1
+    assert output.read_bytes() == png
+
+
+def test_render_to_png_preserves_output_symlink_and_target_mode(tmp_path, monkeypatch):
+    target = tmp_path / "desktop.actual.png"
+    target.write_bytes(b"previous render")
+    target.chmod(0o600)
+    output = tmp_path / "desktop.png"
+    output.symlink_to(target.name)
+    png = b"\x89PNG\r\n\x1a\nnew pixels\x00\x00\x00\x00IEND\xaeB`\x82"
+
+    def fake_run_lua(_lua, _cpath, _mode, _spec, staged_output):
+        staged_output.write_bytes(png)
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(render_desktop, "run_lua", fake_run_lua)
+
+    render_desktop.render_to_png("lua", "cpath", "spec", output)
+
+    assert output.is_symlink()
+    assert target.read_bytes() == png
+    assert target.stat().st_mode & 0o777 == 0o600
+
+
+def test_run_check_does_not_fail_for_window_manager_positioning(monkeypatch, capsys):
+    windows = [
+        {
+            "key": "linear", "head": 0, "x": 10, "y": 20,
+            "width": 100, "height": 50, "config": {"own_window_type": "desktop"},
+        },
+        {
+            "key": "git", "head": 0, "x": 0, "y": 0,
+            "width": 30, "height": 40, "config": {"own_window_type": "normal"},
+        },
+    ]
+    monkeypatch.setattr(
+        render_desktop,
+        "probe_x11_windows",
+        lambda: [
+            {"x": 10, "y": 20, "width": 100, "height": 50},
+            {"x": 4, "y": 35, "width": 30, "height": 40},
+        ],
+    )
+
+    assert render_desktop.run_check(windows) == 0
+    output = capsys.readouterr().out
+    assert "wm +4+35" in output
+    assert "1/1 Conky-positioned window(s) match exactly" in output
+
+
+def test_run_check_fails_for_a_conky_position_mismatch(monkeypatch):
+    window = {
+        "key": "linear", "head": 0, "x": 10, "y": 20,
+        "width": 100, "height": 50, "config": {"own_window_type": "desktop"},
+    }
+    monkeypatch.setattr(
+        render_desktop,
+        "probe_x11_windows",
+        lambda: [{"x": 11, "y": 20, "width": 100, "height": 50}],
+    )
+
+    assert render_desktop.run_check([window]) == 1

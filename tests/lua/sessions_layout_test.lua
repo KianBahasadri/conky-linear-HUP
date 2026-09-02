@@ -39,6 +39,31 @@ eq(spacer_for('{}'), '${voffset 798}', 'missing cache falls back to panel_min_he
 local single_session = '{"ok":true,"devices":[],"sessions":[{"name":"main","windows":1,"panes":1,"path":"~","repo":"main","attached":"","idle":"1m","idleSeconds":60}]}'
 eq(spacer_for(single_session), '${voffset 798}', 'single session fits in base height')
 
+local function sessions_payload(repos)
+  local records = {}
+  for index, repo in ipairs(repos) do
+    table.insert(records, string.format(
+      '{"name":"session-%d","windows":1,"panes":1,"path":"~/repo-%d","repo":"%s","attached":"","idle":"0s","idleSeconds":0}',
+      index, index, repo
+    ))
+  end
+  return '{"ok":true,"devices":[],"sessions":[' .. table.concat(records, ',') .. ']}'
+end
+
+-- Three destination rows fit the base height; a fourth grows by one 110px row.
+eq(spacer_for(sessions_payload({'a','b','c','d','e','f','g','h','i'})),
+  '${voffset 798}', 'nine independent sessions fit three rows')
+eq(spacer_for(sessions_payload({'a','b','c','d','e','f','g','h','i','j'})),
+  '${voffset 908}', 'ten independent sessions grow to four rows')
+
+-- Same-repo pairs stay together.  Four pairs each start a fresh row because a
+-- two-item group cannot fit the previous row's one remaining slot.
+eq(spacer_for(sessions_payload({'a','a','b','b','c','c','d','d'})),
+  '${voffset 908}', 'same-repo groups share one packing calculation')
+
+eq(spacer_for('{"ok":true,"devices":[],"sessions":[{"name":"broken}]}'),
+  '${voffset 798}', 'malformed cache degrades to the minimum height')
+
 if failures > 0 then
   print(failures .. ' failure(s)')
   os.exit(1)

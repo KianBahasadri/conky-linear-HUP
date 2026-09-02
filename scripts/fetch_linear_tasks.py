@@ -7,7 +7,7 @@ import textwrap
 import unicodedata
 import urllib.error
 import urllib.request
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import fetch_common as common
@@ -31,6 +31,10 @@ TOP_PADDING = 8
 BOTTOM_PADDING = 8  # In Progress edge marker below the last row
 EMPTY_HEIGHT = 96
 OVERLAY_WIDTH = 1540
+MAX_QUERY_DEPTH = 25
+DEFAULT_TASK_LIMIT = 25
+DEFAULT_COMPETITION_LIMIT = 25
+DEFAULT_BACKLOG_LIMIT = 25
 
 
 QUERY = """
@@ -175,6 +179,23 @@ def linear_request(api_key, limit, competition_limit, backlog_limit):
         return json.loads(response.read().decode("utf-8"))
 
 
+def linear_http_error_message(error):
+    """Return a bounded Linear error without exposing request credentials."""
+    detail = ""
+    try:
+        payload = json.loads(error.read().decode("utf-8", errors="replace"))
+        messages = [
+            re.sub(r"\s+", " ", str(item.get("message", ""))).strip()
+            for item in payload.get("errors", [])
+            if isinstance(item, dict) and item.get("message")
+        ]
+        detail = "; ".join(messages)[:240]
+    except (OSError, ValueError, AttributeError):
+        pass
+    suffix = f": {detail}" if detail else ""
+    return f"HTTP {error.code}{suffix}"
+
+
 def parse_linear_datetime(value):
     if not value:
         return None
@@ -190,12 +211,13 @@ def is_recently_done(task, now, lookback_hours):
     return completed_at >= now - timedelta(hours=lookback_hours)
 
 
-def is_due_now(task):
+def is_due_now(task, now_date=None):
     due_date = task.get("dueDate")
     if not due_date:
         return False
 
-    return due_date <= datetime.now().date().isoformat()
+    today = now_date or datetime.now().astimezone().date()
+    return due_date <= today.isoformat()
 
 
 def parse_linear_date(value):
@@ -203,7 +225,7 @@ def parse_linear_date(value):
         return None
 
     try:
-        return datetime.strptime(value, "%Y-%m-%d").date()
+        return date.fromisoformat(value)
     except ValueError:
         return None
 
@@ -213,7 +235,7 @@ def format_due_date(value, now_date=None):
     if not due_date:
         return ""
 
-    today = now_date or datetime.now().date()
+    today = now_date or datetime.now().astimezone().date()
     if due_date == today:
         return "Today"
     if due_date == today + timedelta(days=1):
@@ -245,7 +267,7 @@ def is_due_within_days(task, days=3, now_date=None):
     if not due_date:
         return False
 
-    today = now_date or datetime.now().date()
+    today = now_date or datetime.now().astimezone().date()
     return today <= due_date <= today + timedelta(days=days)
 
 
@@ -270,8 +292,9 @@ def is_due_soon_backlog(task, now_date=None):
 
 
 def render(tasks, state_names, lookback_hours):
-    timestamp = datetime.now().strftime("%a %H:%M")
-    now = datetime.now(timezone.utc)
+    local_now = datetime.now().astimezone()
+    timestamp = local_now.strftime("%a %H:%M")
+    now = local_now.astimezone(timezone.utc)
     active = [
         task
         for task in tasks
@@ -325,9 +348,9 @@ def render(tasks, state_names, lookback_hours):
     return "\n".join(lines).rstrip() + "\n"
 
 
-def render_cards(tasks, state_names, lookback_hours):
-    now = datetime.now(timezone.utc)
-    today = datetime.now().date()
+def render_cards(tasks, state_names, lookback_hours, now=None):
+    now = now or datetime.now(timezone.utc)
+    today = now.astimezone().date()
     active = [
         task
         for task in tasks
@@ -389,7 +412,7 @@ def render_cards(tasks, state_names, lookback_hours):
                 "urgent": urgent,
                 "title": title,
                 "done": task_done,
-                "dueToday": is_due_now(task),
+                "dueToday": is_due_now(task, today),
                 "dueIso": task.get("dueDate") or "",
                 "dueDate": format_due_date(task.get("dueDate"), today),
                 "competitionUpcoming": competition_upcoming,
@@ -425,7 +448,7 @@ def render_cards(tasks, state_names, lookback_hours):
 
         card["done"] = card["done"] and task_done
         card["urgent"] = card["urgent"] or urgent
-        card["dueToday"] = card["dueToday"] or is_due_now(task)
+        card["dueToday"] = card["dueToday"] or is_due_now(task, today)
         current_due_date = parse_linear_date(card["dueIso"])
         task_due_date = parse_linear_date(task.get("dueDate"))
         if not current_due_date or (task_due_date and task_due_date < current_due_date):
@@ -451,13 +474,14 @@ def render_cards(tasks, state_names, lookback_hours):
             card["state"] = "In Progress"
 
     return {
-        "updatedAt": datetime.now(timezone.utc).isoformat(),
+        "updatedAt": now.isoformat(),
         "doneLookbackSeconds": lookback_hours * 3600,
         "cards": cards,
     }
 
 
-def collect_tasks(response, state_names):
+def collect_tasks(response, state_names, now_date=None):
+    today = now_date or datetime.now().astimezone().date()
     tasks_by_identifier = {}
     states = response["data"]["workflowStates"]["nodes"]
 
@@ -466,19 +490,19 @@ def collect_tasks(response, state_names):
             if is_cancelled_or_duplicate(task) or (
                 state.get("name") not in state_names
                 and state.get("type") != "completed"
-                and not is_upcoming_competition(task)
-                and not is_due_soon_backlog(task)
+                and not is_upcoming_competition(task, today)
+                and not is_due_soon_backlog(task, today)
             ):
                 continue
 
             tasks_by_identifier[task["identifier"]] = task
 
     for task in response["data"].get("competitionIssues", {}).get("nodes", []):
-        if not is_cancelled_or_duplicate(task) and is_upcoming_competition(task):
+        if not is_cancelled_or_duplicate(task) and is_upcoming_competition(task, today):
             tasks_by_identifier[task["identifier"]] = task
 
     for task in response["data"].get("backlogDueSoon", {}).get("nodes", []):
-        if not is_cancelled_or_duplicate(task) and is_due_soon_backlog(task):
+        if not is_cancelled_or_duplicate(task) and is_due_soon_backlog(task, today):
             tasks_by_identifier[task["identifier"]] = task
 
     return sorted(
@@ -549,6 +573,21 @@ def card_count_from_cache(cards_path=CARDS_PATH):
     return len(cards) if isinstance(cards, list) else 0
 
 
+def positive_int_env(name, default):
+    try:
+        value = int(os.environ.get(name, str(default)))
+    except ValueError:
+        return default
+    return value if value > 0 else default
+
+
+def query_depth_env(name, default):
+    # The three connections share one GraphQL operation. Although Linear allows
+    # larger individual pages, this combined shape returns "Query too complex"
+    # above 25 in the live workspace.
+    return min(positive_int_env(name, default), MAX_QUERY_DEPTH)
+
+
 def main():
     if len(sys.argv) > 1 and sys.argv[1] == "--print-overlay-height":
         print(linear_overlay_height(card_count_from_cache()))
@@ -568,20 +607,13 @@ def main():
         if item.strip()
     }
 
-    try:
-        limit = min(int(os.environ.get("LINEAR_TASK_LIMIT", "20")), 25)
-    except ValueError:
-        limit = 20
-
-    try:
-        competition_limit = min(int(os.environ.get("LINEAR_COMPETITION_TASK_LIMIT", "20")), 25)
-    except ValueError:
-        competition_limit = 20
-
-    try:
-        backlog_limit = min(int(os.environ.get("LINEAR_BACKLOG_DUE_SOON_LIMIT", "20")), 25)
-    except ValueError:
-        backlog_limit = 20
+    limit = query_depth_env("LINEAR_TASK_LIMIT", DEFAULT_TASK_LIMIT)
+    competition_limit = query_depth_env(
+        "LINEAR_COMPETITION_TASK_LIMIT", DEFAULT_COMPETITION_LIMIT
+    )
+    backlog_limit = query_depth_env(
+        "LINEAR_BACKLOG_DUE_SOON_LIMIT", DEFAULT_BACKLOG_LIMIT
+    )
 
     try:
         lookback_hours = int(os.environ.get("LINEAR_DONE_LOOKBACK_HOURS", "18"))
@@ -598,7 +630,7 @@ def main():
     try:
         response = linear_request(api_key, limit, competition_limit, backlog_limit)
     except urllib.error.HTTPError as error:
-        write_error(f"Linear API error: HTTP {error.code}")
+        write_error(f"Linear API error: {linear_http_error_message(error)}")
         return 1
     except Exception as error:
         write_error(f"Linear fetch failed: {error}")
@@ -609,8 +641,9 @@ def main():
         print(json.dumps(response["errors"], indent=2), file=sys.stderr)
         return 1
 
-    tasks = collect_tasks(response, state_names)
     now = datetime.now(timezone.utc)
+    today = now.astimezone().date()
+    tasks = collect_tasks(response, state_names, today)
     active_count = sum(
         1
         for task in tasks
@@ -622,11 +655,13 @@ def main():
         if is_recently_done(task, now, lookback_hours) and not is_cancelled_or_duplicate(task)
     )
     due_now_count = sum(
-        1 for task in tasks if is_due_now(task) and not is_cancelled_or_duplicate(task)
+        1
+        for task in tasks
+        if is_due_now(task, today) and not is_cancelled_or_duplicate(task)
     )
     workflow_state_count = len(response.get("data", {}).get("workflowStates", {}).get("nodes", []))
     output = render(tasks, state_names, lookback_hours)
-    cards_payload = render_cards(tasks, state_names, lookback_hours)
+    cards_payload = render_cards(tasks, state_names, lookback_hours, now)
     atomic_write_text(OUTPUT_PATH, output)
     atomic_write_json(CARDS_PATH, cards_payload)
     card_count = len(cards_payload.get("cards") or [])

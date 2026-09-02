@@ -36,14 +36,20 @@ end
 
 -- Missing cache file: read_file returns nil -> empty state -> empty height.
 os.remove(cache_root .. '/cache/linear-cards.json')
-eq(spacer_for('{}'), '${voffset 96}', 'missing cache falls back to empty height')
+eq(factory(shared, cache_root).height_spacer(), '${voffset 96}',
+  'missing cache falls back to empty height')
+eq(spacer_for('{}'), '${voffset 96}', 'empty payload falls back to empty height')
 
-local function cards_json(count, extra)
+local function card_objects(count)
   local parts = {}
   for index = 1, count do
     table.insert(parts, string.format('{"identifier":"HUP-%d","title":"Task %d"}', index, index))
   end
-  return table.concat(parts, ',') .. (extra or '')
+  return parts
+end
+
+local function cards_json(count)
+  return '{"cards":[' .. table.concat(card_objects(count), ',') .. ']}'
 end
 
 -- Grid math at the default window width (1540): five contiguous cards of width
@@ -54,11 +60,23 @@ eq(spacer_for(cards_json(5)), '${voffset 100}', 'five cards still one row')
 eq(spacer_for(cards_json(6)), '${voffset 184}', 'six cards wrap to two rows')
 
 -- A due-today unfinished card hides everything not due/done/backlog/competition.
-local plain_six = ',' .. cards_json(6):sub(2)
-eq(spacer_for('{"identifier":"R","title":"red","dueToday":true}' .. plain_six),
+local plain_six = card_objects(6)
+table.insert(plain_six, 1, '{"identifier":"R","title":"red","dueToday":true}')
+eq(spacer_for('{"cards":[' .. table.concat(plain_six, ',') .. ']}'),
   '${voffset 100}', 'red card filters hidden cards from the height math')
-eq(spacer_for('{"identifier":"R","title":"red","dueToday":true,"done":true}' .. plain_six),
+plain_six[1] = '{"identifier":"R","title":"red","dueToday":true,"done":true}'
+eq(spacer_for('{"cards":[' .. table.concat(plain_six, ',') .. ']}'),
   '${voffset 184}', 'done card does not trigger the filter')
+
+-- Structural characters and nested arrays inside strings/objects must not
+-- truncate a card before its state flags are read.
+eq(spacer_for([[{"cards":[
+  {"identifier":"R","title":"close } [ bracket","metadata":{"nested":[1,2]},"dueToday":true},
+  {"identifier":"HUP-2","title":"hidden"}
+]}]]), '${voffset 100}', 'nested JSON and braces in title preserve due-today filter')
+
+eq(spacer_for('{"cards":[{"identifier":"broken","title":"unterminated}]}'),
+  '${voffset 96}', 'malformed cache degrades to an empty panel')
 
 if failures > 0 then
   print(failures .. ' failure(s)')

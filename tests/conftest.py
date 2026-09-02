@@ -21,3 +21,14 @@ def restore_environ():
     finally:
         os.environ.clear()
         os.environ.update(original)
+
+
+@pytest.fixture(autouse=True)
+def prevent_live_fetcher_log_writes(monkeypatch):
+    # Fetcher loggers are bound to real cache paths at module import time, so
+    # redirecting CACHE_DIR/LOG_PATH inside a test does not redirect them.
+    # Silence every imported fetcher by default; tests that assert diagnostics
+    # replace log_event with their own capture after this fixture runs.
+    for module_name, module in list(sys.modules.items()):
+        if module_name.startswith("fetch_") and hasattr(module, "log_event"):
+            monkeypatch.setattr(module, "log_event", lambda _message: None)

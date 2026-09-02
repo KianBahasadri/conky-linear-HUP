@@ -14,4 +14,10 @@
 - Overlay window height is computed from the card grid (rows × card size + gaps) by the Lua spacer on each Conky tick. Startup sets `minimum_height` from the current cache so the first frame is not clipped. The fetch loop updates `cache/linear-cards.json` only — it does not rewrite configs or reload Conky, which would tear down the overlay window.
 - Cards use a compact 268×84px grid with contiguous columns, 12px row gaps, 8px top and bottom padding, and five cards per row at the 1540px overlay width. Each card keeps the project header, centered title, and identifier/label/due-date footer.
 - A failed Linear fetch keeps the last successful cards instead of writing an empty cache.
+- `LINEAR_TASK_LIMIT` sets the query depth for each workflow state, not a global
+  card cap. `LINEAR_COMPETITION_TASK_LIMIT` and
+  `LINEAR_BACKLOG_DUE_SOON_LIMIT` independently size their supplemental
+  connections. Each defaults to and is capped at `25`: larger pages are valid
+  in isolation, but this combined operation is rejected by Linear as too
+  complex. Invalid or non-positive values also fall back to `25`.
 - Set `LINEAR_OVERLAY_ENABLED=0` to disable the Linear overlay and its refresh loop.

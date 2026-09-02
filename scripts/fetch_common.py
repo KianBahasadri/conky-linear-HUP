@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 import json
+import math
 import os
+import stat
 import sys
+import tempfile
+from contextlib import suppress
 from datetime import datetime
 from pathlib import Path
 
@@ -39,17 +43,44 @@ def make_logger(log_path, source):
     return log_event
 
 
-def atomic_write_text(path, content):
+def atomic_write_text(path, content, *, mode=None):
     path = Path(path)
-    tmp_path = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-    tmp_path.write_text(content, encoding="utf-8")
-    os.replace(tmp_path, path)
+    if path.is_symlink():
+        # Auth profile selectors are symlink chains. Replacing the selector
+        # itself would silently disable account switching; resolve strictly so
+        # dangling and cyclic chains fail before a temporary file is created.
+        path = path.resolve(strict=True)
+        if not path.is_file():
+            raise OSError(f"atomic write symlink target is not a regular file: {path}")
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+    )
+    tmp_path = Path(tmp_name)
+    try:
+        final_mode = mode
+        if final_mode is None:
+            with suppress(OSError):
+                final_mode = stat.S_IMODE(path.stat().st_mode)
+        if final_mode is not None:
+            os.fchmod(fd, final_mode)
+        with os.fdopen(fd, "w", encoding="utf-8") as tmp_file:
+            fd = -1
+            tmp_file.write(content)
+        os.replace(tmp_path, path)
+    except Exception:
+        if fd >= 0:
+            os.close(fd)
+        with suppress(FileNotFoundError):
+            tmp_path.unlink()
+        raise
 
 
-def atomic_write_json(path, data):
+def atomic_write_json(path, data, *, mode=None):
     # ensure_ascii=False keeps characters like em dashes as UTF-8 instead of \u2014,
     # which the Conky Lua JSON string unescaper must otherwise decode.
-    atomic_write_text(path, json.dumps(data, indent=2, ensure_ascii=False))
+    atomic_write_text(
+        path, json.dumps(data, indent=2, ensure_ascii=False), mode=mode
+    )
 
 
 def escape_tsv(value):
@@ -58,15 +89,16 @@ def escape_tsv(value):
 
 def as_float(value, default=0.0):
     try:
-        return float(value)
+        number = float(value)
     except (TypeError, ValueError):
         return default
+    return number if math.isfinite(number) else default
 
 
 def as_int(value, default=0):
     try:
         return int(float(value))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return default
 
 
@@ -75,7 +107,7 @@ def parse_iso_epoch(value):
         return 0
     try:
         return int(datetime.fromisoformat(str(value).replace("Z", "+00:00")).timestamp())
-    except ValueError:
+    except (ValueError, OverflowError, OSError):
         return 0
 
 

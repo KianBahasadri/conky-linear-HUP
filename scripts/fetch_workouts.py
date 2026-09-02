@@ -76,11 +76,11 @@ def parse_workout(path):
     context = ET.iterparse(str(path), events=("start", "end"))
     for event, element in context:
         tag = local_tag(element)
-        if event == "start":
-            if tag == "Activity":
-                activity_count += 1
-                sport = sport or str(element.get("Sport") or "")
-            elif tag == "Trackpoint":
+        if event == "start" and tag == "Activity":
+            activity_count += 1
+            sport = sport or str(element.get("Sport") or "")
+        elif event == "end":
+            if tag == "Trackpoint":
                 for child in element:
                     child_tag = local_tag(child)
                     if child_tag == "Time":
@@ -101,16 +101,16 @@ def parse_workout(path):
                                 if cadence > 0:
                                     cadences.append(cadence)
                 element.clear()
-        elif tag == "Lap":
-            for child in element:
-                child_tag = local_tag(child)
-                if child_tag == "TotalTimeSeconds":
-                    duration += common.as_float(child.text)
-                elif child_tag == "DistanceMeters":
-                    distance += common.as_float(child.text)
-                elif child_tag == "Calories":
-                    calories += common.as_int(child.text, 0)
-            element.clear()
+            elif tag == "Lap":
+                for child in element:
+                    child_tag = local_tag(child)
+                    if child_tag == "TotalTimeSeconds":
+                        duration += common.as_float(child.text)
+                    elif child_tag == "DistanceMeters":
+                        distance += common.as_float(child.text)
+                    elif child_tag == "Calories":
+                        calories += common.as_int(child.text, 0)
+                element.clear()
 
     if not activity_count:
         raise ValueError("no Activity element")

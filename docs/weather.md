@@ -1,8 +1,8 @@
 # Weather and running overlay
 
-The bottom-right panel combines current weather and air quality with running-specific guidance. It shows temperature and apparent temperature, weather, U.S. AQI, rain probability, wind and gusts, humidity, UV, visibility, sunset, a current run score, and the best window in the next several hours. Below a divider, a training section summarizes workouts uploaded from the phone: last workout (distance, duration, pace, heart rate or cadence when recorded), rolling 7-day distance/time/runs, and a sparkline of the last 14 workouts' distances with the newest bar lit.
+The bottom-right panel combines current weather and air quality with running-specific guidance. It shows temperature and apparent temperature, weather, U.S. AQI, rain probability, wind gusts, humidity, UV, sunset, a current run score, and the best window in the next several hours. Below a divider, a training section summarizes workouts uploaded from the phone: last workout (distance, duration, pace, heart rate or cadence when recorded), rolling 7-day distance/time/runs, and a sparkline of the last 14 workouts' distances with the newest bar lit.
 
-Weather forecasts come from Open-Meteo. Air-quality data comes from the Copernicus Atmosphere Monitoring Service (CAMS) through Open-Meteo. The panel keeps the last successful result and marks it `STALE` when a refresh fails.
+Weather forecasts come from Open-Meteo. Air-quality data comes from the Copernicus Atmosphere Monitoring Service (CAMS) through Open-Meteo. The panel keeps the last successful result and marks it `STALE` when a refresh fails. Partial responses missing valid current weather or air-quality fields are treated as failed refreshes instead of being rendered as zero-valued, reassuring conditions.
 
 ## Location
 

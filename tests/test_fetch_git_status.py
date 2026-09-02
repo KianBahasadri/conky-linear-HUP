@@ -43,7 +43,7 @@ def test_parse_porcelain_v2_counts_and_branch():
             "1 M. N... 100644 100644 100644 aaa bbb staged.txt",
             "1 .M N... 100644 100644 100644 ccc ddd dirty.txt",
             "1 MM N... 100644 100644 100644 eee fff both.txt",
-            "u UU N... 100644 100644 100644 ggg hhh conflict.txt",
+            "u UU N... 100644 100644 100644 100644 ggg hhh iii conflict.txt",
             "? untracked.txt",
             "",
         ]
@@ -72,10 +72,42 @@ def test_porcelain_v2_path_reads_rename_dest():
     assert git_status.porcelain_v2_path(line) == "new.txt"
 
 
+def test_porcelain_v2_path_preserves_spaces():
+    assert git_status.porcelain_v2_path(
+        "1 M. N... 100644 100644 100644 aaa bbb staged file.txt"
+    ) == "staged file.txt"
+    assert git_status.porcelain_v2_path(
+        "2 R. N... 100644 100644 100644 aaa bbb R100 new name.txt\told name.txt"
+    ) == "new name.txt"
+    assert git_status.porcelain_v2_path(
+        "u UU N... 100644 100644 100644 100644 aaa bbb ccc conflict file.txt"
+    ) == "conflict file.txt"
+
+
 def test_parse_porcelain_detached():
     parsed = git_status.parse_porcelain_v2("# branch.head (detached)\n")
     assert parsed["detached"] is True
     assert parsed["branch"] == "DETACHED"
+
+
+def test_parse_porcelain_z_preserves_literal_paths_and_skips_rename_source():
+    unusual = ' leading quote" tab\tline\nname.txt '
+    renamed = "new\tline\nname.txt"
+    output = "\0".join(
+        [
+            "# branch.head main",
+            f"1 .M N... 100644 100644 100644 aaa bbb {unusual}",
+            f"2 R. N... 100644 100644 100644 aaa bbb R100 {renamed}",
+            "old\tname.txt",
+            "",
+        ]
+    )
+
+    parsed = git_status.parse_porcelain_v2(output)
+
+    assert parsed["changed_paths"] == [unusual, renamed]
+    assert parsed["modified"] == 1
+    assert parsed["staged"] == 1
 
 
 def test_inspect_repo_clean(tmp_path):
@@ -110,6 +142,57 @@ def test_inspect_repo_last_modified_uses_dirty_file_mtime(tmp_path):
     os.utime(target, (later, later))
     status = git_status.inspect_repo(repo, timeout=5)
     assert status["ok"] is True
+    assert status["lastModifiedEpoch"] == later
+
+
+def test_inspect_repo_last_modified_handles_staged_path_with_spaces(tmp_path):
+    repo = init_repo(tmp_path / "staged-spaces")
+    _rewrite_head_date(repo, 1_700_000_000)
+    target = repo / "new staged file.txt"
+    target.write_text("new\n", encoding="utf-8")
+    later = 1_800_000_000
+    os.utime(target, (later, later))
+    subprocess.run(["git", "add", target.name], cwd=repo, check=True)
+
+    status = git_status.inspect_repo(repo, timeout=5)
+
+    assert status["lastModifiedEpoch"] == later
+
+
+def test_inspect_repo_last_modified_handles_git_special_filenames(tmp_path):
+    repo = init_repo(tmp_path / "special-filenames")
+    _rewrite_head_date(repo, 1_700_000_000)
+    later = 1_800_000_000
+    names = (
+        'quote"name.txt',
+        "tab\tname.txt",
+        "line\nname.txt",
+        " leading.txt",
+        "trailing.txt ",
+    )
+    for name in names:
+        target = repo / name
+        target.write_text("new\n", encoding="utf-8")
+        os.utime(target, (later, later))
+
+    status = git_status.inspect_repo(repo, timeout=5)
+
+    assert status["untracked"] == len(names)
+    assert status["lastModifiedEpoch"] == later
+
+
+def test_inspect_repo_last_modified_handles_rename_destination_with_tab(tmp_path):
+    repo = init_repo(tmp_path / "rename-with-tab")
+    _rewrite_head_date(repo, 1_700_000_000)
+    target = repo / "renamed\tfile.txt"
+    (repo / "README.md").rename(target)
+    later = 1_800_000_000
+    os.utime(target, (later, later))
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+
+    status = git_status.inspect_repo(repo, timeout=5)
+
+    assert status["staged"] >= 1
     assert status["lastModifiedEpoch"] == later
 
 
@@ -220,7 +303,7 @@ def test_scan_home_for_recent_repos_filters_by_commit_age(tmp_path):
 
 
 def test_scan_home_includes_dirty_repo_regardless_of_commit_age(tmp_path):
-    recent = init_repo(tmp_path / "recent-app")
+    init_repo(tmp_path / "recent-app")
     old = init_repo(tmp_path / "old-app")
     # Two months ago — outside the 14-day window.
     _rewrite_head_date(old, 1_700_000_000)
@@ -246,27 +329,25 @@ def test_scan_home_excludes_clean_old_repo(tmp_path):
     assert "stale-clean" not in names
 
 
-def test_scan_home_ignores_unreadable_directories(tmp_path):
-    valid_repo = init_repo(tmp_path / "valid-repo")
+def test_scan_home_ignores_unreadable_directories(tmp_path, monkeypatch):
+    init_repo(tmp_path / "valid-repo")
     unreadable_dir = tmp_path / "unreadable"
     unreadable_dir.mkdir()
-    try:
-        unreadable_dir.chmod(0o000)
-    except OSError:
-        pass
+    original_iterdir = Path.iterdir
 
-    try:
-        paths = git_status.scan_home_for_recent_repos(
-            root=tmp_path, since_days=14, max_depth=2, timeout=5
-        )
-        names = {path.name for path in paths}
-        assert "valid-repo" in names
-        assert "unreadable" not in names
-    finally:
-        try:
-            unreadable_dir.chmod(0o755)
-        except OSError:
-            pass
+    def fake_iterdir(path):
+        if path == unreadable_dir:
+            raise PermissionError("denied")
+        return original_iterdir(path)
+
+    monkeypatch.setattr(Path, "iterdir", fake_iterdir)
+
+    paths = git_status.scan_home_for_recent_repos(
+        root=tmp_path, since_days=14, max_depth=2, timeout=5
+    )
+    names = {path.name for path in paths}
+    assert "valid-repo" in names
+    assert "unreadable" not in names
 
 
 def test_resolve_repo_paths_merges_pinned_and_scanned(tmp_path, monkeypatch):
@@ -383,6 +464,7 @@ def test_parse_github_remote_accepts_ssh_https_and_strips_git_suffix():
     )
     assert git_status.parse_github_remote("ssh://git@github.com/acme/tools.git") == ("acme", "tools")
     assert git_status.parse_github_remote("git@gitlab.com:acme/tools.git") is None
+    assert git_status.parse_github_remote("https://notgithub.com/acme/tools.git") is None
     assert git_status.parse_github_remote("") is None
 
 

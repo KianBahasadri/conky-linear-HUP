@@ -13,8 +13,12 @@ uv run python scripts/render_desktop.py --check             # model vs the live 
 ```
 
 Output defaults to `cache/desktop-render.png`; `-o` puts it elsewhere.
-`--scale 0.5` halves the output, `--background RRGGBB[AA]` replaces the opaque
-black ground, and `--monitors WxH+X+Y[,...]` overrides the detected layout.
+Completed renders atomically replace the output while preserving an existing
+file's mode and following an existing output symlink to its regular-file target.
+`--scale 0.5` halves the output (the factor must be finite and positive),
+`--background RRGGBB[AA]` replaces the opaque
+black ground, and `--monitors WxH+X+Y[,...]` overrides the detected layout;
+signed coordinates such as `1920x1080-1920+0` are accepted.
 
 This is not a mockup. It loads the shipped Lua renderers and the current
 contents of `cache/`, so it shows the same pixels and the same data as the live
@@ -56,13 +60,17 @@ the offsets. All overlays match exactly except the git panel, which is the only
 one using `own_window_type = 'normal'` (see
 [Conky windows and input](conky-windows-and-input.md)) and so is positioned by
 the window manager rather than by Conky — it lands a few pixels off, and on the
-primary monitor it is pushed below the GNOME top bar.
+primary monitor it is pushed below the GNOME top bar. Those window-manager
+offsets are diagnostic and do not make `--check` fail; its modelled size and
+presence are still checked.
 
 ## Monitor layout
 
 Detected with `xrandr --listmonitors` and cached to `cache/monitor-layout.json`.
 With no display reachable, the cached layout is used, which is what lets the
-tool run headless; `--monitors` overrides both.
+tool run headless; `--monitors` overrides both. Cached and overridden layouts
+are validated before geometry is calculated, and live layout updates replace
+the cache atomically so an interrupted write cannot leave a partial layout.
 
 ## Renderer contract
 
@@ -74,3 +82,7 @@ raises instead.
 
 The generated configs are gitignored. On a fresh clone, run
 `./scripts/start_conky_overlays.sh --generate-only` before the first render.
+
+The output PNG is staged and checked before it replaces the previous render.
+If the Lua worker crashes before finishing the file, the last complete PNG is
+left in place instead of being mistaken for the new render.

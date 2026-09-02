@@ -1,5 +1,7 @@
+import io
 import json
-from datetime import date, timedelta
+import urllib.error
+from datetime import date, datetime, timedelta, timezone
 
 import fetch_linear_tasks as linear
 
@@ -79,7 +81,7 @@ def test_is_due_soon_backlog_accepts_next_three_days():
 
 
 def test_collect_tasks_includes_due_soon_backlog():
-    today = date.today()
+    today = date(2026, 8, 7)
     due_soon = (today + timedelta(days=2)).isoformat()
     due_far = (today + timedelta(days=10)).isoformat()
     response = {
@@ -131,13 +133,14 @@ def test_collect_tasks_includes_due_soon_backlog():
         }
     }
 
-    tasks = linear.collect_tasks(response, {"Todo", "In Progress"})
+    tasks = linear.collect_tasks(response, {"Todo", "In Progress"}, today)
     identifiers = {task["identifier"] for task in tasks}
     assert identifiers == {"ABC-1", "ABC-3", "ABC-4"}
 
 
 def test_render_cards_includes_backlog_due_soon_flag():
-    today = date.today()
+    today = date(2026, 8, 7)
+    now = datetime(2026, 8, 7, 16, tzinfo=timezone.utc)
     due_soon = (today + timedelta(days=1)).isoformat()
     due_today = today.isoformat()
     tasks = [
@@ -146,7 +149,9 @@ def test_render_cards_includes_backlog_due_soon_flag():
         _issue("ABC-3", "Backlog today", "Backlog", due_date=due_today),
     ]
 
-    payload = linear.render_cards(tasks, {"Todo", "In Progress"}, lookback_hours=18)
+    payload = linear.render_cards(
+        tasks, {"Todo", "In Progress"}, lookback_hours=18, now=now
+    )
     cards_by_id = {card["identifier"]: card for card in payload["cards"]}
 
     assert "ABC-1" in cards_by_id
@@ -383,3 +388,85 @@ def test_write_error_without_cache_writes_empty(monkeypatch, tmp_path):
     assert cached["error"] == "Missing LINEAR_API_KEY in .env"
     assert "stale" not in cached
     assert output_path.read_text(encoding="utf-8") == "Linear\nMissing LINEAR_API_KEY in .env\n"
+
+
+def test_linear_request_sends_configured_query_depths(monkeypatch):
+    captured = {}
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            return b'{"data": {}}'
+
+    def fake_urlopen(request, timeout):
+        captured["payload"] = json.loads(request.data.decode("utf-8"))
+        captured["timeout"] = timeout
+        return Response()
+
+    monkeypatch.setattr(linear.urllib.request, "urlopen", fake_urlopen)
+
+    linear.linear_request("secret", 73, 84, 95)
+
+    assert captured["payload"]["variables"] == {
+        "first": 73,
+        "competitionFirst": 84,
+        "backlogFirst": 95,
+    }
+    assert captured["timeout"] == 20
+
+
+def test_main_caps_configured_depths_to_the_live_query_complexity_limit(
+    monkeypatch, tmp_path
+):
+    captured = {}
+    monkeypatch.setattr(linear.sys, "argv", ["fetch_linear_tasks.py"])
+    monkeypatch.setattr(linear, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(linear, "OUTPUT_PATH", tmp_path / "linear-tasks.txt")
+    monkeypatch.setattr(linear, "CARDS_PATH", tmp_path / "linear-cards.json")
+    monkeypatch.setattr(linear, "log_event", lambda _message: None)
+    monkeypatch.setattr(linear.common, "load_env", lambda: None)
+    monkeypatch.setenv("LINEAR_API_KEY", "secret")
+    monkeypatch.setenv("LINEAR_TASK_LIMIT", "73")
+    monkeypatch.setenv("LINEAR_COMPETITION_TASK_LIMIT", "84")
+    monkeypatch.setenv("LINEAR_BACKLOG_DUE_SOON_LIMIT", "95")
+
+    def fake_request(_api_key, limit, competition_limit, backlog_limit):
+        captured["limits"] = (limit, competition_limit, backlog_limit)
+        return {
+            "data": {
+                "workflowStates": {"nodes": []},
+                "competitionIssues": {"nodes": []},
+                "backlogDueSoon": {"nodes": []},
+            }
+        }
+
+    monkeypatch.setattr(linear, "linear_request", fake_request)
+
+    assert linear.main() == 0
+    assert captured["limits"] == (25, 25, 25)
+
+
+def test_query_depth_env_uses_defaults_and_caps_large_values(monkeypatch):
+    monkeypatch.setenv("LINEAR_TASK_LIMIT", "0")
+    assert linear.query_depth_env("LINEAR_TASK_LIMIT", 25) == 25
+    monkeypatch.setenv("LINEAR_TASK_LIMIT", "not-a-number")
+    assert linear.query_depth_env("LINEAR_TASK_LIMIT", 25) == 25
+    monkeypatch.setenv("LINEAR_TASK_LIMIT", "100")
+    assert linear.query_depth_env("LINEAR_TASK_LIMIT", 25) == 25
+
+
+def test_linear_http_error_message_includes_safe_graphql_detail():
+    error = urllib.error.HTTPError(
+        linear.API_URL,
+        400,
+        "Bad Request",
+        {},
+        io.BytesIO(b'{"errors":[{"message":"Query too complex"}]}'),
+    )
+
+    assert linear.linear_http_error_message(error) == "HTTP 400: Query too complex"

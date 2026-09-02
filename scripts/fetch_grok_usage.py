@@ -202,16 +202,24 @@ def normalize_grok_window(label, used_percent, cycle_start, cycle_end, fetched_a
 
 
 def billing_usage_percent(config):
-    used = as_int(unwrap_val(config.get("used")))
-    monthly_limit = as_int(unwrap_val(config.get("monthlyLimit")))
-    if monthly_limit > 0:
-        return (used / monthly_limit) * 100, used, monthly_limit
+    used_value = common.as_float(unwrap_val(config.get("used")), None)
+    monthly_limit_value = common.as_float(
+        unwrap_val(config.get("monthlyLimit")), None
+    )
+    if (
+        used_value is not None
+        and monthly_limit_value is not None
+        and monthly_limit_value > 0
+    ):
+        used = as_int(used_value)
+        monthly_limit = as_int(monthly_limit_value)
+        return (used_value / monthly_limit_value) * 100, used, monthly_limit
 
-    credit_usage_percent = config.get("creditUsagePercent")
+    credit_usage_percent = common.as_float(config.get("creditUsagePercent"), None)
     if credit_usage_percent is not None:
         return float(credit_usage_percent), 0, 0
 
-    return 0.0, used, monthly_limit
+    raise RuntimeError("Grok billing API returned no monthly usage data")
 
 
 def billing_cycle_bounds(config):
@@ -230,7 +238,6 @@ def normalize_usage(auth, billing, user, is_selected):
     fetched_at = datetime.now(timezone.utc)
     config = billing.get("config") if isinstance(billing, dict) else {}
     config = config if isinstance(config, dict) else {}
-
     used_percent, used, monthly_limit = billing_usage_percent(config)
     cycle_start, cycle_end = billing_cycle_bounds(config)
 

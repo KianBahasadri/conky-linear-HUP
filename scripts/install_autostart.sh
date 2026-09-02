@@ -12,11 +12,13 @@ mkdir -p "$AUTOSTART_DIR"
 printf '%s\n' \
   '[Desktop Entry]' \
   'Type=Application' \
-  'Name=Linear Conky Overlay' \
-  'Comment=Starts Linear task overlay' \
-  "Exec=bash -lc 'sleep 5 && exec \"$START_SCRIPT\"'" \
+  'Name=Conky Desktop Overlays' \
+  'Comment=Starts the multi-monitor Conky desktop overlays' \
+  "TryExec=$START_SCRIPT" \
+  "Exec=\"$START_SCRIPT\"" \
   'Terminal=false' \
   'X-GNOME-Autostart-enabled=true' \
+  'X-GNOME-Autostart-Delay=5' \
   > "$DESKTOP_FILE"
 
 printf 'Installed GNOME autostart entry: %s\n' "$DESKTOP_FILE"

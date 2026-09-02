@@ -4,7 +4,6 @@ import os
 import re
 import shutil
 import subprocess
-import sys
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone

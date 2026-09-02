@@ -12,8 +12,7 @@ including the alternatives that were not built, is the
 
 Remote access here is **Tailscale SSH**, not `sshd`. There is no TCP listener on
 port 22 — only `sshd-unix-local.socket`. Anything that greps for `sshd` children
-or watches port 22 reports zero remote sessions while one is live. The footer
-states which of the two is actually open.
+or watches port 22 reports zero remote sessions while one is live.
 
 The join that does work:
 
@@ -42,7 +41,8 @@ them. That chain — device, then session — is the thing the panel draws.
 
 `tailscale status --json` is called once, not per address, and only device names
 and OS strings are taken from it. The tailnet account identity in that payload is
-deliberately left alone.
+deliberately left alone. The cache also records whether `sshd` is listening for
+diagnostics; the transparent patch bay does not render a separate status footer.
 
 Three cases worth knowing:
 
@@ -74,9 +74,9 @@ dashboard; the design study is
 session path per cycle, walking up from the pane's working directory so a pane
 parked in a subdirectory still finds the repo root. A daemon counts as running
 only if the recorded pid answers and its cmdline still looks like the codeview
-server — the same test `bin/codeview status` uses. The per-session fields are
-flat for the renderer's regex JSON parser: `codeviewPresent`, `codeviewRunning`,
-`codeviewPort`, and `codeviewIndexAgeSeconds` (age of the newest file under
+server — the same test `bin/codeview status` uses. The per-session cache fields
+are `codeviewPresent`, `codeviewRunning`, `codeviewPort`, and
+`codeviewIndexAgeSeconds` (age of the newest file under
 `.codeview/cache/`, `-1` when unknown).
 
 A moon survives its session closing. Each cycle also probes the fleet list
@@ -139,14 +139,8 @@ placeholder sockets are never drawn, so a single session shows a single
 diamond, not a padded row of three. `minimum_height` is seeded at launch from
 `fetch_sessions.py --print-overlay-height`.
 
-| Variable | Purpose |
-| --- | --- |
-| `SESSIONS_OVERLAY_ENABLED` | `0` disables overlay + fetch loop |
-| `SESSIONS_GAP_X` | Left offset in px (default `4`) |
-| `SESSIONS_GAP_Y` | Bottom offset in px (default `6`) |
-| `SESSIONS_REFRESH_SECONDS` | Fetch interval (default `20`) |
-
-See [Configuration](configuration.md) for the full variable table.
+See [Configuration](configuration.md#sessions-overlay) for the variable
+defaults and complete inventory.
 
 ## Reading the panel
 
@@ -157,4 +151,3 @@ See [Configuration](configuration.md) for the full variable table.
 | Diamond | Tmux / fleet codeview destination. Glowing filled green when attached, hollow dim when open. No empty placeholder diamonds — exactly one per active session or serving codeview dashboard. A faint dashed arc links them. |
 | Filament | Live is a glowing constellation line from icon/star to its diamond, kissing each edge. Idle is a short fading tail. Alert has no filament — its burst sits at the star. |
 | Moon | Codeview dashboard daemon for the repo. Orbiting = serving (tint = repo color), phase = index age, dark parked moon with red rim = dead daemon, absent = no dashboard. See [Codeview moons](#codeview-moons). |
-| Footer | How many live vs idle origins, whether any are unresolved, and whether `sshd` is listening. |

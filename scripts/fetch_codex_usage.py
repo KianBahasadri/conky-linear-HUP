@@ -210,8 +210,7 @@ def refresh_token(auth):
 
     auth["access_token"] = access_token
     auth["refresh_token"] = tokens.get("refresh_token", auth["refresh_token"])
-    atomic_write_json(auth["path"], auth["raw"])
-    os.chmod(auth["path"], 0o600)
+    atomic_write_json(auth["path"], auth["raw"], mode=0o600)
 
 
 def latest_rollout_paths(limit=20):
@@ -232,7 +231,14 @@ def latest_rollout_paths(limit=20):
         except sqlite3.Error as error:
             log_event(f"could not read Codex state sqlite for local rate limits: {error}")
 
-    return sorted(CODEX_HOME.glob("sessions/**/*.jsonl"), key=lambda path: path.stat().st_mtime, reverse=True)[:limit]
+    candidates = []
+    for path in CODEX_HOME.glob("sessions/**/*.jsonl"):
+        try:
+            candidates.append((path.stat().st_mtime, path))
+        except OSError:
+            # Rollout files can disappear while Codex rotates a live session.
+            continue
+    return [path for _mtime, path in sorted(candidates, reverse=True)[:limit]]
 
 
 def row_has_usage_limit_error(row):
@@ -687,6 +693,19 @@ def apply_local_rate_limits(accounts, local_rate_limits):
         return accounts
 
     applied_epochs = {}
+    diagnostics = {}
+
+    def remember_diagnostic(kind, labels, sample, values):
+        diagnostic = diagnostics.setdefault(
+            kind, {"count": 0, "accounts": set(), "sample": sample, "values": values}
+        )
+        diagnostic["count"] += 1
+        diagnostic["accounts"].update(label for label in labels if label)
+        # Samples are processed oldest-to-newest, so retain the most recent
+        # representative rather than logging every rollout on every poll.
+        diagnostic["sample"] = sample
+        diagnostic["values"] = values
+
     for local_sample in sorted(samples, key=lambda sample: sample.get("eventEpoch", 0)):
         windows = local_rate_limit_windows(local_sample)
         if not windows:
@@ -714,25 +733,25 @@ def apply_local_rate_limits(accounts, local_rate_limits):
 
         if not candidates:
             if endpoint_accounts:
-                log_event(
-                    "discarded local Codex session rate_limits because endpoint data is authoritative "
-                    f"accounts={','.join(endpoint_accounts)} path={local_sample['path'].name} "
-                    f"values={local_values}"
+                remember_diagnostic(
+                    "authoritative", endpoint_accounts, local_sample, local_values
                 )
             else:
-                log_event(
-                    "ignored local Codex session rate_limits because no account API windows "
-                    f"matched path={local_sample['path'].name} values={local_values}"
+                remember_diagnostic(
+                    "unmatched", (), local_sample, local_values
                 )
             continue
 
         candidates.sort(key=lambda candidate: candidate[0], reverse=True)
         best_score, best_account = candidates[0]
         if len(candidates) > 1 and candidates[1][0] == best_score:
-            labels = ",".join(candidate[1].get("label", "") for candidate in candidates if candidate[0] == best_score)
-            log_event(
-                "ignored local Codex session rate_limits because the account match was ambiguous "
-                f"accounts={labels} path={local_sample['path'].name} values={local_values}"
+            labels = [
+                candidate[1].get("label", "")
+                for candidate in candidates
+                if candidate[0] == best_score
+            ]
+            remember_diagnostic(
+                "ambiguous", labels, local_sample, local_values
             )
             continue
 
@@ -767,6 +786,20 @@ def apply_local_rate_limits(accounts, local_rate_limits):
             f"windows={len(windows)} event={local_event} path={local_sample['path'].name} "
             f"previous_values={previous_values} local_values={local_values} "
             f"final_values={format_usage_windows(best_account['windows'])}"
+        )
+
+    messages = {
+        "authoritative": "discarded local Codex session rate_limits because endpoint data is authoritative",
+        "unmatched": "ignored local Codex session rate_limits because no account API windows matched",
+        "ambiguous": "ignored local Codex session rate_limits because the account match was ambiguous",
+    }
+    for kind, diagnostic in diagnostics.items():
+        accounts_text = ",".join(sorted(diagnostic["accounts"]))
+        account_detail = f" accounts={accounts_text}" if accounts_text else ""
+        log_event(
+            f"{messages[kind]} samples={diagnostic['count']}{account_detail} "
+            f"latest_path={diagnostic['sample']['path'].name} "
+            f"latest_values={diagnostic['values']}"
         )
 
     return accounts

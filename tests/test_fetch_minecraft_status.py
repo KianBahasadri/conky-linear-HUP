@@ -21,6 +21,31 @@ def test_clean_description_flattens_nested_extra_and_strips_color_codes():
     assert minecraft.clean_description(description) == "Hello world!"
 
 
+class FakeSocket:
+    def __init__(self, payload):
+        self.payload = bytearray(payload)
+
+    def recv(self, length):
+        chunk = self.payload[:length]
+        del self.payload[:length]
+        return bytes(chunk)
+
+
+def test_read_status_payload_honors_packet_framing():
+    raw_json = b'{"players":{"online":1}}'
+    packet = minecraft.encode_varint(0) + minecraft.encode_varint(len(raw_json)) + raw_json
+    sock = FakeSocket(minecraft.encode_varint(len(packet)) + packet)
+
+    assert minecraft.read_status_payload(sock) == {"players": {"online": 1}}
+
+
+def test_read_status_payload_rejects_oversized_packet_before_reading_body():
+    sock = FakeSocket(minecraft.encode_varint(minecraft.MAX_STATUS_PACKET_BYTES + 1))
+
+    with pytest.raises(ValueError, match="invalid status packet length"):
+        minecraft.read_status_payload(sock)
+
+
 def test_parse_server_host_port(monkeypatch):
     monkeypatch.setenv("MINECRAFT_SERVER", "example.org:25566")
     monkeypatch.delenv("MINECRAFT_SERVER_HOST", raising=False)

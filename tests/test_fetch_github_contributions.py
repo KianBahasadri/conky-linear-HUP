@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 import fetch_github_contributions as github
@@ -57,3 +59,84 @@ def test_parse_contributions_falls_back_to_level_without_a_tooltip():
 def test_parse_contributions_no_squares_error_path():
     with pytest.raises(ValueError, match="No contribution squares found"):
         github.parse_contributions("<html></html>")
+
+
+def test_write_error_keeps_last_successful_calendar(monkeypatch, tmp_path):
+    path = tmp_path / "github-contributions.json"
+    path.write_text(
+        json.dumps(
+            {
+                "ok": True,
+                "updatedAt": "2026-08-31T12:00:00+00:00",
+                "username": "octocat",
+                "contributions": [{"date": "2026-08-31", "level": 2, "count": 4}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(github, "CONTRIBUTIONS_PATH", path)
+
+    github.write_error("network down", username="octocat")
+
+    cached = json.loads(path.read_text(encoding="utf-8"))
+    assert cached["ok"] is True
+    assert cached["stale"] is True
+    assert cached["error"] == "network down"
+    assert cached["contributions"][0]["count"] == 4
+    assert cached["updatedAt"] == "2026-08-31T12:00:00+00:00"
+
+
+def test_write_error_does_not_retain_a_different_users_calendar(
+    monkeypatch, tmp_path
+):
+    path = tmp_path / "github-contributions.json"
+    path.write_text(
+        json.dumps(
+            {
+                "ok": True,
+                "username": "old-user",
+                "contributions": [{"date": "2026-08-31", "level": 4, "count": 20}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(github, "CONTRIBUTIONS_PATH", path)
+
+    github.write_error("network down", username="new-user")
+
+    cached = json.loads(path.read_text(encoding="utf-8"))
+    assert cached["ok"] is False
+    assert cached["stale"] is False
+    assert "contributions" not in cached
+
+
+def test_main_falls_back_to_html_after_malformed_graphql_payload(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setattr(github, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(
+        github, "CONTRIBUTIONS_PATH", tmp_path / "github-contributions.json"
+    )
+    monkeypatch.setattr(github, "log_event", lambda _message: None)
+    monkeypatch.setattr(github.common, "load_env", lambda: None)
+    monkeypatch.setattr(github, "github_username", lambda: "octocat")
+    monkeypatch.setattr(github, "effective_github_token", lambda: "token")
+    monkeypatch.setattr(
+        github,
+        "fetch_contributions_graphql_extended",
+        lambda *_args: (_ for _ in ()).throw(TypeError("missing user object")),
+    )
+    monkeypatch.setattr(
+        github,
+        "fetch_contributions",
+        lambda _username: (
+            '<td class="ContributionCalendar-day" '
+            'data-date="2026-08-31" data-level="2"></td>'
+        ),
+    )
+
+    assert github.main() == 0
+    cached = json.loads(github.CONTRIBUTIONS_PATH.read_text(encoding="utf-8"))
+    assert cached["contributions"] == [
+        {"date": "2026-08-31", "level": 2, "count": 4}
+    ]

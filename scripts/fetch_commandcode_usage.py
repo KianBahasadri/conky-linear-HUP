@@ -345,6 +345,13 @@ def normalize_usage(auth, whoami, credits_payload, subscription_payload, summary
     plan = plan_info(subscription.get("planId") or credits.get("planId"))
     user = whoami.get("user") if isinstance(whoami, dict) else {}
     user = user if isinstance(user, dict) else {}
+    has_monthly_usage = any(
+        as_float(credits.get(field), None) is not None
+        for field in ("monthlyCredits", "purchasedCredits", "freeCredits")
+    ) or any(
+        as_float(summary.get(field), None) is not None
+        for field in ("totalCost", "totalMonthlyCredits")
+    )
 
     windows = []
     five_hour = rolling_window("5h", limits.get("fiveHour"), FIVE_HOUR_WINDOW_SECONDS, fetched_at)
@@ -353,7 +360,10 @@ def normalize_usage(auth, whoami, credits_payload, subscription_payload, summary
         windows.append(five_hour)
     if weekly:
         windows.append(weekly)
-    windows.append(monthly_usage(credits, subscription, summary, plan, fetched_at))
+    if has_monthly_usage:
+        windows.append(monthly_usage(credits, subscription, summary, plan, fetched_at))
+    if not windows:
+        raise RuntimeError("Command Code APIs returned no usage data")
 
     account = {
         "ok": bool(windows),

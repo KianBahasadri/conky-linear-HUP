@@ -10,18 +10,13 @@ return function(shared, repo_root)
   local font = 'JetBrains Mono'
   local panel_width = 1000
   local panel_height = 110
-  local panel_auto_height = true
   local panel_radius = 18
   local account_row_x = 34
   local account_row_y = 8
   local account_row_gap = 16
   local panel_dynamic_height_padding = 24
   local panel_first_bar_x = 90
-  -- Width of each usage progress bar.
-  local bar_width = 230
   local bar_height = 8
-  local bar_text_gap = 14
-  local bar_countdown_width = 54
   -- Insets keep title chips (drawn at y-9) and the frame glow (y+7) inside the
   -- Conky window. Must stay in sync with fetch_common.rate_limit_panel_window_height.
   local panel_top_inset = 12
@@ -222,56 +217,94 @@ return function(shared, repo_root)
       return nil
     end
 
-    local ok = content:match('"ok"%s*:%s*true') ~= nil
-    local error_message = content:match('"error"%s*:%s*"(.-)"')
+    local ok = shared.json_boolean(content, 'ok', false)
+    local error_message = shared.json_string(content, 'error', '')
     local accounts = {}
     local account_index = {}
 
-    for object in content:gmatch('{%s-"account".-}') do
-      local account = object:match('"account"%s*:%s*"(.-)"')
-      local plan_type = object:match('"planType"%s*:%s*"(.-)"') or ''
-      local is_selected = object:match('"isSelected"%s*:%s*true') ~= nil
-      local window = object:match('"window"%s*:%s*"(.-)"')
-      local used_percent = tonumber(object:match('"usedPercent"%s*:%s*([%d%.]+)')) or 0
-      local remaining_percent = tonumber(object:match('"remainingPercent"%s*:%s*([%d%.]+)')) or math.max(0, 100 - used_percent)
-      local resets_at = object:match('"resetsAt"%s*:%s*"(.-)"') or ''
-      local reset_at_epoch = tonumber(object:match('"resetAtEpoch"%s*:%s*(%d+)')) or 0
-      local reset_after_seconds = tonumber(object:match('"resetAfterSeconds"%s*:%s*(%d+)')) or 0
-      local window_seconds = tonumber(object:match('"windowSeconds"%s*:%s*(%d+)')) or 0
-
-      if account and window then
-        if not account_index[account] then
-          account_index[account] = {
-            label = shared.unescape_json_string(account),
-            provider = 'Codex',
-            plan_type = shared.unescape_json_string(plan_type),
-            is_selected = is_selected,
-            windows = {},
-          }
-          table.insert(accounts, account_index[account])
-        elseif is_selected then
-          account_index[account].is_selected = true
-        end
-
-        table.insert(account_index[account].windows, {
-          label = normalized_window_label({
-            label = window,
-            reset_at_epoch = reset_at_epoch,
-            reset_after_seconds = reset_after_seconds,
-          }),
-          used_percent = used_percent,
-          remaining_percent = remaining_percent,
-          resets_at = resets_at,
+    local function parse_window(object, label_key)
+      local label = shared.json_string(object, label_key, nil)
+      if not label then
+        return nil
+      end
+      local used_percent = shared.json_number(object, 'usedPercent', 0)
+      local reset_at_epoch = shared.json_number(object, 'resetAtEpoch', 0)
+      local reset_after_seconds = shared.json_number(object, 'resetAfterSeconds', 0)
+      return {
+        label = normalized_window_label({
+          label = label,
           reset_at_epoch = reset_at_epoch,
           reset_after_seconds = reset_after_seconds,
-          window_seconds = window_seconds,
-        })
+        }),
+        used_percent = used_percent,
+        remaining_percent = shared.json_number(
+          object,
+          'remainingPercent',
+          math.max(0, 100 - used_percent)
+        ),
+        resets_at = shared.json_string(object, 'resetsAt', ''),
+        reset_at_epoch = reset_at_epoch,
+        reset_after_seconds = reset_after_seconds,
+        window_seconds = shared.json_number(object, 'windowSeconds', 0),
+      }
+    end
+
+    -- Current cache shape: account records own nested window arrays.  Keeping
+    -- account-level stale/error state makes the JSON fallback behave the same
+    -- as the render TSV when that derived cache has not been written yet.
+    for _, object in ipairs(shared.json_array_objects(content, 'accounts')) do
+      local label = shared.json_string(object, 'label', nil)
+      if label then
+        local account = {
+          label = label,
+          provider = 'Codex',
+          plan_type = shared.json_string(object, 'planType', ''),
+          is_selected = shared.json_boolean(object, 'isSelected', false),
+          ok = shared.json_boolean(object, 'ok', false),
+          error = shared.json_string(object, 'error', ''),
+          stale = shared.json_boolean(object, 'stale', false),
+          windows = {},
+        }
+        for _, window_object in ipairs(shared.json_array_objects(object, 'windows')) do
+          local window = parse_window(window_object, 'label')
+          if window then
+            table.insert(account.windows, window)
+          end
+        end
+        account_index[label] = account
+        table.insert(accounts, account)
+      end
+    end
+
+    -- Compatibility with the older flattened `bars` cache shape.
+    if #accounts == 0 then
+      for _, object in ipairs(shared.json_array_objects(content, 'bars')) do
+        local label = shared.json_string(object, 'account', nil)
+        local window = parse_window(object, 'window')
+        if label and window then
+          if not account_index[label] then
+            account_index[label] = {
+              label = label,
+              provider = 'Codex',
+              plan_type = shared.json_string(object, 'planType', ''),
+              is_selected = shared.json_boolean(object, 'isSelected', false),
+              ok = shared.json_boolean(object, 'ok', true),
+              error = shared.json_string(object, 'error', ''),
+              stale = shared.json_boolean(object, 'stale', false),
+              windows = {},
+            }
+            table.insert(accounts, account_index[label])
+          elseif shared.json_boolean(object, 'isSelected', false) then
+            account_index[label].is_selected = true
+          end
+          table.insert(account_index[label].windows, window)
+        end
       end
     end
 
     return {
       ok = ok,
-      error = error_message and shared.unescape_json_string(error_message) or '',
+      error = error_message,
       accounts = accounts,
     }
   end
@@ -846,9 +879,9 @@ return function(shared, repo_root)
       show_pace = true
     end
 
-    local bw = layout and layout.bar_width or bar_width
-    local btg = layout and layout.bar_text_gap or bar_text_gap
-    local bcw = layout and layout.bar_countdown_width or bar_countdown_width
+    local bw = layout.bar_width
+    local btg = layout.bar_text_gap
+    local bcw = layout.bar_countdown_width
 
     local used = shared.clamp(window.used_percent, 0, 100)
     if refresh_mode then
@@ -1525,9 +1558,6 @@ return function(shared, repo_root)
 
   local function panel_height_for(account_count)
     local count = math.max(1, tonumber(account_count) or 1)
-    if not panel_auto_height then
-      return panel_height
-    end
     return math.max(panel_height, panel_dynamic_height_padding + count * account_row_gap)
   end
 

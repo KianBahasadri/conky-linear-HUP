@@ -1,4 +1,5 @@
 import json
+import stat
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -47,6 +48,64 @@ def test_format_usage_windows_includes_values_and_reset_details():
         "weekly(used=93.0%,remaining=7.0%,reset=2027-01-15T08:00:00+00:00,"
         "reset_after=3600s,window=604800s)"
     )
+
+
+def test_latest_rollout_paths_skips_disappeared_files(monkeypatch, tmp_path):
+    sessions_dir = tmp_path / "sessions" / "2026"
+    sessions_dir.mkdir(parents=True)
+    valid = sessions_dir / "valid.jsonl"
+    valid.write_text("{}\n", encoding="utf-8")
+    (sessions_dir / "disappeared.jsonl").symlink_to(sessions_dir / "missing.jsonl")
+    monkeypatch.setattr(codex, "CODEX_HOME", tmp_path)
+    monkeypatch.setattr(codex, "CODEX_SQLITE_HOME", tmp_path / "no-state-db")
+
+    assert codex.latest_rollout_paths() == [valid]
+
+
+def test_refresh_token_preserves_account_selector_symlink_chain(
+    monkeypatch, tmp_path
+):
+    target = tmp_path / "auth.json.kian"
+    target.write_text(
+        json.dumps(
+            {
+                "tokens": {
+                    "access_token": "old-access",
+                    "refresh_token": "old-refresh",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    target.chmod(0o600)
+    current = tmp_path / "current"
+    current.symlink_to(target.name)
+    selector = tmp_path / "auth.json"
+    selector.symlink_to(current.name)
+    auth = codex.read_auth("kian", selector)
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            return b'{"access_token":"new-access","refresh_token":"new-refresh"}'
+
+    monkeypatch.setattr(
+        codex.urllib.request, "urlopen", lambda *_args, **_kwargs: Response()
+    )
+
+    codex.refresh_token(auth)
+
+    assert selector.is_symlink()
+    assert current.is_symlink()
+    saved = json.loads(target.read_text(encoding="utf-8"))
+    assert saved["tokens"]["access_token"] == "new-access"
+    assert saved["tokens"]["refresh_token"] == "new-refresh"
+    assert stat.S_IMODE(target.stat().st_mode) == 0o600
 
 
 def test_local_rate_limit_log_includes_before_and_after_values(monkeypatch):
@@ -124,7 +183,10 @@ def test_fresh_endpoint_data_is_authoritative_for_every_account(monkeypatch):
     assert [item["usedPercent"] for item in accounts[0]["windows"]] == [100, 100]
     assert [item["usedPercent"] for item in accounts[1]["windows"]] == [20, 30]
     assert all("localRateLimits" not in account for account in accounts)
-    assert sum("endpoint data is authoritative" in event for event in events) == 2
+    authoritative = [event for event in events if "endpoint data is authoritative" in event]
+    assert len(authoritative) == 1
+    assert "samples=2" in authoritative[0]
+    assert "latest_path=rollout-ryan.jsonl" in authoritative[0]
 
 
 def test_final_account_log_includes_source_and_values(monkeypatch):

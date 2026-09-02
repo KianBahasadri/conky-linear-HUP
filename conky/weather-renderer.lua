@@ -7,15 +7,13 @@ return function(shared, repo_root)
   local radius = 18
 
   local function json_string(content, key, fallback)
-    local value = content:match('"' .. key .. '"%s*:%s*"(.-)"')
-    if not value then
-      return fallback or ''
-    end
-    return shared.unescape_json_string(value)
+    local value = shared.json_string(content, key, nil)
+    return value ~= nil and value or fallback or ''
   end
 
   local function json_number(content, key, fallback)
-    return tonumber(content:match('"' .. key .. '"%s*:%s*([%d%.%-]+)')) or fallback or 0
+    local value = shared.json_number(content, key, nil)
+    return value ~= nil and value or fallback or 0
   end
 
   local function read_status()
@@ -23,14 +21,14 @@ return function(shared, repo_root)
     if not content then
       return { ok = false, error = 'Waiting for the first weather update...' }
     end
-    if content:match('"ok"%s*:%s*true') == nil then
+    if not shared.json_boolean(content, 'ok', false) then
       return { ok = false, error = json_string(content, 'error', 'Weather data unavailable') }
     end
 
-    local best_body = content:match('"bestWindow"%s*:%s*{(.-)}') or ''
+    local best_body = shared.json_field(content, 'bestWindow') or '{}'
     return {
       ok = true,
-      stale = content:match('"stale"%s*:%s*true') ~= nil,
+      stale = shared.json_boolean(content, 'stale', false),
       location = json_string(content, 'location', 'Local weather'),
       location_source = json_string(content, 'locationSource', ''),
       temperature = json_number(content, 'temperature'),
@@ -38,7 +36,7 @@ return function(shared, repo_root)
       apparent_temperature = json_number(content, 'apparentTemperature'),
       condition = json_string(content, 'condition', 'Unknown conditions'),
       weather_code = json_number(content, 'weatherCode'),
-      is_day = content:match('"isDay"%s*:%s*true') ~= nil,
+      is_day = shared.json_boolean(content, 'isDay', false),
       aqi = json_number(content, 'aqi'),
       aqi_label = json_string(content, 'aqiLabel', 'Unknown'),
       aqi_color = json_string(content, 'aqiColor', 'f8fafc'),
@@ -46,12 +44,8 @@ return function(shared, repo_root)
       uv_label = json_string(content, 'uvLabel', ''),
       humidity = json_number(content, 'humidityPercent'),
       rain = json_number(content, 'precipitationProbability'),
-      wind_speed = json_number(content, 'windSpeed'),
       wind_gust = json_number(content, 'windGust'),
-      wind_direction = json_string(content, 'windDirection', ''),
       wind_unit = json_string(content, 'windUnit', 'mph'),
-      visibility = json_number(content, 'visibility'),
-      visibility_unit = json_string(content, 'visibilityUnit', 'mi'),
       sunset = json_string(content, 'sunset', '--'),
       run_score = json_number(content, 'runScore'),
       run_status = json_string(content, 'runStatus', 'WAIT'),
@@ -59,13 +53,12 @@ return function(shared, repo_root)
       run_advice = json_string(content, 'runAdvice', 'Check conditions before heading out'),
       best_window = json_string(best_body, 'label', 'Now'),
       best_detail = json_string(best_body, 'detail', ''),
-      attribution = json_string(content, 'attribution', 'Open-Meteo / CAMS'),
     }
   end
 
   local function read_workouts()
     local content = shared.read_file(workouts_path)
-    if not content or content:match('"ok"%s*:%s*true') == nil then
+    if not content or not shared.json_boolean(content, 'ok', false) then
       local error_text = content and json_string(content, 'error', '') or ''
       return {
         ok = false,
@@ -73,18 +66,16 @@ return function(shared, repo_root)
       }
     end
 
-    local recent_body = content:match('"recent"%s*:%s*%[(.-)%]%s*}') or ''
     local recent = {}
-    for entry in recent_body:gmatch('%{([^}]*)%}') do
+    for _, entry in ipairs(shared.json_array_objects(content, 'recent')) do
       table.insert(recent, {
         distance_units = json_number(entry, 'distanceUnits'),
-        is_last = entry:match('"isLast"%s*:%s*true') ~= nil,
+        is_last = shared.json_boolean(entry, 'isLast', false),
       })
     end
 
     return {
       ok = true,
-      workout_count = json_number(content, 'workoutCount'),
       last_sport = json_string(content, 'lastSport', 'Workout'),
       last_date = json_string(content, 'lastDateText', ''),
       last_distance = json_string(content, 'lastDistanceText', '--'),
@@ -95,7 +86,6 @@ return function(shared, repo_root)
       week_runs = json_number(content, 'weekRuns'),
       week_distance = json_string(content, 'weekDistanceText', '--'),
       week_duration = json_string(content, 'weekDurationText', '--'),
-      week_pace = json_string(content, 'weekPaceText', '--'),
       recent = recent,
     }
   end
@@ -224,42 +214,6 @@ return function(shared, repo_root)
       ['Extreme'] = 'Xtreme',
     }
     return compact[label] or label
-  end
-
-  local function wrap_text(cr, value, max_width, max_lines)
-    local words = {}
-    for word in value:gmatch('%S+') do
-      table.insert(words, word)
-    end
-
-    local lines = {}
-    local current = ''
-    local extents = cairo_text_extents_t:create()
-    for _, word in ipairs(words) do
-      local candidate = current == '' and word or current .. ' ' .. word
-      cairo_text_extents(cr, candidate, extents)
-      if extents.width <= max_width or current == '' then
-        current = candidate
-      else
-        table.insert(lines, current)
-        current = word
-      end
-    end
-    if current ~= '' then
-      table.insert(lines, current)
-    end
-
-    if #lines > max_lines then
-      lines[max_lines] = shared.truncate_title(
-        cr,
-        table.concat(lines, ' ', max_lines),
-        max_width
-      )
-      while #lines > max_lines do
-        table.remove(lines)
-      end
-    end
-    return lines
   end
 
   local function draw_workouts(cr, workouts, x, y, accent, secondary)
@@ -448,7 +402,7 @@ return function(shared, repo_root)
     cairo_show_text(cr, string.format('%d', status.run_score))
     cairo_set_font_size(cr, 9)
     shared.set_hex(cr, 'f8fafc', 0.64)
-    local advice_lines = wrap_text(cr, status.run_advice, 108, 3)
+    local advice_lines = shared.wrap_title(cr, status.run_advice, 108, 3)
     for index, line in ipairs(advice_lines) do
       cairo_move_to(cr, x + 292, y + 81 + (index - 1) * 10)
       cairo_show_text(cr, line)

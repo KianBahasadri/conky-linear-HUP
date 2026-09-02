@@ -178,8 +178,12 @@ def normalize_usage(auth, usage, me, plan_info, is_selected):
     plan = plan if isinstance(plan, dict) else {}
     cycle_start = epoch_millis(usage.get("billingCycleStart"))
     cycle_end = epoch_millis(usage.get("billingCycleEnd")) or epoch_millis(plan.get("billingCycleEnd"))
-    windows = [
-        normalize_cursor_window(
+    windows = []
+    if any(
+        plan_usage.get(field) is not None
+        for field in ("autoPercentUsed", "autoSpend", "autoLimit")
+    ):
+        windows.append(normalize_cursor_window(
             "auto",
             plan_usage.get("autoPercentUsed"),
             as_int(plan_usage.get("autoSpend")),
@@ -187,8 +191,12 @@ def normalize_usage(auth, usage, me, plan_info, is_selected):
             cycle_start,
             cycle_end,
             fetched_at,
-        ),
-        normalize_cursor_window(
+        ))
+    if any(
+        plan_usage.get(field) is not None
+        for field in ("apiPercentUsed", "apiSpend", "apiLimit")
+    ):
+        windows.append(normalize_cursor_window(
             "api",
             plan_usage.get("apiPercentUsed"),
             as_int(plan_usage.get("apiSpend")),
@@ -196,8 +204,7 @@ def normalize_usage(auth, usage, me, plan_info, is_selected):
             cycle_start,
             cycle_end,
             fetched_at,
-        ),
-    ]
+        ))
 
     account = {
         "ok": bool(windows),

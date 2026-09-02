@@ -1,6 +1,8 @@
 import json
 from datetime import datetime, timezone
 
+import pytest
+
 import fetch_grok_usage as grok
 
 
@@ -166,6 +168,54 @@ def test_fetch_account_uses_stale_cache_after_auth_failure(monkeypatch, tmp_path
     assert account["staleCache"] is True
     assert "expired token" in account["error"]
     assert account["windows"][0]["usedPercent"] == 3.0
+
+
+def test_fetch_account_uses_stale_cache_after_empty_billing_payload(
+    monkeypatch, tmp_path
+):
+    auth_path = tmp_path / "auth.json"
+    write_auth(auth_path)
+    monkeypatch.setattr(grok, "CACHE_DIR", tmp_path)
+    grok.write_account_cache(
+        {
+            "ok": True,
+            "label": "grok",
+            "windows": [
+                {"label": "monthly", "usedPercent": 8.0, "remainingPercent": 92.0}
+            ],
+        }
+    )
+
+    def fake_request(_auth, resource, query=None):
+        if resource == "billing":
+            return 200, {}
+        if resource == "user":
+            return 200, {}
+        raise AssertionError((resource, query))
+
+    monkeypatch.setattr(grok, "grok_request", fake_request)
+
+    account = grok.fetch_account("grok", auth_path, True)
+
+    assert account["staleCache"] is True
+    assert account["windows"][0]["usedPercent"] == 8.0
+    assert "no monthly usage data" in account["error"]
+
+
+def test_normalize_usage_rejects_null_billing_values():
+    with pytest.raises(RuntimeError, match="no monthly usage data"):
+        grok.normalize_usage(
+            {"label": "grok", "email": "", "tier": 0},
+            {
+                "config": {
+                    "used": {"val": None},
+                    "monthlyLimit": {"val": None},
+                    "creditUsagePercent": None,
+                }
+            },
+            {},
+            True,
+        )
 
 
 def test_fetch_account_falls_back_to_legacy_billing_payload(monkeypatch, tmp_path):

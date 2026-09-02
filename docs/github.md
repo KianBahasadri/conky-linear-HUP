@@ -14,6 +14,10 @@ lattice is in the [contribution skyline study](github-mockups/NOTES.md).
 - `scripts/fetch_github_contributions.py` → `cache/github-contributions.json`.
 - `GITHUB_USERNAME` controls the account (`GH_USERNAME` is also accepted). If both are missing, the fetcher tries `git config github.user` and then the GitHub remote owner.
 - `GITHUB_TOKEN` is optional. With a token (or a logged-in `gh` — the fetcher calls `gh auth token`) the skyline spans ~401 days via GraphQL so the left edge shows the same calendar month as the right (e.g., both August). Without it, it falls back to the public HTML scrape capped at 371 days / 53 weeks — see [GitHub rail blob experiments](github-rail-blob-experiments.md). `GITHUB_HISTORY_DAYS` tunes that window (default `401`, capped at `730`). The git overlay's Actions pip uses `gh` separately (see [Git status overlay](git.md)).
+- A failed refresh retains the last successful contribution calendar for the
+  same username and marks it stale instead of replacing the city with an empty
+  error payload. Switching usernames never displays the previous account as a
+  fallback.
 - Set `GITHUB_OVERLAY_ENABLED=0` to disable the overlay and its refresh loop.
 
 Each day carries a `level` (0-4) **and** a `count`. The level alone cannot be
@@ -74,22 +78,8 @@ downward as tasks land. The start script gives height back until
 `GITHUB_SKYLINE_MIN_HEIGHT`. Setting `GITHUB_GAP_X` or `GITHUB_GAP_Y` pins that
 axis and opts out of the corresponding measurement.
 
-| Variable | Purpose |
-| --- | --- |
-| `GITHUB_OVERLAY_ENABLED` | `0` disables overlay + fetch loop |
-| `GITHUB_USERNAME` / `GH_USERNAME` | Account to render |
-| `GITHUB_TOKEN` | Optional auth for GraphQL (`401`-day) skyline; falls back to `gh` auth token |
-| `GITHUB_HISTORY_DAYS` | Skyline window in days when authenticated (default `401`, max `730`) |
-| `GITHUB_GAP_X` | Left offset in px; **empty = match the rate limit panel's frame** |
-| `GITHUB_GAP_Y` | Bottom offset in px; **empty = sit on the rate limit panel** |
-| `GITHUB_SKYLINE_HEIGHT` | Requested window height (default `340`) |
-| `GITHUB_SKYLINE_MIN_HEIGHT` | Floor after the Linear clearance is taken out (default `180`) |
-| `GITHUB_LINEAR_CLEARANCE` | Gap kept under the Linear cards (default `14`) |
-| `GITHUB_ROOF_CLEARANCE` | Gap above the panel's title chips (default `11`) |
-| `GITHUB_REFRESH_SECONDS` | Fetch interval (default `1800`) |
-| `GITHUB_TIMEOUT_SECONDS` | Request timeout |
-
-See [Configuration](configuration.md) for the full variable table.
+See [Configuration](configuration.md#github-overlay) for the variable defaults
+and complete inventory.
 
 ## Contribution calendar troubleshooting
 

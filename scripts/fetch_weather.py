@@ -67,7 +67,23 @@ def request_json(url, params=None, timeout=10):
         method="GET",
     )
     with urllib.request.urlopen(request, timeout=timeout) as response:
-        return json.loads(response.read().decode("utf-8"))
+        raw = response.read()
+        try:
+            return json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            host = urllib.parse.urlsplit(url).hostname or "weather provider"
+            status = getattr(response, "status", None)
+            if status is None:
+                try:
+                    status = response.getcode()
+                except AttributeError:
+                    status = "unknown"
+            headers = getattr(response, "headers", {})
+            content_type = headers.get("Content-Type", "unknown") if headers else "unknown"
+            raise ValueError(
+                f"{host} returned invalid JSON "
+                f"(HTTP {status or 'unknown'}; content-type {content_type})"
+            ) from error
 
 
 def parse_coordinate(value, name, minimum, maximum):
@@ -391,37 +407,65 @@ def score_run(conditions, imperial=True):
     return {"score": score, "status": status, "color": color, "advice": advice}
 
 
+def list_value(mapping, key, index):
+    values = mapping.get(key) or []
+    return values[index] if index < len(values) else None
+
+
+def is_finite_number(value):
+    try:
+        return math.isfinite(float(value))
+    except (TypeError, ValueError):
+        return False
+
+
 def hourly_rows(weather, air):
     weather_hourly = weather.get("hourly") or {}
     air_hourly = air.get("hourly") or {}
     air_by_time = {}
     for index, time_value in enumerate(air_hourly.get("time") or []):
         air_by_time[time_value] = {
-            key: (air_hourly.get(key) or [None] * (index + 1))[index]
-            if index < len(air_hourly.get(key) or [])
-            else None
+            key: list_value(air_hourly, key, index)
             for key in ("us_aqi", "pm2_5", "uv_index")
         }
 
     rows = []
     times = weather_hourly.get("time") or []
     for index, time_value in enumerate(times):
-        def weather_value(key):
-            values = weather_hourly.get(key) or []
-            return values[index] if index < len(values) else None
-
         air_values = air_by_time.get(time_value, {})
+        weather_values = {
+            key: list_value(weather_hourly, key, index)
+            for key in (
+                "temperature_2m",
+                "apparent_temperature",
+                "precipitation_probability",
+                "weather_code",
+                "wind_speed_10m",
+                "wind_gusts_10m",
+                "relative_humidity_2m",
+                "visibility",
+            )
+        }
+        if not all(is_finite_number(value) for value in weather_values.values()) or not all(
+            is_finite_number(air_values.get(key))
+            for key in ("us_aqi", "pm2_5", "uv_index")
+        ):
+            continue
         rows.append(
             {
                 "time": time_value,
-                "temperature": rounded(weather_value("temperature_2m")),
-                "apparentTemperature": rounded(weather_value("apparent_temperature")),
-                "precipitationProbability": rounded(weather_value("precipitation_probability")),
-                "weatherCode": rounded(weather_value("weather_code")),
-                "windSpeed": rounded(weather_value("wind_speed_10m")),
-                "windGust": rounded(weather_value("wind_gusts_10m")),
-                "humidityPercent": rounded(weather_value("relative_humidity_2m")),
-                "visibility": as_number(weather_value("visibility")),
+                "temperature": rounded(weather_values["temperature_2m"]),
+                "apparentTemperature": rounded(
+                    weather_values["apparent_temperature"]
+                ),
+                "precipitationProbability": rounded(
+                    weather_values["precipitation_probability"]
+                ),
+                "weatherCode": rounded(weather_values["weather_code"]),
+                "windSpeed": rounded(weather_values["wind_speed_10m"]),
+                "windGust": rounded(weather_values["wind_gusts_10m"]),
+                "humidityPercent": rounded(weather_values["relative_humidity_2m"]),
+                "visibility": as_number(weather_values["visibility"]),
                 "aqi": rounded(air_values.get("us_aqi")),
                 "pm25": rounded(air_values.get("pm2_5"), 1),
                 "uvIndex": rounded(air_values.get("uv_index"), 1),
@@ -466,10 +510,47 @@ def best_run_window(rows, units):
     return {"label": label, "detail": detail, "score": best_score["score"]}
 
 
+def require_current_numbers(payload, source, fields):
+    current = payload.get("current") if isinstance(payload, dict) else None
+    if not isinstance(current, dict):
+        raise ValueError(f"{source} response omitted current conditions")
+    missing = []
+    for field in fields:
+        try:
+            number = float(current.get(field))
+        except (TypeError, ValueError):
+            missing.append(field)
+            continue
+        if not math.isfinite(number):
+            missing.append(field)
+    if missing:
+        raise ValueError(
+            f"{source} response omitted valid current fields: {', '.join(missing)}"
+        )
+
+
 def normalize_status(location, units, weather, air):
+    require_current_numbers(
+        weather,
+        "weather",
+        (
+            "temperature_2m",
+            "relative_humidity_2m",
+            "apparent_temperature",
+            "weather_code",
+            "wind_speed_10m",
+            "wind_direction_10m",
+            "wind_gusts_10m",
+            "visibility",
+            "is_day",
+        ),
+    )
+    require_current_numbers(air, "air-quality", ("us_aqi", "pm2_5", "uv_index"))
     current = weather.get("current") or {}
     air_current = air.get("current") or {}
     rows = hourly_rows(weather, air)
+    if not rows:
+        raise ValueError("weather and air-quality responses had no complete hourly forecast")
     first_hour = rows[0] if rows else {}
     aqi, aqi_label, aqi_color = aqi_details(air_current.get("us_aqi"))
     weather_code = rounded(current.get("weather_code"))

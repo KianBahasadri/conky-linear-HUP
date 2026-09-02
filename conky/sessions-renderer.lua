@@ -12,7 +12,6 @@ return function(shared, repo_root)
   local drift_full_height = 460
   local drift_min_height = 430
   local destination_row_height = 110
-  local footer_height = 0
   local diamond_zone_height = 330
   local visual_top_buffer = 24
   local visual_bottom_buffer = 48
@@ -67,38 +66,16 @@ return function(shared, repo_root)
     return repo_palette[idx]
   end
 
-  local function json_objects(body)
-    local objects = {}
-    for object in body:gmatch('%b{}') do table.insert(objects, object) end
-    return objects
-  end
-
-  local function json_array(content, key)
-    local _, start = content:find('"' .. key .. '"%s*:%s*%[')
-    if not start then return {} end
-    local depth = 1
-    local index = start + 1
-    while index <= #content and depth > 0 do
-      local character = content:sub(index, index)
-      if character == '[' then depth = depth + 1
-      elseif character == ']' then depth = depth - 1 end
-      index = index + 1
-    end
-    return json_objects(content:sub(start + 1, index - 2))
-  end
-
   local function field(object, key)
-    local value = shared.match_json_string(object, key)
-    if value then return shared.unescape_json_string(value) end
-    return nil
+    return shared.json_string(object, key, nil)
   end
 
   local function number_field(object, key)
-    return tonumber(object:match('"' .. key .. '"%s*:%s*(%-?%d+)')) or 0
+    return shared.json_number(object, key, 0)
   end
 
   local function bool_field(object, key)
-    return object:match('"' .. key .. '"%s*:%s*true') ~= nil
+    return shared.json_boolean(object, key, false)
   end
 
   local function read_state()
@@ -106,11 +83,11 @@ return function(shared, repo_root)
     if not content then
       return { ok = false, error = 'Waiting for the first session scan...' }
     end
-    if content:match('"ok"%s*:%s*true') == nil then
+    if not bool_field(content, 'ok') then
       return { ok = false, error = field(content, 'error') or 'Session data unavailable' }
     end
     local devices = {}
-    for _, object in ipairs(json_array(content, 'devices')) do
+    for _, object in ipairs(shared.json_array_objects(content, 'devices')) do
       table.insert(devices, {
         name = field(object, 'name') or '?',
         os = field(object, 'os') or '',
@@ -122,57 +99,96 @@ return function(shared, repo_root)
       })
     end
     local sessions = {}
-    for _, object in ipairs(json_array(content, 'sessions')) do
+    for _, object in ipairs(shared.json_array_objects(content, 'sessions')) do
       local attached = field(object, 'attached') or ''
       local cv_age = number_field(object, 'codeviewIndexAgeSeconds')
-      if cv_age == 0 and object:match('"codeviewIndexAgeSeconds"') == nil then
+      if cv_age == 0 and shared.json_field(object, 'codeviewIndexAgeSeconds') == nil then
         cv_age = number_field(object, 'codeviewIndexAge')
       end
       table.insert(sessions, {
         name = field(object, 'name') or '?',
-        windows = number_field(object, 'windows'),
-        panes = number_field(object, 'panes'),
         path = field(object, 'path') or '',
         repo = field(object, 'repo') or '',
         attached = attached ~= '' and attached or nil,
-        idle = field(object, 'idle') or '',
-        idleSeconds = number_field(object, 'idleSeconds'),
+        -- Keep missing distinct from a real zero: zero means the tmux session
+        -- is active now, while missing falls back to the device login age.
+        idleSeconds = shared.json_number(object, 'idleSeconds', nil),
         codeviewPresent = bool_field(object, 'codeviewPresent'),
         codeviewRunning = bool_field(object, 'codeviewRunning'),
-        codeviewPort = number_field(object, 'codeviewPort'),
         codeviewIndexAge = cv_age,
       })
     end
-    return { ok = true, devices = devices, sessions = sessions, sshd = content:match('"sshdListening"%s*:%s*true') ~= nil }
+    return { ok = true, devices = devices, sessions = sessions }
+  end
+
+  -- Pack same-repo destinations together, moving a group to the next row when
+  -- it would otherwise split across the three-column grid.  Height, layout,
+  -- and drawing all consume this one result; keeping three copies of the
+  -- packing loop previously made clipping bugs likely whenever one changed.
+  local function session_grid(sessions)
+    sessions = sessions or {}
+    local slot_for_session = {}
+    local row_for_slot = {}
+    local row, column, slot = 0, 0, 0
+    local index = 1
+
+    while index <= #sessions do
+      local session = sessions[index]
+      local repo = (session.repo or session.path or session.name or ''):lower()
+      local group_end = index + 1
+      while group_end <= #sessions do
+        local candidate = sessions[group_end]
+        local candidate_repo = (candidate.repo or candidate.path or candidate.name or ''):lower()
+        if candidate_repo ~= repo then
+          break
+        end
+        group_end = group_end + 1
+      end
+
+      local group_size = group_end - index
+      if column ~= 0 and group_size <= slot_columns and group_size > (slot_columns - column) then
+        slot = slot + (slot_columns - column)
+        row = row + 1
+        column = 0
+      end
+
+      for session_index = index, group_end - 1 do
+        if column >= slot_columns then
+          row = row + 1
+          column = 0
+        end
+        slot = slot + 1
+        slot_for_session[session_index] = slot
+        row_for_slot[slot] = row
+        column = column + 1
+        if column >= slot_columns and session_index ~= #sessions then
+          row = row + 1
+          column = 0
+        end
+      end
+      index = group_end
+    end
+
+    local row_count = 0
+    if #sessions > 0 then
+      row_count = column == 0 and row or row + 1
+      if row_count == 0 then
+        row_count = math.ceil(#sessions / slot_columns)
+      end
+    end
+    return {
+      slot_for_session = slot_for_session,
+      row_for_slot = row_for_slot,
+      row_count = row_count,
+    }
   end
 
   local function panel_height(state)
-    local n = state and state.sessions and #state.sessions or 0
-    local rows = 0
-    if n > 0 then
-      rows = math.ceil(n / slot_columns)
-      local rr, cc = 0, 0
-      local k = 1
-      while k <= n do
-        local repo = (state.sessions[k].repo or state.sessions[k].path or state.sessions[k].name or ''):lower()
-        local kk = k + 1
-        while kk <= n and ((state.sessions[kk].repo or state.sessions[kk].path or state.sessions[kk].name or ''):lower() == repo) do kk = kk + 1 end
-        local gs = kk - k
-        if cc ~= 0 and gs <= slot_columns and gs > (slot_columns - cc) then rr = rr + 1; cc = 0 end
-        for t = k, kk - 1 do
-          if cc >= slot_columns then rr = rr + 1; cc = 0 end
-          cc = cc + 1
-          if cc >= slot_columns and t ~= n then rr = rr + 1; cc = 0 end
-        end
-        k = kk
-      end
-      if cc == 0 then rows = rr else rows = rr + 1 end
-      if rows == 0 then rows = math.ceil(n / slot_columns) end
-    end
+    local rows = session_grid(state and state.sessions).row_count
     local diamond_reserved = math.max(diamond_zone_height, rows * destination_row_height)
-    local needed = drift_top + drift_full_height + diamond_reserved + footer_height
+    local needed = drift_top + drift_full_height + diamond_reserved
     if drift_full_height < drift_min_height then
-      needed = drift_top + drift_min_height + diamond_reserved + footer_height
+      needed = drift_top + drift_min_height + diamond_reserved
     end
     return math.max(panel_min_height, needed)
   end
@@ -213,7 +229,7 @@ return function(shared, repo_root)
   local function session_idle_for(device, sessions_by_name)
     if device.session and sessions_by_name[device.session] then
       local s = sessions_by_name[device.session]
-      if s.idleSeconds and s.idleSeconds > 0 then return s.idleSeconds end
+      if s.idleSeconds and s.idleSeconds >= 0 then return s.idleSeconds end
     end
     return device.ageSeconds or 0
   end
@@ -569,7 +585,7 @@ return function(shared, repo_root)
 
   -- Codeview moon: rides the session diamond. A live dashboard daemon keeps a
   -- moon on a slow orbit (angle from os.time(), so the drift advances one small
-  -- step per redraw tick at the 2s update_interval); the phase erodes as the
+  -- step per redraw tick at the 1s update_interval); the phase erodes as the
   -- repo's index ages and resets on a rescan; a daemon that died with
   -- daemon.json left behind parks a dark eclipse moon on a broken ring.
   local MOON_ORBIT_RX = 15.5
@@ -672,35 +688,11 @@ return function(shared, repo_root)
   end
 
   local function layout_for(state, height)
-    local session_count = state and state.sessions and #state.sessions or 0
-    local session_slots = session_count
-    local session_rows = 0
-    if session_count > 0 then
-      local n = session_count
-      local row, col = 0, 0
-      local i = 1
-      while i <= n do
-        local repo = (state.sessions[i].repo or state.sessions[i].path or state.sessions[i].name or ''):lower()
-        local j = i + 1
-        while j <= n and ((state.sessions[j].repo or state.sessions[j].path or state.sessions[j].name or ''):lower() == repo) do j = j + 1 end
-        local group_size = j - i
-        if col ~= 0 and group_size <= slot_columns and group_size > (slot_columns - col) then
-          row = row + 1; col = 0
-        end
-        for k = i, j - 1 do
-          if col >= slot_columns then row = row + 1; col = 0 end
-          col = col + 1
-          if col >= slot_columns and k ~= n then row = row + 1; col = 0 end
-        end
-        i = j
-      end
-      if col == 0 then session_rows = row else session_rows = row + 1 end
-      if session_rows == 0 then session_rows = math.ceil(session_count / slot_columns) end
-    end
+    local session_rows = session_grid(state and state.sessions).row_count
     height = height or panel_height(state)
     local field_top = drift_top
     local diamond_reserved = math.max(diamond_zone_height, session_rows * destination_row_height)
-    local reserved = diamond_reserved + footer_height
+    local reserved = diamond_reserved
     local field_height = height - field_top - reserved
     if field_height < drift_min_height and height >= panel_min_height then
       field_height = drift_min_height
@@ -713,13 +705,11 @@ return function(shared, repo_root)
     local field_bottom = field_top + field_height
     local destination_top = field_bottom + diamond_reserved - session_rows * destination_row_height
     return {
-      session_slots = session_slots,
       session_rows = session_rows,
       destination_top = destination_top,
       field_top = field_top,
       field_bottom = field_bottom,
       field_height = field_height,
-      status_divider = height - footer_height,
       height = height,
     }
   end
@@ -738,32 +728,10 @@ return function(shared, repo_root)
     local star_list = {}
     local diamond_list = {}
     local session_positions = {}
-    local slot_for_session = {}
-    local row_for_slot = {}
+    local grid = session_grid(state.sessions)
+    local slot_for_session = grid.slot_for_session
+    local row_for_slot = grid.row_for_slot
     do
-      local n = #state.sessions
-      local row, col = 0, 0
-      local i = 1
-      local slot = 0
-      while i <= n do
-        local repo = (state.sessions[i].repo or state.sessions[i].path or state.sessions[i].name or ''):lower()
-        local j = i + 1
-        while j <= n and ((state.sessions[j].repo or state.sessions[j].path or state.sessions[j].name or ''):lower() == repo) do j = j + 1 end
-        local group_size = j - i
-        if col ~= 0 and group_size <= slot_columns and group_size > (slot_columns - col) then
-          slot = slot + (slot_columns - col)
-          row = row + 1; col = 0
-        end
-        for k = i, j - 1 do
-          if col >= slot_columns then row = row + 1; col = 0 end
-          slot = slot + 1
-          slot_for_session[k] = slot
-          row_for_slot[slot] = row
-          col = col + 1
-          if col >= slot_columns and k ~= n then row = row + 1; col = 0 end
-        end
-        i = j
-      end
       local rows = {}
       for idx, session in ipairs(state.sessions) do
         local s = slot_for_session[idx] or idx

@@ -18,6 +18,7 @@ CACHE_DIR = ROOT / "cache"
 STATUS_PATH = CACHE_DIR / "minecraft-status.json"
 LOG_PATH = CACHE_DIR / "conky-minecraft.log"
 PEBBLEHOST_API_URL = "https://panel.pebblehost.com/api/client"
+MAX_STATUS_PACKET_BYTES = 2 * 1024 * 1024
 
 
 log_event = common.make_logger(LOG_PATH, "fetch_minecraft_status")
@@ -66,9 +67,32 @@ def read_varint(sock):
     raise ValueError("invalid VarInt from server")
 
 
-def read_string(sock):
-    length = read_varint(sock)
-    return read_exact(sock, length).decode("utf-8")
+def decode_varint(data, offset=0):
+    value = 0
+    for index in range(5):
+        position = offset + index
+        if position >= len(data):
+            raise ValueError("truncated VarInt from server")
+        byte = data[position]
+        value |= (byte & 0x7F) << (7 * index)
+        if not byte & 0x80:
+            return value, position + 1
+    raise ValueError("invalid VarInt from server")
+
+
+def read_status_payload(sock):
+    packet_length = read_varint(sock)
+    if packet_length <= 0 or packet_length > MAX_STATUS_PACKET_BYTES:
+        raise ValueError(f"invalid status packet length {packet_length}")
+    packet = read_exact(sock, packet_length)
+    packet_id, offset = decode_varint(packet)
+    if packet_id != 0:
+        raise ValueError(f"unexpected response packet id {packet_id}")
+    string_length, offset = decode_varint(packet, offset)
+    end = offset + string_length
+    if string_length > MAX_STATUS_PACKET_BYTES or end > len(packet):
+        raise ValueError("invalid status JSON length")
+    return json.loads(packet[offset:end].decode("utf-8"))
 
 
 def pack_string(value):
@@ -149,12 +173,7 @@ def query_status(host, port, timeout, protocol_version):
         send_packet(sock, handshake)
         send_packet(sock, encode_varint(0))
 
-        _packet_length = read_varint(sock)
-        packet_id = read_varint(sock)
-        if packet_id != 0:
-            raise ValueError(f"unexpected response packet id {packet_id}")
-
-        payload = json.loads(read_string(sock))
+        payload = read_status_payload(sock)
 
     latency_ms = int((time.monotonic() - started) * 1000)
     players = payload.get("players") or {}
@@ -298,7 +317,7 @@ def parse_status_epoch(payload, *keys):
             continue
         try:
             return int(float(value))
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             pass
         if key.endswith("Epoch"):
             continue

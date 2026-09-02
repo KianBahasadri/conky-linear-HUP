@@ -39,42 +39,40 @@ return function(shared, repo_root)
       return { cards = {}, error = '' }
     end
 
-    local error_message = shared.match_json_string(content, 'error')
+    local error_message = shared.json_string(content, 'error', nil)
     -- Payload-level lifetime of done cards in seconds; precomputed by the
     -- fetcher from LINEAR_DONE_LOOKBACK_HOURS so the renderer stays dumb.
-    local done_lookback_seconds = tonumber(content:match('"doneLookbackSeconds"%s*:%s*([%d%.]+)') or '')
+    local done_lookback_seconds = shared.json_number(content, 'doneLookbackSeconds', nil)
     local cards = {}
-    for object in content:gmatch('{%s-"identifier".-}') do
-      local identifier = shared.match_json_string(object, 'identifier')
-      local label = shared.match_json_string(object, 'label')
-      local project_name = shared.match_json_string(object, 'projectName')
-      local project_icon = shared.match_json_string(object, 'projectIcon')
-      local state = shared.match_json_string(object, 'state')
-      local title = shared.match_json_string(object, 'title')
-      local done = object:match('"done"%s*:%s*(true)') ~= nil
-      local due_today = object:match('"dueToday"%s*:%s*(true)') ~= nil
-      local due_date = shared.match_json_string(object, 'dueDate')
-      local competition_upcoming = object:match('"competitionUpcoming"%s*:%s*(true)') ~= nil
-      local competition_due_date = shared.match_json_string(object, 'competitionDueDate')
-      local backlog_due_soon = object:match('"backlogDueSoon"%s*:%s*(true)') ~= nil
-      local urgent = object:match('"urgent"%s*:%s*(true)') ~= nil
-      -- Lua patterns have no optional groups: pull completedAtEpoch either as
-      -- digits or as 0 (the fetcher's sentinel for "no completion timestamp").
-      local completed_at_epoch = tonumber(object:match('"completedAtEpoch"%s*:%s*(%d+)') or '0')
+    for _, object in ipairs(shared.json_array_objects(content, 'cards')) do
+      local identifier = shared.json_string(object, 'identifier', '')
+      local label = shared.json_string(object, 'label', '')
+      local project_name = shared.json_string(object, 'projectName', '')
+      local project_icon = shared.json_string(object, 'projectIcon', '')
+      local state = shared.json_string(object, 'state', '')
+      local title = shared.json_string(object, 'title', nil)
+      local done = shared.json_boolean(object, 'done', false)
+      local due_today = shared.json_boolean(object, 'dueToday', false)
+      local due_date = shared.json_string(object, 'dueDate', '')
+      local competition_upcoming = shared.json_boolean(object, 'competitionUpcoming', false)
+      local competition_due_date = shared.json_string(object, 'competitionDueDate', '')
+      local backlog_due_soon = shared.json_boolean(object, 'backlogDueSoon', false)
+      local urgent = shared.json_boolean(object, 'urgent', false)
+      local completed_at_epoch = shared.json_number(object, 'completedAtEpoch', 0)
 
       if title then
         table.insert(cards, {
-          identifier = identifier and shared.unescape_json_string(identifier) or '',
-          label = label and shared.unescape_json_string(label) or '',
-          project_name = project_name and shared.unescape_json_string(project_name) or '',
-          project_icon = project_icon and shared.unescape_json_string(project_icon) or '',
-          state = state and shared.unescape_json_string(state) or '',
-          title = shared.unescape_json_string(title),
+          identifier = identifier,
+          label = label,
+          project_name = project_name,
+          project_icon = project_icon,
+          state = state,
+          title = title,
           done = done,
           due_today = due_today,
-          due_date = due_date and shared.unescape_json_string(due_date) or '',
+          due_date = due_date,
           competition_upcoming = competition_upcoming,
-          competition_due_date = competition_due_date and shared.unescape_json_string(competition_due_date) or '',
+          competition_due_date = competition_due_date,
           backlog_due_soon = backlog_due_soon,
           urgent = urgent,
           completed_at_epoch = completed_at_epoch,
@@ -84,7 +82,7 @@ return function(shared, repo_root)
 
     return {
       cards = cards,
-      error = error_message and shared.unescape_json_string(error_message) or '',
+      error = error_message or '',
       done_lookback_seconds = done_lookback_seconds,
     }
   end
@@ -396,6 +394,9 @@ return function(shared, repo_root)
     local per_row = cards_per_row_for(conky_window.width)
     -- Default matches the fetcher's LINEAR_DONE_LOOKBACK_HOURS fallback.
     local done_lookback = state.done_lookback_seconds or 18 * 3600
+    if done_lookback <= 0 then
+      done_lookback = 1
+    end
     local now_epoch = os.time()
 
     for index, card in ipairs(cards) do

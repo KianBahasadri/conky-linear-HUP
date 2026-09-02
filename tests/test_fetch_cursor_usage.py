@@ -58,6 +58,20 @@ def test_normalize_usage_creates_monthly_auto_and_api_buckets():
     assert bars[0]["windowSeconds"] == 90000
 
 
+def test_normalize_usage_does_not_invent_zero_buckets_from_empty_payload():
+    account = cursor.normalize_usage(
+        {"label": "ida"},
+        {},
+        {"email": "ida@example.com"},
+        {"planInfo": {"planName": "Pro"}},
+        True,
+    )
+
+    assert account["ok"] is False
+    assert account["windows"] == []
+    assert "no monthly usage buckets" in account["error"]
+
+
 def test_fetch_account_reads_usage_and_optional_metadata(monkeypatch, tmp_path):
     now = int(datetime.now(timezone.utc).timestamp())
     auth_path = tmp_path / "auth.json.ida"

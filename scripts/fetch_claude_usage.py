@@ -158,7 +158,6 @@ def token_needs_refresh(auth):
 
 def persist_credentials(auth):
     path = auth["path"]
-    write_path = path.resolve() if path.is_symlink() else path
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
@@ -171,11 +170,7 @@ def persist_credentials(auth):
     oauth["refreshToken"] = auth["refresh_token"]
     oauth["expiresAt"] = auth["expires_at"] * 1000
 
-    tmp_path = write_path.with_name(f".{write_path.name}.{os.getpid()}.tmp")
-    fd = os.open(tmp_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8") as tmp_file:
-        tmp_file.write(json.dumps(raw, indent=2))
-    os.replace(tmp_path, write_path)
+    atomic_write_json(path, raw, mode=0o600)
 
 
 def refresh_credentials(auth):

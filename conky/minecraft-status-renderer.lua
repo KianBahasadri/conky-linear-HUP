@@ -1,7 +1,8 @@
 return function(shared, repo_root)
   local status_path = repo_root .. '/cache/minecraft-status.json'
   local font = 'JetBrains Mono'
-  local panel_width = 360
+  local configured_panel_width = 360
+  local panel_width = configured_panel_width
   local panel_height = 110
   local radius = 18
   local bottom_padding = 4
@@ -10,17 +11,7 @@ return function(shared, repo_root)
   local divider_x = 148
 
   local function parse_string_array(content, key)
-    local body = content:match('"' .. key .. '"%s*:%s*%[(.-)%]')
-    local values = {}
-    if not body then
-      return values
-    end
-
-    for value in body:gmatch('"(.-)"') do
-      table.insert(values, shared.unescape_json_string(value))
-    end
-
-    return values
+    return shared.json_array_strings(content, key)
   end
 
   local function format_memory(value_mb, limit_mb)
@@ -136,38 +127,26 @@ return function(shared, repo_root)
     if not content then
       return {
         ok = false,
-        label = 'Minecraft',
-        address = '',
         error = 'No minecraft-status.json cache found.',
       }
     end
 
-    local ok = content:match('"ok"%s*:%s*true') ~= nil
-    local label = content:match('"label"%s*:%s*"(.-)"') or 'Minecraft'
-    local address = content:match('"address"%s*:%s*"(.-)"') or ''
-    local error_message = content:match('"error"%s*:%s*"(.-)"')
-    local online = tonumber(content:match('"onlinePlayers"%s*:%s*(%d+)')) or 0
-    local max_players = tonumber(content:match('"maxPlayers"%s*:%s*(%d+)')) or 0
-    local latency_ms = tonumber(content:match('"latencyMs"%s*:%s*(%d+)')) or 0
-    local version = content:match('"version"%s*:%s*"(.-)"') or ''
-    local description = content:match('"description"%s*:%s*"(.-)"') or ''
-    local server_info_ok = content:match('"serverInfoOk"%s*:%s*true') ~= nil
-    local cpu_percent = tonumber(content:match('"cpuPercent"%s*:%s*([%d%.%-]+)')) or 0
-    local memory_mb = tonumber(content:match('"memoryMb"%s*:%s*([%d%.%-]+)')) or 0
-    local memory_limit_mb = tonumber(content:match('"memoryLimitMb"%s*:%s*(%d+)')) or 0
+    local ok = shared.json_boolean(content, 'ok', false)
+    local error_message = shared.json_string(content, 'error', '')
+    local online = shared.json_number(content, 'onlinePlayers', 0)
+    local latency_ms = shared.json_number(content, 'latencyMs', 0)
+    local server_info_ok = shared.json_boolean(content, 'serverInfoOk', false)
+    local cpu_percent = shared.json_number(content, 'cpuPercent', 0)
+    local memory_mb = shared.json_number(content, 'memoryMb', 0)
+    local memory_limit_mb = shared.json_number(content, 'memoryLimitMb', 0)
     local player_names = parse_string_array(content, 'playerNames')
-    local last_player_seen_epoch = tonumber(content:match('"lastPlayerSeenAtEpoch"%s*:%s*(%-?%d+)'))
+    local last_player_seen_epoch = shared.json_number(content, 'lastPlayerSeenAtEpoch', nil)
 
     return {
       ok = ok,
-      label = shared.unescape_json_string(label),
-      address = shared.unescape_json_string(address):gsub(':%d+$', ''),
-      error = error_message and shared.unescape_json_string(error_message) or '',
+      error = error_message,
       online = online,
-      max_players = max_players,
       latency_ms = latency_ms,
-      version = shared.unescape_json_string(version),
-      description = shared.unescape_json_string(description),
       server_info_ok = server_info_ok,
       cpu_percent = cpu_percent,
       memory_mb = memory_mb,
@@ -288,7 +267,12 @@ return function(shared, repo_root)
 
     local cr = cairo_create(surface)
     local status = read_status()
-    panel_width = math.min(panel_width, conky_window.width - 24)
+    local window_width = tonumber(conky_window and conky_window.width) or 0
+    if window_width > 24 then
+      panel_width = math.min(configured_panel_width, window_width - 24)
+    else
+      panel_width = configured_panel_width
+    end
     local y = math.max(bottom_padding, conky_window.height - panel_height - bottom_padding)
     draw_status(cr, status, 8, y)
 

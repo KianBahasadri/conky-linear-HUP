@@ -33,8 +33,9 @@ geometry is unusual, but the underlying axes are conventional:
   and forecast segments meet each glyph's painted outline, so they do not
   run under the mark or leave a circular gap around a non-round logo.
   Diamonds carry no text labels or leader lines.
-- A dimmed trajectory means its last successful value is being retained after
-  a failed refresh. A bead with no forecast line or diamond means there is not
+- A dimmed trajectory means its last successful value from the same billing
+  month is being retained after a failed refresh. Prior-month values are
+  discarded at the calendar rollover. A bead with no forecast line or diamond means there is not
   yet enough real history to calculate a forecast.
 
 AWS is normalized against its live monthly COST budget. The component never
@@ -136,6 +137,9 @@ Daily Cost Management rows (usage-detail `costInUSD` if that query is
 throttled) are written into the shared observation store as cumulative
 `Y_d / X` for each past day of the month, alongside today's collect. That
 trail stays left of the now-line; the dotted forecast is the prediction.
+After a daily Cost Management throttle, the fetcher uses Usage Details for six
+hours before retrying Cost Management; the cooldown is persisted per Azure
+subscription, so frequent polls do not keep hammering the throttled endpoint.
 
 If the credit summary omits spend, month-to-date Cost Management (or usage
 `costInUSD` when Cost Management is throttled) fills `Y`.
@@ -211,8 +215,12 @@ existing AWS identity once to create that user, then writes
 `BILLING_AWS_ACCESS_KEY_ID` and `BILLING_AWS_SECRET_ACCESS_KEY` into `.env`.
 Those keys take precedence; `BILLING_AWS_PROFILE` or the default boto3
 chain are fallbacks. boto3 comes from `uv sync`. Local Terraform state
-holds the same secret; it is gitignored. Rotate by replacing `aws_iam_access_key.billing_reader` and
-re-running the script. Cost Explorer / Budgets SDK calls are not gated on
+holds the same secret; it is gitignored but is still sensitive local data.
+`apply_aws_billing_iam.sh` uses a private process umask so new state and backup
+files are `0600` from their first write, repairs existing state permissions
+including on failed runs, and atomically replaces `.env` so an interruption
+cannot truncate the rest of the configuration. Rotate by replacing
+`aws_iam_access_key.billing_reader` and re-running the script. Cost Explorer / Budgets SDK calls are not gated on
 the Billing console's "Activate IAM Access" toggle.
 
 AWS Cost Explorer queries are cached daily (`cache/billing-aws-cache.json`,

@@ -70,23 +70,21 @@ return function(shared, repo_root)
   }
 
   local function json_string(content, key, fallback)
-    local value = content:match('"' .. key .. '"%s*:%s*"(.-)"')
-    if not value then
-      return fallback or ''
-    end
-    return shared.unescape_json_string(value)
+    local value = shared.json_string(content, key, nil)
+    return value ~= nil and value or fallback or ''
   end
 
   local function json_number(content, key, fallback)
-    return tonumber(content:match('"' .. key .. '"%s*:%s*([%d%.%-]+)')) or fallback or 0
+    local value = shared.json_number(content, key, nil)
+    return value ~= nil and value or fallback or 0
   end
 
   local function json_bool(content, key)
-    return content:match('"' .. key .. '"%s*:%s*true') ~= nil
+    return shared.json_boolean(content, key, false)
   end
 
   local function parse_summary(content)
-    local body = content:match('"summary"%s*:%s*{([^}]*)}') or ''
+    local body = shared.json_field(content, 'summary') or '{}'
     return {
       total = json_number(body, 'total', 0),
       dirty = json_number(body, 'dirty', 0),
@@ -103,12 +101,9 @@ return function(shared, repo_root)
   local function parse_repo_object(object)
     return {
       name = json_string(object, 'name', 'repo'),
-      path = json_string(object, 'path', ''),
       ok = json_bool(object, 'ok'),
       error = json_string(object, 'error', ''),
       branch = json_string(object, 'branch', ''),
-      upstream = json_string(object, 'upstream', ''),
-      detached = json_bool(object, 'detached'),
       ahead = json_number(object, 'ahead', 0),
       behind = json_number(object, 'behind', 0),
       staged = json_number(object, 'staged', 0),
@@ -116,24 +111,14 @@ return function(shared, repo_root)
       untracked = json_number(object, 'untracked', 0),
       conflicted = json_number(object, 'conflicted', 0),
       stash = json_number(object, 'stash', 0),
-      clean = json_bool(object, 'clean'),
       state = json_string(object, 'state', 'error'),
-      severity = json_number(object, 'severity', 0),
       actions = json_string(object, 'actions', ''),
     }
   end
 
   local function parse_repos(content)
     local repos = {}
-    local array_body = content:match('"repos"%s*:%s*%[(.*)%]%s*}%s*$')
-    if not array_body then
-      array_body = content:match('"repos"%s*:%s*%[(.*)%]')
-    end
-    if not array_body then
-      return repos
-    end
-
-    for object in array_body:gmatch('%b{}') do
+    for _, object in ipairs(shared.json_array_objects(content, 'repos')) do
       table.insert(repos, parse_repo_object(object))
     end
     return repos
@@ -163,8 +148,8 @@ return function(shared, repo_root)
     end
 
     return {
-      ok = content:match('"ok"%s*:%s*true') ~= nil,
-      stale = content:match('"stale"%s*:%s*true') ~= nil,
+      ok = json_bool(content, 'ok'),
+      stale = json_bool(content, 'stale'),
       error = json_string(content, 'error', ''),
       updated_at_epoch = json_number(content, 'updatedAtEpoch', 0),
       summary = parse_summary(content),

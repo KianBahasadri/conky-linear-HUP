@@ -1,5 +1,8 @@
 import json
+import stat
 from pathlib import Path
+
+import pytest
 
 import fetch_common as common
 
@@ -20,12 +23,73 @@ def test_atomic_write_json_preserves_unicode(tmp_path):
     assert json.loads(raw)["title"] == "Consistency — scenario targets"
 
 
+def test_atomic_write_json_applies_sensitive_mode_before_replace(tmp_path):
+    path = tmp_path / "credentials.json"
+
+    common.atomic_write_json(path, {"token": "secret"}, mode=0o600)
+
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+
+
+def test_atomic_write_json_preserves_symlink_chain_and_target_mode(tmp_path):
+    target = tmp_path / "auth.json.kian"
+    target.write_text('{"token": "old"}', encoding="utf-8")
+    target.chmod(0o600)
+    current = tmp_path / "current"
+    current.symlink_to(target.name)
+    auth = tmp_path / "auth.json"
+    auth.symlink_to(current.name)
+
+    common.atomic_write_json(auth, {"token": "new"})
+
+    assert auth.is_symlink()
+    assert current.is_symlink()
+    assert json.loads(target.read_text(encoding="utf-8")) == {"token": "new"}
+    assert stat.S_IMODE(target.stat().st_mode) == 0o600
+
+
+def test_atomic_write_rejects_dangling_and_cyclic_symlinks(tmp_path):
+    dangling = tmp_path / "dangling"
+    dangling.symlink_to("missing")
+    with pytest.raises(FileNotFoundError):
+        common.atomic_write_text(dangling, "payload")
+    assert dangling.is_symlink()
+
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    first.symlink_to(second.name)
+    second.symlink_to(first.name)
+    with pytest.raises(RuntimeError):
+        common.atomic_write_text(first, "payload")
+    assert first.is_symlink()
+    assert second.is_symlink()
+
+
+def test_atomic_write_text_cleans_up_temporary_file_on_replace_failure(
+    monkeypatch, tmp_path
+):
+    path = tmp_path / "status.json"
+    monkeypatch.setattr(
+        common.os,
+        "replace",
+        lambda *_args: (_ for _ in ()).throw(OSError("replace failed")),
+    )
+
+    with pytest.raises(OSError, match="replace failed"):
+        common.atomic_write_text(path, "payload")
+
+    assert list(tmp_path.iterdir()) == []
+
+
 def test_numeric_helpers_return_defaults_for_bad_input():
     assert common.as_float("bad", 1.5) == 1.5
     assert common.as_float(None, 2.5) == 2.5
     assert common.as_int("bad", 7) == 7
     assert common.as_int(None, 8) == 8
     assert common.as_int("3.9") == 3
+    assert common.as_float("nan", 4.5) == 4.5
+    assert common.as_float("inf", 4.5) == 4.5
+    assert common.as_int("inf", 9) == 9
 
 
 def test_parse_iso_epoch():

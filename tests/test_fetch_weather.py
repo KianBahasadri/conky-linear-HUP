@@ -125,6 +125,79 @@ def test_normalize_status_combines_weather_air_and_best_window(monkeypatch):
     assert status["attribution"] == "Open-Meteo / CAMS"
 
 
+def test_normalize_status_rejects_missing_current_aqi(monkeypatch):
+    location = {
+        "latitude": 40.7,
+        "longitude": -74.0,
+        "label": "New York, NY",
+        "countryCode": "US",
+        "source": "location",
+    }
+    units = weather.units_for(location)
+    weather_payload = {
+        "current": {
+            "temperature_2m": 70,
+            "relative_humidity_2m": 50,
+            "apparent_temperature": 70,
+            "weather_code": 1,
+            "wind_speed_10m": 5,
+            "wind_direction_10m": 180,
+            "wind_gusts_10m": 8,
+            "visibility": 16000,
+            "is_day": 1,
+        }
+    }
+
+    with pytest.raises(ValueError, match="us_aqi"):
+        weather.normalize_status(
+            location,
+            units,
+            weather_payload,
+            {"current": {"pm2_5": 5, "uv_index": 2}},
+        )
+
+
+def test_request_json_reports_safe_response_metadata(monkeypatch):
+    class Response:
+        status = 502
+        headers = {"Content-Type": "text/html; charset=utf-8"}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            return b"<html>gateway error</html>"
+
+    monkeypatch.setattr(weather.urllib.request, "urlopen", lambda *_args, **_kwargs: Response())
+
+    with pytest.raises(
+        ValueError,
+        match=r"api\.open-meteo\.com returned invalid JSON .*HTTP 502.*text/html",
+    ):
+        weather.request_json("https://api.open-meteo.com/v1/forecast?secret=hidden")
+
+
+def test_hourly_rows_drop_weather_hours_without_matching_air_quality():
+    weather_payload = {
+        "hourly": {
+            "time": ["2026-07-19T15:00"],
+            "temperature_2m": [84],
+            "apparent_temperature": [88],
+            "precipitation_probability": [30],
+            "weather_code": [2],
+            "wind_speed_10m": [9],
+            "wind_gusts_10m": [17],
+            "relative_humidity_2m": [66],
+            "visibility": [16093],
+        }
+    }
+
+    assert weather.hourly_rows(weather_payload, {"hourly": {"time": []}}) == []
+
+
 def test_write_error_keeps_last_successful_cache(monkeypatch, tmp_path):
     status_path = tmp_path / "weather-status.json"
     status_path.write_text(json.dumps({"ok": True, "temperature": 70}), encoding="utf-8")

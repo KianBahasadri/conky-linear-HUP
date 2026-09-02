@@ -7,70 +7,59 @@ local conky_dir = repo_root .. '/conky'
 
 local shared = dofile(conky_dir .. '/renderer-shared.lua')
 
--- Linear
-local linear_cards = dofile(conky_dir .. '/linear-card-renderer.lua')(shared, repo_root)
+-- Every Conky window loads this entrypoint, but each window invokes only one
+-- draw hook (plus its matching height spacer).  Instantiate a renderer on its
+-- first hook call so a load failure or state allocation in one overlay cannot
+-- take down every unrelated window.
+local renderers = {}
+
+local function renderer(filename)
+  if not renderers[filename] then
+    renderers[filename] = dofile(conky_dir .. '/' .. filename)(shared, repo_root)
+  end
+  return renderers[filename]
+end
 
 function conky_draw_linear_cards()
-  linear_cards.draw()
+  renderer('linear-card-renderer.lua').draw()
 end
 
 function conky_linear_height_spacer()
-  return linear_cards.height_spacer()
+  return renderer('linear-card-renderer.lua').height_spacer()
 end
 
--- Rate limit panel
-local rate_limit_panel = dofile(conky_dir .. '/rate-limit-panel-renderer.lua')(shared, repo_root)
-
 function conky_draw_rate_limit_panel()
-  rate_limit_panel.draw()
+  renderer('rate-limit-panel-renderer.lua').draw()
 end
 
 function conky_rate_limit_panel_height_spacer()
-  return rate_limit_panel.height_spacer()
+  return renderer('rate-limit-panel-renderer.lua').height_spacer()
 end
-
--- Minecraft
-local minecraft_status = dofile(conky_dir .. '/minecraft-status-renderer.lua')(shared, repo_root)
 
 function conky_draw_minecraft_status()
-  minecraft_status.draw()
+  renderer('minecraft-status-renderer.lua').draw()
 end
-
--- GitHub
-local github_tracker = dofile(conky_dir .. '/github-tracker-renderer.lua')(shared, repo_root)
 
 function conky_draw_github_tracker()
-  github_tracker.draw()
+  renderer('github-tracker-renderer.lua').draw()
 end
-
--- Weather and running conditions
-local weather = dofile(conky_dir .. '/weather-renderer.lua')(shared, repo_root)
 
 function conky_draw_weather()
-  weather.draw()
+  renderer('weather-renderer.lua').draw()
 end
-
--- System resource monitor
-local resource_monitor = dofile(conky_dir .. '/resource-monitor-renderer.lua')(shared, repo_root)
 
 function conky_draw_resource_monitor()
-  resource_monitor.draw()
+  renderer('resource-monitor-renderer.lua').draw()
 end
 
--- tmux sessions and inbound logins
-local sessions = dofile(conky_dir .. '/sessions-renderer.lua')(shared, repo_root)
-
 function conky_draw_sessions()
-  sessions.draw()
+  renderer('sessions-renderer.lua').draw()
 end
 
 function conky_sessions_height_spacer()
-  return sessions.height_spacer()
+  return renderer('sessions-renderer.lua').height_spacer()
 end
 
--- Local git status fleet
-local git_status = dofile(conky_dir .. '/git-status-renderer.lua')(shared, repo_root)
-
 function conky_draw_git_status()
-  git_status.draw()
+  renderer('git-status-renderer.lua').draw()
 end

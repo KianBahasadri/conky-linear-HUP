@@ -6,7 +6,7 @@ import subprocess
 import sys
 import urllib.error
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from html import unescape
 from pathlib import Path
 
@@ -156,13 +156,13 @@ def fetch_contributions_graphql_extended(username, token):
     want_days = min(want_days, 730)
 
     today = datetime.now(timezone.utc).date()
-    start = today - __import__("datetime").timedelta(days=want_days - 1)
+    start = today - timedelta(days=want_days - 1)
 
     merged = {}
     cursor = start
-    one_day = __import__("datetime").timedelta(days=1)
+    one_day = timedelta(days=1)
     while cursor <= today:
-        window_end = min(cursor + __import__("datetime").timedelta(days=364), today)
+        window_end = min(cursor + timedelta(days=364), today)
         from_iso = f"{cursor.isoformat()}T00:00:00Z"
         to_iso = f"{(window_end + one_day).isoformat()}T00:00:00Z"
         chunk = fetch_contributions_graphql(username, token, from_iso, to_iso)
@@ -226,10 +226,39 @@ def parse_contributions(html):
     return entries[-371:]
 
 
+def write_error(message, username=None):
+    try:
+        previous = json.loads(CONTRIBUTIONS_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        previous = None
+
+    if (
+        isinstance(previous, dict)
+        and previous.get("ok")
+        and (username is None or previous.get("username") == username)
+        and isinstance(previous.get("contributions"), list)
+        and previous["contributions"]
+    ):
+        previous["stale"] = True
+        previous["error"] = message
+        atomic_write_json(CONTRIBUTIONS_PATH, previous)
+    else:
+        atomic_write_json(
+            CONTRIBUTIONS_PATH,
+            {
+                "ok": False,
+                "stale": False,
+                "updatedAt": datetime.now(timezone.utc).isoformat(),
+                "error": message,
+            },
+        )
+
+
 def main():
     common.load_env()
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
+    username = None
     try:
         username = github_username()
         token = effective_github_token()
@@ -247,7 +276,14 @@ def main():
                 total = sum(entry["count"] for entry in entries)
                 log_event(f"updated username={username} days={len(entries)} contributions={total} source=graphql via={'GITHUB_TOKEN' if os.environ.get('GITHUB_TOKEN','').strip() else 'gh'}")
                 return 0
-            except (OSError, urllib.error.URLError, ValueError, json.JSONDecodeError, KeyError) as graphql_error:
+            except (
+                OSError,
+                urllib.error.URLError,
+                ValueError,
+                TypeError,
+                json.JSONDecodeError,
+                KeyError,
+            ) as graphql_error:
                 log_event(f"graphql extended fetch failed, falling back to HTML: {graphql_error}")
 
         html = fetch_contributions(username)
@@ -263,12 +299,7 @@ def main():
         log_event(f"updated username={username} days={len(entries)} contributions={total}")
         return 0
     except (OSError, urllib.error.URLError, ValueError) as error:
-        payload = {
-            "ok": False,
-            "updatedAt": datetime.now(timezone.utc).isoformat(),
-            "error": str(error),
-        }
-        atomic_write_json(CONTRIBUTIONS_PATH, payload)
+        write_error(str(error), username=username)
         log_event(f"error: {error}")
         return 1
 

@@ -9,9 +9,22 @@ uv sync
 ./scripts/stop_conky_overlays.sh
 ```
 
-`start_conky_overlays.sh` kills prior matching overlays, starts fetch loops, and generates one Linear, rate limit panel, Minecraft, GitHub, weather, system-resource, affine-billing, git-status, and sessions config per detected monitor.
+`start_conky_overlays.sh` stages one Linear, rate limit panel, Minecraft, GitHub,
+weather, system-resource, affine-billing, git-status, and sessions config per
+detected monitor. It installs the complete set only after every config succeeds,
+then replaces the owned overlay windows and fetch loops; a generation failure
+therefore leaves the running desktop and last complete config set intact.
+
+`./scripts/start_conky_overlays.sh --generate-only` only replaces the complete
+generated config set. It does not stop or launch windows, stop or launch fetch
+loops, or rotate logs, so it is safe to use while the live desktop is running.
 
 Each overlay can be disabled with its `*_OVERLAY_ENABLED=0` variable in `.env`. See [Configuration](configuration.md) for setup.
+
+For GNOME login startup, run `./scripts/install_autostart.sh`. It installs a
+desktop entry for the whole overlay suite with a five-second GNOME startup
+delay. Rerun it if the repository moves so the absolute executable path stays
+current.
 
 ## Iterating on overlays
 

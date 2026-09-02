@@ -506,6 +506,68 @@ def device_for(login, peers, local_host):
     return origin, "UNKNOWN", "alert", True
 
 
+def session_matches_codeview(session, repo_name, resolved_cv_path):
+    session_path = session.get("path") or ""
+    if resolved_cv_path is not None and session_path:
+        try:
+            # A usable path is authoritative. Basenames alone are not
+            # identities: two unrelated repos can share the same name.
+            resolved_session_path = Path(session_path).expanduser().resolve()
+            return (
+                resolved_session_path == resolved_cv_path
+                or resolved_session_path.is_relative_to(resolved_cv_path)
+            )
+        except (OSError, RuntimeError, ValueError):
+            pass
+    return (
+        (session.get("repo") or "").lower() == repo_name.lower()
+        or (session.get("name") or "").lower() == repo_name.lower()
+        or repo_from_path(session_path).lower() == repo_name.lower()
+    )
+
+
+def add_fleet_codeview_sessions(sessions, codeview_repos):
+    """Add fleet dashboards that do not already have a tmux destination."""
+    for cv_repo in codeview_repos:
+        repo_name = cv_repo["name"]
+        repo_path = cv_repo["path"]
+        try:
+            resolved_cv_path = Path(repo_path).expanduser().resolve()
+        except (OSError, RuntimeError, ValueError):
+            resolved_cv_path = None
+
+        if any(
+            session_matches_codeview(session, repo_name, resolved_cv_path)
+            for session in sessions.values()
+        ):
+            continue
+
+        session_key = repo_name
+        if session_key in sessions:
+            session_key = f"codeview:{resolved_cv_path or repo_path}"
+            suffix = 2
+            base_key = session_key
+            while session_key in sessions:
+                session_key = f"{base_key}:{suffix}"
+                suffix += 1
+        sessions[session_key] = {
+            "name": repo_name,
+            "windows": 0,
+            "panes": 0,
+            "path": shorten_path(repo_path),
+            "repo": repo_name,
+            "attached": [],
+            "idle": "",
+            "idleSeconds": 0,
+            "codeviewPresent": True,
+            "codeviewRunning": cv_repo["codeviewRunning"],
+            "codeviewPort": cv_repo["codeviewPort"],
+            "codeviewIndexAgeSeconds": cv_repo["codeviewIndexAgeSeconds"],
+        }
+
+    return sessions
+
+
 def collect():
     sessions = tmux_sessions()
     clients = tmux_clients()
@@ -608,44 +670,7 @@ def collect():
     # Fleet repos with a codeview daemon appear as unattached destination diamonds
     # at the bottom so their moon remains visible even after tmux closes (or if
     # opened without tmux).
-    for cv_repo in fleet_codeview_repos(now):
-        repo_name = cv_repo["name"]
-        repo_path = cv_repo["path"]
-        try:
-            resolved_cv_path = Path(repo_path).resolve()
-        except (OSError, RuntimeError, ValueError):
-            resolved_cv_path = None
-
-        def matches_session(s):
-            if (s.get("repo") or "").lower() == repo_name.lower():
-                return True
-            if s["name"].lower() == repo_name.lower():
-                return True
-            if repo_from_path(s.get("path") or "").lower() == repo_name.lower():
-                return True
-            if resolved_cv_path is not None:
-                try:
-                    if Path(s.get("path") or "").expanduser().resolve() == resolved_cv_path:
-                        return True
-                except (OSError, RuntimeError, ValueError):
-                    pass
-            return False
-
-        if not any(matches_session(s) for s in sessions.values()):
-            sessions[repo_name] = {
-                "name": repo_name,
-                "windows": 0,
-                "panes": 0,
-                "path": shorten_path(repo_path),
-                "repo": repo_name,
-                "attached": [],
-                "idle": "",
-                "idleSeconds": 0,
-                "codeviewPresent": True,
-                "codeviewRunning": cv_repo["codeviewRunning"],
-                "codeviewPort": cv_repo["codeviewPort"],
-                "codeviewIndexAgeSeconds": cv_repo["codeviewIndexAgeSeconds"],
-            }
+    add_fleet_codeview_sessions(sessions, fleet_codeview_repos(now))
 
     session_list = sorted(
         sessions.values(),
@@ -698,7 +723,7 @@ def session_rows_for(sessions):
     return row + 1
 
 
-def overlay_height(device_count, session_count, sessions=None):
+def overlay_height(session_count, sessions=None):
     """Conky minimum_height for the panel.
 
     Must match conky/sessions-renderer.lua: a fixed constellation field
@@ -723,18 +748,16 @@ def overlay_height(device_count, session_count, sessions=None):
 def current_overlay_height():
     """Height for the state right now, falling back to the last written cache."""
     try:
-        devices, sessions = collect()
-        return overlay_height(len(devices), len(sessions), sessions)
+        _devices, sessions = collect()
+        return overlay_height(len(sessions), sessions)
     except (OSError, ValueError):
         pass
     try:
         payload = json.loads(SESSIONS_PATH.read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        return overlay_height(0, 0)
+        return overlay_height(0)
     payload_sessions = payload.get("sessions") or []
-    return overlay_height(
-        len(payload.get("devices") or []), len(payload_sessions), payload_sessions
-    )
+    return overlay_height(len(payload_sessions), payload_sessions)
 
 
 def main():
@@ -758,7 +781,7 @@ def main():
         atomic_write_json(SESSIONS_PATH, payload)
         log_event(
             f"updated devices={len(devices)} sessions={len(sessions)} "
-            f"sshd_listening={listening} height={overlay_height(len(devices), len(sessions), sessions)}"
+            f"sshd_listening={listening} height={overlay_height(len(sessions), sessions)}"
         )
         return 0
     except OSError as error:

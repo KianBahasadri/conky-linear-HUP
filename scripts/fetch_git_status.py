@@ -45,7 +45,8 @@ DEFAULT_ACTIONS_EMPTY_TTL_SECONDS = 300
 ACTIONS_PROBE_ROWS_MULTIPLIER = 3
 
 GITHUB_REMOTE_RE = re.compile(
-    r"github\.com[:/](?P<owner>[^/]+)/(?P<repo>[^/#?\s]+)",
+    r"^(?:(?:https?|ssh|git)://(?:[^@/\s]+@)?|[^@/\s]+@)?"
+    r"github\.com[:/](?P<owner>[^/\s]+)/(?P<repo>[^/#?\s]+)/?$",
     re.IGNORECASE,
 )
 ACTIONS_ACTIVE_STATUSES = frozenset(
@@ -222,6 +223,8 @@ def run_git(repo_path, args, timeout):
             command,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="surrogateescape",
             timeout=timeout,
             check=False,
         )
@@ -276,7 +279,7 @@ def is_dirty_repo(repo_path: Path, timeout: float) -> bool:
     try:
         porcelain = run_git(
             repo_path,
-            ["status", "--porcelain=v2", "--branch", "--untracked-files=normal"],
+            ["status", "--porcelain=v2", "-z", "--branch", "--untracked-files=normal"],
             timeout=timeout,
         )
     except (RuntimeError, TimeoutError):
@@ -481,20 +484,23 @@ def classify_xy(xy):
     return staged, modified
 
 
-def porcelain_v2_path(line):
+def porcelain_v2_path(line, *, nul_delimited=False):
     """Return the worktree path from a porcelain v2 entry, or None."""
     if not line:
         return None
     if line.startswith("? ") or line.startswith("! "):
-        path = line[2:].strip()
+        path = line[2:] if nul_delimited else line[2:].strip()
         return path or None
     if line[0] not in {"1", "2", "u"} or len(line) < 3 or line[1] != " ":
         return None
-    rest = line[2:]
-    if line.startswith("2 "):
-        rest = rest.split("\t", 1)[0]
-    parts = rest.split()
-    return parts[-1] if parts else None
+    max_splits = {"1": 8, "2": 9, "u": 10}[line[0]]
+    parts = line.split(" ", max_splits)
+    if len(parts) != max_splits + 1:
+        return None
+    path = parts[-1]
+    if line.startswith("2 ") and not nul_delimited:
+        path = path.split("\t", 1)[0]
+    return path or None
 
 
 def newest_worktree_mtime(repo_path, rel_paths):
@@ -531,8 +537,16 @@ def parse_porcelain_v2(output):
     conflicted = 0
     changed_paths = []
 
-    for raw_line in output.splitlines():
-        line = raw_line.rstrip("\n")
+    nul_delimited = "\0" in output
+    records = output.split("\0") if nul_delimited else output.splitlines()
+    skip_rename_source = False
+    for raw_line in records:
+        if skip_rename_source:
+            # With -z, a type-2 destination record is followed by the original
+            # path as its own NUL-delimited field.
+            skip_rename_source = False
+            continue
+        line = raw_line.rstrip("\n") if not nul_delimited else raw_line
         if not line:
             continue
 
@@ -555,7 +569,7 @@ def parse_porcelain_v2(output):
 
         if line.startswith("? "):
             untracked += 1
-            path = porcelain_v2_path(line)
+            path = porcelain_v2_path(line, nul_delimited=nul_delimited)
             if path:
                 changed_paths.append(path)
             continue
@@ -564,7 +578,7 @@ def parse_porcelain_v2(output):
         if line.startswith("u "):
             conflicted += 1
             # Unmerged entries also often show in worktree; count conflict only.
-            path = porcelain_v2_path(line)
+            path = porcelain_v2_path(line, nul_delimited=nul_delimited)
             if path:
                 changed_paths.append(path)
             continue
@@ -580,9 +594,11 @@ def parse_porcelain_v2(output):
             # Conflict-ish ordinary codes (rare with v2, but cheap to catch)
             if "U" in xy or xy in {"DD", "AU", "UA", "DU", "UD", "AA"}:
                 conflicted += 1
-            path = porcelain_v2_path(line)
+            path = porcelain_v2_path(line, nul_delimited=nul_delimited)
             if path:
                 changed_paths.append(path)
+            if nul_delimited and line[0] == "2":
+                skip_rename_source = True
 
     return {
         "branch": branch,
@@ -700,7 +716,7 @@ def inspect_repo(repo_path, timeout, include_stash=True):
     try:
         porcelain = run_git(
             repo_path,
-            ["status", "--porcelain=v2", "--branch", "--untracked-files=normal"],
+            ["status", "--porcelain=v2", "-z", "--branch", "--untracked-files=normal"],
             timeout=timeout,
         )
         parsed = parse_porcelain_v2(porcelain)
@@ -781,7 +797,7 @@ def parse_github_remote(url):
     """Return (owner, repo) for a GitHub remote URL, else None."""
     if not url:
         return None
-    match = GITHUB_REMOTE_RE.search(str(url).strip())
+    match = GITHUB_REMOTE_RE.fullmatch(str(url).strip())
     if not match:
         return None
     owner = match.group("owner").strip()

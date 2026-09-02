@@ -31,8 +31,10 @@ STATUS_PATH = CACHE_DIR / "billing-usage.json"
 RENDER_PATH = CACHE_DIR / "billing-usage-render.tsv"
 HISTORY_PATH = CACHE_DIR / "billing-history.json"
 AWS_CACHE_PATH = CACHE_DIR / "billing-aws-cache.json"
+AZURE_CACHE_PATH = CACHE_DIR / "billing-azure-cache.json"
 LOG_PATH = CACHE_DIR / "conky-billing.log"
 DEFAULT_AWS_CACHE_TTL_SECONDS = 86400  # 24 hours (AWS data updates once daily; $0.01 per query)
+AZURE_DAILY_COST_COOLDOWN_SECONDS = 6 * 60 * 60
 
 AWS_COLOR = "ffb454"
 AZURE_COLOR = "38bdf8"
@@ -943,8 +945,45 @@ def fetch_azure_usage_by_day(subscription_id, timeout, period):
     return daily
 
 
+def azure_daily_cost_management_in_cooldown(subscription_id, now_epoch=None):
+    state = load_json(AZURE_CACHE_PATH, {})
+    if state.get("subscriptionId") != subscription_id:
+        return False
+    now_epoch = now_epoch or int(datetime.now(timezone.utc).timestamp())
+    return common.as_int(state.get("dailyCostRetryAfterEpoch")) > now_epoch
+
+
+def start_azure_daily_cost_cooldown(subscription_id, now_epoch=None):
+    now_epoch = now_epoch or int(datetime.now(timezone.utc).timestamp())
+    retry_after = now_epoch + AZURE_DAILY_COST_COOLDOWN_SECONDS
+    try:
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        common.atomic_write_json(
+            AZURE_CACHE_PATH,
+            {
+                "subscriptionId": subscription_id,
+                "dailyCostThrottledAtEpoch": now_epoch,
+                "dailyCostRetryAfterEpoch": retry_after,
+            },
+        )
+    except OSError as error:
+        log_event(f"Azure daily throttle cooldown cache write failed: {clean_error(error)}")
+    return retry_after
+
+
+def clear_azure_daily_cost_cooldown(subscription_id):
+    state = load_json(AZURE_CACHE_PATH, {})
+    if state.get("subscriptionId") == subscription_id:
+        try:
+            common.atomic_write_json(AZURE_CACHE_PATH, {})
+        except OSError as error:
+            log_event(f"Azure daily throttle cooldown cache clear failed: {clean_error(error)}")
+
+
 def fetch_azure_daily_usd(period, timeout):
     subscription_id = azure_subscription_id(timeout)
+    if azure_daily_cost_management_in_cooldown(subscription_id):
+        return fetch_azure_usage_by_day(subscription_id, timeout, period)
     try:
         payload = azure_cost_management_payload(subscription_id, timeout, "Daily")
         daily, currency = parse_azure_daily_cost_query(payload)
@@ -952,10 +991,16 @@ def fetch_azure_daily_usd(period, timeout):
             rate = azure_pricing_to_billing_rate(subscription_id, timeout)
             daily = {day: amount / rate for day, amount in daily.items()}
         if daily:
+            clear_azure_daily_cost_cooldown(subscription_id)
             return daily
     except ProviderError as error:
         if is_rate_limited(error):
-            log_event(f"RATE LIMIT / THROTTLED: Azure daily Cost Management throttled: {clean_error(error)}; falling back to Usage Details")
+            retry_after = start_azure_daily_cost_cooldown(subscription_id)
+            retry_at = datetime.fromtimestamp(retry_after, tz=timezone.utc).isoformat()
+            log_event(
+                "RATE LIMIT / THROTTLED: Azure daily Cost Management throttled: "
+                f"{clean_error(error)}; using Usage Details until retry_at={retry_at}"
+            )
         else:
             log_event(f"Azure daily Cost Management unavailable: {clean_error(error)}; falling back to Usage Details")
     return fetch_azure_usage_by_day(subscription_id, timeout, period)
@@ -1868,8 +1913,16 @@ def configured(*names):
     return any(os.environ.get(name, "").strip() for name in names)
 
 
-def previous_providers():
+def previous_providers(period_start=None):
     output = load_json(STATUS_PATH, {})
+    if period_start is not None:
+        expected_period = (
+            period_start.isoformat()
+            if hasattr(period_start, "isoformat")
+            else str(period_start)
+        )
+        if output.get("periodStart") != expected_period:
+            return {}
     return {
         str(item.get("id")): item
         for item in output.get("providers") or []
@@ -1896,7 +1949,7 @@ def collect(reference=None):
 
     providers = []
     errors = []
-    old = previous_providers()
+    old = previous_providers(period["periodStart"])
 
     if aws_enabled():
         try:

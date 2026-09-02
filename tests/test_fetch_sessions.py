@@ -47,21 +47,19 @@ def test_device_for_treats_the_console_as_local():
 
 
 def test_overlay_height_has_no_empty_sockets_and_expands_for_more_data():
-    assert sessions.overlay_height(0, 0) == sessions.PANEL_MIN_HEIGHT
-    assert sessions.overlay_height(3, 3) == sessions.PANEL_MIN_HEIGHT
+    assert sessions.overlay_height(0) == sessions.PANEL_MIN_HEIGHT
+    assert sessions.overlay_height(3) == sessions.PANEL_MIN_HEIGHT
     # No empty placeholder sockets: 1 or 2 sessions use exactly that many diamonds,
     # not a padded row of three. Height stays at one row until >3 sessions.
-    assert sessions.overlay_height(0, 1) == sessions.PANEL_MIN_HEIGHT
-    assert sessions.overlay_height(0, 2) == sessions.PANEL_MIN_HEIGHT
-    assert sessions.overlay_height(0, 1) == sessions.overlay_height(0, 3)
-    # Drift field is fixed height — extra ingress devices sink, they do not stretch the window.
-    assert sessions.overlay_height(100, 3) == sessions.overlay_height(3, 3)
+    assert sessions.overlay_height(1) == sessions.PANEL_MIN_HEIGHT
+    assert sessions.overlay_height(2) == sessions.PANEL_MIN_HEIGHT
+    assert sessions.overlay_height(1) == sessions.overlay_height(3)
     # Constellation reserves a fixed diamond zone so the bay holds the same
     # footprint for a few sessions; only when rows exceed that zone does it
     # grow. 3 sessions (1 row) and 7 (3 rows) now share the same height;
     # growth is visible only once the zone is exceeded.
-    assert sessions.overlay_height(3, 7) == sessions.overlay_height(3, 3)
-    assert sessions.overlay_height(3, 10) > sessions.overlay_height(3, 3)
+    assert sessions.overlay_height(7) == sessions.overlay_height(3)
+    assert sessions.overlay_height(10) > sessions.overlay_height(3)
 
 
 def test_relative_age_units():
@@ -270,6 +268,89 @@ def test_fleet_codeview_repos_keeps_dead_daemons_as_eclipses(tmp_path, monkeypat
     assert repos[0]["codeviewRunning"] is False
 
 
+def test_fleet_codeview_sessions_distinguish_same_named_repo_paths(tmp_path):
+    first = tmp_path / "one" / "shared-name"
+    second = tmp_path / "two" / "shared-name"
+    first.mkdir(parents=True)
+    second.mkdir(parents=True)
+    records = [
+        {
+            "name": "shared-name",
+            "path": str(path),
+            "codeviewRunning": True,
+            "codeviewPort": port,
+            "codeviewIndexAgeSeconds": 10,
+        }
+        for path, port in ((first, 48101), (second, 48102))
+    ]
+
+    merged = sessions.add_fleet_codeview_sessions({}, records)
+
+    assert len(merged) == 2
+    assert {Path(record["path"]).resolve() for record in merged.values()} == {
+        first.resolve(),
+        second.resolve(),
+    }
+
+
+def test_fleet_codeview_path_beats_matching_tmux_basename(tmp_path):
+    tmux_repo = tmp_path / "one" / "shared-name"
+    fleet_repo = tmp_path / "two" / "shared-name"
+    tmux_repo.mkdir(parents=True)
+    fleet_repo.mkdir(parents=True)
+    existing = {
+        "tmux": {
+            "name": "shared-name",
+            "repo": "shared-name",
+            "path": str(tmux_repo),
+        }
+    }
+
+    sessions.add_fleet_codeview_sessions(
+        existing,
+        [
+            {
+                "name": "shared-name",
+                "path": str(fleet_repo),
+                "codeviewRunning": True,
+                "codeviewPort": 48102,
+                "codeviewIndexAgeSeconds": 10,
+            }
+        ],
+    )
+
+    assert len(existing) == 2
+    assert any(record.get("codeviewPort") == 48102 for record in existing.values())
+
+
+def test_fleet_codeview_matches_tmux_session_inside_repo(tmp_path):
+    repo = tmp_path / "project"
+    session_path = repo / "scripts" / "deep"
+    session_path.mkdir(parents=True)
+    existing = {
+        "tmux": {
+            "name": "working-session",
+            "repo": "deep",
+            "path": str(session_path),
+        }
+    }
+
+    sessions.add_fleet_codeview_sessions(
+        existing,
+        [
+            {
+                "name": "project",
+                "path": str(repo),
+                "codeviewRunning": True,
+                "codeviewPort": 48102,
+                "codeviewIndexAgeSeconds": 10,
+            }
+        ],
+    )
+
+    assert list(existing) == ["tmux"]
+
+
 def test_collect_includes_unattached_codeview_repos_in_sessions(tmp_path, monkeypatch):
     # Fleet repos with a codeview daemon appear as unattached destination diamonds
     # at the bottom of the bay, without duplicating existing tmux sessions.
@@ -322,4 +403,3 @@ def test_collect_includes_unattached_codeview_repos_in_sessions(tmp_path, monkey
     assert standalone_record["attached"] == ""
     assert standalone_record["codeviewPresent"] is True
     assert standalone_record["codeviewRunning"] is True
-

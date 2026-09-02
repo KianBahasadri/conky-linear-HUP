@@ -88,6 +88,10 @@ local function load_hook(entrypoint, hook, width, height, surface)
     return surface
   end
 
+  -- Entrypoints share this worker process, unlike real Conky windows. Remove
+  -- the requested global first so a mismatched/stale config cannot reuse a
+  -- hook left behind by the entrypoint loaded for the previous window.
+  _G['conky_' .. hook] = nil
   local loaded, load_err = pcall(dofile, entrypoint)
   if not loaded then
     return nil, load_err
@@ -110,6 +114,10 @@ local function run_plan(rows)
     local width = math.max(1, math.floor(tonumber(row[5]) or 1))
     local height = math.max(1, math.floor(tonumber(row[6]) or 1))
     local scratch = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 1, 1)
+    if spacer_fn and spacer_fn ~= '' then
+      -- The same isolation rule applies to the optional sizing hook.
+      _G['conky_' .. spacer_fn] = nil
+    end
     local fn = load_hook(entrypoint, hook, width, height, scratch)
     local voffset = -1
 

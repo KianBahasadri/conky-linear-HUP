@@ -3,8 +3,10 @@
 
 import os
 import secrets
+import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -13,11 +15,11 @@ UNIT_NAME = UNIT_SRC.name
 UNIT_DIR = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "systemd" / "user"
 UNIT_LINK = UNIT_DIR / UNIT_NAME
 WORKOUTS_DIR = ROOT / "cache" / "workouts"
-EXPECTED_ROOT = Path("/home/kian/conky-linear-HUP")
-WEBDAV_URL = "http://100.123.102.71:9876/"
+DEFAULT_PHONE_WEBDAV_URL = "https://kianlaptop.tail3a78b9.ts.net/"
 AUTH_DIR = Path.home() / ".config" / "rclone"
 HTPASSWD_PATH = AUTH_DIR / "webdav.htpasswd"
 PASSWORD_PATH = AUTH_DIR / "webdav-password.txt"
+SERVICE_ENV_PATH = AUTH_DIR / "webdav-service.env"
 AUTH_USER = "kian"
 
 
@@ -26,13 +28,28 @@ def run(*args: str) -> None:
 
 
 def write_private(path: Path, content: str) -> None:
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w") as handle:
-        handle.write(content)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary_name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
+    temporary_path = Path(temporary_name)
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(content)
+        os.replace(temporary_path, path)
+        path.chmod(0o600)
+    finally:
+        temporary_path.unlink(missing_ok=True)
 
 
 def ensure_auth() -> None:
     if HTPASSWD_PATH.exists():
+        HTPASSWD_PATH.chmod(0o600)
+        if not PASSWORD_PATH.exists():
+            raise RuntimeError(
+                f"{HTPASSWD_PATH} exists but {PASSWORD_PATH} is missing; "
+                "delete the htpasswd file and rerun to rotate the credential"
+            )
+        PASSWORD_PATH.chmod(0o600)
         print(f"Auth file exists: {HTPASSWD_PATH}")
         return
     AUTH_DIR.mkdir(parents=True, exist_ok=True)
@@ -40,9 +57,30 @@ def ensure_auth() -> None:
 
     password = secrets.token_urlsafe(12)
     digest = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
-    write_private(HTPASSWD_PATH, f"{AUTH_USER}:{digest}\n")
+    # The htpasswd file is the completion marker. Write it last so an
+    # interrupted install cannot look complete while lacking the plaintext
+    # credential needed to configure the phone.
     write_private(PASSWORD_PATH, f"{AUTH_USER}: {password}\n")
+    write_private(HTPASSWD_PATH, f"{AUTH_USER}:{digest}\n")
     print(f"Generated auth: {HTPASSWD_PATH} (password saved to {PASSWORD_PATH})")
+
+
+def environment_value(value: Path) -> str:
+    text = str(value)
+    return '"' + text.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def write_service_environment() -> None:
+    write_private(
+        SERVICE_ENV_PATH,
+        "\n".join(
+            (
+                f"RCLONE_WEBDAV_WORKOUTS_DIR={environment_value(WORKOUTS_DIR)}",
+                f"RCLONE_WEBDAV_HTPASSWD_PATH={environment_value(HTPASSWD_PATH)}",
+                "",
+            )
+        ),
+    )
 
 
 def install_unit() -> None:
@@ -65,19 +103,22 @@ def install_unit() -> None:
 
 
 def main() -> int:
-    if ROOT != EXPECTED_ROOT:
-        print(
-            f"warning: repo lives at {ROOT} but {UNIT_NAME} hardcodes {EXPECTED_ROOT} in ExecStart; update the unit",
-            file=sys.stderr,
-        )
+    if shutil.which("systemctl") is None:
+        raise RuntimeError("systemctl is not installed")
+    if not Path("/usr/bin/rclone").is_file():
+        raise RuntimeError("/usr/bin/rclone is not installed")
 
     ensure_auth()
+    write_service_environment()
     install_unit()
 
+    phone_url = os.environ.get("WEBDAV_PUBLIC_URL", DEFAULT_PHONE_WEBDAV_URL)
     print(f"Installed {UNIT_LINK} -> {UNIT_SRC}")
     print(f"Workouts directory: {WORKOUTS_DIR}")
-    print(f"Phone WebDAV URL:   {WEBDAV_URL}")
+    print(f"Loopback backend:   http://127.0.0.1:9876/")
+    print(f"Phone WebDAV URL:   {phone_url}")
     print(f"Phone WebDAV login: see {PASSWORD_PATH}")
+    print(f"Service paths:      {SERVICE_ENV_PATH}")
     return 0
 
 
