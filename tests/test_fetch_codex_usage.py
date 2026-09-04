@@ -687,3 +687,20 @@ def test_rollout_usage_limit_error_marks_latest_sample_exhausted(tmp_path, monke
     assert len(samples) == 1
     assert samples[0]["exhausted"] is True
     assert codex.local_rate_limit_windows(samples[0])[0]["usedPercent"] == 100.0
+
+
+def test_sort_accounts_orders_alphabetically_without_separating_plans():
+    accounts = [
+        {"label": "sepehr", "planType": "plus"},
+        {"label": "bashir", "planType": "free"},
+        {"label": "kian", "planType": "pro"},
+        {"label": "ahmad", "planType": "plus"},
+    ]
+    sorted_accounts = codex.sort_accounts(accounts)
+    assert [account["label"] for account in sorted_accounts] == [
+        "ahmad",
+        "bashir",
+        "kian",
+        "sepehr",
+    ]
+

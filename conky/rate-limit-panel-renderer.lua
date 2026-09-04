@@ -330,16 +330,6 @@ return function(shared, repo_root)
     return 40
   end
 
-  local function plan_type_sort_rank(account)
-    local plan_type = string.lower(account.plan_type or '')
-    if plan_type == 'free' then
-      return 0
-    elseif plan_type == 'plus' or plan_type == 'pro' then
-      return 2
-    end
-    return 1
-  end
-
   local function is_free_account(account)
     return string.lower(account.plan_type or '') == 'free'
   end
@@ -372,10 +362,10 @@ return function(shared, repo_root)
       local left_rank = plan_sort_rank(left)
       local right_rank = plan_sort_rank(right)
       if left_rank == right_rank then
-        local left_plan_rank = plan_type_sort_rank(left)
-        local right_plan_rank = plan_type_sort_rank(right)
-        if left_plan_rank ~= right_plan_rank then
-          return left_plan_rank < right_plan_rank
+        local left_label = string.lower(left.label or '')
+        local right_label = string.lower(right.label or '')
+        if left_label ~= right_label then
+          return left_label < right_label
         end
         return (left.original_index or 0) < (right.original_index or 0)
       end
@@ -1620,5 +1610,9 @@ return function(shared, repo_root)
   return {
     draw = draw,
     height_spacer = height_spacer,
+    _test = {
+      read_ai_usage = read_ai_usage,
+      sort_accounts = sort_accounts,
+    },
   }
 end

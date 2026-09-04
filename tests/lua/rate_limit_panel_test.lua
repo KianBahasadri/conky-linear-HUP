@@ -70,6 +70,27 @@ eq(spacer_for('{"ok":true,"bars":[' .. table.concat(bars, ',') .. ']}'),
 eq(spacer_for('{"ok":true,"accounts":[{"label":"unterminated}]}'),
   '${voffset 320}', 'malformed JSON cache degrades to the window floor')
 
+local test_accounts = {
+  { provider = 'Cursor', label = 'sepehr', plan_type = 'pro' },
+  { provider = 'Cursor', label = 'kian', plan_type = 'free' },
+  { provider = 'Cursor', label = '21kb60', plan_type = 'pro' },
+  { provider = 'Codex', label = 'sepehr', plan_type = 'plus' },
+  { provider = 'Codex', label = 'bashir', plan_type = 'free' },
+  { provider = 'Codex', label = 'kian', plan_type = 'pro' },
+  { provider = 'Codex', label = 'ahmad', plan_type = 'plus' },
+  { provider = 'Gemini', label = 'kian', plan_type = 'pro' },
+  { provider = 'Gemini', label = 'baba', plan_type = 'free' },
+}
+local renderer = factory(shared, cache_root)
+renderer._test.sort_accounts(test_accounts)
+local ordered = {}
+for _, acct in ipairs(test_accounts) do
+  table.insert(ordered, acct.provider .. ':' .. acct.label)
+end
+eq(table.concat(ordered, ','),
+  'Codex:ahmad,Codex:bashir,Codex:kian,Codex:sepehr,Cursor:21kb60,Cursor:kian,Cursor:sepehr,Gemini:baba,Gemini:kian',
+  'accounts within each provider are sorted alphabetically without separating free accounts')
+
 if failures > 0 then
   print(failures .. ' failure(s)')
   os.exit(1)

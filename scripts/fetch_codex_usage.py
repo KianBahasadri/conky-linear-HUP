@@ -805,17 +805,8 @@ def apply_local_rate_limits(accounts, local_rate_limits):
     return accounts
 
 
-def plan_sort_rank(account):
-    plan_type = str(account.get("planType", "")).lower()
-    if plan_type == "free":
-        return 0
-    if plan_type == "plus":
-        return 2
-    return 1
-
-
 def sort_accounts(accounts):
-    return sorted(accounts, key=plan_sort_rank)
+    return sorted(accounts, key=lambda account: str(account.get("label", "")).lower())
 
 
 def write_error(message):
