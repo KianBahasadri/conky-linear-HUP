@@ -55,11 +55,13 @@ def plan(width, height, top=40, counts=None, env=None):
     quota_limit = int(available * (0.55 if available >= 900 else 0.44))
     quota_rows = max(1, min(counts.get("accounts", 0) or 1, (quota_limit - 16) // row))
     quota_h = max(112, 16 + quota_rows * row)
+    github = env.get("GITHUB_OVERLAY_ENABLED", "1") != "0"
     github_h = 128 if available >= 900 else 112
     quota_y = height - margin - quota_h
     github_y = quota_y - 12 - github_h
     # A task row reserves 124px so a three-line title wraps without clipping.
-    task_h = max(124, github_y - 12 - top)
+    task_bottom = github_y - 12 if github else quota_y - 12
+    task_h = max(124, task_bottom - top)
 
     # Left rail: repositories above sessions, with Minecraft pinned to the foot.
     # A disabled Minecraft panel keeps a valid rectangle; only its reservation
@@ -76,12 +78,10 @@ def plan(width, height, top=40, counts=None, env=None):
     # Right rail: resource readings, the budget map, then weather and training.
     # Four readings are a two-column grid of 116px cells with 16px gaps.
     resource_h = 248
-    # The map keeps the guide's projection ratio; provider summary rows are 18px.
+    # The map keeps the guide's projection ratio.
     map_h = round(2 * 94 * 0.82 * min(right - 32, 720) / 305 + 32)
     billing_y = top + resource_h + 12
-    billing_space = height - margin - billing_y - 12 - (320 if available >= 900 else 160)
-    provider_rows = max(1, min(counts.get("providers", 0) or 5, (billing_space - map_h - 16) // 18))
-    billing_h = map_h + 16 + provider_rows * 18
+    billing_h = map_h
     weather_y = billing_y + billing_h + 12
     weather_h = max(160, height - margin - weather_y)
     windows = {

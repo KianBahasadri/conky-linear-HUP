@@ -1,14 +1,10 @@
 # GitHub contributions
 
 The overlay shows a flat daily contribution calendar above AI usage. Weeks
-advance left to right and weekdays run top to bottom. Month labels and M/W/F
-row labels orient the grid. Cyan intensity encodes GitHub's 0–4 activity levels.
-Where the window is wide enough, latest-day and whole-window totals appear as
-metrics beside the calendar, using real counts when available; a legacy
-level-only cache still draws the grid but shows a dash rather than inventing a
-total. A stale cache is labeled with a caution badge, and the calendar gives up
-whatever width the metrics and that badge need. Shared styling and placement are
-described in the [Desktop design system](design-system.md).
+advance left to right and weekdays run top to bottom. Cyan intensity encodes
+GitHub's 0–4 activity levels. A stale cache is labeled with a caution badge,
+and the calendar gives up whatever width that badge needs. Shared styling and
+placement are described in the [Desktop design system](design-system.md).
 
 ## Data
 

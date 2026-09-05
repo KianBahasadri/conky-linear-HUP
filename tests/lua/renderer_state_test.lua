@@ -55,10 +55,9 @@ assert(has('Retrying: Unauthorized'), 'failed account must not disappear')
 files['github-contributions.json'] = [[{"ok":true,"contributions":[
   {"date":"2026-09-01","level":2}]}]]
 draw('github-tracker-renderer.lua')
-assert(has('—'), 'a level-only calendar must not manufacture a contribution total')
+assert(#labels == 0, 'the github tracker must stay free of text')
 
--- The map itself stays free of text, so the passive summary beneath it is
--- what has to name each provider, its amounts, and its status.
+-- The map itself stays free of text.
 files['billing-usage-render.tsv'] = table.concat({
   'meta\tok\t1\tday\t5\tdaysInMonth\t30\telapsedFraction\t0.1667',
   'provider\taws\tAWS\tffffff\tmetered\t1\t0\t0.3\t1.7\t1\tcache\t$3 now / $10 cap',
@@ -66,8 +65,7 @@ files['billing-usage-render.tsv'] = table.concat({
   'history\taws\t3\t0.2',
 }, '\n')
 draw('billing-renderer.lua')
-assert(has('AWS') and has('$3 now / $10 cap'), 'each budget needs its name and exact amounts')
-assert(has('Forecast over limit'), 'a forecast past the limit needs explicit status text')
+assert(not has('AWS') and not has('Forecast over limit'), 'the budget map must stay free of provider summary text')
 for _, trail in ipairs(trails) do
   assert(trail.color ~= ui.accent or #trail.points < 2,
     'observed history must not bridge missing calendar days')

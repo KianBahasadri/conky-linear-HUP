@@ -7,14 +7,19 @@ import overlay_layout
 
 @pytest.mark.parametrize("size", [(1280, 720), (1366, 768), (1920, 1080), (2560, 1440)])
 @pytest.mark.parametrize("minecraft", [False, True])
+@pytest.mark.parametrize("github", [False, True])
 @pytest.mark.parametrize("count", [0, 1, 30, 150])
-def test_planned_windows_fit_without_overlap_under_changing_record_counts(size, minecraft, count):
+def test_planned_windows_fit_without_overlap_under_changing_record_counts(size, minecraft, github, count):
     width, height = size
     counts = dict.fromkeys(("cards", "accounts", "repos", "sessions", "providers"), count)
-    windows = overlay_layout.plan(width, height, 40, counts,
-                                  {"MINECRAFT_OVERLAY_ENABLED": str(int(minecraft))})
+    windows = overlay_layout.plan(width, height, 40, counts, {
+        "MINECRAFT_OVERLAY_ENABLED": str(int(minecraft)),
+        "GITHUB_OVERLAY_ENABLED": str(int(github)),
+    })
     if not minecraft:
         windows.pop("minecraft")
+    if not github:
+        windows.pop("github")
     for name, (x, y, w, h) in windows.items():
         assert w >= 240 and h >= 100, name
         assert 0 <= x <= width - w, name

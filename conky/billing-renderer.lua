@@ -1,6 +1,4 @@
--- Budget map: one affine time/limit plane shared by every provider, with a
--- compact exact-value summary beneath it standing in for the accessible
--- description a passive Cairo surface cannot expose.
+-- Budget map: one affine time/limit plane shared by every provider.
 return function(shared, repo_root)
   local data_path = repo_root .. '/cache/billing-usage-render.tsv'
   local ui = shared.ui
@@ -231,27 +229,7 @@ return function(shared, repo_root)
           0, 0, width, 'danger')
         return
       end
-      local top = draw_map(cr, model, state, width, 0) + 4
-      local first, last, page = ui.rows(#model.items, height, 18, top)
-      -- Amounts share one left edge across the summary, so the rows read as a
-      -- column rather than as text flowing from names of different lengths.
-      local name_column = 0
-      for index = first, last do
-        name_column = math.max(name_column, ui.width(cr, model.items[index].name, 12) + 8)
-      end
-      name_column = math.min(name_column, width * 0.35)
-      for index = first, last do
-        local item = model.items[index]
-        local y = top + (index - first) * 18 + 13
-        local status = item.stale and ('Stale · ' .. item.status) or item.status
-        local kind = item.stale and 'caution' or item.severity
-        local status_width = ui.text(cr, status, width, y,
-          {size = 12, bold = 'medium', align = 'right', color = ui[kind] or ui.muted})
-        ui.text(cr, item.name, 0, y, {size = 12, color = ui.ink, width = name_column - 8})
-        ui.text(cr, item.detail, name_column, y, {size = 11, mono = true, color = ui.muted,
-          width = width - name_column - status_width - 8})
-      end
-      ui.footer(cr, page, width, height)
+      local top = draw_map(cr, model, state, width, 0)
     end)
   end
 

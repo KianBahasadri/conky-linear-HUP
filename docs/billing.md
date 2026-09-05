@@ -2,8 +2,7 @@
 
 Every provider shares one budget map in the right rail: an affine time-and-limit
 plane whose near left edge is the start of the month and whose far edge is month
-end. A provider summary sits beneath it. Shared appearance and layout are owned
-by the [Desktop design system](design-system.md).
+end. Shared appearance and layout are owned by the [Desktop design system](design-system.md).
 
 ## Reading the map
 
@@ -23,11 +22,6 @@ by the [Desktop design system](design-system.md).
   4px-radius square near the limit, and a sharp square for a projected overrun.
 - Gridlines every 25 points, a faint dotted even-consumption pace line, and the
   dashed now-line are the map's only reference marks. It carries no text.
-- Because a passive Cairo window has no hover readout or details dialog, the
-  summary beneath the map is where each provider's name, exact amounts, and
-  status text live. Statuses are `Within limit`, `Near limit`,
-  `Forecast over limit`, `Over limit now`, `No forecast`, and `Unavailable`.
-  Retained values are dimmed on the map and prefixed `Stale` in the summary.
 - With no providers at all, an explicit `Unavailable` callout replaces the map.
 
 The earlier affine diamond and Cairo design sources are preserved in the
