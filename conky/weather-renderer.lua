@@ -86,20 +86,21 @@ return function(shared, repo_root)
     return table.concat(kept, ' · ')
   end
 
-  local function draw_weather(cr, weather, width)
+  local function draw_weather(cr, weather, width, top)
+    top = top or 0
     if not weather.ok then
-      ui.callout(cr, 'Unavailable', weather.error, 0, 0, width, 'danger')
+      ui.callout(cr, 'Unavailable', weather.error, 0, top, width, 'danger')
       return
     end
     local unit = '°' .. weather.temperature_unit
     local third = (width - 32) / 3
-    ui.metric(cr, 'Temp ' .. unit, string.format('%.0f', weather.temperature), 0, 0, third)
-    ui.metric(cr, 'US AQI', string.format('%.0f', weather.aqi), third + 16, 0, third)
-    ui.metric(cr, 'Run / 100', string.format('%.0f', weather.run_score), (third + 16) * 2, 0, third)
+    ui.metric(cr, 'Temp ' .. unit, string.format('%.0f', weather.temperature), 0, top, third)
+    ui.metric(cr, 'US AQI', string.format('%.0f', weather.aqi), third + 16, top, third)
+    ui.metric(cr, 'Run / 100', string.format('%.0f', weather.run_score), (third + 16) * 2, top, third)
     local aqi_kind = weather.aqi <= 50 and 'good' or weather.aqi <= 100 and 'caution' or 'danger'
-    local badge_width = ui.badge(cr, 'AQI ' .. weather.aqi_label, width, 52, aqi_kind, {right = true})
+    local badge_width = ui.badge(cr, 'AQI ' .. weather.aqi_label, width, top + 52, aqi_kind, {right = true})
     local context = join({weather.condition, weather.stale and 'Stale' or weather.location})
-    ui.text(cr, context, 0, 66, {size = 12, color = weather.stale and ui.caution or ui.muted,
+    ui.text(cr, context, 0, top + 66, {size = 12, color = weather.stale and ui.caution or ui.muted,
       width = width - badge_width - 12})
     local readouts = {{'Feels', string.format('%.0f', weather.apparent_temperature) .. unit},
       {'Rain', string.format('%.0f%%', weather.rain)},
@@ -115,18 +116,19 @@ return function(shared, repo_root)
     local column = width / 3
     for index, pair in ipairs(readouts) do
       local x = ((index - 1) % 3) * column
-      local y = 88 + math.floor((index - 1) / 3) * 18
+      local y = top + 88 + math.floor((index - 1) / 3) * 18
       ui.text(cr, pair[1], x, y, {size = 12, color = ui.muted})
       ui.text(cr, pair[2], x + label_column, y, {size = 13, mono = true, width = column - label_column - 8})
     end
     local run_kind = weather.run_score >= 80 and 'good' or weather.run_score >= 50 and 'caution' or 'danger'
-    local run_width = ui.badge(cr, (weather.run_status:gsub('^RUN ', '')), width, 114, run_kind, {right = true})
-    ui.text(cr, 'Best run', 0, 128, {size = 12, color = ui.muted})
-    ui.text(cr, weather.best_window, label_column, 128,
+    local run_width = ui.badge(cr, (weather.run_status:gsub('^RUN ', '')), width, top + 114, run_kind, {right = true})
+    ui.text(cr, 'Best run', 0, top + 128, {size = 12, color = ui.muted})
+    ui.text(cr, weather.best_window, label_column, top + 128,
       {size = 13.5, bold = 'medium', width = width - label_column - run_width - 12})
   end
 
-  local function draw_training(cr, workouts, width, top, bottom)
+  local function draw_training(cr, workouts, width, top)
+    top = top or 0
     if not workouts.ok then
       ui.text(cr, workouts.error, 0, top + 16, {size = 13.5, color = ui.muted, width = width}); return
     end
@@ -139,35 +141,23 @@ return function(shared, repo_root)
     ui.text(cr, join({workouts.last_duration, workouts.last_heart_rate, workouts.last_cadence}), 0, top + 80, detail)
     ui.text(cr, workouts.week_duration, half + 16, top + 64, detail)
     ui.text(cr, workouts.week_runs .. ' runs', half + 16, top + 80, detail)
-    local count, peak = #workouts.recent, 0
-    for _, run in ipairs(workouts.recent) do peak = math.max(peak, run.distance_units) end
-    local chart_top, baseline = top + 92, bottom - 18
-    if count > 0 and peak > 0 and baseline - chart_top >= 12 then
-      local step = width / count
-      for index, run in ipairs(workouts.recent) do
-        local bar = run.distance_units / peak * (baseline - chart_top)
-        ui.rect(cr, (index - 1) * step, baseline - bar, math.max(1, step - 6), bar,
-          ui.accent, 0, run.is_last and 1 or 0.42)
-      end
-      local distance_unit = workouts.last_distance:match('%a+$') or ''
-      ui.text(cr, 'Last ' .. count .. ' workouts · ' .. distance_unit, 0, bottom - 4,
-        {size = 11, mono = true, color = ui.muted})
-    end
   end
 
   local function draw()
     ui.draw(function(cr, width, height)
       local weather, workouts = read_status(), read_workouts()
-      local compact = height < 300
+      local content_height = weather_block + gap + 94
+      local compact = height < content_height
       if not compact then
-        draw_weather(cr, weather, width)
-        draw_training(cr, workouts, width, weather_block + gap, height)
+        local top = height - content_height
+        draw_weather(cr, weather, width, top)
+        draw_training(cr, workouts, width, top + weather_block + gap)
         return
       end
       -- Short displays alternate the two blocks as labeled pages.
       local training_page = math.floor(os.time() / 30) % 2 == 1
-      if training_page then draw_training(cr, workouts, width, 0, height - 16)
-      else draw_weather(cr, weather, width) end
+      if training_page then draw_training(cr, workouts, width, 0)
+      else draw_weather(cr, weather, width, 0) end
       ui.footer(cr, training_page and '2/2' or '1/2', width, height)
     end)
   end
