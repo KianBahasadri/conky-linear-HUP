@@ -46,20 +46,13 @@ def test_device_for_treats_the_console_as_local():
     )
 
 
-def test_overlay_height_has_no_empty_sockets_and_expands_for_more_data():
-    assert sessions.overlay_height(0) == sessions.PANEL_MIN_HEIGHT
-    assert sessions.overlay_height(3) == sessions.PANEL_MIN_HEIGHT
-    # No empty placeholder sockets: 1 or 2 sessions use exactly that many diamonds,
-    # not a padded row of three. Height stays at one row until >3 sessions.
-    assert sessions.overlay_height(1) == sessions.PANEL_MIN_HEIGHT
-    assert sessions.overlay_height(2) == sessions.PANEL_MIN_HEIGHT
-    assert sessions.overlay_height(1) == sessions.overlay_height(3)
-    # Constellation reserves a fixed diamond zone so the bay holds the same
-    # footprint for a few sessions; only when rows exceed that zone does it
-    # grow. 3 sessions (1 row) and 7 (3 rows) now share the same height;
-    # growth is visible only once the zone is exceeded.
-    assert sessions.overlay_height(7) == sessions.overlay_height(3)
-    assert sessions.overlay_height(10) > sessions.overlay_height(3)
+def test_overlay_height_grows_with_sessions_and_inbound_logins():
+    assert sessions.overlay_height(0) == 116
+    assert sessions.overlay_height(1) == 116
+    assert sessions.overlay_height(3) == 268
+    assert sessions.overlay_height(7) == 572
+    assert sessions.overlay_height(10) == 800
+    assert sessions.overlay_height(3, device_count=2) == 420
 
 
 def test_relative_age_units():

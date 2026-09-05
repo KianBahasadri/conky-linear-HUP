@@ -160,14 +160,14 @@ def test_load_env_strips_quotes_and_preserves_existing(monkeypatch, tmp_path):
 
 
 def test_rate_limit_panel_window_height_grows_with_accounts():
-    assert common.rate_limit_panel_window_height(0) == 320
-    assert common.rate_limit_panel_window_height(1) == 320
-    assert common.rate_limit_panel_window_height(14) == 320
-    assert common.rate_limit_panel_window_height(15) == 320
-    assert common.rate_limit_panel_window_height(16) == 320
-    assert common.rate_limit_panel_window_height(17) == 320
-    assert common.rate_limit_panel_window_height(18) == 336
-    assert common.rate_limit_panel_window_height(20) == 368
+    assert common.rate_limit_panel_window_height(0) == 112
+    assert common.rate_limit_panel_window_height(1) == 112
+    assert common.rate_limit_panel_window_height(14) == 400
+    assert common.rate_limit_panel_window_height(15) == 424
+    assert common.rate_limit_panel_window_height(16) == 448
+    assert common.rate_limit_panel_window_height(17) == 472
+    assert common.rate_limit_panel_window_height(18) == 496
+    assert common.rate_limit_panel_window_height(20) == 544
 
 
 def test_rate_limit_account_count_from_cache_skips_removed_providers(tmp_path):

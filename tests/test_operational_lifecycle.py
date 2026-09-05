@@ -65,6 +65,8 @@ def make_launcher_repo(tmp_path: Path, xrandr_output: str = "") -> tuple[Path, P
 
     shutil.copy2(ROOT / "scripts" / "start_conky_overlays.sh", scripts)
     shutil.copy2(LIFECYCLE_HELPER, scripts)
+    shutil.copy2(ROOT / "scripts" / "overlay_layout.py", scripts)
+    write_executable(scripts / "install_overlay_fonts.sh", "#!/usr/bin/env bash\nexit 0\n")
     template = textwrap.dedent(
         """
         conky.config = {
@@ -96,6 +98,11 @@ def make_launcher_repo(tmp_path: Path, xrandr_output: str = "") -> tuple[Path, P
         """
         #!/usr/bin/env bash
         case "$*" in
+          *overlay_layout.py*)
+            while [[ "$1" != "python" ]]; do shift; done
+            shift
+            exec python "$@"
+            ;;
           *--print-rate-limit-panel-frame-width*) printf '1000\\n' ;;
           *--print-rate-limit-panel-frame-height*) printf '296\\n' ;;
           *--print-rate-limit-panel-height*) printf '320\\n' ;;
@@ -454,10 +461,6 @@ def test_launcher_validates_every_arithmetic_geometry_input(tmp_path):
     )
     variables = (
         "RATE_LIMIT_PANEL_GAP_Y",
-        "GITHUB_SKYLINE_HEIGHT",
-        "GITHUB_SKYLINE_MIN_HEIGHT",
-        "GITHUB_LINEAR_CLEARANCE",
-        "GITHUB_ROOF_CLEARANCE",
         "MINECRAFT_GAP_X",
         "MINECRAFT_GAP_Y",
         "GITHUB_GAP_X",
@@ -466,6 +469,8 @@ def test_launcher_validates_every_arithmetic_geometry_input(tmp_path):
         "SESSIONS_GAP_Y",
         "WEATHER_GAP_X",
         "WEATHER_GAP_Y",
+        "BILLING_GAP_X",
+        "BILLING_GAP_Y",
         "RESOURCE_MONITOR_GAP_X",
         "RESOURCE_MONITOR_GAP_Y",
         "GIT_GAP_X",
@@ -496,7 +501,6 @@ def test_launcher_rejects_zero_padded_bash_arithmetic_values(tmp_path):
     )
     variables = (
         "RATE_LIMIT_PANEL_GAP_Y",
-        "GITHUB_LINEAR_CLEARANCE",
         "LINEAR_PRIMARY_MONITOR_INDEX",
         "PRIMARY_WAIT_SECONDS",
     )

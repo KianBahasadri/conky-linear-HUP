@@ -1,27 +1,24 @@
 conky.config = {
-  -- bottom_left keeps the tall rail in the lower-left column. The start script
-  -- supplies the per-monitor gap values; the panel grows upward from its
-  -- bottom margin as extra sources or sessions appear.
-  alignment = 'bottom_left',
+  alignment = 'top_left',
   background = true,
   border_width = 0,
-  default_color = '000000',
-  default_outline_color = '111827',
-  default_shade_color = '111827',
+  border_inner_margin = 0,
+  border_outer_margin = 0,
+  default_color = 'dbe3e6',
+  default_outline_color = '263137',
+  default_shade_color = '080b0d',
   double_buffer = true,
   draw_borders = false,
   draw_graph_borders = false,
   draw_outline = false,
   draw_shades = false,
   extra_newline = false,
-  font = 'JetBrains Mono:size=10',
-  gap_x = 4,
-  gap_y = 6,
-  -- Floor only; actual height is driven by ${lua_parse sessions_height_spacer},
-  -- and the start script seeds it from fetch_sessions.py --print-overlay-height.
-  minimum_height = 790,
-  minimum_width = 440,
-  maximum_width = 440,
+  font = 'IBM Plex Sans:size=10',
+  gap_x = 16,
+  gap_y = 40,
+  minimum_height = 420,
+  minimum_width = 304,
+  maximum_width = 304,
   no_buffers = true,
   own_window = true,
   own_window_argb_visual = true,
@@ -30,14 +27,11 @@ conky.config = {
   own_window_hints = 'undecorated,below,sticky,skip_taskbar,skip_pager',
   own_window_transparent = true,
   own_window_type = 'desktop',
-  -- 1s tick: the codeview moon's 420s orbit advances ~0.86 degrees (~0.23 px)
-  -- per redraw, which reads as a continuous slow drift. The fetch loop is on
-  -- its own 20s timer, so this only costs redraws, not rescans.
-  update_interval = 1,
+  update_interval = 5,
   use_xft = true,
   lua_load = './conky/overlay-entrypoint.lua',
   lua_draw_hook_post = 'draw_sessions',
 }
 
 conky.text = [[
-${lua_parse sessions_height_spacer}]]
+]]

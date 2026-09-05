@@ -14,6 +14,10 @@ editing the file.
 | `CONKY_LOG_MAX_BYTES` | Rotate a `cache/conky-*.log` at live startup once it reaches this size (default `5242880`, or 5 MiB) |
 | `CONKY_LOG_ROTATIONS` | Number of older generations retained per rotated log (default `2`) |
 
+Empty position overrides use the coordinated [desktop layout](design-system.md).
+The optional `*_GAP_X`/`*_GAP_Y` values below can deliberately move a panel
+outside its assigned region.
+
 ## Linear overlay
 
 | Variable | Purpose |
@@ -33,7 +37,7 @@ editing the file.
 | Variable | Purpose |
 | --- | --- |
 | `RATE_LIMIT_PANEL_ENABLED` | Set to `0` to disable |
-| `RATE_LIMIT_PANEL_GAP_Y` | Vertical gap from the bottom screen edge (default `6`) |
+| `RATE_LIMIT_PANEL_GAP_Y` | Vertical gap from the bottom screen edge (empty uses coordinated layout) |
 | `RATE_LIMIT_CHANGED_INTERVAL` | Short repoll delay while usage is active (default `60`) |
 | `RATE_LIMIT_UNCHANGED_INTERVAL` | Long repoll delay after idle past the recent-change window (default `300`) |
 | `RATE_LIMIT_RECENT_CHANGE_WINDOW` | Seconds after any usage change to keep using the short interval (default `600`) |
@@ -86,8 +90,8 @@ Pioneer env vars (`PIONEER_API_KEY`, `PIONEER_USAGE_LABEL`, `PIONEER_MONTHLY_CRE
 | `MINECRAFT_SERVER_PORT` | Port when not using `MINECRAFT_SERVER` |
 | `MINECRAFT_SERVER_LABEL` | Panel label |
 | `MINECRAFT_OVERLAY_ENABLED` | Set to `0` to disable |
-| `MINECRAFT_GAP_X` | Horizontal gap from screen edge |
-| `MINECRAFT_GAP_Y` | Vertical gap from screen edge (default `6`) |
+| `MINECRAFT_GAP_X` | Horizontal gap from the left screen edge; empty follows the left rail |
+| `MINECRAFT_GAP_Y` | Vertical gap from screen edge (empty uses coordinated layout) |
 | `MINECRAFT_REFRESH_SECONDS` | Fetch interval |
 | `MINECRAFT_STATUS_TIMEOUT_SECONDS` | TCP status probe timeout |
 | `MINECRAFT_PROTOCOL_VERSION` | Protocol version for status negotiation |
@@ -107,17 +111,17 @@ Pioneer env vars (`PIONEER_API_KEY`, `PIONEER_USAGE_LABEL`, `PIONEER_MONTHLY_CRE
 | --- | --- |
 | `GITHUB_USERNAME` | GitHub account to render |
 | `GH_USERNAME` | Alias for `GITHUB_USERNAME` |
-| `GITHUB_TOKEN` | Optional auth for GraphQL `401`-day skyline; falls back to `gh` auth token |
-| `GITHUB_HISTORY_DAYS` | Skyline window in days when authenticated (default `401`, max `730`) |
+| `GITHUB_TOKEN` | Optional auth for GraphQL `401`-day calendar; falls back to `gh` auth token |
+| `GITHUB_HISTORY_DAYS` | Calendar window in days when authenticated (default `401`, max `730`) |
 | `GITHUB_OVERLAY_ENABLED` | Set to `0` to disable |
-| `GITHUB_GAP_X` | Left offset in px; empty matches the rate limit panel's drawn frame |
-| `GITHUB_GAP_Y` | Bottom offset in px; empty sits the skyline on the rate limit panel |
-| `GITHUB_SKYLINE_HEIGHT` | Requested skyline window height (default `200`) |
-| `GITHUB_SKYLINE_MIN_HEIGHT` | Floor after the Linear clearance is taken out (default `180`) |
-| `GITHUB_LINEAR_CLEARANCE` | Gap kept between the Linear cards and the skyline (default `14`) |
-| `GITHUB_ROOF_CLEARANCE` | Gap above the rate limit panel's title chips (default `11`) |
+| `GITHUB_GAP_X` | Left offset in px; empty follows the center column |
+| `GITHUB_GAP_Y` | Bottom offset in px; empty sits above the AI usage region |
 | `GITHUB_REFRESH_SECONDS` | Fetch interval |
 | `GITHUB_TIMEOUT_SECONDS` | Request timeout |
+
+The former `GITHUB_SKYLINE_HEIGHT`, `GITHUB_SKYLINE_MIN_HEIGHT`,
+`GITHUB_LINEAR_CLEARANCE`, and `GITHUB_ROOF_CLEARANCE` settings belong to the
+archived 3D city and are no longer used.
 
 ## Weather and running overlay
 
@@ -129,8 +133,8 @@ Pioneer env vars (`PIONEER_API_KEY`, `PIONEER_USAGE_LABEL`, `PIONEER_MONTHLY_CRE
 | `WEATHER_LOCATION` | City or postal code to geocode when coordinates are unset |
 | `WEATHER_LOCATION_LABEL` | Override the displayed location name |
 | `WEATHER_UNITS` | `imperial`, `metric`, or `auto` (IP country only); defaults to `imperial` |
-| `WEATHER_GAP_X` | Horizontal gap from the right screen edge (default `6`) |
-| `WEATHER_GAP_Y` | Vertical gap from the bottom screen edge (default `6`) |
+| `WEATHER_GAP_X` | Horizontal gap from the right screen edge (empty uses coordinated layout) |
+| `WEATHER_GAP_Y` | Vertical gap from the bottom screen edge (empty uses coordinated layout) |
 | `WEATHER_REFRESH_SECONDS` | Weather and air-quality refresh interval |
 | `WEATHER_TIMEOUT_SECONDS` | Timeout for each provider request |
 | `WORKOUTS_UNITS` | `metric` (default) or `imperial`; formats the training section's distances and paces |
@@ -146,19 +150,35 @@ The panel's lower training section summarizes workouts uploaded from the phone (
 | --- | --- |
 | `RESOURCE_MONITOR_OVERLAY_ENABLED` | Set to `0` to disable |
 | `RESOURCE_MONITOR_GAP_X` | Horizontal gap from the right screen edge |
-| `RESOURCE_MONITOR_GAP_Y` | Optional vertical gap override; when unset, follows Linear’s per-monitor `gap_y` so gauge tops stay flush with cards |
-| `RESOURCE_HISTORY_SAMPLES` | Samples retained for sparklines; defaults to `90` |
-| `RESOURCE_NET_GAUGE_WINDOW` | Moving-average window (samples) for the NET gauge; defaults to `6` |
+| `RESOURCE_MONITOR_GAP_Y` | Optional vertical gap override; when unset, follows Linear’s per-monitor `gap_y` so panels align |
+| `RESOURCE_HISTORY_SAMPLES` | Samples retained per history trace; defaults to `90` |
+| `RESOURCE_NETWORK_MAX_MBPS` | Fixed top of both network plots in MB/s; defaults to `12.5` |
 
-The transparent HUD is generated on every monitor. It displays CPU and memory gauges, a combined network gauge, and CPU/RAM/IN/OUT traces. Each display retains its own recent samples for the active Conky session. NET sparkline scale uses the max IN/OUT rate recorded in the last 7 days (`cache/resource-net-peaks.tsv`). Disk, load, uptime, and bottom readout values are not rendered; see [Layout](README.md#layout).
+Four readings share one grid: CPU, memory, network in, and network out. Each is
+a Lucide symbol over its current value and unit, with a 64px observed history
+directly beneath. The plots do not rescale on every update: CPU and memory are
+fixed at 0–100% with a dashed caution line at 80%, and both network plots use
+`RESOURCE_NETWORK_MAX_MBPS`. A reading above its plot maximum keeps its real
+number and is clipped only in the plot. Utilization at or above 80% turns the
+number caution, and 95% turns it danger.
 
-## Affine billing map
+Positions come from elapsed time rather than sample index, so a delivery gap
+longer than 1.5 update intervals breaks the trace instead of being bridged.
+Until two samples exist, CPU and network show an em dash with no unit rather
+than an invented zero. Each monitor retains its own samples for the active
+Conky session.
+
+Load average, the interface name, and uptime are no longer drawn. The design
+guide keeps that source identity out of the component and allows no text under
+the plots, and a passive window has no accessible name to hold it.
+
+## Billing forecast panel
 
 | Variable | Purpose |
 | --- | --- |
 | `BILLING_OVERLAY_ENABLED` | Set to `0` to disable |
-| `BILLING_GAP_X` | Optional right-edge gap; empty centers the map on the weather panel |
-| `BILLING_GAP_Y` | Optional top offset; empty sits the map just above the weather panel |
+| `BILLING_GAP_X` | Optional right-edge gap; empty follows the right rail |
+| `BILLING_GAP_Y` | Optional top offset; empty sits below system resources |
 | `BILLING_REFRESH_SECONDS` | Provider refresh interval (default `900`) |
 | `BILLING_TIMEOUT_SECONDS` | Per-provider command/request timeout (default `30`) |
 | `BILLING_AWS_ENABLED` | Set to `1` to plot month-to-date AWS spend against the live monthly COST budget |
@@ -182,7 +202,7 @@ Only configured providers are fetched. AWS uses boto3 with the IAM user from
 OpenRouter uses its official API; GitHub Actions uses the official API
 through `gh`; Blacksmith uses the authenticated `blacksmith` CLI. Live usage,
 balances, and ceilings do not have environment-variable overrides. See
-[Affine billing map](billing.md) for the normalization and forecast semantics.
+[Billing forecast panel](billing.md) for the normalization and forecast semantics.
 
 ## Git status overlay
 
@@ -195,29 +215,29 @@ balances, and ceilings do not have environment-variable overrides. See
 | `GIT_SCAN_DAYS` | Keep scanned repos with a commit in the last N days (default `14`) |
 | `GIT_SCAN_MAX_DEPTH` | Max walk depth under the scan root (default `3`) |
 | `GIT_SCAN_TTL_SECONDS` | Discovery cache TTL (default `300`) |
-| `GIT_GAP_X` | Horizontal gap from the left screen edge |
-| `GIT_GAP_Y` | Vertical gap from the top screen edge |
+| `GIT_GAP_X` | Horizontal gap from the left screen edge; empty uses coordinated placement |
+| `GIT_GAP_Y` | Vertical gap from the top screen edge; empty aligns with Tasks |
 | `GIT_REFRESH_SECONDS` | Fetch interval (default `30`) |
 | `GIT_TIMEOUT_SECONDS` | Per-repo git command timeout (default `2`) |
-| `GIT_MAX_REPOS` | Max rows after severity / last-modified sort (default `6`) |
+| `GIT_MAX_REPOS` | Max rows after severity / last-modified sort (empty uses coordinated layout) |
 | `GIT_HIDE_CLEAN` | `1` hides clean repos |
 | `GIT_INCLUDE_STASH` | `0` skips stash list |
 | `GIT_DEFAULT_BRANCHES` | Default branch names for muted styling and idle-row hiding |
-| `GIT_ACTIONS_ENABLED` | `0` disables the per-row GitHub Actions pip |
-| `GIT_ACTIONS_TTL_SECONDS` | Cache TTL for completed Actions pips (default `180`) |
+| `GIT_ACTIONS_ENABLED` | `0` disables the per-row GitHub Actions status |
+| `GIT_ACTIONS_TTL_SECONDS` | Cache TTL for completed Actions states (default `180`) |
 | `GIT_ACTIONS_RUNNING_TTL_SECONDS` | Cache TTL while a workflow is running (default `20`) |
 | `GIT_ACTIONS_EMPTY_TTL_SECONDS` | Cache TTL when a GitHub repo has no recent runs (default `300`) |
 | `GIT_ACTIONS_TIMEOUT_SECONDS` | `gh run list` timeout (falls back to `GITHUB_TIMEOUT_SECONDS`) |
 
-See [Git status overlay](git.md) for layout, severity rules, and the rotating ticker.
+See [Git status overlay](git.md) for layout, severity rules, and overflow.
 
 ## Sessions overlay
 
 | Variable | Purpose |
 | --- | --- |
 | `SESSIONS_OVERLAY_ENABLED` | Set to `0` to disable |
-| `SESSIONS_GAP_X` | Left offset in px (default `4`) |
-| `SESSIONS_GAP_Y` | Bottom offset in px (default `6`) |
+| `SESSIONS_GAP_X` | Left offset in px; empty follows the left rail |
+| `SESSIONS_GAP_Y` | Bottom offset in px; empty sits below repositories |
 | `SESSIONS_REFRESH_SECONDS` | Fetch interval (default `20`) |
 | `SESSIONS_CODEVIEW_REPO_PATHS` | Optional colon/comma/newline-separated codeview repo roots pinned ahead of fleet discovery |
 | `SESSIONS_CODEVIEW_SCAN_ROOT` | Root for the shallow fallback codeview scan (default `$HOME`) |

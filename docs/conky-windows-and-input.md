@@ -1,22 +1,23 @@
 # Conky windows and input
 
-Conky is a passive desktop overlay: it draws and refreshes. There are no click handlers, tabs, focus models, or show/hide APIs in this repo’s Lua renderers.
+Conky is a passive desktop overlay: it draws and refreshes. There are no click
+handlers, tabs, focus models, or show/hide APIs in the Lua renderers.
 
-## Separate windows
+Each overlay is a separate Conky process and X window. The launcher gives them
+non-overlapping regions per the [Desktop design system](design-system.md).
+The usual window type is `desktop`, with
+`undecorated,below,sticky,skip_taskbar,skip_pager` hints.
 
-Each overlay is its own Conky process and X window (`own_window = true`, usually `own_window_type = 'desktop'` with `undecorated,below,sticky,skip_taskbar,skip_pager`). Linear and the rate limit panel share the same `gap_x` and width and nearly the same `gap_y`, so they stack on top of each other.
+The git overlay retains `own_window_type = 'normal'` plus `below`: under
+GNOME/Xwayland the desktop layer previously failed to composite that window
+at the leftmost monitor edge. Its placement is therefore owned by the window
+manager; `render_desktop.py --check` reports any positional offset separately.
 
-## Why clicks appear to toggle panels
+Clicking opaque drawn pixels may affect window-manager stacking; transparent
+pixels may pass clicks through to another window. This is not a UI interaction.
+The earlier overlapping Linear/quota windows could appear to toggle when
+clicked. The coordinated layout removes that accidental overlap.
 
-Clicking Linear cards vs the rate limit panel can raise one window over the other. That is window-manager stacking (and click-through on transparent pixels), not Conky interactivity. Opaque drawn pixels can receive the click; transparent areas often pass through to the window underneath.
-
-## Fake tabs via overlapping windows (future note)
-
-Overlapping Conky windows can approximate tabs: click a visible opaque region, the WM raises that window, others look hidden. This is fragile:
-
-- No real tab state, active styling, or exclusive selection
-- Behavior depends on the WM/compositor and on `desktop` / `below` hints
-- Transparent hit areas pass clicks through; opaque art must cover intended click targets
-- Each tab costs another Conky process and redraw loop
-
-For intentional tabbing later, prefer something that owns input (a small GTK/Qt/EWW widget, or one Conky plus an external click tool that writes a state file the renderer reads). Do not treat stacked Conky windows as a designed UI.
+Intentional interaction would require a runtime that owns input, such as
+GTK/Qt/EWW, or an external input handler and explicit state. Do not implement
+fake controls or tabs by overlapping passive Conky windows.

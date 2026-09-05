@@ -34,15 +34,13 @@ DEFAULT_OUTPUT = CACHE_DIR / "desktop-render.png"
 
 # Conky reserves this much space outside the text area on every side, so the
 # window is always the content box grown by it. Defaults come from Conky's own
-# config defaults; the overlay configs only override border_width.
+# config defaults; current overlay configs explicitly set all three to zero.
 DEFAULT_BORDER_INNER_MARGIN = 3
 DEFAULT_BORDER_OUTER_MARGIN = 1
 DEFAULT_BORDER_WIDTH = 1
 
-# Height of one line of conky.text for the overlays' 'JetBrains Mono:size=10'.
-# Only matters for the two panels that grow themselves with a ${voffset}
-# spacer: their window is the spacer plus the line the spacer sits on. Measured
-# against the live windows -- rerun --check after changing the overlay font.
+# Compatibility with legacy 'JetBrains Mono:size=10' spacer configs. Current
+# templates use explicit bounded heights and empty text, so this is not applied.
 TEXT_LINE_HEIGHT_PX = 19
 
 # Launch order from scripts/start_conky_overlays.sh. Conky windows stack in map

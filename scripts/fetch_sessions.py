@@ -17,7 +17,6 @@ import subprocess
 import sys
 import time
 from datetime import datetime, timezone
-from math import ceil
 from pathlib import Path
 
 import fetch_common as common
@@ -30,7 +29,7 @@ LOG_PATH = CACHE_DIR / "conky-sessions.log"
 
 # codeview dashboard daemon marker (see clusterfork's bin/codeview). A session
 # whose repo has <repo>/.codeview/daemon.json with a live pid gets a moon on
-# its diamond in the patch bay renderer. Repos without a tmux session are
+# its row in the sessions renderer. Repos without a tmux session are
 # discovered fleet-wide (via the git panel's discovery cache, plus a shallow
 # home scan fallback) so a serving daemon keeps its moon even when the
 # session it was opened from has closed.
@@ -60,14 +59,9 @@ GIT_DISCOVERY_MAX_AGE_SECONDS = 30 * 60
 # Drift keeps a fixed sinking field for ingress origins and a fixed bottom row
 # for tmux destinations. Height only grows when a second destination row is
 # needed.
-PANEL_MIN_HEIGHT = 790
-PANEL_DRIFT_TOP = 0
-PANEL_DRIFT_FULL_HEIGHT = 460
-PANEL_DRIFT_MIN_HEIGHT = 430
-PANEL_SOURCE_COLUMNS = 3
-PANEL_DESTINATION_ROW_HEIGHT = 110
-PANEL_FOOTER_HEIGHT = 0
-PANEL_DIAMOND_ZONE_HEIGHT = 330
+PANEL_MIN_HEIGHT = 116
+PANEL_HEADER_HEIGHT = 40
+PANEL_ROW_HEIGHT = 76
 
 # Tailscale OS strings -> the glyph the renderer draws.
 OS_GLYPHS = {
@@ -657,7 +651,7 @@ def collect():
         seen_ttys.add(freshest_tty)
         for _, sess_name in pairs:
             # Mark every session that this host drives as attached to the
-            # single laptop dot so its diamond fills and a thread can be drawn.
+            # single local device row so its attachment remains visible.
             if base_name not in sessions[sess_name]["attached"]:
                 sessions[sess_name]["attached"].append(base_name)
         for t, _ in pairs:
@@ -667,7 +661,7 @@ def collect():
     order = {"alert": 0, "live": 1, "idle": 2}
     devices.sort(key=lambda device: (order.get(device["state"], 3), device["name"]))
 
-    # Fleet repos with a codeview daemon appear as unattached destination diamonds
+    # Fleet repos with a codeview daemon appear as unattached dashboard rows
     # at the bottom so their moon remains visible even after tmux closes (or if
     # opened without tmux).
     add_fleet_codeview_sessions(sessions, fleet_codeview_repos(now))
@@ -686,70 +680,17 @@ def collect():
     return devices, session_list
 
 
-def session_rows_for(sessions):
-    """Rows needed when same-repo sessions stay next to each other.
-
-    Packs repo groups left-to-right; a group that wouldn't fit in the
-    remaining slots of the current row is bumped to the next row (leaving
-    a gap) unless the group itself is larger than a row. Must stay in
-    sync with conky/sessions-renderer.lua layout_for.
-    """
-    if not sessions:
-        return 0
-    n = len(sessions)
-    row = 0
-    col = 0
-    i = 0
-    while i < n:
-        repo = (sessions[i].get("repo") or "").lower()
-        j = i + 1
-        while j < n and (sessions[j].get("repo") or "").lower() == repo:
-            j += 1
-        group_size = j - i
-        if col != 0 and group_size <= PANEL_SOURCE_COLUMNS and group_size > (PANEL_SOURCE_COLUMNS - col):
-            row += 1
-            col = 0
-        for k in range(i, j):
-            if col >= PANEL_SOURCE_COLUMNS:
-                row += 1
-                col = 0
-            col += 1
-            if col >= PANEL_SOURCE_COLUMNS and k != n - 1:
-                row += 1
-                col = 0
-        i = j
-    if col == 0:
-        return row
-    return row + 1
-
-
-def overlay_height(session_count, sessions=None):
-    """Conky minimum_height for the panel.
-
-    Must match conky/sessions-renderer.lua: a fixed constellation field
-    (PANEL_DRIFT_FULL_HEIGHT) plus a diamond zone that always reserves
-    PANEL_DIAMOND_ZONE_HEIGHT so the bay holds the same footprint even when
-    only one row of diamonds is present. Only an extra diamond row beyond
-    that grows the panel.
-    """
-    if session_count == 0:
-        session_rows = 0
-    elif sessions is not None:
-        session_rows = session_rows_for(sessions)
-    else:
-        session_rows = ceil(session_count / PANEL_SOURCE_COLUMNS)
-    diamond_reserved = max(PANEL_DIAMOND_ZONE_HEIGHT, session_rows * PANEL_DESTINATION_ROW_HEIGHT)
-    needed = PANEL_DRIFT_TOP + PANEL_DRIFT_FULL_HEIGHT + diamond_reserved + PANEL_FOOTER_HEIGHT
-    if PANEL_DRIFT_FULL_HEIGHT < PANEL_DRIFT_MIN_HEIGHT:
-        needed = PANEL_DRIFT_TOP + PANEL_DRIFT_MIN_HEIGHT + diamond_reserved + PANEL_FOOTER_HEIGHT
-    return max(PANEL_MIN_HEIGHT, needed)
+def overlay_height(session_count, sessions=None, device_count=0):
+    """Natural list height; the launcher caps it to the available monitor space."""
+    return max(PANEL_MIN_HEIGHT, PANEL_HEADER_HEIGHT +
+               (session_count + device_count) * PANEL_ROW_HEIGHT)
 
 
 def current_overlay_height():
     """Height for the state right now, falling back to the last written cache."""
     try:
         _devices, sessions = collect()
-        return overlay_height(len(sessions), sessions)
+        return overlay_height(len(sessions), sessions, len(_devices))
     except (OSError, ValueError):
         pass
     try:
@@ -757,7 +698,7 @@ def current_overlay_height():
     except (OSError, ValueError):
         return overlay_height(0)
     payload_sessions = payload.get("sessions") or []
-    return overlay_height(len(payload_sessions), payload_sessions)
+    return overlay_height(len(payload_sessions), payload_sessions, len(payload.get("devices") or []))
 
 
 def main():
@@ -781,7 +722,7 @@ def main():
         atomic_write_json(SESSIONS_PATH, payload)
         log_event(
             f"updated devices={len(devices)} sessions={len(sessions)} "
-            f"sshd_listening={listening} height={overlay_height(len(sessions), sessions)}"
+            f"sshd_listening={listening} height={overlay_height(len(sessions), sessions, len(devices))}"
         )
         return 0
     except OSError as error:

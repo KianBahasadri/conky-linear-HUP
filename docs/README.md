@@ -1,20 +1,21 @@
 # Documentation
 
 - [Getting started](getting-started.md) — start and stop overlays
+- [Desktop design system](design-system.md) — shared tokens, components, icons, layout, and overflow
 - [Desktop render](desktop-render.md) — draw every overlay to a PNG without screenshotting
 - [Conky windows and input](conky-windows-and-input.md) — overlapping windows, click stacking, and why Conky is not interactive
 - [Configuration](configuration.md) — `.env` setup and environment variables
 - [Caches](caches.md) — cache files, logs, and fetch intervals
-- [Linear overlay](linear.md) — card colors, filtering, and display rules
-- [Rate limit panel](rate-limit-panel.md) — quota chips, provider discovery, and pace markers
+- [Linear overlay](linear.md) — issue cards, filtering, and display rules
+- [Rate limit panel](rate-limit-panel.md) — account usage, provider discovery, and pace markers
 - [Expired credentials and stale cache](expired-credentials.md) — token refresh and fallback behavior per provider
 - [Minecraft overlay](minecraft.md) — server status and PebbleHost integration
-- [GitHub overlay](github.md) — 3D contribution skyline stacked on the rate limit panel
+- [GitHub overlay](github.md) — daily contribution calendar above AI usage
 - [GitHub rail blob experiments](github-rail-blob-experiments.md) — poured-shape study; reverted to the square calendar
 - [Weather and running overlay](weather.md) — current conditions, air quality, and run guidance
 - [Workout data source](workout-data-source.md) — how workouts get from the phone to this machine
-- [Affine billing map](billing.md) — live provider spend, prepaid runway, and common EOM forecasts
-- [Git status overlay](git.md) — local repo fleet (branch, dirty, ahead/behind, Actions pip)
+- [Billing forecast panel](billing.md) — live provider spend, prepaid runway, and common EOM forecasts
+- [Git status overlay](git.md) — local repo fleet (branch, dirty, ahead/behind, Actions status)
 - [Sessions overlay](sessions.md) — tmux sessions and the inbound logins driving them
 - [Session overlay design study](session-mockups/NOTES.md) — the concept survey the patch bay was picked from
 - [Codeview moon study](codeview-mockups/codeview-moon-gallery.html) — running codeview daemons as moons around fleet repo stars

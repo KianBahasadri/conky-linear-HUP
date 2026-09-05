@@ -39,7 +39,7 @@ local function spacer_for(content)
 end
 
 os.remove(json_path)
-eq(factory(shared, cache_root).height_spacer(), '${voffset 320}',
+eq(factory(shared, cache_root).height_spacer(), '${voffset 112}',
   'missing caches use the window floor')
 
 local accounts = {}
@@ -54,7 +54,7 @@ end
 
 local current_shape = '{"ok":true,"error":"","accounts":['
   .. table.concat(accounts, ',') .. ']}'
-eq(spacer_for(current_shape), '${voffset 368}',
+eq(spacer_for(current_shape), '${voffset 496}',
   'current nested Codex JSON fallback sizes all accounts')
 
 local bars = {}
@@ -65,10 +65,10 @@ for index = 1, 20 do
   ))
 end
 eq(spacer_for('{"ok":true,"bars":[' .. table.concat(bars, ',') .. ']}'),
-  '${voffset 368}', 'legacy flattened Codex JSON fallback remains supported')
+  '${voffset 496}', 'legacy flattened Codex JSON fallback remains supported')
 
 eq(spacer_for('{"ok":true,"accounts":[{"label":"unterminated}]}'),
-  '${voffset 320}', 'malformed JSON cache degrades to the window floor')
+  '${voffset 112}', 'malformed JSON cache degrades to the window floor')
 
 local test_accounts = {
   { provider = 'Cursor', label = 'sepehr', plan_type = 'pro' },

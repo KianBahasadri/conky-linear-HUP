@@ -1,42 +1,39 @@
-# Affine billing map
+# Billing forecast panel
 
-The billing overlay is a transparent 456 × 300 Cairo object on the right side
-of every monitor. The diamond is scaled from the 420px mockup so its width
-sits a hair under the weather card, with a slight vertical tuck for a flatter isometric
-read. Darker faces drop straight down from the chart plane so it reads as a
-thin isometric tile rather than a sheared slab. It is the selected Affine Month Map from the preserved
-[design study](billing-mockups/README.md), shipped without a surrounding card,
-header, legend, or footer.
+Every provider shares one budget map in the right rail: an affine time-and-limit
+plane whose near left edge is the start of the month and whose far edge is month
+end. A provider summary sits beneath it. Shared appearance and layout are owned
+by the [Desktop design system](design-system.md).
 
 ## Reading the map
 
-The diamond is an affine transform of an ordinary time-by-budget chart. Its
-geometry is unusual, but the underlying axes are conventional:
+- The shared coordinate is percentage of each provider's own limit, never a sum
+  of unrelated dollars, minutes, and balances. Prepaid OpenRouter retains the
+  distinct runway meaning described below.
+- The scale starts at zero and reaches 105%, leaving a translucent red band
+  above the 100% limit line. A percentage past 105% expands the scale to that
+  value, so an overrun stays visible instead of being clamped.
+- A solid cyan trail with sample dots is real stored daily observations, ending
+  at the current marker on the dashed now-line. Missing history days break the
+  trail instead of being interpolated, and a single stored day stays a point.
+- The current marker is the provider's own vector mark. A dashed violet
+  connector runs from it to the month-end edge, turning red only where it
+  passes 100%.
+- The forecast endpoint's shape is its severity: a circle within limit, a
+  4px-radius square near the limit, and a sharp square for a projected overrun.
+- Gridlines every 25 points, a faint dotted even-consumption pace line, and the
+  dashed now-line are the map's only reference marks. It carries no text.
+- Because a passive Cairo window has no hover readout or details dialog, the
+  summary beneath the map is where each provider's name, exact amounts, and
+  status text live. Statuses are `Within limit`, `Near limit`,
+  `Forecast over limit`, `Over limit now`, `No forecast`, and `Unavailable`.
+  Retained values are dimmed on the map and prefixed `Stale` in the summary.
+- With no providers at all, an explicit `Unavailable` callout replaces the map.
 
-- The long time edge runs from the first through the final day of the current
-  local calendar month. Its endpoints are intentionally unlabeled.
-- The yellow cross-line marks the current day divided by the number of days in
-  that month.
-- The red boundary is 100% of each provider's own ceiling. The faint band
-  beyond it makes an over-cap forecast cross a real boundary instead of merely
-  changing color. Neither boundary carries a text label.
-- The dashed diagonal is calendar pace: 50% of the month against 50% of cap.
-- A provider glyph marks the current observation. A solid trail of stored
-  daily observations sits on the past side of the yellow now-line. A dotted
-  segment is the now-to-EOM forecast, and the hollow diamond is the EOM
-  landing. GitHub, OpenRouter, Azure, Blacksmith, and AWS use their
-  recognizable Octocat, geometric `OR`, official folded Azure `A`, C-block,
-  and orange smile-arrow marks; providers without a compact vector mark
-  retain the filled bead. OpenRouter is `#c8ff00`; Blacksmith's glyph is
-  the charcoal C-block with a thin `#f0fb29` outline; Azure's glyph uses
-  the brand folded-A blues; AWS's glyph is the brand smile `#ff9900`. Trails
-  and forecast segments meet each glyph's painted outline, so they do not
-  run under the mark or leave a circular gap around a non-round logo.
-  Diamonds carry no text labels or leader lines.
-- A dimmed trajectory means its last successful value from the same billing
-  month is being retained after a failed refresh. Prior-month values are
-  discarded at the calendar rollover. A bead with no forecast line or diamond means there is not
-  yet enough real history to calculate a forecast.
+The earlier affine diamond and Cairo design sources are preserved in the
+[billing design archive](billing-mockups/README.md). The design guide's own
+budget map registers this repository's provider marks; `conky/provider-marks.lua`
+holds the same vectors.
 
 AWS is normalized against its live monthly COST budget. The component never
 adds provider dollar values together. Current pressure is month-to-date spend
@@ -60,24 +57,19 @@ alarm in `us-east-1` is the fallback when no monthly COST budget exists.
 Azure's ceiling is the live credit balance at the start of the month. None of
 those ceilings are configured in `.env`.
 
-When no provider has usable billing data, the map is dimmed and a solid red
-`NO BILLING DATA` popup is drawn over its center with a prompt to check the
-billing log. Valid stale values still render, dimmed. The popup is reserved
-for the state where there is nothing trustworthy to plot.
-
 ## Observation history
 
 Every successful collect stores that day's observation for every live
-provider. The solid past trail is that series growing over time: one sample
+provider. The solid observed trail is that series growing over time: one sample
 per provider per local calendar date, overwritten by later fetches on the
-same day. The map plots stored days in the current month that are before
+same day. The charts plot stored days in the current month that are before
 today. It does not invent missing days, interpolate across gaps, or write a
 sample when a refresh failed and the previous value is only being retained as
 stale.
 
 The trail therefore starts at the earliest stored day, not at the month
 origin. A provider holding one stored day draws one short segment into its
-glyph, not a full-month diagonal down to the start-of-month corner.
+current observation, not a full-month line to the origin.
 
 This is independent of whether a provider exposes a daily API. AWS and
 GitHub Actions therefore gain a trail only on days the fetcher actually
@@ -85,11 +77,11 @@ ran. Azure still seeds the same store from Cost Management daily rows when
 those are available, and Blacksmith seeds it from `blacksmith usage` daily
 totals, so those trails can be complete even if the overlay was not running on
 those days. OpenRouter's plotted pressure is remaining-runway
-future draw (the bead stays on the now-line at zero), so its stored trail sits
+future draw (the current point stays on the now-line at zero), so its stored trail sits
 on the baseline; the same file still keeps dated total-usage samples for the
 burn-rate fallback.
 
-Do not drop this store in favor of “current bead plus forecast only.” The
+Do not drop this store in favor of “current point plus forecast only.” The
 intention is that history accumulates from collection and is what draws the
 historical line.
 
@@ -105,12 +97,12 @@ while sharing the same visual EOM edge:
 3. Expected future draw is average daily burn multiplied by the number of days
    remaining through the common calendar EOM.
 4. The plotted pressure is expected future draw divided by today's available
-   balance. The bead therefore starts at zero future draw on the current-day
+   balance. The current point therefore starts at zero future draw on the current-day
    line.
 
 If the analytics endpoint is unavailable, the fetcher derives burn from its
 own dated total-usage observations. It does not invent history: until two dates
-exist, OpenRouter renders its current bead with no forecast line or diamond.
+exist, OpenRouter renders its current point with no forecast line or endpoint marker.
 Top-ups do not distort this fallback because it uses cumulative total usage,
 not changes in remaining balance.
 
@@ -129,14 +121,14 @@ runway:
 3. The forecast uses current calendar pace of that spend through the common
    EOM, divided by the same starting pool.
 
-The glyph therefore sits on the current-day line at `Y / X`, and the hollow
-diamond is the EOM landing against that same `X`. Remaining credit is kept
-as a diagnostic, not as the map's 100% ceiling.
+The current point therefore sits on the current-day line at `Y / X`, and the hollow
+square is the EOM landing against that same `X`. Remaining credit is kept
+as a diagnostic, not as the plot's 100% ceiling.
 
 Daily Cost Management rows (usage-detail `costInUSD` if that query is
 throttled) are written into the shared observation store as cumulative
 `Y_d / X` for each past day of the month, alongside today's collect. That
-trail stays left of the now-line; the dotted forecast is the prediction.
+trail stays left of the now-line; the dashed forecast is the prediction.
 After a daily Cost Management throttle, the fetcher uses Usage Details for six
 hours before retrying Cost Management; the cooldown is persisted per Azure
 subscription, so frequent polls do not keep hammering the throttled endpoint.
@@ -167,7 +159,7 @@ Blacksmith is an included-minutes allowance for the GitHub organization that
 the authenticated `blacksmith` CLI is using. Enable it with
 `BILLING_BLACKSMITH_ENABLED`; do not set a cap. `blacksmith usage` returns
 `billable_minutes` as 1-vCPU weighted minutes. The advertised x64 2vCPU
-allowance is 3,000 minutes. The map divides billable by two so the current
+allowance is 3,000 minutes. The renderer divides billable by two so the current
 point is 2vCPU minutes consumed divided by that allowance, then projects
 calendar pace through the common EOM. Daily CLI totals seed the past trail
 the same way Azure Cost Management rows do.
@@ -202,7 +194,7 @@ current installation. Auth is `blacksmith auth login`.
 
 Current spend, current balance, burn rate, and forecasts are always fetched or
 derived. They are never configured in `.env`. The complete setup variables are
-listed in [Configuration](configuration.md#affine-billing-map).
+listed in [Configuration](configuration.md#billing-forecast-panel).
 
 ## AWS credentials
 
@@ -229,12 +221,8 @@ refreshes once per day and each Cost Explorer API call incurs a $0.01 fee.
 
 ## Placement and lifecycle
 
-The launcher creates one billing window per monitor. With `BILLING_GAP_Y`
-unset, the map sits just above the bottom-right weather panel. With
-`BILLING_GAP_X` unset, its horizontal center follows the weather card; an
-explicit value overrides that alignment. The fetch loop is independent of the GitHub contribution
-skyline and does not read or write any GitHub cache or renderer state.
-
-Cache and log ownership are documented in [Caches](caches.md). The renderer's
-operation-dump replay is retained with the original mockup so the shipped Lua
-geometry can be compared directly against the selected Pycairo design.
+The launcher creates one billing window per monitor in the right rail below
+system resources. Explicit `BILLING_GAP_X`/`BILLING_GAP_Y` overrides retain their
+right-edge/top-edge meaning. The fetch loop is independent of the GitHub
+contribution calendar and does not read or write its cache or renderer state.
+Cache and log ownership are documented in [Caches](caches.md).

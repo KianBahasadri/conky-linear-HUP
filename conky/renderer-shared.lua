@@ -412,29 +412,6 @@ function shared.set_hex(cr, hex, alpha)
   cairo_set_source_rgba(cr, r, g, b, alpha or 1)
 end
 
--- Hex to rgb with a lightness shade: >0 lifts toward white, <0 toward black.
--- Face shading on the contribution skyline's towers, and the gradient stops in
--- the sessions panel, are both built from this.
-function shared.shade_rgb(hex, shade)
-  local r = tonumber(hex:sub(1, 2), 16) / 255
-  local g = tonumber(hex:sub(3, 4), 16) / 255
-  local b = tonumber(hex:sub(5, 6), 16) / 255
-  shade = shade or 0
-
-  if shade > 0 then
-    return r + (1 - r) * shade, g + (1 - g) * shade, b + (1 - b) * shade
-  end
-  if shade < 0 then
-    return r * (1 + shade), g * (1 + shade), b * (1 + shade)
-  end
-  return r, g, b
-end
-
-function shared.set_hex_shaded(cr, hex, alpha, shade)
-  local r, g, b = shared.shade_rgb(hex, shade)
-  cairo_set_source_rgba(cr, r, g, b, alpha or 1)
-end
-
 function shared.clamp(value, min_value, max_value)
   if value < min_value then
     return min_value
@@ -539,38 +516,6 @@ function shared.wrap_title(cr, title, max_width, max_lines)
   return lines
 end
 
--- Git status panel geometry. The GitHub rail centers itself in the band under
--- this panel, so both renderers have to measure the panel the same way.
-shared.git_panel = {
-  top_padding = 4,      -- window top -> frame top (keeps the frame glow unclipped)
-  content_top = 8,      -- frame top -> first repo row
-  content_bottom = 10,  -- last repo row -> frame bottom
-  row_height = 40,      -- two-line repo row: name over branch
-  empty_height = 120,   -- frame height when there is nothing to list
-  footer_gap = 4,       -- frame bottom -> footer chip
-  footer_height = 20,   -- octocat + refresh age chip under the frame
-}
-
--- Frame height for a repo count; the footer chip hangs below this.
-function shared.git_panel_frame_height(repo_count)
-  local panel = shared.git_panel
-  local count = repo_count or 0
-  local height = panel.content_top + math.max(1, count) * panel.row_height + panel.content_bottom
-  if count == 0 then
-    return math.max(height, panel.empty_height)
-  end
-  return height
-end
-
--- Window top -> bottom of the footer chip: everything the git panel occupies.
-function shared.git_panel_occupied_height(repo_count)
-  local panel = shared.git_panel
-  return panel.top_padding
-    + shared.git_panel_frame_height(repo_count)
-    + panel.footer_gap
-    + panel.footer_height
-end
-
 function shared.create_surface()
   if not conky_window
       or (tonumber(conky_window.width) or 0) <= 0
@@ -588,5 +533,9 @@ function shared.create_surface()
 
   return nil, false
 end
+
+local shared_path = debug.getinfo(1, 'S').source:gsub('^@', '')
+local shared_dir = shared_path:match('^(.*)/') or './conky'
+shared.ui = dofile(shared_dir .. '/design-system.lua')(shared)
 
 return shared

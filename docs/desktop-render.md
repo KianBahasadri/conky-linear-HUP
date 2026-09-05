@@ -30,9 +30,9 @@ overlays.
    gaps, minimum size, `xinerama_head`, entrypoint and draw hook. Configs whose
    draw hook no longer exists (leftovers from a removed overlay) are skipped
    with a note on stderr.
-2. `scripts/render_desktop.lua` evaluates each self-sizing panel's
-   `${lua_parse ..._height_spacer}` so the tool knows how tall those windows
-   grow.
+2. `scripts/render_desktop.lua` checks draw hooks and can still evaluate a
+   legacy `${lua_parse ..._height_spacer}`. Current templates use explicit
+   bounded sizes from the launcher and have empty text blocks.
 3. Each window is placed on the virtual desktop (see below).
 4. The Lua worker draws every overlay into its own transparent image surface —
    the stand-in for its ARGB Conky window — then composites them over the
@@ -45,24 +45,19 @@ if they live somewhere unusual.
 
 ## Window geometry
 
-`gap_x`/`gap_y` are measured from the monitor edge to the window's *text area*,
-and the window then extends `border_inner_margin + border_outer_margin +
-border_width` further out on every side — 4px for these configs, since they set
-only `border_width = 0` and inherit Conky's other defaults.
+All current templates use `top_left` alignment with explicit monitor-local
+`gap_x` and `gap_y`. They set `border_inner_margin`, `border_outer_margin`, and
+`border_width` to zero, so modelled content and window rectangles are identical.
+The composition planner is documented in [Desktop design system](design-system.md).
 
-A panel that grows itself with a `${voffset N}` spacer ends up with a text area
-of `max(minimum_height, N + one line height)`. That line height is the
-`TEXT_LINE_HEIGHT_PX` constant in the script, calibrated for
-`JetBrains Mono:size=10`; rerun `--check` after changing the overlay font.
+The parser retains support for legacy configs with Conky's default margins
+and `${voffset}` sizing. Its 19px legacy text-line constant describes the old
+JetBrains Mono spacer configs; current windows have no spacer text.
 
-`--check` matches each modelled window against the live X windows and prints
-the offsets. All overlays match exactly except the git panel, which is the only
-one using `own_window_type = 'normal'` (see
-[Conky windows and input](conky-windows-and-input.md)) and so is positioned by
-the window manager rather than by Conky — it lands a few pixels off, and on the
-primary monitor it is pushed below the GNOME top bar. Those window-manager
-offsets are diagnostic and do not make `--check` fail; its modelled size and
-presence are still checked.
+`--check` compares modelled sizes and positions with live X windows. Git is
+still the sole `normal` window and its window-manager offsets are diagnostic;
+size and presence remain checked. In the redesigned three-monitor layout,
+all 24 window rectangles were verified to match, including git.
 
 ## Monitor layout
 

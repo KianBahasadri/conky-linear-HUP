@@ -36,9 +36,9 @@ end
 
 -- Missing cache file: read_file returns nil -> empty state -> empty height.
 os.remove(cache_root .. '/cache/linear-cards.json')
-eq(factory(shared, cache_root).height_spacer(), '${voffset 96}',
+eq(factory(shared, cache_root).height_spacer(), '${voffset 124}',
   'missing cache falls back to empty height')
-eq(spacer_for('{}'), '${voffset 96}', 'empty payload falls back to empty height')
+eq(spacer_for('{}'), '${voffset 124}', 'empty payload falls back to empty height')
 
 local function card_objects(count)
   local parts = {}
@@ -52,31 +52,30 @@ local function cards_json(count)
   return '{"cards":[' .. table.concat(card_objects(count), ',') .. ']}'
 end
 
--- Grid math at the default window width (1540): five contiguous cards of width
--- 268 fit per row; one row is top_padding + card_height + bottom_padding.
-eq(spacer_for(cards_json(1)), '${voffset 100}', 'one card = one row')
-eq(spacer_for(cards_json(4)), '${voffset 100}', 'four cards still one row')
-eq(spacer_for(cards_json(5)), '${voffset 100}', 'five cards still one row')
-eq(spacer_for(cards_json(6)), '${voffset 184}', 'six cards wrap to two rows')
+-- Four columns at 1136px. The passive page holds at most three rows.
+eq(spacer_for(cards_json(1)), '${voffset 124}', 'one card = one row')
+eq(spacer_for(cards_json(4)), '${voffset 124}', 'four cards still one row')
+eq(spacer_for(cards_json(5)), '${voffset 248}', 'five cards wrap to two rows')
+eq(spacer_for(cards_json(6)), '${voffset 248}', 'six cards wrap to two rows')
 
 -- A due-today unfinished card hides everything not due/done/backlog/competition.
 local plain_six = card_objects(6)
 table.insert(plain_six, 1, '{"identifier":"R","title":"red","dueToday":true}')
 eq(spacer_for('{"cards":[' .. table.concat(plain_six, ',') .. ']}'),
-  '${voffset 100}', 'red card filters hidden cards from the height math')
+  '${voffset 124}', 'red card filters hidden cards from the height math')
 plain_six[1] = '{"identifier":"R","title":"red","dueToday":true,"done":true}'
 eq(spacer_for('{"cards":[' .. table.concat(plain_six, ',') .. ']}'),
-  '${voffset 184}', 'done card does not trigger the filter')
+  '${voffset 248}', 'done card does not trigger the filter')
 
 -- Structural characters and nested arrays inside strings/objects must not
 -- truncate a card before its state flags are read.
 eq(spacer_for([[{"cards":[
   {"identifier":"R","title":"close } [ bracket","metadata":{"nested":[1,2]},"dueToday":true},
   {"identifier":"HUP-2","title":"hidden"}
-]}]]), '${voffset 100}', 'nested JSON and braces in title preserve due-today filter')
+]}]]), '${voffset 124}', 'nested JSON and braces in title preserve due-today filter')
 
 eq(spacer_for('{"cards":[{"identifier":"broken","title":"unterminated}]}'),
-  '${voffset 96}', 'malformed cache degrades to an empty panel')
+  '${voffset 124}', 'malformed cache degrades to an empty panel')
 
 if failures > 0 then
   print(failures .. ' failure(s)')

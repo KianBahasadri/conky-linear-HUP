@@ -1,0 +1,18 @@
+-- Lucide Static 1.39.0 path data, ISC licensed (assets/LUCIDE-LICENSE.txt).
+-- Every icon sits on the 24×24 grid and is stroked at 2px with round caps
+-- and joins; `<rect rx>` elements are written as equivalent arc paths.
+return {
+  cpu = {
+    'M12 20v2', 'M12 2v2', 'M17 20v2', 'M17 2v2', 'M2 12h2', 'M2 17h2', 'M2 7h2',
+    'M20 12h2', 'M20 17h2', 'M20 7h2', 'M7 20v2', 'M7 2v2',
+    'M6 4h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z',
+    'M9 8h6a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z',
+  },
+  ['memory-stick'] = {
+    'M12 12v-2', 'M12 18v-2', 'M16 12v-2', 'M16 18v-2', 'M2 11h1.5', 'M20 18v-2',
+    'M20.5 11H22', 'M4 18v-2', 'M8 12v-2', 'M8 18v-2',
+    'M4 6h16a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z',
+  },
+  download = {'M12 15V3', 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4', 'm7 10 5 5 5-5'},
+  upload = {'M12 3v12', 'm17 8-5-5-5 5', 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4'},
+}

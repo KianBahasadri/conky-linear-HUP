@@ -1,31 +1,12 @@
+-- Realtime resource readings: a symbol over each current value with a 64px
+-- history directly beneath, on a fixed zero-based scale.
 return function(shared, repo_root)
-  local font = 'JetBrains Mono'
-  local hud_width = 268
-  -- Gauge arc tops sit at y=12, matching Linear card top_padding.
-  local gauge_center_y = 50
-  local history_limit = tonumber(os.getenv('RESOURCE_HISTORY_SAMPLES') or '') or 90
-  history_limit = math.floor(shared.clamp(history_limit, 30, 180))
-  -- NET gauge arcs use a short moving average so bursty traffic does not make
-  -- the needles jump every refresh. Readouts and sparklines stay on raw rates.
-  local net_gauge_window = math.floor(
-    shared.clamp(tonumber(os.getenv('RESOURCE_NET_GAUGE_WINDOW') or '') or 6, 2, 30)
-  )
-  -- Each Conky window keeps its own samples. This makes the HUD safe to show on
-  -- every display without several renderers contending for one cache file.
+  local ui = shared.ui
+  local interval = 2
+  local history_limit = math.floor(shared.clamp(tonumber(os.getenv('RESOURCE_HISTORY_SAMPLES')) or 90, 30, 180))
+  local network_max = (tonumber(os.getenv('RESOURCE_NETWORK_MAX_MBPS')) or 12.5) * 1048576
+  if network_max <= 0 then network_max = 12.5 * 1048576 end
   local history = {}
-
-  local colors = {
-    text = 'f8fafc',
-    muted = '94a3b8',
-    dim = '334155',
-    cyan = '00e5ff',
-    green = '39ff88',
-    violet = 'a78bfa',
-    amber = 'ffb454',
-    magenta = 'f472b6',
-    red = 'f87171',
-  }
-
   local function read_proc(path)
     return shared.read_file(path) or ''
   end
@@ -36,16 +17,13 @@ return function(shared, repo_root)
       'cpu%s+(%d+)%s+(%d+)%s+(%d+)%s+(%d+)%s+(%d+)%s+(%d+)%s+(%d+)%s+(%d+)'
     )
     if not user then
-      return { total = 0, idle = 0, cores = 1 }
+      return { total = 0, idle = 0 }
     end
 
-    local cpuinfo = read_proc('/proc/cpuinfo')
-    local _, core_count = cpuinfo:gsub('processor%s*:%s*%d+', '')
     return {
       total = tonumber(user) + tonumber(nice) + tonumber(system) + tonumber(idle)
         + tonumber(iowait) + tonumber(irq) + tonumber(softirq) + tonumber(steal),
       idle = tonumber(idle) + tonumber(iowait),
-      cores = math.max(1, core_count),
     }
   end
 
@@ -62,11 +40,7 @@ return function(shared, repo_root)
     end
 
     local used = math.max(0, total - available)
-    return {
-      total = total,
-      used = used,
-      percent = total > 0 and (used / total) * 100 or 0,
-    }
+    return { percent = total > 0 and (used / total) * 100 or 0 }
   end
 
   local function default_network_interface()
@@ -141,54 +115,11 @@ return function(shared, repo_root)
     }
   end
 
-  local function parse_mount(path)
-    local pipe = io.popen('df -Pk ' .. path .. ' 2>/dev/null')
-    if not pipe then
-      return { total = 0, used = 0, percent = 0 }
-    end
-
-    local output = pipe:read('*a') or ''
-    pipe:close()
-    local total_kb, used_kb, _available_kb, percent = output:match(
-      '\n%S+%s+(%d+)%s+(%d+)%s+(%d+)%s+(%d+)%%'
-    )
-    if not total_kb then
-      return { total = 0, used = 0, percent = 0 }
-    end
-
-    return {
-      total = tonumber(total_kb) * 1024,
-      used = tonumber(used_kb) * 1024,
-      percent = tonumber(percent) or 0,
-    }
-  end
-
-  local function parse_disks()
-    return {
-      root = parse_mount('/'),
-      home = parse_mount('/home'),
-    }
-  end
-
-  local function parse_system_state()
-    local uptime = tonumber(read_proc('/proc/uptime'):match('^([%d%.]+)')) or 0
-    local load_content = read_proc('/proc/loadavg')
-    local load_one, load_five, load_fifteen = load_content:match('^([%d%.]+)%s+([%d%.]+)%s+([%d%.]+)')
-    return {
-      uptime = uptime,
-      load_one = tonumber(load_one) or 0,
-      load_five = tonumber(load_five) or 0,
-      load_fifteen = tonumber(load_fifteen) or 0,
-    }
-  end
-
   local function collect_status(previous)
     local now = os.time()
     local cpu = parse_cpu()
     local memory = parse_memory()
     local network = parse_network()
-    local disks = parse_disks()
-    local system = parse_system_state()
     local delta_seconds = previous and now - previous.timestamp or 0
     local cpu_percent = 0
     local rx_rate, tx_rate = 0, 0
@@ -215,30 +146,16 @@ return function(shared, repo_root)
     end
 
     return {
+      measured = previous ~= nil and delta_seconds >= 0 and delta_seconds <= 30,
       timestamp = now,
       cpu = cpu_percent,
       cpu_total = cpu.total,
       cpu_idle = cpu.idle,
-      cores = cpu.cores,
       ram = memory.percent,
-      memory_used = memory.used,
-      memory_total = memory.total,
-      net = rx_rate + tx_rate,
       rx_rate = rx_rate,
       tx_rate = tx_rate,
       rx_bytes = network.rx_bytes,
       tx_bytes = network.tx_bytes,
-      network_interface = network.interface,
-      root_disk = disks.root.percent,
-      root_disk_used = disks.root.used,
-      root_disk_total = disks.root.total,
-      home_disk = disks.home.percent,
-      home_disk_used = disks.home.used,
-      home_disk_total = disks.home.total,
-      uptime = system.uptime,
-      load_one = system.load_one,
-      load_five = system.load_five,
-      load_fifteen = system.load_fifteen,
     }
   end
 
@@ -253,536 +170,77 @@ return function(shared, repo_root)
     end
   end
 
-  local function average_history_field(field, window)
-    if #history == 0 then
-      return 0
-    end
-    local start = math.max(1, #history - window + 1)
-    local sum = 0
-    local count = 0
-    for index = start, #history do
-      sum = sum + (history[index][field] or 0)
-      count = count + 1
-    end
-    return count > 0 and sum / count or 0
+  local function rate(bytes)
+    if bytes >= 1048576 then return string.format('%.1f', bytes / 1048576), 'MB/s' end
+    if bytes >= 1024 then return string.format('%.0f', bytes / 1024), 'KB/s' end
+    return string.format('%.0f', bytes), 'B/s'
   end
 
-  -- Hourly IN/OUT maxima for the last week, shared across monitors so the
-  -- sparkline scale stays stable instead of auto-fitting the short live window.
-  local net_week_seconds = 7 * 24 * 3600
-  local net_week_flush_interval = 30
-  local net_peaks_path = repo_root .. '/cache/resource-net-peaks.tsv'
-  local net_week_peaks = {}
-  local net_week_peaks_loaded = false
-  local net_week_peaks_dirty = false
-  local net_week_peaks_last_flush = 0
+  local channels = {
+    {field = 'cpu', icon = 'cpu', max = 100, warning = 80, critical = 95},
+    {field = 'ram', icon = 'memory-stick', max = 100, warning = 80, critical = 95},
+    {field = 'rx_rate', icon = 'download', max = network_max, bytes = true},
+    {field = 'tx_rate', icon = 'upload', max = network_max, bytes = true},
+  }
 
-  local function hour_bucket(timestamp)
-    return math.floor((timestamp or 0) / 3600) * 3600
-  end
-
-  local function prune_net_week_peaks(now)
-    local cutoff = (now or os.time()) - net_week_seconds
-    for hour, _ in pairs(net_week_peaks) do
-      if hour < cutoff then
-        net_week_peaks[hour] = nil
-        net_week_peaks_dirty = true
+  -- Positions come from elapsed time inside the fixed window; a delivery gap
+  -- longer than 1.5 intervals breaks the trace instead of being bridged.
+  local function plot(cr, channel, x, y, width)
+    local now = os.time()
+    local window = history_limit * interval
+    local baseline = y + 60
+    local function sx(timestamp) return x + shared.clamp((timestamp - (now - window)) / window, 0, 1) * width end
+    local function sy(value) return baseline - math.min(1, value / channel.max) * 56 end
+    ui.line_between(cr, x, baseline, x + width, baseline)
+    if channel.warning then
+      ui.dash(cr, x, sy(channel.warning), x + width, sy(channel.warning), ui.caution, 1, 3, 4, 0.45)
+    end
+    local segment, previous = {}, nil
+    local function flush()
+      if #segment > 1 then
+        local area = {}
+        for _, p in ipairs(segment) do area[#area + 1] = p end
+        area[#area + 1] = {segment[#segment][1], baseline}
+        area[#area + 1] = {segment[1][1], baseline}
+        ui.polygon(cr, area, ui.accent, 0.12)
+        ui.polyline(cr, segment, ui.accent, 1.5)
+      elseif #segment == 1 then
+        ui.circle(cr, segment[1][1], segment[1][2], 2, ui.accent)
       end
+      segment = {}
     end
-  end
-
-  local function merge_net_week_peak(hour, rx_rate, tx_rate)
-    if not hour then
-      return
-    end
-    local entry = net_week_peaks[hour]
-    if not entry then
-      net_week_peaks[hour] = {
-        rx = math.max(0, rx_rate or 0),
-        tx = math.max(0, tx_rate or 0),
-      }
-      net_week_peaks_dirty = true
-      return
-    end
-    local rx = math.max(0, rx_rate or 0)
-    local tx = math.max(0, tx_rate or 0)
-    if rx > (entry.rx or 0) then
-      entry.rx = rx
-      net_week_peaks_dirty = true
-    end
-    if tx > (entry.tx or 0) then
-      entry.tx = tx
-      net_week_peaks_dirty = true
-    end
-  end
-
-  local function write_net_week_peaks()
-    local hours = {}
-    for hour, _ in pairs(net_week_peaks) do
-      table.insert(hours, hour)
-    end
-    table.sort(hours)
-
-    local lines = { '# hour_epoch rx_peak_bps tx_peak_bps' }
-    for _, hour in ipairs(hours) do
-      local entry = net_week_peaks[hour]
-      table.insert(
-        lines,
-        string.format('%d %.0f %.0f', hour, entry.rx or 0, entry.tx or 0)
-      )
-    end
-
-    local tmp_path = string.format(
-      '%s.tmp.%d',
-      net_peaks_path,
-      math.floor((os.clock() % 1) * 1e9) + (os.time() % 100000)
-    )
-    local file = io.open(tmp_path, 'w')
-    if not file then
-      return
-    end
-    local wrote = file:write(table.concat(lines, '\n'))
-    wrote = wrote and file:write('\n')
-    local closed = file:close()
-    if not wrote or not closed or not os.rename(tmp_path, net_peaks_path) then
-      os.remove(tmp_path)
-      return
-    end
-    net_week_peaks_dirty = false
-    net_week_peaks_last_flush = os.time()
-  end
-
-  local function load_net_week_peaks()
-    local content = shared.read_file(net_peaks_path)
-    if content then
-      for line in content:gmatch('[^\r\n]+') do
-        if not line:match('^%s*#') then
-          local hour, rx, tx = line:match('^%s*(%d+)%s+([%d%.]+)%s+([%d%.]+)%s*$')
-          if hour then
-            merge_net_week_peak(tonumber(hour), tonumber(rx), tonumber(tx))
-          end
-        end
-      end
-    end
-    -- merge_net_week_peak marks dirty; a fresh load should not force a rewrite
-    -- unless pruning drops expired hour buckets.
-    net_week_peaks_dirty = false
-    net_week_peaks_loaded = true
-    prune_net_week_peaks(os.time())
-    if net_week_peaks_dirty then
-      write_net_week_peaks()
-    end
-  end
-
-  local function flush_net_week_peaks(now, force)
-    now = now or os.time()
-    if not net_week_peaks_dirty then
-      return
-    end
-    if not force and (now - net_week_peaks_last_flush) < net_week_flush_interval then
-      return
-    end
-
-    -- Re-read before writing so another monitor's higher peaks are not lost.
-    local content = shared.read_file(net_peaks_path)
-    if content then
-      for line in content:gmatch('[^\r\n]+') do
-        if not line:match('^%s*#') then
-          local hour, rx, tx = line:match('^%s*(%d+)%s+([%d%.]+)%s+([%d%.]+)%s*$')
-          if hour then
-            merge_net_week_peak(tonumber(hour), tonumber(rx), tonumber(tx))
-          end
-        end
-      end
-    end
-    prune_net_week_peaks(now)
-    write_net_week_peaks()
-  end
-
-  local function record_net_week_peaks(status)
-    if not net_week_peaks_loaded then
-      load_net_week_peaks()
-    end
-    local now = status.timestamp or os.time()
-    merge_net_week_peak(hour_bucket(now), status.rx_rate or 0, status.tx_rate or 0)
-    prune_net_week_peaks(now)
-    flush_net_week_peaks(now, false)
-  end
-
-  local function week_net_rate_ceiling()
-    if not net_week_peaks_loaded then
-      load_net_week_peaks()
-    end
-    prune_net_week_peaks(os.time())
-    local peak = 1024
-    for _, entry in pairs(net_week_peaks) do
-      peak = math.max(peak, entry.rx or 0, entry.tx or 0)
-    end
-    return peak
-  end
-
-  local function format_rate_compact(bytes)
-    if not bytes or bytes <= 0 then
-      return '0'
-    end
-    if bytes >= 1024 * 1024 then
-      return string.format('%.1fM', bytes / (1024 * 1024))
-    end
-    if bytes >= 1024 then
-      return string.format('%.0fK', bytes / 1024)
-    end
-    return string.format('%.0fB', bytes)
-  end
-
-  local function usage_color(percent, normal_color)
-    if percent >= 85 then
-      return colors.red
-    end
-    if percent >= 65 then
-      return colors.amber
-    end
-    return normal_color
-  end
-
-  local function draw_centered_text(cr, value, center_x, y, size, color, alpha, weight)
-    cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, weight or CAIRO_FONT_WEIGHT_NORMAL)
-    cairo_set_font_size(cr, size)
-    local extents = cairo_text_extents_t:create()
-    cairo_text_extents(cr, value, extents)
-    shared.set_hex(cr, color, alpha or 1)
-    cairo_move_to(cr, center_x - extents.width / 2 - extents.x_bearing, y)
-    cairo_show_text(cr, value)
-  end
-
-  local function draw_gauge(cr, metric, center_x, center_y, radius)
-    local start_angle = math.pi * 0.75
-    local end_angle = math.pi * 2.25
-    local sweep = end_angle - start_angle
-    local value = shared.clamp(metric.percent or 0, 0, 100)
-    local active_angle = start_angle + sweep * value / 100
-
-    -- A faint halo makes the readings legible without turning the HUD into a box.
-    shared.set_hex(cr, metric.color, 0.055)
-    cairo_arc(cr, center_x, center_y, radius - 7, 0, math.pi * 2)
-    cairo_fill(cr)
-
-    cairo_new_path(cr)
-    shared.set_hex(cr, colors.dim, 0.72)
-    cairo_set_line_width(cr, 5)
-    cairo_arc(cr, center_x, center_y, radius, start_angle, end_angle)
-    cairo_stroke(cr)
-
-    cairo_new_path(cr)
-    for tick = 0, 12 do
-      local tick_angle = start_angle + sweep * tick / 12
-      local outer_radius = radius + 4
-      local inner_radius = outer_radius - (tick % 3 == 0 and 5 or 3)
-      local active = tick / 12 <= value / 100
-      shared.set_hex(cr, active and metric.color or colors.dim, active and 0.84 or 0.42)
-      cairo_set_line_width(cr, tick % 3 == 0 and 1.5 or 1.0)
-      cairo_move_to(
-        cr,
-        center_x + math.cos(tick_angle) * outer_radius,
-        center_y + math.sin(tick_angle) * outer_radius
-      )
-      cairo_line_to(
-        cr,
-        center_x + math.cos(tick_angle) * inner_radius,
-        center_y + math.sin(tick_angle) * inner_radius
-      )
-      cairo_stroke(cr)
-    end
-
-    if value > 0.2 then
-      cairo_new_path(cr)
-      shared.set_hex(cr, metric.color, 0.13)
-      cairo_set_line_width(cr, 13)
-      cairo_arc(cr, center_x, center_y, radius, start_angle, active_angle)
-      cairo_stroke(cr)
-
-      cairo_new_path(cr)
-      shared.set_hex(cr, metric.color, 0.98)
-      cairo_set_line_width(cr, 4.6)
-      if cairo_set_line_cap and CAIRO_LINE_CAP_ROUND then
-        cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND)
-      end
-      cairo_arc(cr, center_x, center_y, radius, start_angle, active_angle)
-      cairo_stroke(cr)
-    end
-
-    local needle_outer = radius - 6
-    local needle_inner = math.max(12, radius * 0.42)
-    local needle_cos = math.cos(active_angle)
-    local needle_sin = math.sin(active_angle)
-    cairo_new_path(cr)
-    shared.set_hex(cr, metric.color, 0.88)
-    cairo_set_line_width(cr, 1.8)
-    if cairo_set_line_cap and CAIRO_LINE_CAP_ROUND then
-      cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND)
-    end
-    cairo_move_to(
-      cr,
-      center_x + needle_cos * needle_inner,
-      center_y + needle_sin * needle_inner
-    )
-    cairo_line_to(
-      cr,
-      center_x + needle_cos * needle_outer,
-      center_y + needle_sin * needle_outer
-    )
-    cairo_stroke(cr)
-
-    draw_centered_text(
-      cr,
-      metric.value,
-      center_x,
-      center_y + 5,
-      metric.value_size or 15,
-      colors.text,
-      0.98,
-      CAIRO_FONT_WEIGHT_BOLD
-    )
-    draw_centered_text(
-      cr,
-      metric.label,
-      center_x,
-      center_y + radius - 4,
-      12,
-      metric.color,
-      0.94,
-      CAIRO_FONT_WEIGHT_BOLD
-    )
-  end
-
-  local function draw_gauge_arc(cr, center_x, center_y, radius, percent, color, line_width, glow_width)
-    local start_angle = math.pi * 0.75
-    local end_angle = math.pi * 2.25
-    local sweep = end_angle - start_angle
-    local value = shared.clamp(percent or 0, 0, 100)
-
-    cairo_new_path(cr)
-    shared.set_hex(cr, colors.dim, 0.72)
-    cairo_set_line_width(cr, line_width + 0.6)
-    cairo_arc(cr, center_x, center_y, radius, start_angle, end_angle)
-    cairo_stroke(cr)
-
-    if value <= 0.2 then
-      return
-    end
-
-    local active_angle = start_angle + sweep * value / 100
-    if glow_width and glow_width > 0 then
-      cairo_new_path(cr)
-      shared.set_hex(cr, color, 0.12)
-      cairo_set_line_width(cr, glow_width)
-      cairo_arc(cr, center_x, center_y, radius, start_angle, active_angle)
-      cairo_stroke(cr)
-    end
-
-    cairo_new_path(cr)
-    shared.set_hex(cr, color, 0.98)
-    cairo_set_line_width(cr, line_width)
-    if cairo_set_line_cap and CAIRO_LINE_CAP_ROUND then
-      cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND)
-    end
-    cairo_arc(cr, center_x, center_y, radius, start_angle, active_angle)
-    cairo_stroke(cr)
-  end
-
-  -- Outer ring = download, inner ring = upload; center still shows combined rate.
-  local function draw_net_gauge(cr, metric, center_x, center_y, radius)
-    local down_radius = radius
-    local up_radius = math.max(12, radius - 11)
-
-    shared.set_hex(cr, metric.down_color, 0.055)
-    cairo_arc(cr, center_x, center_y, radius - 7, 0, math.pi * 2)
-    cairo_fill(cr)
-
-    local start_angle = math.pi * 0.75
-    local end_angle = math.pi * 2.25
-    local sweep = end_angle - start_angle
-    local down_value = shared.clamp(metric.down_percent or 0, 0, 100)
-    for tick = 0, 12 do
-      local tick_angle = start_angle + sweep * tick / 12
-      local outer_radius = radius + 4
-      local inner_radius = outer_radius - (tick % 3 == 0 and 5 or 3)
-      local active = tick / 12 <= down_value / 100
-      shared.set_hex(cr, active and metric.down_color or colors.dim, active and 0.84 or 0.42)
-      cairo_set_line_width(cr, tick % 3 == 0 and 1.5 or 1.0)
-      cairo_move_to(
-        cr,
-        center_x + math.cos(tick_angle) * outer_radius,
-        center_y + math.sin(tick_angle) * outer_radius
-      )
-      cairo_line_to(
-        cr,
-        center_x + math.cos(tick_angle) * inner_radius,
-        center_y + math.sin(tick_angle) * inner_radius
-      )
-      cairo_stroke(cr)
-    end
-
-    draw_gauge_arc(cr, center_x, center_y, down_radius, metric.down_percent, metric.down_color, 4.2, 11)
-    draw_gauge_arc(cr, center_x, center_y, up_radius, metric.up_percent, metric.up_color, 3.2, 8)
-
-    shared.set_hex(cr, colors.dim, 0.9)
-    cairo_arc(cr, center_x, center_y, 2.0, 0, math.pi * 2)
-    cairo_fill(cr)
-
-    draw_centered_text(
-      cr,
-      metric.value,
-      center_x,
-      center_y + 5,
-      metric.value_size or 14,
-      colors.text,
-      0.98,
-      CAIRO_FONT_WEIGHT_BOLD
-    )
-    draw_centered_text(
-      cr,
-      metric.label,
-      center_x,
-      center_y + radius - 4,
-      12,
-      metric.down_color,
-      0.94,
-      CAIRO_FONT_WEIGHT_BOLD
-    )
-  end
-
-  local function draw_trace_series(cr, values, x, y, width, height, color, maximum)
-    if #values == 0 then
-      return
-    end
-
-    local scale = math.max(maximum or 1, 1)
-    cairo_new_path(cr)
-    for index, value in ipairs(values) do
-      local progress = #values == 1 and 1 or (index - 1) / (#values - 1)
-      local normalized = shared.clamp((value or 0) / scale, 0, 1)
-      local point_x = x + progress * width
-      local point_y = y + height - normalized * height
-      if index == 1 then
-        cairo_move_to(cr, point_x, point_y)
-      else
-        cairo_line_to(cr, point_x, point_y)
-      end
-    end
-    shared.set_hex(cr, color, 0.94)
-    cairo_set_line_width(cr, 1.1)
-    cairo_stroke(cr)
-
-    local last_value = values[#values] or 0
-    local last_y = y + height - shared.clamp(last_value / scale, 0, 1) * height
-    shared.set_hex(cr, color, 1)
-    cairo_arc(cr, x + width, last_y, 1.5, 0, math.pi * 2)
-    cairo_fill(cr)
-  end
-
-  -- One shared plot for every series so CPU/RAM/%-scaled nets read against the
-  -- same time axis; each series keeps its own vertical scale.
-  local function draw_shared_traces(cr, series_list, x, y, width, height)
-    shared.set_hex(cr, colors.dim, 0.45)
-    cairo_set_line_width(cr, 0.7)
-    cairo_move_to(cr, x, y + height)
-    cairo_line_to(cr, x + width, y + height)
-    cairo_stroke(cr)
-
-    for _, series in ipairs(series_list) do
-      draw_trace_series(
-        cr,
-        series.values,
-        x,
-        y,
-        width,
-        height,
-        series.color,
-        series.maximum
-      )
-    end
-  end
-
-  local function draw_hud(cr, status, x, y)
-    local cpu_color = usage_color(status.cpu, colors.green)
-    local ram_color = usage_color(status.ram, colors.violet)
-    local rx_peak, tx_peak = 1024, 1024
     for _, sample in ipairs(history) do
-      rx_peak = math.max(rx_peak, sample.rx_rate or 0)
-      tx_peak = math.max(tx_peak, sample.tx_rate or 0)
+      local available = channel.field ~= 'cpu' or sample.measured
+      if not available or (previous and sample.timestamp - previous > interval * 1.5) then flush() end
+      if available then segment[#segment + 1] = {sx(sample.timestamp), sy(sample[channel.field])} end
+      previous = sample.timestamp
     end
-    local rx_ceiling = math.max(1024, rx_peak * 1.12)
-    local tx_ceiling = math.max(1024, tx_peak * 1.12)
-    local smooth_rx = average_history_field('rx_rate', net_gauge_window)
-    local smooth_tx = average_history_field('tx_rate', net_gauge_window)
-    local smooth_net = smooth_rx + smooth_tx
-    local down_percent = shared.clamp((smooth_rx / rx_ceiling) * 100, 0, 100)
-    local up_percent = shared.clamp((smooth_tx / tx_ceiling) * 100, 0, 100)
-
-    draw_gauge(cr, {
-      label = 'CPU',
-      value = string.format('%.0f%%', status.cpu),
-      percent = status.cpu,
-      color = cpu_color,
-    }, x + 38, y + gauge_center_y, 38)
-    draw_gauge(cr, {
-      label = 'RAM',
-      value = string.format('%.0f%%', status.ram),
-      percent = status.ram,
-      color = ram_color,
-    }, x + 134, y + gauge_center_y, 38)
-    draw_net_gauge(cr, {
-      label = 'NET',
-      value = format_rate_compact(smooth_net),
-      down_percent = down_percent,
-      up_percent = up_percent,
-      down_color = colors.cyan,
-      up_color = colors.magenta,
-      value_size = #format_rate_compact(smooth_net) > 4 and 12 or 14,
-    }, x + 230, y + gauge_center_y, 38)
-
-    local cpu_trace, ram_trace, rx_trace, tx_trace = {}, {}, {}, {}
-    for _, sample in ipairs(history) do
-      table.insert(cpu_trace, sample.cpu or 0)
-      table.insert(ram_trace, sample.ram or 0)
-      table.insert(rx_trace, sample.rx_rate or 0)
-      table.insert(tx_trace, sample.tx_rate or 0)
-    end
-    -- NET lines use the max IN/OUT rate recorded in the last week.
-    local rate_ceiling = week_net_rate_ceiling()
-    draw_shared_traces(cr, {
-      { values = cpu_trace, color = cpu_color, maximum = 100 },
-      { values = ram_trace, color = ram_color, maximum = 100 },
-      { values = rx_trace, color = colors.cyan, maximum = rate_ceiling },
-      { values = tx_trace, color = colors.magenta, maximum = rate_ceiling },
-    }, x + 12, y + 96, hud_width - 24, 52)
-
-    -- Bottom readout rows removed: LOAD/UP, //home, IN/OUT are now
-    -- readable from the gauges (CPU/RAM/NET) and the shared trace;
-    -- keep the lower third quiet so the resource HUD stays a
-    -- gauge + sparkline instrument.
+    flush()
   end
 
   local function draw()
-    local surface, should_destroy_surface = shared.create_surface()
-    if not surface then
-      return
-    end
-
-    local cr = cairo_create(surface)
-    local status = collect_status(history[#history])
-    record_status(status)
-    record_net_week_peaks(status)
-    local x = math.max(6, math.floor((conky_window.width - hud_width) / 2))
-    draw_hud(cr, status, x, 0)
-
-    cairo_destroy(cr)
-    if should_destroy_surface and cairo_surface_destroy then
-      cairo_surface_destroy(surface)
-    end
+    ui.draw(function(cr, width, height)
+      local status = collect_status(history[#history])
+      record_status(status)
+      local columns = math.max(1, math.floor((width + 16) / 172))
+      local column_width = (width - (columns - 1) * 16) / columns
+      for index, channel in ipairs(channels) do
+        local x = ((index - 1) % columns) * (column_width + 16)
+        local y = math.floor((index - 1) / columns) * 132
+        if y + 116 > height then break end
+        local value, unit, color = '—', '', ui.muted
+        if channel.bytes then
+          if status.measured then value, unit = rate(status[channel.field]) end
+        elseif channel.field ~= 'cpu' or status.measured then
+          value, unit = string.format('%.0f', status[channel.field]), '%'
+          local reading = status[channel.field]
+          if channel.critical and reading >= channel.critical then color = ui.danger
+          elseif channel.warning and reading >= channel.warning then color = ui.caution end
+        end
+        ui.reading(cr, channel.icon, value, unit, x, y, column_width, color)
+        plot(cr, channel, x, y + 52, column_width)
+      end
+    end)
   end
-
-  return {
-    draw = draw,
-  }
+  return {draw = draw}
 end

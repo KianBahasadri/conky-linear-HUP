@@ -192,12 +192,12 @@ def write_usage_outputs(output_path, render_path, output):
 
 
 # Must match conky/rate-limit-panel-renderer.lua.
-RATE_LIMIT_PANEL_MIN_HEIGHT = 110
-RATE_LIMIT_PANEL_ROW_GAP = 16
-RATE_LIMIT_PANEL_DYNAMIC_PADDING = 24
-RATE_LIMIT_PANEL_TOP_INSET = 12
-RATE_LIMIT_PANEL_BOTTOM_INSET = 12
-RATE_LIMIT_PANEL_WINDOW_FLOOR = 320
+RATE_LIMIT_PANEL_MIN_HEIGHT = 112
+RATE_LIMIT_PANEL_ROW_GAP = 24
+RATE_LIMIT_PANEL_DYNAMIC_PADDING = 64
+RATE_LIMIT_PANEL_TOP_INSET = 0
+RATE_LIMIT_PANEL_BOTTOM_INSET = 0
+RATE_LIMIT_PANEL_WINDOW_FLOOR = 112
 RATE_LIMIT_PANEL_RENDER_TSVS = (
     "codex-usage-render.tsv",
     "claude-usage-render.tsv",
@@ -225,10 +225,10 @@ def rate_limit_account_count_from_cache(cache_dir=CACHE_DIR):
     return count
 
 
-# The drawn frame is narrower than the window and sits a fixed distance above
-# its bottom edge; the contribution skyline is placed against those numbers.
-RATE_LIMIT_PANEL_FRAME_WIDTH = 1000
-RATE_LIMIT_PANEL_FRAME_SIDE_CLEARANCE = 40
+# Legacy CLI measurements describe the natural content size. The launcher
+# bounds each window with overlay_layout.py and excess rows rotate in place.
+RATE_LIMIT_PANEL_FRAME_WIDTH = 1136
+RATE_LIMIT_PANEL_FRAME_SIDE_CLEARANCE = 0
 
 
 def rate_limit_panel_frame_height(account_count):

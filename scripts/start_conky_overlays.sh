@@ -59,6 +59,8 @@ run_python() {
   uv --project "$ROOT" run --no-dev python "$@"
 }
 
+bash "$SCRIPT_DIR/install_overlay_fonts.sh"
+
 BASE_CONFIG="$ROOT/conky/linear-overlay.conkyrc"
 RATE_LIMIT_PANEL_CONFIG="$ROOT/conky/rate-limit-panel-overlay.conkyrc"
 MINECRAFT_CONFIG="$ROOT/conky/minecraft-overlay.conkyrc"
@@ -93,64 +95,24 @@ WORKOUTS_FETCH_PID="$CACHE_DIR/workouts-fetch-loop.pid"
 BILLING_FETCH_PID="$CACHE_DIR/billing-fetch-loop.pid"
 GIT_FETCH_PID="$CACHE_DIR/git-fetch-loop.pid"
 SESSIONS_FETCH_PID="$CACHE_DIR/sessions-fetch-loop.pid"
-OVERLAY_WIDTH=1540
-LINEAR_GAP_Y=4
-LINEAR_PRIMARY_GAP_Y=34
 LINEAR_PRIMARY_MONITOR_INDEX="${LINEAR_PRIMARY_MONITOR_INDEX:-0}"
 LINEAR_OVERLAY_ENABLED="${LINEAR_OVERLAY_ENABLED:-1}"
 PRIMARY_WAIT_SECONDS="${PRIMARY_WAIT_SECONDS:-20}"
-RATE_LIMIT_PANEL_GAP_Y="${RATE_LIMIT_PANEL_GAP_Y:-6}"
 RATE_LIMIT_PANEL_ENABLED="${RATE_LIMIT_PANEL_ENABLED:-1}"
-MINECRAFT_GAP_X="${MINECRAFT_GAP_X:-4}"
-MINECRAFT_GAP_Y="${MINECRAFT_GAP_Y:-6}"
 MINECRAFT_REFRESH_SECONDS="${MINECRAFT_REFRESH_SECONDS:-60}"
 MINECRAFT_OVERLAY_ENABLED="${MINECRAFT_OVERLAY_ENABLED:-1}"
-# Both empty = auto placement, which lands the contribution skyline on the rate
-# limit panel's top edge as its roof. Set either to pin that axis instead.
-GITHUB_GAP_X="${GITHUB_GAP_X-}"
-GITHUB_GAP_Y="${GITHUB_GAP_Y-}"
 GITHUB_REFRESH_SECONDS="${GITHUB_REFRESH_SECONDS:-1800}"
 GITHUB_OVERLAY_ENABLED="${GITHUB_OVERLAY_ENABLED:-1}"
-# Window height for the skyline: the plinth, the day-axis depth and the tallest
-# tower all share it, and the renderer scales the extrusion to whatever is left
-# over.
-GITHUB_SKYLINE_HEIGHT="${GITHUB_SKYLINE_HEIGHT:-200}"
-# Floor for that height once the Linear clearance below has been taken out.
-GITHUB_SKYLINE_MIN_HEIGHT="${GITHUB_SKYLINE_MIN_HEIGHT:-180}"
-# Gap kept between the bottom of the Linear cards and the skyline's top.
-GITHUB_LINEAR_CLEARANCE="${GITHUB_LINEAR_CLEARANCE:-14}"
-# Clearance between the roof line and the panel's top edge. The provider title
-# chips straddle that edge, riding 9px above it.
-GITHUB_ROOF_CLEARANCE="${GITHUB_ROOF_CLEARANCE:-11}"
-# The tall bay owns the lower-left column rather than sharing the skyline seam.
-SESSIONS_GAP_X="${SESSIONS_GAP_X:-4}"
-SESSIONS_GAP_Y="${SESSIONS_GAP_Y:-6}"
 SESSIONS_REFRESH_SECONDS="${SESSIONS_REFRESH_SECONDS:-20}"
 SESSIONS_OVERLAY_ENABLED="${SESSIONS_OVERLAY_ENABLED:-1}"
-SESSIONS_PANEL_WIDTH=440
-WEATHER_GAP_X="${WEATHER_GAP_X:-6}"
-WEATHER_GAP_Y="${WEATHER_GAP_Y:-6}"
 WEATHER_REFRESH_SECONDS="${WEATHER_REFRESH_SECONDS:-600}"
 WEATHER_OVERLAY_ENABLED="${WEATHER_OVERLAY_ENABLED:-1}"
 WORKOUTS_REFRESH_SECONDS="${WORKOUTS_REFRESH_SECONDS:-20}"
-RESOURCE_MONITOR_GAP_X="${RESOURCE_MONITOR_GAP_X:-0}"
-# Empty means follow Linear's per-monitor gap_y so gauge tops stay flush with cards.
-RESOURCE_MONITOR_GAP_Y="${RESOURCE_MONITOR_GAP_Y:-}"
 RESOURCE_MONITOR_OVERLAY_ENABLED="${RESOURCE_MONITOR_OVERLAY_ENABLED:-1}"
-# Empty = center on the weather panel; otherwise an explicit right-edge gap.
-BILLING_GAP_X="${BILLING_GAP_X-}"
-# Empty = sit just above the weather panel; otherwise an explicit top offset.
-BILLING_GAP_Y="${BILLING_GAP_Y-}"
 BILLING_REFRESH_SECONDS="${BILLING_REFRESH_SECONDS:-900}"
 BILLING_OVERLAY_ENABLED="${BILLING_OVERLAY_ENABLED:-1}"
-GIT_GAP_X="${GIT_GAP_X:-1}"
-# Empty means follow Linear's per-monitor gap_y (primary clears the GNOME top bar).
-GIT_GAP_Y="${GIT_GAP_Y-1}"
 GIT_REFRESH_SECONDS="${GIT_REFRESH_SECONDS:-30}"
 GIT_OVERLAY_ENABLED="${GIT_OVERLAY_ENABLED:-1}"
-# Adaptive rate-limit polling: repoll quickly for a while after any usage change,
-# then back off when idle. Applied to all rate-limit-panel fetchers
-# (codex/claude/cursor/gemini/grok/opencode/commandcode).
 RATE_LIMIT_CHANGED_INTERVAL="${RATE_LIMIT_CHANGED_INTERVAL:-60}"
 RATE_LIMIT_UNCHANGED_INTERVAL="${RATE_LIMIT_UNCHANGED_INTERVAL:-300}"
 # Keep using the short interval for this many seconds after any detected change.
@@ -515,32 +477,6 @@ validate_positive_integer() {
   printf -v "$variable_name" '%s' "$fallback"
 }
 
-validate_nonnegative_integer() {
-  local variable_name="$1"
-  local fallback="$2"
-  local log_key="$3"
-  local value="${!variable_name}"
-
-  if [[ "$value" =~ ^(0|[1-9][0-9]*)$ ]]; then
-    return
-  fi
-  log_overlay "$log_key" "invalid $variable_name=$value; using $fallback"
-  printf -v "$variable_name" '%s' "$fallback"
-}
-
-validate_integer() {
-  local variable_name="$1"
-  local fallback="$2"
-  local log_key="$3"
-  local value="${!variable_name}"
-
-  if [[ "$value" =~ ^-?(0|[1-9][0-9]*)$ ]]; then
-    return
-  fi
-  log_overlay "$log_key" "invalid $variable_name=$value; using $fallback"
-  printf -v "$variable_name" '%s' "$fallback"
-}
-
 validate_optional_integer() {
   local variable_name="$1"
   local fallback="$2"
@@ -577,23 +513,13 @@ validate_positive_integer GIT_REFRESH_SECONDS 30 git
 validate_positive_integer SESSIONS_REFRESH_SECONDS 20 sessions
 validate_positive_integer CONKY_LOG_MAX_BYTES 5242880 linear
 validate_positive_integer CONKY_LOG_ROTATIONS 2 linear
-validate_integer RATE_LIMIT_PANEL_GAP_Y 6 rate-limit-panel
-validate_positive_integer GITHUB_SKYLINE_HEIGHT 200 github
-validate_positive_integer GITHUB_SKYLINE_MIN_HEIGHT 180 github
-validate_nonnegative_integer GITHUB_LINEAR_CLEARANCE 14 github
-validate_nonnegative_integer GITHUB_ROOF_CLEARANCE 11 github
-validate_integer MINECRAFT_GAP_X 4 minecraft
-validate_integer MINECRAFT_GAP_Y 6 minecraft
-validate_optional_integer GITHUB_GAP_X "" github "automatic placement"
-validate_optional_integer GITHUB_GAP_Y "" github "automatic placement"
-validate_integer SESSIONS_GAP_X 4 sessions
-validate_integer SESSIONS_GAP_Y 6 sessions
-validate_integer WEATHER_GAP_X 6 weather
-validate_integer WEATHER_GAP_Y 6 weather
-validate_integer RESOURCE_MONITOR_GAP_X 0 resource-monitor
-validate_optional_integer RESOURCE_MONITOR_GAP_Y "" resource-monitor "the Linear gap"
-validate_integer GIT_GAP_X 1 git
-validate_optional_integer GIT_GAP_Y 1 git "1"
+for overlay_prefix in RATE_LIMIT_PANEL MINECRAFT GITHUB SESSIONS WEATHER RESOURCE_MONITOR GIT BILLING; do
+  for axis in X Y; do
+    position_var="${overlay_prefix}_GAP_${axis}"
+    export "$position_var=${!position_var-}"
+    validate_optional_integer "$position_var" "" linear "automatic placement"
+  done
+done
 if (( CONKY_LOG_ROTATIONS > 10 )); then
   log_overlay linear "invalid CONKY_LOG_ROTATIONS=$CONKY_LOG_ROTATIONS; using 2"
   CONKY_LOG_ROTATIONS=2
@@ -614,43 +540,15 @@ fetch_interval[billing]="$BILLING_REFRESH_SECONDS"
 fetch_interval[git]="$GIT_REFRESH_SECONDS"
 fetch_interval[sessions]="$SESSIONS_REFRESH_SECONDS"
 
-if [[ -n "$BILLING_GAP_X" && ! "$BILLING_GAP_X" =~ ^-?(0|[1-9][0-9]*)$ ]]; then
-  log_overlay billing "invalid BILLING_GAP_X=$BILLING_GAP_X; following resource monitor"
-  BILLING_GAP_X=""
-fi
-
-if [[ -n "$BILLING_GAP_Y" && ! "$BILLING_GAP_Y" =~ ^-?(0|[1-9][0-9]*)$ ]]; then
-  log_overlay billing "invalid BILLING_GAP_Y=$BILLING_GAP_Y; using automatic placement"
-  BILLING_GAP_Y=""
-fi
-
 log_overlay linear "starting; root=$ROOT generate_only=$GENERATE_ONLY"
+# A missing window is otherwise indistinguishable from a failed one, so name
+# every overlay its own log skips and the variable that switched it off.
 for key in "${overlay_keys[@]}"; do
   enabled_var="${overlay_enabled_var[$key]}"
   if env_flag_disabled "${!enabled_var}"; then
     log_overlay "$key" "${overlay_disabled_name[$key]} overlay disabled by $enabled_var=${!enabled_var}"
   fi
 done
-
-linear_overlay_height() {
-  run_python "$ROOT/scripts/fetch_linear_tasks.py" --print-overlay-height
-}
-
-rate_limit_panel_overlay_height() {
-  run_python "$ROOT/scripts/fetch_common.py" --print-rate-limit-panel-height
-}
-
-rate_limit_panel_frame_height() {
-  run_python "$ROOT/scripts/fetch_common.py" --print-rate-limit-panel-frame-height
-}
-
-rate_limit_panel_frame_width() {
-  run_python "$ROOT/scripts/fetch_common.py" --print-rate-limit-panel-frame-width "$1"
-}
-
-sessions_overlay_height() {
-  run_python "$ROOT/scripts/fetch_sessions.py" --print-overlay-height
-}
 
 generate_config() {
   local source_config="$1"
@@ -674,7 +572,7 @@ generate_config() {
     while IFS= read -r config_line; do
       case "$config_line" in
         "  alignment = "*)
-          printf "%s\n" "$config_line"
+          printf "  alignment = 'top_left',\n"
           printf "  xinerama_head = %s,\n" "$monitor_index"
           ;;
         "  gap_x = "*)
@@ -829,247 +727,38 @@ PY
   )
 }
 
-overlay_gap_x() {
-  local key="$1"
-  local monitor_gap_x="$2"
+declare -A layout_x=() layout_y=() layout_width=() layout_height=()
 
-  case "$key" in
-    linear|rate-limit-panel) printf "%s\n" "$monitor_gap_x" ;;
-    minecraft) printf "%s\n" "$MINECRAFT_GAP_X" ;;
-    github)
-      if [[ -n "$GITHUB_GAP_X" ]]; then
-        printf "%s\n" "$GITHUB_GAP_X"
-      else
-        # Flush with the panel it roofs.
-        printf "%s\n" "$RATE_LIMIT_FRAME_LEFT"
-      fi
-      ;;
-    sessions)
-      printf "%s\n" "$SESSIONS_GAP_X"
-      ;;
-    weather) printf "%s\n" "$WEATHER_GAP_X" ;;
-    resource-monitor) printf "%s\n" "$RESOURCE_MONITOR_GAP_X" ;;
-    billing)
-      if [[ -n "$BILLING_GAP_X" ]]; then
-        printf "%s\n" "$BILLING_GAP_X"
-      elif overlay_enabled weather; then
-        # Billing window is the same 456px as weather, so they share gap_x.
-        printf "%s\n" "$WEATHER_GAP_X"
-      else
-        printf "%s\n" "$RESOURCE_MONITOR_GAP_X"
-      fi
-      ;;
-    git) printf "%s\n" "$GIT_GAP_X" ;;
-  esac
+resolve_monitor_layout() {
+  local monitor_width="$1" monitor_height="$2" top="$3"
+  local layout_path="$GENERATION_STAGE_DIR/monitor-layout.tsv"
+  local key x y width height
+  run_python "$SCRIPT_DIR/overlay_layout.py" --width "$monitor_width" \
+    --height "$monitor_height" --top "$top" > "$layout_path"
+  layout_x=() layout_y=() layout_width=() layout_height=()
+  while IFS=$'\t' read -r key x y width height; do
+    [[ -n "${overlay_config[$key]+present}" ]] || return 1
+    [[ "$x" =~ ^-?[0-9]+$ && "$y" =~ ^-?[0-9]+$ && "$width" =~ ^[1-9][0-9]*$ && "$height" =~ ^[1-9][0-9]*$ ]] || return 1
+    layout_x[$key]="$x" layout_y[$key]="$y" layout_width[$key]="$width" layout_height[$key]="$height"
+  done < "$layout_path"
+  [[ "${#layout_x[@]}" -eq "${#overlay_keys[@]}" ]]
 }
 
-# The rate limit panel's drawn frame, in screen space. It is narrower than its
-# 1548px window and sits a fixed inset above the window's bottom edge, so the
-# skyline that roofs it and the sessions bay beside it are both placed off these
-# numbers rather than off the window.
-RATE_LIMIT_FRAME_LEFT=0
-RATE_LIMIT_FRAME_TOP=0
-GITHUB_ROOF_BASELINE=0
-GITHUB_RESOLVED_HEIGHT=200
-MONITOR_HEIGHT=1080
-
-rate_limit_frame_for_monitor() {
-  local monitor_h="$1"
-  local monitor_gap_x="$2"
-  local linear_gap_y="$3"
-  local window_width=$((OVERLAY_WIDTH + 8))
-  local linear_bottom
-  local headroom
-
-  if [[ ! "$monitor_h" =~ ^[0-9]+$ ]] || (( monitor_h < 200 )); then
-    monitor_h=1080
-  fi
-  MONITOR_HEIGHT="$monitor_h"
-
-  # The renderer centers the frame in the window; the window itself starts 4px
-  # left of its text area.
-  RATE_LIMIT_FRAME_LEFT=$(( monitor_gap_x - 4 + (window_width - RATE_LIMIT_FRAME_WIDTH) / 2 ))
-  # Window bottom is gap_y off the screen bottom plus that same 4px, and the
-  # frame's own bottom inset is another 12.
-  RATE_LIMIT_FRAME_TOP=$(( monitor_h - RATE_LIMIT_PANEL_GAP_Y + 4 - 12 - RATE_LIMIT_FRAME_HEIGHT ))
-  GITHUB_ROOF_BASELINE=$(( RATE_LIMIT_FRAME_TOP - GITHUB_ROOF_CLEARANCE ))
-
-  if ! overlay_enabled rate-limit-panel; then
-    # Nothing to be the roof of; stand the skyline on the screen bottom instead.
-    GITHUB_ROOF_BASELINE=$(( monitor_h - RATE_LIMIT_PANEL_GAP_Y ))
-  fi
-
-  # The Linear cards grow downward as tasks land. Give back height rather than
-  # let the two meet.
-  GITHUB_RESOLVED_HEIGHT="$GITHUB_SKYLINE_HEIGHT"
-  if overlay_enabled linear; then
-    linear_bottom=$(( linear_gap_y + LINEAR_MINIMUM_HEIGHT + 4 ))
-    headroom=$(( GITHUB_ROOF_BASELINE - linear_bottom - GITHUB_LINEAR_CLEARANCE ))
-    if (( headroom < GITHUB_RESOLVED_HEIGHT )); then
-      GITHUB_RESOLVED_HEIGHT="$headroom"
+stage_monitor() {
+  local monitor_index="$1" monitor_width="$2" monitor_height="$3" top="$4"
+  local key config_path
+  resolve_monitor_layout "$monitor_width" "$monitor_height" "$top"
+  for key in "${overlay_keys[@]}"; do
+    overlay_enabled "$key" || continue
+    config_path="$GENERATED_DIR/$key-overlay-$monitor_index.conkyrc"
+    generate_config "${overlay_config[$key]}" "$config_path" "${monitor_index/fallback/0}" \
+      "${layout_x[$key]}" "${layout_y[$key]}" "${layout_height[$key]}" "${layout_width[$key]}"
+    GENERATED_CONFIG_COUNT=$((GENERATED_CONFIG_COUNT + 1))
+    log_overlay "$key" "generated monitor=$monitor_index size=${layout_width[$key]}x${layout_height[$key]} position=${layout_x[$key]},${layout_y[$key]} config=$config_path"
+    if [[ "$GENERATE_ONLY" -eq 0 ]]; then
+      queue_overlay_launch "$key" "$monitor_index" "$config_path"
     fi
-  fi
-  if (( GITHUB_RESOLVED_HEIGHT < GITHUB_SKYLINE_MIN_HEIGHT )); then
-    GITHUB_RESOLVED_HEIGHT="$GITHUB_SKYLINE_MIN_HEIGHT"
-  fi
-}
-
-github_placement_note() {
-  local note="auto roof=$GITHUB_ROOF_BASELINE width=$RATE_LIMIT_FRAME_WIDTH height=$GITHUB_RESOLVED_HEIGHT"
-  if [[ -n "$GITHUB_GAP_X" ]]; then
-    note="pinned gap_x=$GITHUB_GAP_X $note"
-  fi
-  if [[ -n "$GITHUB_GAP_Y" ]]; then
-    printf "pinned gap_y=%s\n" "$GITHUB_GAP_Y"
-  else
-    printf "%s\n" "$note"
-  fi
-}
-
-sessions_placement_note() {
-  printf "gap_x=%s gap_y=%s height=%s\n" \
-    "$(overlay_gap_x sessions 0)" "$(overlay_gap_y sessions 0)" "$SESSIONS_MINIMUM_HEIGHT"
-}
-
-# Sit the 300px-tall map just above the weather card. The window is 456px so
-# it shares the weather overlay's width. The diamond's origin is 268px from
-# the billing window top; the weather chip starts 74px into its window.
-BILLING_RESOLVED_GAP_Y=350
-BILLING_WEATHER_GAP=24
-
-billing_placement_for_monitor() {
-  local monitor_h="$1"
-  local linear_gap_y="$2"
-  local band_top=0
-  local weather_text_top
-  local weather_chip_top
-  local resource_gap
-  local weather_gap="$WEATHER_GAP_Y"
-
-  if [[ ! "$monitor_h" =~ ^[0-9]+$ ]] || (( monitor_h < 300 )); then
-    monitor_h=1080
-  fi
-  if overlay_enabled resource-monitor; then
-    resource_gap="$(overlay_gap_y resource-monitor "$linear_gap_y")"
-    [[ "$resource_gap" =~ ^-?[0-9]+$ ]] || resource_gap=0
-    band_top=$(( resource_gap + 258 ))
-  fi
-  if overlay_enabled weather; then
-    [[ "$weather_gap" =~ ^-?[0-9]+$ ]] || weather_gap=6
-    weather_text_top=$(( monitor_h - weather_gap - 417 ))
-    weather_chip_top=$(( weather_text_top + 74 ))
-    BILLING_RESOLVED_GAP_Y=$(( weather_chip_top - 268 - BILLING_WEATHER_GAP ))
-    if (( BILLING_RESOLVED_GAP_Y < band_top )); then
-      BILLING_RESOLVED_GAP_Y="$band_top"
-    fi
-  elif (( monitor_h - band_top >= 300 )); then
-    BILLING_RESOLVED_GAP_Y=$(( band_top + (monitor_h - band_top - 300) / 2 ))
-  else
-    BILLING_RESOLVED_GAP_Y=$(( (monitor_h - 300) / 2 ))
-  fi
-  if (( BILLING_RESOLVED_GAP_Y < 0 )); then
-    BILLING_RESOLVED_GAP_Y=0
-  fi
-}
-
-billing_placement_note() {
-  local gap_x_note
-  if [[ -n "$BILLING_GAP_X" ]]; then
-    gap_x_note="pinned gap_x=$BILLING_GAP_X"
-  elif overlay_enabled weather; then
-    gap_x_note="auto gap_x=$(overlay_gap_x billing 0) (weather-centered)"
-  else
-    gap_x_note="auto gap_x=$(overlay_gap_x billing 0) (resource)"
-  fi
-  if [[ -n "$BILLING_GAP_Y" ]]; then
-    printf "%s pinned gap_y=%s\n" "$gap_x_note" "$BILLING_GAP_Y"
-  else
-    printf "%s auto gap_y=%s\n" "$gap_x_note" "$BILLING_RESOLVED_GAP_Y"
-  fi
-}
-
-overlay_gap_y() {
-  local key="$1"
-  local linear_gap_y="$2"
-
-  case "$key" in
-    linear) printf "%s\n" "$linear_gap_y" ;;
-    rate-limit-panel) printf "%s\n" "$RATE_LIMIT_PANEL_GAP_Y" ;;
-    minecraft) printf "%s\n" "$MINECRAFT_GAP_Y" ;;
-    github)
-      if [[ -n "$GITHUB_GAP_Y" ]]; then
-        printf "%s\n" "$GITHUB_GAP_Y"
-      else
-        # bottom_left: gap_y is the distance from the screen bottom up to the
-        # roof line, where the renderer puts the plinth.
-        printf "%s\n" "$((MONITOR_HEIGHT - GITHUB_ROOF_BASELINE))"
-      fi
-      ;;
-    sessions)
-      printf "%s\n" "$SESSIONS_GAP_Y"
-      ;;
-    weather) printf "%s\n" "$WEATHER_GAP_Y" ;;
-    resource-monitor)
-      if [[ -n "$RESOURCE_MONITOR_GAP_Y" ]]; then
-        printf "%s\n" "$RESOURCE_MONITOR_GAP_Y"
-      else
-        printf "%s\n" "$linear_gap_y"
-      fi
-      ;;
-    billing)
-      if [[ -n "$BILLING_GAP_Y" ]]; then
-        printf "%s\n" "$BILLING_GAP_Y"
-      else
-        printf "%s\n" "$BILLING_RESOLVED_GAP_Y"
-      fi
-      ;;
-    git)
-      if [[ -n "$GIT_GAP_Y" ]]; then
-        printf "%s\n" "$GIT_GAP_Y"
-      else
-        printf "%s\n" "$linear_gap_y"
-      fi
-      ;;
-  esac
-}
-
-log_generated_overlay() {
-  local key="$1"
-  local monitor_index="$2"
-  local width="$3"
-  local monitor_gap_x="$4"
-  local linear_gap_y="$5"
-  local config_path="$6"
-
-  case "$key" in
-    linear)
-      log_overlay linear "generated monitor_index=$monitor_index width=$width gap_x=$monitor_gap_x gap_y=$linear_gap_y config=$config_path"
-      ;;
-    rate-limit-panel)
-      log_overlay rate-limit-panel "generated monitor_index=$monitor_index width=$width gap_x=$monitor_gap_x config=$config_path"
-      ;;
-    minecraft)
-      log_overlay minecraft "generated monitor_index=$monitor_index width=$width gap_x=$MINECRAFT_GAP_X gap_y=$MINECRAFT_GAP_Y config=$config_path"
-      ;;
-    github)
-      log_overlay github "generated monitor_index=$monitor_index width=$RATE_LIMIT_FRAME_WIDTH gap_x=$(overlay_gap_x github "$monitor_gap_x") $(github_placement_note) config=$config_path"
-      ;;
-    weather)
-      log_overlay weather "generated monitor_index=$monitor_index width=$width gap_x=$WEATHER_GAP_X gap_y=$WEATHER_GAP_Y config=$config_path"
-      ;;
-    resource-monitor)
-      log_overlay resource-monitor "generated monitor_index=$monitor_index width=$width gap_x=$RESOURCE_MONITOR_GAP_X gap_y=$(overlay_gap_y resource-monitor "$linear_gap_y") config=$config_path"
-      ;;
-    billing)
-      log_overlay billing "generated monitor_index=$monitor_index width=$width gap_x=$(overlay_gap_x billing "$monitor_gap_x") $(billing_placement_note) config=$config_path"
-      ;;
-    git)
-      log_overlay git "generated monitor_index=$monitor_index width=$width gap_x=$GIT_GAP_X gap_y=$(overlay_gap_y git "$linear_gap_y") config=$config_path"
-      ;;
-    sessions)
-      log_overlay sessions "generated monitor_index=$monitor_index width=$SESSIONS_PANEL_WIDTH $(sessions_placement_note) config=$config_path"
-      ;;
-  esac
+  done
 }
 
 queue_overlay_launch() {
@@ -1104,127 +793,23 @@ if [[ "$GENERATE_ONLY" -eq 1 && "${#monitor_lines[@]}" -eq 0 ]]; then
   fi
 fi
 
-LINEAR_MINIMUM_HEIGHT="$(linear_overlay_height 2>>"$LINEAR_LOG_PATH" || true)"
-if [[ ! "$LINEAR_MINIMUM_HEIGHT" =~ ^[0-9]+$ ]]; then
-  log_overlay linear "could not compute linear overlay height; using 292"
-  LINEAR_MINIMUM_HEIGHT=292
-fi
-log_overlay linear "linear overlay minimum_height=$LINEAR_MINIMUM_HEIGHT (from current cards)"
-
-RATE_LIMIT_PANEL_MINIMUM_HEIGHT="$(rate_limit_panel_overlay_height 2>>"$RATE_LIMIT_PANEL_LOG_PATH" || true)"
-if [[ ! "$RATE_LIMIT_PANEL_MINIMUM_HEIGHT" =~ ^[0-9]+$ ]]; then
-  log_overlay rate-limit-panel "could not compute rate limit panel height; using 320"
-  RATE_LIMIT_PANEL_MINIMUM_HEIGHT=320
-fi
-log_overlay rate-limit-panel "rate limit panel minimum_height=$RATE_LIMIT_PANEL_MINIMUM_HEIGHT (from current accounts)"
-
-RATE_LIMIT_FRAME_HEIGHT="$(rate_limit_panel_frame_height 2>>"$RATE_LIMIT_PANEL_LOG_PATH" || true)"
-if [[ ! "$RATE_LIMIT_FRAME_HEIGHT" =~ ^[0-9]+$ ]]; then
-  log_overlay rate-limit-panel "could not compute rate limit frame height; using 296"
-  RATE_LIMIT_FRAME_HEIGHT=296
-fi
-RATE_LIMIT_FRAME_WIDTH="$(rate_limit_panel_frame_width $((OVERLAY_WIDTH + 8)) 2>>"$RATE_LIMIT_PANEL_LOG_PATH" || true)"
-if [[ ! "$RATE_LIMIT_FRAME_WIDTH" =~ ^[0-9]+$ ]]; then
-  log_overlay rate-limit-panel "could not compute rate limit frame width; using 1000"
-  RATE_LIMIT_FRAME_WIDTH=1000
-fi
-log_overlay github "rate limit frame ${RATE_LIMIT_FRAME_WIDTH}x${RATE_LIMIT_FRAME_HEIGHT} (skyline is sized and placed against it)"
-
-SESSIONS_MINIMUM_HEIGHT=790
-if overlay_enabled sessions; then
-  SESSIONS_MINIMUM_HEIGHT="$(sessions_overlay_height 2>>"$SESSIONS_LOG_PATH" || true)"
-  if [[ ! "$SESSIONS_MINIMUM_HEIGHT" =~ ^[0-9]+$ ]]; then
-    log_overlay sessions "could not compute sessions overlay height; using 790"
-    SESSIONS_MINIMUM_HEIGHT=790
-  fi
-  log_overlay sessions "sessions overlay minimum_height=$SESSIONS_MINIMUM_HEIGHT (from current devices and sessions)"
-fi
-
 index=0
 for line in "${monitor_lines[@]}"; do
   if [[ ! "$line" =~ ([0-9]+)\/[0-9]+x([0-9]+)\/[0-9]+([+-][0-9]+)([+-][0-9]+) ]]; then
     continue
   fi
-
   width="${BASH_REMATCH[1]}"
   monitor_height="${BASH_REMATCH[2]}"
-  monitor_gap_x=$(((width - OVERLAY_WIDTH) / 2))
-  linear_gap_y="$LINEAR_GAP_Y"
+  top=16
   if [[ "$line" =~ ^[[:space:]]*[0-9]+:[[:space:]]*[^[:space:]]*\* ]] || { [[ "$MONITOR_HAS_PRIMARY" -eq 0 ]] && [[ "$index" -eq "$LINEAR_PRIMARY_MONITOR_INDEX" ]]; }; then
-    linear_gap_y="$LINEAR_PRIMARY_GAP_Y"
+    top=40
   fi
-
-  rate_limit_frame_for_monitor "$monitor_height" "$monitor_gap_x" "$linear_gap_y"
-  billing_placement_for_monitor "$monitor_height" "$linear_gap_y"
-
-  for key in "${overlay_keys[@]}"; do
-    if overlay_enabled "$key"; then
-      config_path="$GENERATED_DIR/$key-overlay-$index.conkyrc"
-      extra_height=""
-      extra_width=""
-      if [[ "$key" == "linear" ]]; then
-        extra_height="$LINEAR_MINIMUM_HEIGHT"
-      elif [[ "$key" == "rate-limit-panel" ]]; then
-        extra_height="$RATE_LIMIT_PANEL_MINIMUM_HEIGHT"
-      elif [[ "$key" == "github" ]]; then
-        extra_height="$GITHUB_RESOLVED_HEIGHT"
-        extra_width="$RATE_LIMIT_FRAME_WIDTH"
-      elif [[ "$key" == "sessions" ]]; then
-        extra_height="$SESSIONS_MINIMUM_HEIGHT"
-      fi
-      generate_config "${overlay_config[$key]}" "$config_path" "$index" "$(overlay_gap_x "$key" "$monitor_gap_x")" "$(overlay_gap_y "$key" "$linear_gap_y")" "$extra_height" "$extra_width"
-      GENERATED_CONFIG_COUNT=$((GENERATED_CONFIG_COUNT + 1))
-    fi
-  done
-
-  for key in "${overlay_keys[@]}"; do
-    if overlay_enabled "$key"; then
-      config_path="$GENERATED_DIR/$key-overlay-$index.conkyrc"
-      log_generated_overlay "$key" "$index" "$width" "$monitor_gap_x" "$linear_gap_y" "$config_path"
-      if [[ "$GENERATE_ONLY" -eq 0 ]]; then
-        queue_overlay_launch "$key" "$index" "$config_path"
-      fi
-    fi
-  done
-
+  stage_monitor "$index" "$width" "$monitor_height" "$top"
   index=$((index + 1))
 done
-
 if [[ "$index" -eq 0 ]]; then
-  log_overlay linear "no monitors detected from xrandr; generating one fallback monitor"
-  width=1920
-  monitor_height=1080
-  monitor_gap_x=350
-  linear_gap_y="$LINEAR_PRIMARY_GAP_Y"
-  rate_limit_frame_for_monitor "$monitor_height" "$monitor_gap_x" "$linear_gap_y"
-  billing_placement_for_monitor "$monitor_height" "$linear_gap_y"
-
-  for key in "${overlay_keys[@]}"; do
-    if ! overlay_enabled "$key"; then
-      continue
-    fi
-    config_path="$GENERATED_DIR/$key-overlay-fallback.conkyrc"
-    extra_height=""
-    extra_width=""
-    case "$key" in
-      linear) extra_height="$LINEAR_MINIMUM_HEIGHT" ;;
-      rate-limit-panel) extra_height="$RATE_LIMIT_PANEL_MINIMUM_HEIGHT" ;;
-      github)
-        extra_height="$GITHUB_RESOLVED_HEIGHT"
-        extra_width="$RATE_LIMIT_FRAME_WIDTH"
-        ;;
-      sessions) extra_height="$SESSIONS_MINIMUM_HEIGHT" ;;
-    esac
-    generate_config "${overlay_config[$key]}" "$config_path" 0 \
-      "$(overlay_gap_x "$key" "$monitor_gap_x")" \
-      "$(overlay_gap_y "$key" "$linear_gap_y")" \
-      "$extra_height" "$extra_width"
-    GENERATED_CONFIG_COUNT=$((GENERATED_CONFIG_COUNT + 1))
-    log_generated_overlay "$key" 0 "$width" "$monitor_gap_x" "$linear_gap_y" "$config_path"
-    if [[ "$GENERATE_ONLY" -eq 0 ]]; then
-      queue_overlay_launch "$key" 0 "$config_path"
-    fi
-  done
+  log_overlay linear "no monitors detected; generating one fallback monitor"
+  stage_monitor fallback 1920 1080 40
   index=1
 fi
 

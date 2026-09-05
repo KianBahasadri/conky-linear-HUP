@@ -23,14 +23,14 @@ LOG_PATH = CACHE_DIR / "conky-linear.log"
 API_URL = "https://api.linear.app/graphql"
 
 # Keep in sync with conky/linear-card-renderer.lua layout constants.
-CARD_WIDTH = 268
-CARD_HEIGHT = 84
-CARD_GAP = 0
+CARD_WIDTH = 252
+CARD_HEIGHT = 104
+CARD_GAP = 12
 ROW_GAP = 12
-TOP_PADDING = 8
-BOTTOM_PADDING = 8  # In Progress edge marker below the last row
-EMPTY_HEIGHT = 96
-OVERLAY_WIDTH = 1540
+TOP_PADDING = 40
+BOTTOM_PADDING = 0
+EMPTY_HEIGHT = 144
+OVERLAY_WIDTH = 1136
 MAX_QUERY_DEPTH = 25
 DEFAULT_TASK_LIMIT = 25
 DEFAULT_COMPETITION_LIMIT = 25
@@ -557,7 +557,7 @@ def linear_overlay_height(card_count, window_width=OVERLAY_WIDTH):
         return EMPTY_HEIGHT
 
     cards_per_row = max(1, (window_width + CARD_GAP) // (CARD_WIDTH + CARD_GAP))
-    rows = (card_count + cards_per_row - 1) // cards_per_row
+    rows = min(3, (card_count + cards_per_row - 1) // cards_per_row)
     return TOP_PADDING + rows * CARD_HEIGHT + max(0, rows - 1) * ROW_GAP + BOTTOM_PADDING
 
 
@@ -570,7 +570,13 @@ def card_count_from_cache(cards_path=CARDS_PATH):
     except (OSError, json.JSONDecodeError):
         return 0
     cards = payload.get("cards") if isinstance(payload, dict) else None
-    return len(cards) if isinstance(cards, list) else 0
+    if not isinstance(cards, list):
+        return 0
+    cards = [card for card in cards if isinstance(card, dict) and card.get("title")]
+    if any(card.get("dueToday") and not card.get("done") for card in cards):
+        cards = [card for card in cards if any(card.get(key) for key in
+                 ("done", "dueToday", "competitionUpcoming", "backlogDueSoon"))]
+    return len(cards)
 
 
 def positive_int_env(name, default):

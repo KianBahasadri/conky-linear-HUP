@@ -10,7 +10,7 @@ uv sync
 ```
 
 `start_conky_overlays.sh` stages one Linear, rate limit panel, Minecraft, GitHub,
-weather, system-resource, affine-billing, git-status, and sessions config per
+weather, system-resource, billing, git-status, and sessions config per
 detected monitor. It installs the complete set only after every config succeeds,
 then replaces the owned overlay windows and fetch loops; a generation failure
 therefore leaves the running desktop and last complete config set intact.
@@ -18,6 +18,9 @@ therefore leaves the running desktop and last complete config set intact.
 `./scripts/start_conky_overlays.sh --generate-only` only replaces the complete
 generated config set. It does not stop or launch windows, stop or launch fetch
 loops, or rotate logs, so it is safe to use while the live desktop is running.
+
+The launcher installs the bundled IBM Plex fonts and computes a bounded layout
+for each monitor; see [Desktop design system](design-system.md).
 
 Each overlay can be disabled with its `*_OVERLAY_ENABLED=0` variable in `.env`. See [Configuration](configuration.md) for setup.
 

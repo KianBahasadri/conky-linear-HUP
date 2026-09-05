@@ -101,16 +101,6 @@ eq(shared.clamp(5, 0, 10), 5, 'clamp in range')
 eq(shared.clamp(-3, 0, 10), 0, 'clamp below range')
 eq(shared.clamp(99, 0, 10), 10, 'clamp above range')
 
--- git panel geometry ----------------------------------------------------
--- Constants live in shared.git_panel; frame height follows content_top +
--- row_height * max(1, count) + content_bottom; occupied adds footer gap+height.
-eq(shared.git_panel_frame_height(0), 120, 'git_panel_frame_height empty floor')
-eq(shared.git_panel_occupied_height(0), 148, 'git_panel_occupied_height empty')
-eq(shared.git_panel_frame_height(1), 58, 'git_panel_frame_height one repo')
-eq(shared.git_panel_occupied_height(1), 86, 'git_panel_occupied_height one repo')
-eq(shared.git_panel_frame_height(3), 138, 'git_panel_frame_height three repos')
-eq(shared.git_panel_occupied_height(3), 166, 'git_panel_occupied_height three repos')
-
 -- surface creation -----------------------------------------------------
 local surface_calls = 0
 local surface_token = {}
@@ -131,29 +121,6 @@ eq(surface_calls, 1, 'create_surface called once for valid frame')
 conky_window = nil
 conky_surface = nil
 
--- shade_rgb -------------------------------------------------------------
--- Shade >0 lifts each channel toward white, <0 toward black; 0 is a passthrough.
--- The skyline shades tower walls with it, so the sign convention is load-bearing.
-local function eq_rgb(hex, shade, r, g, b, label)
-  local ar, ag, ab = shared.shade_rgb(hex, shade)
-  local function near(actual, expected)
-    return math.abs(actual - expected) < 0.0005
-  end
-  if not (near(ar, r) and near(ag, g) and near(ab, b)) then
-    print(string.format('FAIL %s: expected %.3f/%.3f/%.3f, got %.3f/%.3f/%.3f',
-      label, r, g, b, ar, ag, ab))
-    failures = failures + 1
-  end
-end
-
-eq_rgb('ff8000', 0, 1.0, 128 / 255, 0.0, 'shade_rgb no shade')
-eq_rgb('ff8000', nil, 1.0, 128 / 255, 0.0, 'shade_rgb nil shade')
-eq_rgb('808080', -0.5, 64 / 255, 64 / 255, 64 / 255, 'shade_rgb darkens')
-eq_rgb('808080', 0.5, 128 / 255 + (1 - 128 / 255) * 0.5,
-  128 / 255 + (1 - 128 / 255) * 0.5, 128 / 255 + (1 - 128 / 255) * 0.5,
-  'shade_rgb lightens')
-eq_rgb('000000', 1, 1.0, 1.0, 1.0, 'shade_rgb full lift reaches white')
-eq_rgb('ffffff', -1, 0.0, 0.0, 0.0, 'shade_rgb full cut reaches black')
 
 -- UTF-8 truncation ------------------------------------------------------
 -- The renderer receives UTF-8 labels from every provider.  Assert not only the
