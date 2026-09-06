@@ -5,6 +5,7 @@ return function(shared, repo_root)
   local cards_path = repo_root .. '/cache/linear-cards.json'
   local ui = shared.ui
   local card_min_width, row_height, max_title_lines = 252, 50, 1
+  local header_size = 11
   local title_sizes = {15, 14, 13}
 
   local function read_cards()
@@ -147,7 +148,7 @@ return function(shared, repo_root)
       local state_width = 0
       if state ~= '' then
         state_width = ui.text(cr, state, x + width - 12, y + 18,
-          {size = 12, bold = 'medium', align = 'right', color = fill or ui.muted, width = width * 0.55})
+          {size = header_size, bold = 'medium', align = 'right', color = fill or ui.muted, width = width * 0.55})
       end
       local right_limit = state_width > 0 and (x + width - 16 - state_width) or (x + width - 12)
       local project_x = x + 12
@@ -160,28 +161,28 @@ return function(shared, repo_root)
       local total_available = math.max(0, right_limit - project_x)
       local id_w = 0
       if card.identifier ~= '' then
-        ui.font(cr, 12, true, nil)
+        ui.font(cr, header_size, true, nil)
         id_w = ui.width(cr, card.identifier)
       end
       local sep_w = 0
       if card.project_name ~= '' and card.identifier ~= '' then
-        ui.font(cr, 12, false, nil)
+        ui.font(cr, header_size, false, nil)
         sep_w = ui.width(cr, ' · ')
       end
       if card.project_name ~= '' then
         local name_max_w = card.identifier ~= '' and math.max(20, total_available - id_w - sep_w) or total_available
         local name_w = ui.text(cr, card.project_name, project_x, y + 18,
-          {size = 12, color = ui.muted, width = name_max_w})
+          {size = header_size, color = ui.muted, width = name_max_w})
         project_x = project_x + name_w
         if card.identifier ~= '' and project_x < right_limit then
-          local drawn_sep_w = ui.text(cr, ' · ', project_x, y + 18, {size = 12, color = ui.muted})
+          local drawn_sep_w = ui.text(cr, ' · ', project_x, y + 18, {size = header_size, color = ui.muted})
           project_x = project_x + drawn_sep_w
         end
       end
       if card.identifier ~= '' then
         local id_max_w = math.max(0, right_limit - project_x)
         ui.text(cr, card.identifier, project_x, y + 18,
-          {size = 12, mono = true, color = ui.muted, width = id_max_w})
+          {size = header_size, mono = true, color = ui.muted, width = id_max_w})
       end
       local t_color = title_color(card)
       for index, line in ipairs(layout.lines) do

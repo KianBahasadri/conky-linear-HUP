@@ -7,7 +7,8 @@
   (`In Progress`, `Todo`) are omitted because contrast follows progress:
   `In Progress` titles stay bright, while other titles become muted. Urgency
   colors and the completed-task fade remain.
-  Titles start at 15px and do not wrap: if a title overflows, the renderer retries
+  Header metadata is rendered at 11px; titles start at 15px and do not wrap:
+  if a title overflows, the renderer retries
   at 14px then 13px, and truncates if 13px still overflows. Cards form a gapless grid.
 - The card's fill and any header text carry the tone together: completed cards
   are good, `Due today` is danger with square corners, `Urgent` is caution, and
