@@ -179,9 +179,10 @@ def plan(width, height, top=40, counts=None, env=None):
     # A task row reserves 124px so a three-line title wraps without clipping.
     task_bottom = github_y - 12 if github else quota_y - 12
     task_h = max(124, task_bottom - top)
-    quota_gutter = 12
-    quota_x = margin + left + quota_gutter
-    quota_w = width - margin - right - quota_gutter - quota_x
+    # Same left edge as the task grid; 96px narrower so the bars stay short of
+    # the right rail without dropping below the wide-layout row breakpoints.
+    quota_x = center_x
+    quota_w = center - 96
 
     # Left rail: sessions join repositories at the top. The standalone sessions
     # rectangle is used only when Git is disabled. Minecraft remains at the foot.

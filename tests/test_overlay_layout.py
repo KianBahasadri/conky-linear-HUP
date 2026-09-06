@@ -37,6 +37,14 @@ def test_planned_windows_fit_without_overlap_under_changing_record_counts(size, 
                 or a[1] + a[3] <= b[1] or b[1] + b[3] <= a[1]), (name_a, name_b)
 
 
+def test_rate_limit_panel_shares_the_task_grid_left_edge_and_is_narrower():
+    windows = overlay_layout.plan(1920, 1080, 40, {"accounts": 8}, {})
+    linear = windows["linear"]
+    quota = windows["rate-limit-panel"]
+    assert quota[0] == linear[0]
+    assert quota[2] == linear[2] - 96
+
+
 def test_explicit_position_overrides_keep_their_original_edge_semantics():
     windows = overlay_layout.plan(1920, 1080, 40, {}, {
         "WEATHER_GAP_X": "20", "WEATHER_GAP_Y": "24", "GIT_GAP_Y": "48",
