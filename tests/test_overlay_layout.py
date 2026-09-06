@@ -37,6 +37,12 @@ def test_planned_windows_fit_without_overlap_under_changing_record_counts(size, 
                 or a[1] + a[3] <= b[1] or b[1] + b[3] <= a[1]), (name_a, name_b)
 
 
+def test_rate_limit_panel_adds_space_for_each_gemini_pro_stack():
+    base = overlay_layout.plan(1920, 1080, 40, {"accounts": 8}, {})
+    stacked = overlay_layout.plan(1920, 1080, 40, {"accounts": 8, "gemini_pro": 1}, {})
+    assert stacked["rate-limit-panel"][3] == base["rate-limit-panel"][3] + 6
+
+
 def test_rate_limit_panel_shares_the_task_grid_left_edge_and_is_narrower():
     windows = overlay_layout.plan(1920, 1080, 40, {"accounts": 8}, {})
     linear = windows["linear"]

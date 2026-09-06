@@ -115,8 +115,8 @@ eq(columns[2][1].label, 'gemini-weekly', 'weekly column starts with Gem')
 eq(columns[2][2].label, 'other-weekly', 'weekly column stacks Other under Gem')
 eq(renderer._test.gemini_duration_columns({{label = 'gemini-weekly'}, {label = 'other-weekly'}}) == nil, true,
   'weekly-only Gemini stays a single row')
-eq(renderer._test.account_pitch(1040, {provider = 'Gemini'}, gemini_wins), 18,
-  'pro Gemini keeps one row with the compact 2×2 stack')
+eq(renderer._test.account_pitch(1040, {provider = 'Gemini'}, gemini_wins), 24,
+  'pro Gemini uses a slightly taller row for the compact 2×2 stack')
 eq(renderer._test.account_pitch(1040, {provider = 'Gemini'}, {{label = 'gemini-weekly'}}), 18,
   'free Gemini keeps a single line')
 eq(renderer._test.account_pitch(1040, {provider = 'Codex'}, gemini_wins), 18,

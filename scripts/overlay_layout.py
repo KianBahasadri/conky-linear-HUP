@@ -142,16 +142,23 @@ def cache_counts(cache_dir):
         cards = [c for c in cards if any(c.get(k) for k in
                  ("done", "dueToday", "competitionUpcoming", "backlogDueSoon"))]
     accounts = 0
+    gemini_pro = 0
     for provider in ("codex", "claude", "cursor", "gemini", "grok", "commandcode"):
         try:
-            accounts += sum(line.startswith("account\t") for line in
-                            (cache_dir / f"{provider}-usage-render.tsv").read_text().splitlines())
+            for line in (cache_dir / f"{provider}-usage-render.tsv").read_text().splitlines():
+                if not line.startswith("account\t"):
+                    continue
+                accounts += 1
+                if provider == "gemini":
+                    fields = line.split("\t")
+                    if len(fields) > 2 and (fields[2] or "").lower() != "free":
+                        gemini_pro += 1
         except OSError:
             pass
     sessions = cache_object("sessions.json", cache_dir)
     repos = [r for r in cache_object("git-status.json", cache_dir).get("repos") or []
              if isinstance(r, dict)]
-    return {"cards": len(cards), "accounts": accounts,
+    return {"cards": len(cards), "accounts": accounts, "gemini_pro": gemini_pro,
             "repos": len(repos), "repo_heights": [repo_height(r) for r in repos],
             "repo_records": repos, "session_state": sessions,
             "sessions": len(sessions.get("devices") or []) + len(sessions.get("sessions") or []),
@@ -175,7 +182,8 @@ def plan(width, height, top=40, counts=None, env=None):
     row = 18 if center >= 880 else 40 if center >= 760 else 76
     quota_limit = int(available * (0.55 if available >= 900 else 0.44))
     quota_rows = max(1, min(counts.get("accounts", 0) or 1, quota_limit // row))
-    quota_h = max(100, quota_rows * row)
+    stacked_extra = 6 * counts.get("gemini_pro", 0) if row <= 18 else 0
+    quota_h = max(100, quota_rows * row + stacked_extra)
     github = env.get("GITHUB_OVERLAY_ENABLED", "1") != "0"
     github_h = 128 if available >= 900 else 112
     quota_y = height - 4 - quota_h

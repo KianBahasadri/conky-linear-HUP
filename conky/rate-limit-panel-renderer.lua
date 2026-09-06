@@ -740,9 +740,9 @@ return function(shared, repo_root)
 
   local function row_height(width) return width < 760 and 76 or width < 880 and 40 or 18 end
 
-  -- Pro Gemini has both 5h and weekly pools: stack Gem/Other tightly within
-  -- each duration column so the pair stays on one account row. Free Gemini
-  -- is weekly-only and stays a single row of full-size bars.
+  -- Pro Gemini has both 5h and weekly pools: stack Gem/Other within each
+  -- duration column on a 24px row. Free Gemini is weekly-only and stays on
+  -- the 18px grid.
   local function gemini_duration_columns(wins)
     local five, week = {}, {}
     for _, window in ipairs(wins or {}) do
@@ -757,14 +757,18 @@ return function(shared, repo_root)
   end
 
   local function account_pitch(width, account, wins)
-    return row_height(width)
+    local rh = row_height(width)
+    if rh > 18 then return rh end
+    if provider_name(account) == 'gemini' and gemini_duration_columns(wins) then
+      return 24
+    end
+    return rh
   end
 
   -- One quota window: label and countdown on the sides of a flat observed bar
   -- with a derived-color tick at the expected on-pace position.
-  local function draw_window(cr, account, window, x, y, width, show_pace, tall, band, bar_align)
-    band = band or 18
-    local compact = band < 16
+  local function draw_window(cr, account, window, x, y, width, show_pace, tall, by)
+    local compact = by ~= nil
     local size = compact and 9 or 11
     local refresh = window_needs_refresh(account, window)
     local used = shared.clamp(window.used_percent or 0, 0, 100)
@@ -778,18 +782,9 @@ return function(shared, repo_root)
     end
     local count = refresh and 'Refresh' or format_window_countdown(window)
     local color = refresh and ui.caution or used >= 100 and ui.danger or ui.accent
-    local text_y = compact and (y + band - 1) or (y + 13)
     local bar_h = 3
-    local by
-    if not compact then
-      by = y + 9
-    elseif bar_align == 'start' then
-      by = y + 1
-    elseif bar_align == 'end' then
-      by = y + band - bar_h - 1
-    else
-      by = y + math.floor((band - bar_h) / 2)
-    end
+    by = by or (y + 9)
+    local text_y = compact and (by + 4) or (y + 13)
 
     local nw = (name ~= '') and ui.width(cr, name, size, true) or 0
     local count_width = ui.width(cr, '00d 00h', size, true)
@@ -847,7 +842,7 @@ return function(shared, repo_root)
         local pitch = heights[index]
         local wins = windows_for[index]
         if account.is_selected then ui.rect(cr, 0, y, width, pitch, ui.raised, 4) end
-        local name_baseline = y + 13
+        local name_baseline = y + 13 + math.max(0, (pitch - 18) / 2)
         if index == first or accounts[index - 1].provider ~= account.provider then
           -- The provider's average pace delta is a derived value; it sits beside
           -- the group mark rather than in a separate summary row.
@@ -878,12 +873,13 @@ return function(shared, repo_root)
             local ww = (width - x) / #columns
             local lines = 1
             for _, group in ipairs(columns) do lines = math.max(lines, #group) end
-            local band = pitch / lines
+            local bar_h = 3
+            local gap = (pitch - lines * bar_h) / (lines + 1)
             for col, group in ipairs(columns) do
               for row, window in ipairs(group) do
-                local align = row == 1 and 'start' or row == #group and 'end' or nil
+                local by = y + gap * row + bar_h * (row - 1)
                 draw_window(cr, account, window, x + (col - 1) * ww,
-                  y + (row - 1) * band, ww - 16, show_pace, pitch > 24, band, align)
+                  y, ww - 16, show_pace, pitch > 24, by)
               end
             end
           else
