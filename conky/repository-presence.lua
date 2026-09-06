@@ -74,7 +74,7 @@ return function(shared, repo_root)
     end
     for _, repo in ipairs(repos) do
       rows[#rows + 1] = {name = repo.name, repo = repo, path = path_of(repo.path),
-        devices = {}, device_names = {}, session_count = 0, idle = -1}
+        devices = {}, session_count = 0, idle = -1}
     end
     local function target_for(session)
       local target, length, same_name, matches = nil, 0, nil, 0
@@ -91,16 +91,17 @@ return function(shared, repo_root)
     for _, session in ipairs(state.sessions) do
       local row = target_for(session)
       if not row then
-        row = {name = session.name, devices = {}, device_names = {}, session_count = 0, idle = -1}
+        row = {name = session.name, devices = {}, session_count = 0, idle = -1}
         residual[#residual + 1] = row
       end
       if session.live then
         active[session.name] = true
         row.session_count = row.session_count + 1
         if session.idle >= 0 and (row.idle < 0 or session.idle < row.idle) then row.idle = session.idle end
-        for _, name in ipairs(session.attached) do
-          if not row.device_names[name] then
-            row.device_names[name] = true
+        if #session.attached == 0 then
+          row.devices[#row.devices + 1] = {glyph = 'terminal'}
+        else
+          for _, name in ipairs(session.attached) do
             row.devices[#row.devices + 1] = devices[name] or {name = name, glyph = 'terminal'}
           end
         end
@@ -132,9 +133,6 @@ return function(shared, repo_root)
     for index, row in ipairs(extra) do
       row.gap = index == 1 and #rows > 0 and 8 or 0
       rows[#rows + 1] = row
-    end
-    for _, row in ipairs(rows) do
-      if row.session_count > 0 and #row.devices == 0 then row.devices[1] = {glyph = 'terminal'} end
     end
     return rows
   end

@@ -80,8 +80,10 @@ files['sessions.json'] = [[{"ok":true,"devices":[
   {"name":"dashboard","repo":"dashboard","path":"/work/dashboard","windows":0,"codeviewPresent":true,"codeviewRunning":false}]}]]
 draw()
 assert(count('alpha') == 1 and count('dashboard') == 1, 'repositories must not be duplicated by sessions')
-assert(mark_count('laptop-minimal') == 1 and mark_count('smartphone') == 1, 'split all device attachments and deduplicate hosts')
-assert(count('2× 15s') == 1, 'count sessions and show the newest activity')
+assert(mark_count('laptop-minimal') == 2 and mark_count('smartphone') == 1,
+  'one glyph per session attachment, including repeats on the same host')
+assert(count('2×') == 0, 'session count is the glyphs')
+assert(count('15s') == 0 and count('1m') == 0, 'session idle is not drawn')
 assert(mark_count('eye') == 1 and count('2h') == 1, 'running CodeView keeps its open eye and index age')
 assert(mark_count('eye-closed') == 1 and count('off') == 0, 'stopped CodeView uses a closed eye without text')
 assert(count('CI failed') == 1 and count('M11  U1') == 1, 'health badges and counts must survive long branches')
@@ -110,7 +112,7 @@ assert(count('Unknown remote') == 1, 'unknown remote must remain loud even when 
 assert(count('spare-host') == 1 and count('login 8m') == 1, 'a login without a session must survive')
 assert(count('unrelated-copy') == 1 and count('scratch') == 1, 'orphan sessions and equal basenames must survive')
 assert(count('extra-dashboard') == 1 and mark_count('eye-closed') == 1, 'dashboards outside the visible fleet must survive')
-assert(count('0s') == 1 and count('unknown') == 1, 'zero activity and missing activity are different states')
+assert(count('0s') == 0 and count('5m') == 0 and count('unknown') == 0, 'session idle is not drawn')
 
 -- A fresh session cache is consumed on every draw; no restart is required.
 files['sessions.json'] = '{"ok":true,"devices":[],"sessions":[]}'

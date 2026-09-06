@@ -91,19 +91,17 @@ overrides the scan root.
 Attached devices show neutral Lucide laptop, phone, or monitor glyphs sitting
 horizontally next to the CodeView glyph in the row's presence section on the right,
 eliminating the left gutter. A terminal glyph stands for a session with no resolved
-device. Up to three device glyphs sit side-by-side; after three glyphs, a `+n`
-count represents any others. Devices sharing a name are drawn once per repository.
+device. Each live session contributes its attached device glyphs, so four sessions
+on one laptop draw four laptop glyphs. Crowded presence drops to its own line.
 
-The metadata shows time since session activity. Running CodeView has an open
+Session idle time is not drawn. Running CodeView has an open
 Lucide eye with the index age beside it; stopped CodeView has a closed eye with
 no status text. Neither `tmux`, `cv`, nor `off` is printed. Eyes and index ages
 always use neutral grey, including old indexes. CodeView age does not trigger
-a yellow or red treatment. Unknown
-ages say `unknown`, while zero activity says `0s`.
+a yellow or red treatment. Unknown CodeView ages say `unknown`.
 
-For several sessions in one repository, `2× 1m` means two sessions with the most
-recent activity one minute ago. Individual session names, window counts, and
-pane counts are omitted from joined repository rows. They remain in the cache.
+Individual session names, window counts, and pane counts are omitted from joined
+repository rows. They remain in the cache.
 
 Settled rows normally take 18px and rows with Git badges 36px. Crowded metadata
 can add lines. Branches truncate first, preserving the Git

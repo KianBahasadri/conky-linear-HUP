@@ -145,19 +145,13 @@ return function(shared, repo_root)
     elseif row.error then
       layout.label, layout.kind, layout.tokens = 'Unavailable', 'danger', {row.error}
     end
-    if row.session_count > 0 then
-      layout.session_text = (row.session_count > 1 and row.session_count .. '× ' or '') .. ui.ago(row.idle)
-    end
     if row.cv and row.cv.running then layout.cv_text = ui.ago(row.cv.age) end
     local sw = measure(layout.session_text)
     local cw = row.cv and (row.cv.running and measure(layout.cv_text) + 18 or 14) or 0
-    local dev_count = math.min(#row.devices, 3)
+    local dev_count = #row.devices
     local dw = 0
     if dev_count > 0 then
       dw = dev_count * 14 + (dev_count - 1) * 4
-      if #row.devices > 3 then
-        dw = dw + measure('+' .. (#row.devices - 3)) + 4
-      end
     end
     local pw = 0
     local parts = 0
@@ -226,15 +220,10 @@ return function(shared, repo_root)
       end
     end
     if #row.devices > 0 then
-      for index = math.min(#row.devices, 3), 1, -1 do
+      for index = #row.devices, 1, -1 do
         ui.icon(cr, row.devices[index].glyph, right - 14, icon_y, 14, ui.muted)
         right = right - 14
         if index > 1 then right = right - 4 end
-      end
-      if #row.devices > 3 then
-        right = right - 4
-        right = right - ui.text(cr, '+' .. (#row.devices - 3), right, baseline,
-          {size = 11, mono = true, color = ui.muted, align = 'right'})
       end
       if layout.session_text ~= '' then
         right = right - 6
