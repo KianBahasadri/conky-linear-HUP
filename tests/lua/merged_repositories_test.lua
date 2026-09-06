@@ -18,7 +18,7 @@ ui.text = function(cr, text, x, y, opts)
   assert(w >= 0, 'negative text allocation: ' .. text)
   if opts.align == 'right' then x = x - w end
   labels[#labels + 1] = tostring(text)
-  if w > 0 then boxes[#boxes + 1] = {text = text, x = x, y = y, w = w, natural = natural} end
+  if w > 0 then boxes[#boxes + 1] = {text = text, x = x, y = y, w = w, natural = natural, color = opts.color} end
   return w
 end
 ui.icon = function(_, name, x, y, size, color)
@@ -85,10 +85,16 @@ assert(count('2× 15s') == 1, 'count sessions and show the newest activity')
 assert(mark_count('eye') == 1 and count('2h') == 1, 'running CodeView keeps its open eye and index age')
 assert(mark_count('eye-closed') == 1 and count('off') == 0, 'stopped CodeView uses a closed eye without text')
 assert(count('CI failed') == 1 and count('M11  U1') == 1, 'health badges and counts must survive long branches')
-for _, box in ipairs(boxes) do if box.text == 'M11  U1' then assert(box.w == box.natural, 'counts must not truncate') end end
+for _, box in ipairs(boxes) do
+  if box.text == 'M11  U1' then
+    assert(box.w == box.natural, 'counts must not truncate')
+    assert(box.color == ui.strong, 'counts must be in white')
+  end
+end
 width = 248
 draw()
 width = 304
+
 
 -- A path is authoritative even when the session repo key equals a visible
 -- basename. Nested working directories still attach to their actual parent.
@@ -137,4 +143,26 @@ files['sessions.json'] = [[{"ok":true,"devices":[],"sessions":[
   {"name":"scratch","path":"/notes","windows":1,"idleSeconds":120}]}]]
 draw()
 assert(count('git scan failed') == 1 and count('scratch') == 1, 'session records survive an unavailable fleet')
+
+files['git-status.json'] = [[{"ok":true,"repos":[
+  {"name":"mixed","path":"/work/mixed","ok":true,"branch":"main","state":"dirty","staged":3,"modified":5,"ahead":1,"actions":"ok"}]}]]
+files['sessions.json'] = '{"ok":true,"devices":[],"sessions":[]}'
+draw()
+assert(count('S3') == 1 and count('M5') == 1 and count('ahead 1') == 1, 'mixed counts draw distinct runs')
+for _, box in ipairs(boxes) do
+  if box.text == 'S3' then assert(box.color == ui.muted, 'staged count must be muted') end
+  if box.text == 'M5' then assert(box.color == ui.strong, 'modified count must be white') end
+  if box.text == 'ahead 1' then assert(box.color == ui.muted, 'ahead count must be muted') end
+end
+
+width = 160
+files['git-status.json'] = [[{"ok":true,"repos":[
+  {"name":"mixed_wrap","path":"/work/mixed_wrap","ok":true,"branch":"feature/long-branch-name-forces-wrap","state":"dirty","staged":1,"modified":2,"untracked":3,"ahead":4,"behind":5,"stash":6,"actions":"ok"}]}]]
+draw()
+assert(count('M2  U3') == 1, 'wrapped dirty counts group and render')
+for _, box in ipairs(boxes) do
+  if box.text == 'M2  U3' then assert(box.color == ui.strong, 'wrapped dirty counts must be white') end
+  if box.text == 'S1' then assert(box.color == ui.muted, 'wrapped staged count must be muted') end
+end
+
 print('merged repository presence and layout OK')

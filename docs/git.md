@@ -60,8 +60,9 @@ are described in [Sessions in the repository panel](sessions.md).
 
 Any other repository starts with two lines: its name with one badge, then the branch
 and nonzero counts (`S` staged, `M` modified, `U` untracked, `C` conflicted,
-ahead, behind, and stash). Failed scans retain their error text in place of the
-counts.
+ahead, behind, and stash). Modified (`M`) and untracked (`U`) counts render in
+white to highlight working tree changes, while other counts remain muted. Failed
+scans retain their error text in place of the counts.
 
 The badge names the worst thing true of the repository, in the fetcher's own
 severity order with the Actions result folded in — `Error`, `Conflicts`,

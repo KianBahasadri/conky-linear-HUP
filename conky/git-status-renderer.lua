@@ -89,6 +89,46 @@ return function(shared, repo_root)
     return counts
   end
 
+  local function is_white_count(token)
+    return token:match('^M%d+$') ~= nil or token:match('^U%d+$') ~= nil
+  end
+
+  local function token_runs(tokens, white_color)
+    local runs = {}
+    for _, token in ipairs(tokens) do
+      local color = is_white_count(token) and (white_color or ui.strong) or ui.muted
+      if #runs > 0 and runs[#runs].color == color then
+        runs[#runs].text = runs[#runs].text .. '  ' .. token
+      else
+        runs[#runs + 1] = {text = token, color = color}
+      end
+    end
+    return runs
+  end
+
+  local function draw_runs_right(cr, runs, right, baseline)
+    local space_w = ui.width(cr, '  ', 12, true)
+    local cur_right = right
+    for i = #runs, 1, -1 do
+      local run = runs[i]
+      if i < #runs then cur_right = cur_right - space_w end
+      local w = ui.text(cr, run.text, cur_right, baseline,
+        {size = 12, mono = true, color = run.color, align = 'right', width = cur_right})
+      cur_right = cur_right - w
+    end
+  end
+
+  local function draw_runs_left(cr, runs, baseline, max_width)
+    local x = 0
+    local space_w = ui.width(cr, '  ', 12, true)
+    for index, run in ipairs(runs) do
+      if index > 1 then x = x + space_w end
+      local w = ui.text(cr, run.text, x, baseline,
+        {size = 12, mono = true, color = run.color, width = max_width and math.max(0, max_width - x) or nil})
+      x = x + w
+    end
+  end
+
   local function layout_row(cr, row, width)
     local layout = {branch = '', counts = '', tokens = {}, count_lines = {}, session_text = '', cv_text = '',
       presence_width = 0, branch_width = 0, counts_width = 0, pitch = settled_pitch}
@@ -143,14 +183,19 @@ return function(shared, repo_root)
         -- line. Wrap count tokens, never the status badge or presence values.
         layout.presence_below = pw > 0
         local line = ''
+        local line_tokens = {}
         for _, token in ipairs(layout.tokens) do
           local next_line = line == '' and token or line .. '  ' .. token
           if line ~= '' and measure(next_line) > available then
-            layout.count_lines[#layout.count_lines + 1] = line
+            layout.count_lines[#layout.count_lines + 1] = line_tokens
+            line_tokens = {token}
             line = token
-          else line = next_line end
+          else
+            line_tokens[#line_tokens + 1] = token
+            line = next_line
+          end
         end
-        if line ~= '' then layout.count_lines[#layout.count_lines + 1] = line end
+        if #line_tokens > 0 then layout.count_lines[#layout.count_lines + 1] = line_tokens end
         layout.counts = ''
         layout.counts_width = 0
         detail_width = available
@@ -226,13 +271,14 @@ return function(shared, repo_root)
         {size = 12, mono = true, color = ui.muted, width = layout.branch_width})
     end
     if layout.counts ~= '' then
-      ui.text(cr, layout.counts, detail_right, y + 31,
-        {size = 12, mono = true, color = ui.muted, align = 'right', width = detail_right})
+      local runs = token_runs(layout.tokens)
+      draw_runs_right(cr, runs, detail_right, y + 31)
     end
     local baseline = y + 31
-    for _, line in ipairs(layout.count_lines) do
+    for _, line_tokens in ipairs(layout.count_lines) do
       baseline = baseline + 18
-      ui.text(cr, line, 0, baseline, {size = 12, mono = true, color = ui.muted, width = width})
+      local runs = token_runs(line_tokens)
+      draw_runs_left(cr, runs, baseline, width)
     end
     if layout.presence_below then draw_presence(cr, row, layout, width, baseline + 18) end
   end
