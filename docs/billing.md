@@ -10,13 +10,16 @@ end. Shared appearance and layout are owned by the [Desktop design system](desig
   of unrelated dollars, minutes, and balances. Prepaid OpenRouter retains the
   distinct runway meaning described below.
 - The scale starts at zero and reaches 105%, leaving a translucent red band
-  above the 100% limit line. A percentage past 105% expands the scale to that
-  value, so an overrun stays visible instead of being clamped.
+  above the 100% limit line. Overruns expand the scale up to a maximum of 200%
+  (capping the red overage band at 100%). When a forecast exceeds 200%, the scale
+  does not expand further; the trajectory line terminates at the top boundary at
+  the date it crosses 200%, placing its endpoint square along that side instead
+  of reaching the month-end corner.
 - A solid cyan trail with sample dots is real stored daily observations, ending
   at the current marker on the dashed now-line. Missing history days break the
   trail instead of being interpolated, and a single stored day stays a point.
 - The current marker is the provider's own vector mark. A dashed violet
-  connector runs from it to the month-end edge, turning red only where it
+  connector runs from it toward the month-end edge, turning red only where it
   passes 100%.
 - The forecast endpoint's shape is its severity: a circle within limit, a
   4px-radius square near the limit, and a sharp square for a projected overrun.

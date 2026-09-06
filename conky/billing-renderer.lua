@@ -122,6 +122,7 @@ return function(shared, repo_root)
       else item.severity, item.status = 'danger', 'Unavailable' end
       model.items[#model.items + 1] = item
     end
+    model.maximum = math.min(200, model.maximum)
     return model
   end
 
@@ -181,16 +182,26 @@ return function(shared, repo_root)
         for _, sample in ipairs(observations) do
           ui.circle(cr, sample.p[1], sample.p[2], 2, ui.accent)
         end
-        local current = item.current and point(model.elapsed, item.current)
-        local forecast = item.forecast and point(1, item.forecast)
-        if current and forecast then
-          ui.dash(cr, current[1], current[2], forecast[1], forecast[2], ui.derived, 2, 5, 5)
+        local current = item.current and point(model.elapsed, math.min(model.maximum, item.current))
+        local endpoint
+        if item.forecast then
+          if item.forecast > model.maximum and (item.current or 0) < item.forecast then
+            local delta = item.forecast - (item.current or 0)
+            local fraction = shared.clamp((model.maximum - (item.current or 0)) / delta, 0, 1)
+            local t_hit = model.elapsed + (1 - model.elapsed) * fraction
+            endpoint = point(t_hit, model.maximum)
+          else
+            endpoint = point(1, item.forecast)
+          end
+        end
+        if current and endpoint then
+          ui.dash(cr, current[1], current[2], endpoint[1], endpoint[2], ui.derived, 2, 5, 5)
           if item.current > 100 or item.forecast > 100 then
             local delta = item.forecast - item.current
             local crossing = delta ~= 0 and (100 - item.current) / delta or 0
             local boundary = point(model.elapsed + (1 - model.elapsed) * shared.clamp(crossing, 0, 1), 100)
             local from = item.current > 100 and current or boundary
-            local to = item.forecast > 100 and forecast or boundary
+            local to = endpoint
             ui.dash(cr, from[1], from[2], to[1], to[2], ui.danger, 2, 5, 5)
           end
         end
@@ -198,15 +209,15 @@ return function(shared, repo_root)
           ui.circle(cr, current[1], current[2], 4, ui.accent)
           ui.circle(cr, current[1], current[2], 4, ui.canvas, 1, 2)
         end
-        if forecast then
+        if endpoint then
           local color = ui[item.severity] or ui.muted
           if item.severity == 'good' then
-            ui.circle(cr, forecast[1], forecast[2], 5.5, ui.canvas)
-            ui.circle(cr, forecast[1], forecast[2], 5.5, color, 1, 2)
+            ui.circle(cr, endpoint[1], endpoint[2], 5.5, ui.canvas)
+            ui.circle(cr, endpoint[1], endpoint[2], 5.5, color, 1, 2)
           else
             local radius = item.severity == 'caution' and 4 or 0
-            ui.rect(cr, forecast[1] - 5.5, forecast[2] - 5.5, 11, 11, ui.canvas, radius)
-            ui.rect(cr, forecast[1] - 5.5, forecast[2] - 5.5, 11, 11, color, radius, 1, 2)
+            ui.rect(cr, endpoint[1] - 5.5, endpoint[2] - 5.5, 11, 11, ui.canvas, radius)
+            ui.rect(cr, endpoint[1] - 5.5, endpoint[2] - 5.5, 11, 11, color, radius, 1, 2)
           end
         end
       end)
@@ -233,5 +244,5 @@ return function(shared, repo_root)
     end)
   end
 
-  return {draw = draw}
+  return {draw = draw, _test = {prepare = prepare}}
 end

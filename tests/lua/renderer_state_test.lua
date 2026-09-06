@@ -3,7 +3,7 @@
 local root = arg[1]
 local shared = dofile(root .. '/conky/renderer-shared.lua')
 local ui = shared.ui
-local files, labels, trails = {}, {}, {}
+local files, labels, trails, dashes, rects = {}, {}, {}, {}, {}
 local width, height = 1136, 420
 shared.read_file = function(path) return files[path:match('/([^/]+)$')] end
 shared.wrap_title = function(_, value) return {value} end
@@ -11,10 +11,10 @@ ui.draw = function(callback) callback({}, width, height) end
 ui.font = function() end
 ui.text = function(_, value) labels[#labels + 1] = tostring(value); return #tostring(value) * 6 end
 ui.width = function(_, value) return #tostring(value) * 6 end
-ui.rect = function() end
+ui.rect = function(_, x, y, w, h, color) rects[#rects + 1] = {x = x, y = y, w = w, h = h, color = color} end
 ui.circle = function() end
 ui.line_between = function() end
-ui.dash = function() end
+ui.dash = function(_, x1, y1, x2, y2, color) dashes[#dashes + 1] = {x1 = x1, y1 = y1, x2 = x2, y2 = y2, color = color} end
 ui.polygon = function() end
 ui.polyline = function(_, points, color)
   trails[#trails + 1] = {points = points, color = color}
@@ -31,7 +31,7 @@ local original_time = os.time
 os.time = function(date) return date and original_time(date) or 120000 end
 
 local function draw(name)
-  labels, trails = {}, {}
+  labels, trails, dashes, rects = {}, {}, {}, {}
   dofile(root .. '/conky/' .. name)(shared, '/fixture').draw()
 end
 local function has(value)
@@ -71,6 +71,40 @@ for _, trail in ipairs(trails) do
   assert(trail.color ~= ui.accent or #trail.points < 2,
     'observed history must not bridge missing calendar days')
 end
+
+local billing_mod = dofile(root .. '/conky/billing-renderer.lua')(shared, '/fixture')
+local test_prep = billing_mod._test.prepare
+local model_sub = test_prep({elapsed = 0.2, day = 6, days_in_month = 30, providers = {
+  {id = 'aws', code = 'AWS', ok = true, stale = false, current_pressure = 0.3, forecast_pressure = 0.5, forecast_available = true, history = {}}
+}})
+assert(model_sub.maximum == 105, 'under-limit providers keep baseline 105 scale')
+
+local model_mod = test_prep({elapsed = 0.2, day = 6, days_in_month = 30, providers = {
+  {id = 'aws', code = 'AWS', ok = true, stale = false, current_pressure = 0.3, forecast_pressure = 1.6, forecast_available = true, history = {}}
+}})
+assert(model_mod.maximum == 160, 'moderate overage expands scale proportionally up to 200%')
+
+local model_high = test_prep({elapsed = 0.2, day = 6, days_in_month = 30, providers = {
+  {id = 'bsm', code = 'BSM', ok = true, stale = false, current_pressure = 0.5, forecast_pressure = 3.9, forecast_available = true, history = {}}
+}})
+assert(model_high.maximum == 200, 'overage exceeding 100% caps scale at 200%')
+
+files['billing-usage-render.tsv'] = table.concat({
+  'meta\tok\t1\tday\t6\tdaysInMonth\t30\telapsedFraction\t0.2',
+  'provider\tbsm\tBSM\tffffff\tallowance\t1\t0\t0.5\t3.9\t1\tblacksmith\t$5 now',
+}, '\n')
+draw('billing-renderer.lua')
+local found_endpoint = false
+for _, rect in ipairs(rects) do
+  if rect.color == ui.danger then
+    found_endpoint = true
+    local scale = math.min(width - 32, 720) / 305
+    local origin_x = (width - 15 * scale) / 2
+    local corner_x = origin_x + 160 * scale * 1 - 145 * scale * 1
+    assert(rect.x + 5.5 < corner_x - 10, 'trajectory must hit side instead of corner')
+  end
+end
+assert(found_endpoint, 'forecast overage endpoint marker must be drawn')
 
 files['weather-status.json'] = [[{"ok":true,"temperature":16,"aqi":23,"runScore":100,
   "aqiLabel":"Good","runStatus":"RUN GREAT"}]]
