@@ -189,6 +189,10 @@ def normalize_grok_window(label, used_percent, cycle_start, cycle_end, fetched_a
     window_seconds = cycle_end - cycle_start if cycle_start > 0 and cycle_end > cycle_start else MONTHLY_WINDOW_SECONDS
     reset_after_seconds = max(0, cycle_end - now) if cycle_end > 0 else 0
     resets_at = datetime.fromtimestamp(cycle_end, tz=timezone.utc).isoformat() if cycle_end > 0 else None
+    if window_seconds <= 8 * 86400 and reset_after_seconds <= 8 * 86400:
+        label = "weekly"
+    else:
+        label = "monthly"
 
     return {
         "label": label,

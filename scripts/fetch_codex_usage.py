@@ -348,7 +348,12 @@ def normalize_local_rate_limit_window(label, window, now, exhausted=False):
     if reset_at <= now or window_seconds <= 0:
         return None
 
-    normalized_label = "weekly" if window_seconds > LONG_WINDOW_THRESHOLD_SECONDS else "5h"
+    if window_seconds >= 20 * 86400 or (reset_at - now) > 8 * 86400:
+        normalized_label = "monthly"
+    elif window_seconds > LONG_WINDOW_THRESHOLD_SECONDS:
+        normalized_label = "weekly"
+    else:
+        normalized_label = "5h"
 
     return {
         "label": normalized_label,
@@ -448,8 +453,6 @@ def normalize_window(label, window, fetched_at, exhausted=False):
         resets_at_iso = None
 
     normalized_label = label
-    if label == "5h" and reset_after_seconds > LONG_WINDOW_THRESHOLD_SECONDS:
-        normalized_label = "weekly"
     if limit_window_seconds > 0:
         window_seconds = limit_window_seconds
     elif normalized_label == "weekly" or (
@@ -458,6 +461,15 @@ def normalize_window(label, window, fetched_at, exhausted=False):
         window_seconds = WEEKLY_WINDOW_SECONDS
     else:
         window_seconds = FIVE_HOUR_WINDOW_SECONDS
+
+    if label != "reserve" and (window_seconds >= 20 * 86400 or reset_after_seconds > 8 * 86400):
+        normalized_label = "monthly"
+        if limit_window_seconds <= 0:
+            window_seconds = 30 * 86400
+    elif label == "5h" and reset_after_seconds > LONG_WINDOW_THRESHOLD_SECONDS:
+        normalized_label = "weekly"
+        if limit_window_seconds <= 0:
+            window_seconds = WEEKLY_WINDOW_SECONDS
 
     return {
         "label": normalized_label,

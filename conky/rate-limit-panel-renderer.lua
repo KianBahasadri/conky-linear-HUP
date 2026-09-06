@@ -18,7 +18,21 @@ return function(shared, repo_root)
 
   local function normalized_window_label(window)
     local label = string.lower(window.label or '')
-    if label == '5h' and seconds_until_reset(window) > 86400 then
+    if label == 'auto' or label == 'api' or label == 'reserve'
+       or label:find('^gemini%-') or label:find('^other%-') or label:find('^3p%-') then
+      return label
+    end
+
+    local win_seconds = window.window_seconds or 0
+    local reset_seconds = seconds_until_reset(window)
+
+    if win_seconds >= 20 * 86400 or reset_seconds > 8 * 86400 then
+      return 'monthly'
+    end
+    if (label == 'monthly' or label == 'month') and win_seconds > 0 and win_seconds <= 8 * 86400 and reset_seconds <= 8 * 86400 then
+      return 'weekly'
+    end
+    if label == '5h' and reset_seconds > 86400 then
       return 'weekly'
     end
     return label
@@ -28,19 +42,14 @@ return function(shared, repo_root)
     if window.window_seconds and window.window_seconds > 0 then
       return window.window_seconds
     end
-    if normalized_window_label(window) == 'weekly' then
+    local norm = normalized_window_label(window)
+    if norm == 'weekly' or norm == 'reserve' then
       return weekly_window_seconds
     end
-    if normalized_window_label(window) == 'reserve' then
-      return weekly_window_seconds
-    end
-    if normalized_window_label(window) == 'monthly' then
-      if window.window_seconds and window.window_seconds > 0 then
-        return window.window_seconds
-      end
+    if norm == 'monthly' then
       return 31 * 86400
     end
-    if normalized_window_label(window) == 'daily' then
+    if norm == 'daily' then
       return 86400
     end
     return five_hour_window_seconds
@@ -723,7 +732,8 @@ return function(shared, repo_root)
   local function draw_window(cr, account, window, x, y, width, show_pace, tall)
     local refresh = window_needs_refresh(account, window)
     local used = shared.clamp(window.used_percent or 0, 0, 100)
-    local name = window_labels[window.label] or window.label
+    local norm_label = normalized_window_label(window)
+    local name = window_labels[norm_label] or window_labels[window.label] or window.label
     local count = refresh and 'Refresh' or format_window_countdown(window)
     if used >= 100 and not refresh then name = name .. ' full' end
     local color = refresh and ui.caution or used >= 100 and ui.danger or ui.accent

@@ -41,7 +41,7 @@ profiles live in `~/.local/share/clusterfork-auth/`.
 - When the account-level limit is reached (`limit_reached` / `allowed`), only the blocking window is pinned to 100%: the one whose reset matches the response's `rate_limit_upsell.reset_at`, or the fullest window when the banner is missing (rollout samples always use the fullest window, since they carry no banner). Other windows keep their reported percentages, so an exhausted 5h window no longer pegs the weekly bar.
 - A third `reserve` bar is rendered when `/wham/usage` includes `additional_rate_limits` whose `limit_name` contains `reserve` (today `gpt-reserve`, Luna Reserve). That bucket is a fallback weekly pool, not a refill of the main 5h/weekly windows, so account-level reached/allowed flags never pin it. The bar is labelled `RESERVE` on the bar. Accounts without that extra limit keep two bars.
 - Recent Codex rollout samples are still logged per session for diagnostics, including their values and matching account candidates. They never override a fresh endpoint response, so an older local sample cannot make a bar move backward. Local samples only carry 5h and weekly; an existing reserve window is kept beside them rather than dropped.
-- The `CODEX` summary's pace percentage uses the weekly window when available and falls back to the 5h window only when weekly is absent (Pro accounts are weighted 20x relative to Plus accounts in the average). Reserve is never the summary's pace source.
+- The `CODEX` summary's pace percentage uses the weekly window when available and falls back to the 5h window only when weekly is absent (Pro accounts are weighted 20x relative to Plus accounts in the average). Reserve is never the summary's pace source. Free accounts have a single 30-day window and display `Month` (or `Month full`).
 
 ## Claude
 
@@ -66,7 +66,7 @@ profiles live in `~/.local/share/clusterfork-auth/`.
 ## Grok
 
 - Multiple accounts are discovered from `~/.grok/auth.json.*`; `GROK_AUTH_PATH` forces a single auth file.
-- Usage is fetched from Grok Build's billing API at `cli-chat-proxy.grok.com/v1/billing?format=credits`. It renders the monthly included-credit pool as one bar per account.
+- Usage is fetched from Grok Build's billing API at `cli-chat-proxy.grok.com/v1/billing?format=credits`. It renders the included-credit pool as one bar per account (7-day cycle labelled `7d` on Build subscriptions, or monthly cycle labelled `Month` on Tier 1).
 - `GROK_HOME` overrides the Grok config directory and `GROK_CLI_CHAT_PROXY_BASE_URL` overrides the billing API base URL.
 
 ## OpenCode Go

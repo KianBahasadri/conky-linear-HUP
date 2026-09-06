@@ -704,3 +704,59 @@ def test_sort_accounts_orders_alphabetically_without_separating_plans():
         "sepehr",
     ]
 
+
+def test_normalize_usage_classifies_thirty_day_window_as_monthly():
+    now = int(datetime.now(timezone.utc).timestamp())
+    auth = {"label": "bashir", "email": "", "account_id": ""}
+    usage = {
+        "plan_type": "free",
+        "rate_limit": {
+            "allowed": True,
+            "limit_reached": False,
+            "primary_window": None,
+            "secondary_window": {
+                "used_percent": 100,
+                "limit_window_seconds": 2592000,
+                "reset_after_seconds": 966998,
+                "reset_at": now + 966998,
+            },
+        },
+    }
+
+    account = codex.normalize_usage(auth, usage, False)
+
+    assert account["ok"] is True
+    assert account["planType"] == "free"
+    assert len(account["windows"]) == 1
+    assert account["windows"][0]["label"] == "monthly"
+    assert account["windows"][0]["windowSeconds"] == 2592000
+    assert account["windows"][0]["usedPercent"] == 100.0
+
+
+def test_normalize_local_rate_limit_window_identifies_monthly_and_weekly():
+    now = 1_000_000
+    # Monthly: 30 days
+    monthly_raw = {
+        "window_minutes": 30 * 24 * 60,
+        "resets_at": now + 25 * 86400,
+    }
+    w_monthly = codex.normalize_local_rate_limit_window("secondary", monthly_raw, now)
+    assert w_monthly["label"] == "monthly"
+
+    # Weekly: 7 days
+    weekly_raw = {
+        "window_minutes": 7 * 24 * 60,
+        "resets_at": now + 5 * 86400,
+    }
+    w_weekly = codex.normalize_local_rate_limit_window("secondary", weekly_raw, now)
+    assert w_weekly["label"] == "weekly"
+
+    # 5h
+    five_hour_raw = {
+        "window_minutes": 300,
+        "resets_at": now + 3600,
+    }
+    w_5h = codex.normalize_local_rate_limit_window("primary", five_hour_raw, now)
+    assert w_5h["label"] == "5h"
+
+

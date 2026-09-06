@@ -242,3 +242,28 @@ def test_fetch_account_falls_back_to_legacy_billing_payload(monkeypatch, tmp_pat
     assert account["ok"] is True
     assert account["usedCredits"] == 1500
     assert account["monthlyLimitCredits"] == 15000
+
+
+def test_normalize_usage_identifies_weekly_build_cycle():
+    now = int(datetime.now(timezone.utc).timestamp())
+    payload = {
+        "config": {
+            "creditUsagePercent": 56.0,
+            "billingPeriodStart": datetime.fromtimestamp(now - 86400 * 6, tz=timezone.utc).isoformat(),
+            "billingPeriodEnd": datetime.fromtimestamp(now + 86400, tz=timezone.utc).isoformat(),
+        }
+    }
+    account = grok.normalize_usage(
+        {"label": "grok", "email": "grok@example.com", "tier": 0},
+        payload,
+        {"email": "grok@example.com", "userId": "user-1", "hasGrokCodeAccess": True},
+        True,
+    )
+    bars = grok.flatten_bars([account])
+
+    assert account["ok"] is True
+    assert account["windows"][0]["label"] == "weekly"
+    assert account["windows"][0]["windowSeconds"] == 7 * 86400
+    assert bars[0]["window"] == "weekly"
+    assert bars[0]["usedPercent"] == 56.0
+
