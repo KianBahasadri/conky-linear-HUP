@@ -144,12 +144,20 @@ assert(has('Unavailable') and has('gh timed out'), 'an empty fleet must explain 
 
 files['linear-cards.json'] = [[{"cards":[
   {"identifier":"KIAN-100","title":"Ship emoji","projectName":"Clusterfork","projectIcon":"🌀","state":"In Progress"},
-  {"identifier":"KIAN-101","title":"No icon","projectName":"Plain Project","projectIcon":"","state":"Todo"}
+  {"identifier":"KIAN-101","title":"No icon","projectName":"Plain Project","projectIcon":"","state":"Todo"},
+  {"identifier":"KIAN-102","title":"Fix crash","projectName":"WidgetProj","label":"Bug","dueDate":"Sep 09","state":"In Progress"},
+  {"identifier":"KIAN-103","title":"Urgent task","projectName":"UrgProj","dueDate":"Sep 10","urgent":true}
 ]}]]
 draw('linear-card-renderer.lua')
 assert(has('Clusterfork') and has('🌀'), 'card with project emoji must render both')
 assert(has('Plain Project'), 'card without emoji must render project name')
 assert(has('Ship emoji') and has('KIAN-100'), 'card title and id must render')
+assert(not has('In Progress'), 'in-progress state label must not render')
+assert(not has('Todo'), 'todo state label must not render')
+assert(not has('Bug'), 'nonessential labels must not render')
+assert(has('Due Sep 09'), 'deadlines must render upstairs')
+assert(has('Urgent · Due Sep 10'), 'urgent cards with deadlines must render both upstairs')
+assert(has('KIAN-102') and has('KIAN-103'), 'all issue identifiers must render')
 
 os.time = original_time
 print('renderer data and state semantics OK')

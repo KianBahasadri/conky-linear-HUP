@@ -1,10 +1,10 @@
--- Task cards: a gapless grid of soft-filled records with project and state on
--- top, a title that shrinks before wrapping past two lines, then the issue id
--- and deadline.
+-- Task cards: a gapless grid of soft-filled records with project, issue id,
+-- and deadline/urgency on top, followed by a single-line title that steps down
+-- in size before truncating.
 return function(shared, repo_root)
   local cards_path = repo_root .. '/cache/linear-cards.json'
   local ui = shared.ui
-  local card_min_width, row_height, max_title_lines = 252, 124, 2
+  local card_min_width, row_height, max_title_lines = 252, 50, 1
   local title_sizes = {15, 14, 13}
 
   local function read_cards()
@@ -94,19 +94,32 @@ return function(shared, repo_root)
     return string.format('${voffset %d}', rows * row_height)
   end
 
-  -- Tone follows the record's state and the deadline policy; the state text
-  -- is the only status treatment inside the card.
+  -- Tone follows the record's state and the deadline policy; the header
+  -- carries urgency or deadline text on the right while ordinary workflow
+  -- states (In Progress, Todo) are conveyed via title contrast.
   local function describe(card)
-    local due = card.due_date ~= '' and card.due_date or card.competition_due_date
-    local meta = {}
-    if card.label ~= '' then meta[#meta + 1] = card.label end
-    if due ~= '' then meta[#meta + 1] = 'Due ' .. due end
-    local state, tone
-    if card.done then state, tone = 'Done', 'good'
-    elseif card.due_today then state, tone = 'Due today', 'danger'
-    elseif card.urgent then state, tone = 'Urgent', 'caution'
-    else state, tone = card.state ~= '' and card.state or 'Active', 'neutral' end
-    return state, tone, table.concat(meta, ' · ')
+    local due = (card.due_date and card.due_date ~= '') and card.due_date or (card.competition_due_date or '')
+    local parts = {}
+    local tone
+    if card.done then
+      parts[#parts + 1] = 'Done'
+      tone = 'good'
+    elseif card.due_today then
+      parts[#parts + 1] = 'Due today'
+      tone = 'danger'
+    elseif card.urgent then
+      parts[#parts + 1] = 'Urgent'
+      tone = 'caution'
+      if due ~= '' then parts[#parts + 1] = 'Due ' .. due end
+    else
+      tone = 'neutral'
+      if due ~= '' then parts[#parts + 1] = 'Due ' .. due end
+    end
+    return table.concat(parts, ' · '), tone
+  end
+
+  local function title_color(card)
+    return (card.state == 'In Progress' and not card.done) and ui.ink or ui.muted
   end
 
   local function title_layout(cr, card, width)
@@ -129,32 +142,52 @@ return function(shared, repo_root)
 
   local function draw_card(cr, card, layout, x, y, width, height, fade)
     ui.group(cr, fade, function()
-      local state, tone, meta = describe(card)
+      local state, tone = describe(card)
       local fill = ui[tone]
       ui.rect(cr, x, y, width, height, fill or ui.surface, ui.radius(tone), fill and 0.14 or 1)
-      local state_width = ui.text(cr, state, x + width - 12, y + 24,
-        {size = 12, bold = 'medium', align = 'right', color = fill or ui.muted, width = width * 0.55})
+      local state_width = 0
+      if state ~= '' then
+        state_width = ui.text(cr, state, x + width - 12, y + 18,
+          {size = 12, bold = 'medium', align = 'right', color = fill or ui.muted, width = width * 0.55})
+      end
+      local right_limit = state_width > 0 and (x + width - 16 - state_width) or (x + width - 12)
       local project_x = x + 12
-      local project_max_width = width - 32 - state_width
       if card.project_icon ~= '' then
-        local icon_w = ui.emoji(cr, card.project_icon, project_x, y + 24, 11)
+        local icon_w = ui.emoji(cr, card.project_icon, project_x, y + 18, 11)
         if icon_w > 0 then
-          local step = icon_w + 5
-          project_x = project_x + step
-          project_max_width = math.max(0, project_max_width - step)
+          project_x = project_x + icon_w + 5
         end
       end
-      ui.text(cr, card.project_name ~= '' and card.project_name or 'No project',
-        project_x, y + 24, {size = 12, color = ui.muted, width = project_max_width})
-      for index, line in ipairs(layout.lines) do
-        ui.text(cr, line, x + 12, y + 46 + (index - 1) * 20,
-          {size = layout.size, bold = 'medium'})
+      local total_available = math.max(0, right_limit - project_x)
+      local id_w = 0
+      if card.identifier ~= '' then
+        ui.font(cr, 12, true, nil)
+        id_w = ui.width(cr, card.identifier)
       end
-      local id_width = ui.text(cr, card.identifier, x + 12, y + height - 16,
-        {size = 12, mono = true, color = ui.muted})
-      if meta ~= '' then
-        ui.text(cr, meta, x + width - 12, y + height - 16,
-          {size = 12, color = ui.muted, align = 'right', width = width - 32 - id_width})
+      local sep_w = 0
+      if card.project_name ~= '' and card.identifier ~= '' then
+        ui.font(cr, 12, false, nil)
+        sep_w = ui.width(cr, ' · ')
+      end
+      if card.project_name ~= '' then
+        local name_max_w = card.identifier ~= '' and math.max(20, total_available - id_w - sep_w) or total_available
+        local name_w = ui.text(cr, card.project_name, project_x, y + 18,
+          {size = 12, color = ui.muted, width = name_max_w})
+        project_x = project_x + name_w
+        if card.identifier ~= '' and project_x < right_limit then
+          local drawn_sep_w = ui.text(cr, ' · ', project_x, y + 18, {size = 12, color = ui.muted})
+          project_x = project_x + drawn_sep_w
+        end
+      end
+      if card.identifier ~= '' then
+        local id_max_w = math.max(0, right_limit - project_x)
+        ui.text(cr, card.identifier, project_x, y + 18,
+          {size = 12, mono = true, color = ui.muted, width = id_max_w})
+      end
+      local t_color = title_color(card)
+      for index, line in ipairs(layout.lines) do
+        ui.text(cr, line, x + 12, y + 37 + (index - 1) * 20,
+          {size = layout.size, bold = 'medium', color = t_color})
       end
     end)
   end
@@ -181,10 +214,10 @@ return function(shared, repo_root)
       local y = 0
       for row_start = first, last, columns do
         local row_end = math.min(last, row_start + columns - 1)
-        local layouts, row_h = {}, 104
+        local layouts, row_h = {}, 50
         for index = row_start, row_end do
           layouts[index] = title_layout(cr, cards[index], card_width)
-          row_h = math.max(row_h, 64 + #layouts[index].lines * 20)
+          row_h = math.max(row_h, 30 + #layouts[index].lines * 20)
         end
         for index = row_start, row_end do
           local card = cards[index]
@@ -198,5 +231,12 @@ return function(shared, repo_root)
     end)
   end
 
-  return {draw = draw, height_spacer = height_spacer, read_cards = read_cards}
+  return {
+    draw = draw,
+    describe = describe,
+    height_spacer = height_spacer,
+    read_cards = read_cards,
+    title_layout = title_layout,
+    title_color = title_color,
+  }
 end
