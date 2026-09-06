@@ -66,17 +66,23 @@ def plan(width, height, top=40, counts=None, env=None):
     quota_x = margin + left + quota_gutter
     quota_w = width - margin - right - quota_gutter - quota_x
 
-    # Left rail: repositories above sessions, with Minecraft pinned to the foot.
+    # Left rail: repositories at the top, sessions pinned to the bottom left,
+    # with Minecraft pinned below sessions to the foot when enabled.
     # A disabled Minecraft panel keeps a valid rectangle; only its reservation
     # in the rail collapses, so the launcher can enable it without replanning.
     minecraft = env.get("MINECRAFT_OVERLAY_ENABLED", "1") != "0"
     minecraft_h = 100
+    minecraft_foot = minecraft_h + gutter if minecraft else 0
     # Repository and session records are two lines on a 44px pitch.
     git_limit = min(456, available * 0.45 - (76 if minecraft else 0))
     repo_rows = max(1, min(counts.get("repos", 0) or 1, int((git_limit - 16) // 44)))
     git_h = max(100, 16 + repo_rows * 44)
-    sessions_y = top + git_h + gutter
-    sessions_h = max(100, height - margin - sessions_y - (minecraft_h + gutter if minecraft else 0))
+    max_sessions_available = height - margin - minecraft_foot - (top + git_h + gutter)
+    sessions_limit = min(456, max(100, max_sessions_available))
+    session_rows = max(1, min(counts.get("sessions", 0) or 1, int((sessions_limit - 16) // 44)))
+    sessions_h = max(100, 16 + session_rows * 44)
+    sessions_bottom = height - margin - minecraft_foot
+    sessions_y = sessions_bottom - sessions_h
 
     # Right rail: resource readings, the budget map, then weather and training.
     # Four readings are a two-column grid of 116px cells with 16px gaps.

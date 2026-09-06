@@ -89,8 +89,9 @@ show their attached device or working directory instead.
 
 ## Placement
 
-Sessions occupy the left rail below repositories. Logins precede session rows;
-attached sessions remain first in the fetcher's ordering. The allocated region
-stays fixed until restart, and additional records rotate without overlapping
-the neighboring windows. Fetching remains on its independent 20-second timer.
-See [Configuration](configuration.md#sessions-overlay) for position overrides.
+Sessions occupy the bottom left of the left rail below repositories (pinned above
+Minecraft when enabled). Logins precede session rows; attached sessions remain first
+in the fetcher's ordering. The allocated region stays fixed until restart, and
+additional records rotate without overlapping the neighboring windows. Fetching
+remains on its independent 20-second timer. See [Configuration](configuration.md#sessions-overlay)
+for position overrides.
