@@ -71,6 +71,7 @@ spending a green pill on it buries the rows that need attention. A stale cache
 is named in the panel's footer line.
 
 The list uses the [Desktop design system](design-system.md). The renderer keeps
-the fetcher's severity order and rotates excess rows within its bounded region.
-Because rows differ in height, the launcher sizes the window to the records the
-cache holds, so a fleet that is mostly settled leaves the rail shorter.
+the fetcher's severity order and displays whole rows that fit within its bounded region,
+dropping overflowing extras without paging. Because rows differ in height, the launcher
+sizes the window to the records the cache holds, so a fleet that is mostly settled
+leaves the rail shorter.

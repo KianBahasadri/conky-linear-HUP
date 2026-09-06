@@ -3,7 +3,7 @@ local root = arg[1]
 local shared = dofile(root .. '/conky/renderer-shared.lua')
 local ui = shared.ui
 local files, labels, icons, boxes = {}, {}, {}, {}
-local width, height, now = 304, 800, 0
+local width, height, now = 316, 800, 0
 local env = {SESSIONS_OVERLAY_ENABLED = '1', GIT_DEFAULT_BRANCHES = 'main,master'}
 local getenv = os.getenv
 os.getenv = function(key) return env[key] or getenv(key) end

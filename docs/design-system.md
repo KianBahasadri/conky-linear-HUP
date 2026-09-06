@@ -64,8 +64,8 @@ and close commands. Brand colors identify a provider and never encode state.
 
 `scripts/overlay_layout.py` plans each monitor in local pixels. It reads only
 current cache counts; startup does not fetch data to measure the windows.
-The default has 16px outer insets, 24px gutters, and 40px top clearance on the
-primary monitor (16px on other monitors).
+The default has 16px outer insets, 24px right gutter, a 12px gutter between the
+left rail and center column, and 40px top clearance on the primary monitor (16px on other monitors).
 
 Each region is sized to its records and the remainder is spent on its rail, so
 no gap is left between panels. The left rail's repository/session composition is
@@ -73,8 +73,8 @@ described in [Sessions](sessions.md), with Minecraft pinned to the foot when ena
 The center holds the task grid,
 the contribution calendar, and AI usage rows at the bottom. The right rail
 holds resource readings, the budget map, then weather and training. The
-standard 1920×1080 layout has 304px and 400px side rails and a flexible center.
-The smaller layout uses 248px and 360px rails; 1280×720 and 1366×768 are
+standard 1920×1080 layout has 316px and 400px side rails and a flexible center.
+The smaller layout uses 260px and 360px rails; 1280×720 and 1366×768 are
 covered by geometry tests and headless renders.
 
 Windows have explicit sizes and zero Conky border margins. They stay inside

@@ -26,7 +26,7 @@ def repo_height(repo):
     """
     if not repo.get("ok") or (repo.get("state") or "error") != "clean":
         return 44
-    return 44 if repo.get("actions") in ("fail", "run") else 26
+    return 44 if repo.get("actions") in ("fail", "run") else 18
 
 
 def enabled(env, key):
@@ -86,11 +86,14 @@ def merged_heights(repos, state, width, env):
         session_text = ((f"{len(live)}× " if len(live) > 1 else "") + age(min(known_ages) if known_ages else -1)) if live else ""
         cv_text = age(cv.get("codeviewIndexAgeSeconds", -1)) if cv and cv.get("codeviewRunning") else ""
         cv_width = (len(cv_text) * 7.2 + 18 if cv_text else 14) if cv else 0
-        presence = len(session_text) * 7.2 + cv_width + (8 if live and cv else 0)
-        pitch = repo_height(repo) if repo else 26
+        dev_count = min(len(devices), 3)
+        dev_width = (dev_count * 14 + (dev_count - 1) * 4 + (len(f"+{len(devices) - 3}") * 7.2 + 4 if len(devices) > 3 else 0)) if dev_count > 0 else 0
+        parts = (1 if cv_width > 0 else 0) + (1 if dev_width > 0 else 0) + (1 if session_text else 0)
+        presence = (len(session_text) * 7.2 if session_text else 0) + cv_width + dev_width + (max(0, parts - 1) * 6)
+        pitch = repo_height(repo) if repo else 18
         branch = repo.get("branch", "") if pitch == 44 or repo.get("branch") not in default_branches else ""
-        available = width - 20
-        if (len(devices) > 1 or presence > available * 0.5
+        available = width
+        if (presence > available * 0.5
                 or (branch and min(width * 0.5, available - 96) - presence - (8 if presence else 0) < 48)):
             pitch = 44
         tokens = [prefix + str(repo.get(key)) for key, prefix in
@@ -113,14 +116,13 @@ def merged_heights(repos, state, width, env):
                 below = presence > 0
             if below:
                 pitch += 18
-        slots = min(3, len(devices)) + (len(devices) > 3)
-        return max(pitch, slots * 18 + 8)
+        return pitch
 
     heights = [group_height(group) for group in groups]
     active = {s.get("name") for s in sessions if s.get("windows", 0) > 0}
     logins = [d for d in state.get("devices") or [] if isinstance(d, dict)
               and (d.get("state") == "alert" or not names(d.get("session")) & active)] if state.get("ok") else []
-    extra = [26 if d.get("state") == "alert" else 44 for d in logins]
+    extra = [18 if d.get("state") == "alert" else 44 for d in logins]
     extra += [group_height(group) for group in residual]
     if heights and extra:
         extra[0] += 8
@@ -157,10 +159,11 @@ def plan(width, height, top=40, counts=None, env=None):
     counts, env = counts or {}, os.environ if env is None else env
     margin, gutter = 16, 24
     available = height - top - margin
-    left = 304 if width >= 1600 else 248
+    left = 316 if width >= 1600 else 260
     right = 400 if width >= 1600 else 360
-    center = width - 2 * margin - left - right - 2 * gutter
-    center_x, right_x = margin + left + gutter, width - margin - right
+    gutter_left = 12
+    center = width - 2 * margin - left - right - gutter_left - gutter
+    center_x, right_x = margin + left + gutter_left, width - margin - right
 
     # Center: quota rows sit at the bottom, the calendar above them, and the
     # task grid takes what is left. Quota rows are 18px wide-layout rows, 40px

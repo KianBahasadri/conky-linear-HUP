@@ -4,7 +4,7 @@ return function(shared, repo_root)
   local status_path = repo_root .. '/cache/git-status.json'
   local presence = dofile(module_dir .. '/repository-presence.lua')(shared, repo_root)
   local ui = shared.ui
-  local settled_pitch, busy_pitch = 26, 44
+  local settled_pitch, busy_pitch = 18, 44
   -- Matches the fetcher's GIT_DEFAULT_BRANCHES: a settled repository names its
   -- branch only when being off the default is the reason to look.
   local default_branches = {}
@@ -89,7 +89,7 @@ return function(shared, repo_root)
     return counts
   end
 
-  local function layout_row(cr, row, width, gutter)
+  local function layout_row(cr, row, width)
     local layout = {branch = '', counts = '', tokens = {}, count_lines = {}, session_text = '', cv_text = '',
       presence_width = 0, branch_width = 0, counts_width = 0, pitch = settled_pitch}
     local function measure(text) return ui.width(cr, text, 12, true) end
@@ -111,13 +111,26 @@ return function(shared, repo_root)
     if row.cv and row.cv.running then layout.cv_text = ui.ago(row.cv.age) end
     local sw = measure(layout.session_text)
     local cw = row.cv and (row.cv.running and measure(layout.cv_text) + 18 or 14) or 0
-    layout.presence_width = sw + cw + (sw > 0 and cw > 0 and 8 or 0)
+    local dev_count = math.min(#row.devices, 3)
+    local dw = 0
+    if dev_count > 0 then
+      dw = dev_count * 14 + (dev_count - 1) * 4
+      if #row.devices > 3 then
+        dw = dw + measure('+' .. (#row.devices - 3)) + 4
+      end
+    end
+    local pw = 0
+    local parts = 0
+    if cw > 0 then pw = pw + cw; parts = parts + 1 end
+    if dw > 0 then pw = pw + dw; parts = parts + 1 end
+    if sw > 0 then pw = pw + sw; parts = parts + 1 end
+    if parts > 1 then pw = pw + (parts - 1) * 6 end
+    layout.presence_width = pw
     layout.counts = table.concat(layout.tokens or {}, '  ')
     layout.counts_width = measure(layout.counts)
-    local available = width - gutter
-    local pw = layout.presence_width
+    local available = width
     local quiet_branch_space = math.min(width * 0.5, available - 96) - pw - (pw > 0 and 8 or 0)
-    layout.expanded = layout.label and not row.login or #row.devices > 1
+    layout.expanded = layout.label and not row.login
       or pw > available * 0.5 or (layout.branch ~= '' and quiet_branch_space < 48)
     if layout.expanded then
       layout.pitch = busy_pitch
@@ -149,24 +162,38 @@ return function(shared, repo_root)
     else
       layout.branch_width = math.max(0, quiet_branch_space)
     end
-    -- Three devices fit as glyphs. Additional devices are counted in the next
-    -- gutter slot, so even an unusually large attachment set remains bounded.
-    local slots = math.min(#row.devices, 3) + (#row.devices > 3 and 1 or 0)
-    layout.pitch = math.max(layout.pitch, slots * 18 + 8)
     return layout
   end
 
   local function draw_presence(cr, row, layout, right, baseline)
+    local icon_y = baseline - 11
     if row.cv then
       -- CodeView identity and state use neutral ink, including old indexes.
-      ui.icon(cr, row.cv.running and 'eye' or 'eye-closed', right - 14, baseline - 11, 14, ui.muted)
+      ui.icon(cr, row.cv.running and 'eye' or 'eye-closed', right - 14, icon_y, 14, ui.muted)
       right = right - 14
       if layout.cv_text ~= '' then
         right = right - 4
         right = right - ui.text(cr, layout.cv_text, right, baseline,
           {size = 12, mono = true, color = ui.muted, align = 'right'})
       end
-      right = right - 8
+      if #row.devices > 0 or layout.session_text ~= '' then
+        right = right - 6
+      end
+    end
+    if #row.devices > 0 then
+      for index = math.min(#row.devices, 3), 1, -1 do
+        ui.icon(cr, row.devices[index].glyph, right - 14, icon_y, 14, ui.muted)
+        right = right - 14
+        if index > 1 then right = right - 4 end
+      end
+      if #row.devices > 3 then
+        right = right - 4
+        right = right - ui.text(cr, '+' .. (#row.devices - 3), right, baseline,
+          {size = 11, mono = true, color = ui.muted, align = 'right'})
+      end
+      if layout.session_text ~= '' then
+        right = right - 6
+      end
     end
     if layout.session_text ~= '' then
       ui.text(cr, layout.session_text, right, baseline,
@@ -174,44 +201,38 @@ return function(shared, repo_root)
     end
   end
 
-  local function draw_row(cr, row, layout, width, gutter, y)
-    for index = 1, math.min(#row.devices, 3) do
-      ui.icon(cr, row.devices[index].glyph, 0, y + 4 + (index - 1) * 18, 14, ui.muted)
-    end
-    if #row.devices > 3 then
-      ui.text(cr, '+' .. (#row.devices - 3), 0, y + 69, {size = 11, mono = true, color = ui.muted})
-    end
+  local function draw_row(cr, row, layout, width, y)
     local name_right = width
     if layout.label then
       name_right = width - ui.badge(cr, layout.label, width, y + 1, layout.kind, {right = true}) - 12
     elseif not layout.expanded then
-      draw_presence(cr, row, layout, width, y + 15)
+      draw_presence(cr, row, layout, width, y + 13)
       name_right = width - layout.presence_width - (layout.presence_width > 0 and 8 or 0)
       if layout.branch ~= '' then
-        name_right = name_right - ui.text(cr, layout.branch, name_right, y + 15,
+        name_right = name_right - ui.text(cr, layout.branch, name_right, y + 13,
           {size = 12, mono = true, color = ui.faint, align = 'right', width = layout.branch_width}) - 8
       end
     end
-    ui.text(cr, row.name, gutter, y + 15, {size = 13.5, bold = 'medium',
-      color = layout.label and ui.ink or ui.muted, width = name_right - gutter})
+    ui.text(cr, row.name, 0, y + 13, {size = 13.5, bold = 'medium',
+      color = layout.label and ui.ink or ui.muted, width = name_right})
     if not layout.expanded then return end
     local detail_right = width
     if layout.presence_width > 0 and not layout.presence_below then
-      draw_presence(cr, row, layout, width, y + 33)
+      draw_presence(cr, row, layout, width, y + 31)
       detail_right = width - layout.presence_width - 12
     end
     if layout.branch ~= '' then
-      ui.text(cr, layout.branch, gutter, y + 33,
+      ui.text(cr, layout.branch, 0, y + 31,
         {size = 12, mono = true, color = ui.muted, width = layout.branch_width})
     end
     if layout.counts ~= '' then
-      ui.text(cr, layout.counts, detail_right, y + 33,
-        {size = 12, mono = true, color = ui.muted, align = 'right', width = detail_right - gutter})
+      ui.text(cr, layout.counts, detail_right, y + 31,
+        {size = 12, mono = true, color = ui.muted, align = 'right', width = detail_right})
     end
-    local baseline = y + 33
+    local baseline = y + 31
     for _, line in ipairs(layout.count_lines) do
       baseline = baseline + 18
-      ui.text(cr, line, gutter, baseline, {size = 12, mono = true, color = ui.muted, width = width - gutter})
+      ui.text(cr, line, 0, baseline, {size = 12, mono = true, color = ui.muted, width = width})
     end
     if layout.presence_below then draw_presence(cr, row, layout, width, baseline + 18) end
   end
@@ -231,16 +252,15 @@ return function(shared, repo_root)
         ui.text(cr, 'No repositories or sessions', 0, 16, {size = 13.5, color = ui.muted})
         return
       end
-      local gutter = sessions.disabled and 0 or 20
       local heights, layouts = {}, {}
       for index, row in ipairs(rows) do
-        layouts[index] = layout_row(cr, row, width, gutter)
+        layouts[index] = layout_row(cr, row, width)
         heights[index] = layouts[index].pitch + (row.gap or 0)
       end
       local first, last, page = ui.stack(heights, height, 0, state.stale)
       local y = 0
       for index = first, last do
-        draw_row(cr, rows[index], layouts[index], width, gutter, y + (rows[index].gap or 0))
+        draw_row(cr, rows[index], layouts[index], width, y + (rows[index].gap or 0))
         y = y + heights[index]
       end
       local notes = {}
