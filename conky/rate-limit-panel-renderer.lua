@@ -757,17 +757,18 @@ return function(shared, repo_root)
     local color = refresh and ui.caution or used >= 100 and ui.danger or ui.accent
 
     local nw = (name ~= '') and ui.width(cr, name, 11, true) or 0
-    local cw = ui.width(cr, count, 11, true)
+    local count_width = ui.width(cr, '00d 00h', 11, true)
+    local count_x = x + width - count_width
     local gap = 6
     local bx = (nw > 0) and (x + nw + gap) or x
-    local bx2 = x + width - cw - gap
+    local bx2 = count_x - gap
     local bw = math.max(10, bx2 - bx)
 
     if nw > 0 then
       ui.text(cr, name, x, y + 13, {size = 11, mono = true, color = used >= 100 and ui.danger or ui.muted})
     end
-    ui.text(cr, count, x + width, y + 13,
-      {size = 11, mono = true, align = 'right', color = refresh and ui.caution or ui.muted})
+    ui.text(cr, count, count_x, y + 13,
+      {size = 11, mono = true, color = refresh and ui.caution or ui.muted})
 
     local by = y + 9
     ui.rect(cr, bx, by, bw, 3, ui.line, 0)

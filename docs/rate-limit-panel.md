@@ -3,10 +3,12 @@
 ## Display
 
 Each row displays the provider mark (brand logo) on the first row of its group,
-followed by the account name and quota windows. Reset countdowns flank the flat
-observed-data bars on the right, while pool-distinguishing labels (like `Auto`, `API`,
-`Reserve`, or Gemini model families) flank on the left. Standard interval windows
-(`5h`, `7d`, `Month`) omit the leading label so bars start directly beside the account name.
+followed by the account name and quota windows. Reset countdowns occupy a fixed-width
+column flanking the flat observed-data bars on the right, keeping bar lengths uniform
+and countdown text aligned across rows rather than staggering based on text length.
+Pool-distinguishing labels (like `Auto`, `API`, `Reserve`, or Gemini model families) flank
+on the left. Standard interval windows (`5h`, `7d`, `Month`) omit the leading label so
+bars start directly beside the account name.
 Selected profiles use a neutral raised row and a medium-weight account name.
 Provider identity does not determine bar color. Shared typography, colors, and
 overflow are owned by the [Desktop design system](design-system.md).
