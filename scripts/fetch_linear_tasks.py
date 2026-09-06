@@ -123,6 +123,41 @@ EMOJI_SHORTCODE_ALIASES = {
 }
 
 
+def project_acronym(name):
+    """Compact a project name to an acronym for the card header.
+
+    Uppercase letters are kept even without a preceding space (camelCase). An
+    all-caps word contributes only its first letter. Digits, dashes, and other
+    non-letters are kept; lowercase letters are dropped.
+    """
+    if not name:
+        return ""
+
+    parts = []
+    for word in name.split():
+        letters = [char for char in word if char.isalpha()]
+        if not letters:
+            parts.append(word)
+            continue
+
+        keep_first_letter_only = all(char.isupper() for char in letters)
+        chars = []
+        seen_letter = False
+        for char in word:
+            if char.isalpha():
+                if keep_first_letter_only:
+                    if not seen_letter:
+                        chars.append(char)
+                        seen_letter = True
+                elif char.isupper():
+                    chars.append(char)
+            else:
+                chars.append(char)
+        if chars:
+            parts.append("".join(chars))
+    return "".join(parts)
+
+
 def emoji_from_project_icon(icon):
     """Return the emoji for a Linear project icon, or "" when it is not an emoji."""
     if not icon:
@@ -405,7 +440,7 @@ def render_cards(tasks, state_names, lookback_hours, now=None):
                 "identifiers": [],
                 "label": label,
                 "labels": list(task_labels),
-                "projectName": project_name,
+                "projectName": project_acronym(project_name),
                 "projectNames": [],
                 "projectIcon": project_icon,
                 "state": task.get("state", {}).get("name", ""),
@@ -441,7 +476,9 @@ def render_cards(tasks, state_names, lookback_hours, now=None):
 
         if project_name and project_name not in card["projectNames"]:
             card["projectNames"].append(project_name)
-            card["projectName"] = " / ".join(card["projectNames"])
+            card["projectName"] = " / ".join(
+                project_acronym(item) for item in card["projectNames"]
+            )
             # Merged cards show one icon: the first project that has an emoji.
             if not card["projectIcon"]:
                 card["projectIcon"] = project_icon

@@ -160,7 +160,7 @@ def test_render_cards_includes_backlog_due_soon_flag():
     assert cards_by_id["ABC-1"]["dueDate"] != ""
     assert cards_by_id["ABC-1"]["dueToday"] is False
     assert cards_by_id["ABC-2"]["backlogDueSoon"] is False
-    assert cards_by_id["ABC-2"]["projectName"] == "Core"
+    assert cards_by_id["ABC-2"]["projectName"] == "C"
     assert cards_by_id["ABC-3"]["backlogDueSoon"] is True
     assert cards_by_id["ABC-3"]["dueToday"] is True
 
@@ -291,6 +291,23 @@ def test_render_cards_orders_done_cards_newest_first():
     assert done_identifiers == ["ABC-3", "ABC-4", "ABC-2"]
 
 
+def test_render_cards_uses_project_acronym():
+    tasks = [
+        _issue("ABC-1", "Comp work", "Todo", project="Competitions"),
+        _issue("ABC-2", "Research", "Todo", project="CISC 595 - ChainReactor Research"),
+        _issue("ABC-3", "No project", "Todo"),
+    ]
+
+    payload = linear.render_cards(tasks, {"Todo", "In Progress"}, lookback_hours=18)
+    cards_by_id = {card["identifier"]: card for card in payload["cards"]}
+
+    assert cards_by_id["ABC-1"]["projectName"] == "C"
+    assert cards_by_id["ABC-1"]["projectNames"] == ["Competitions"]
+    assert cards_by_id["ABC-2"]["projectName"] == "C595-CRR"
+    assert cards_by_id["ABC-2"]["projectNames"] == ["CISC 595 - ChainReactor Research"]
+    assert cards_by_id["ABC-3"]["projectName"] == ""
+
+
 def test_render_cards_carries_project_icon():
     tasks = [
         _issue("ABC-1", "Comp work", "Todo", project="Competitions", project_icon=":trophy:"),
@@ -316,8 +333,24 @@ def test_render_cards_merges_to_first_available_icon():
     payload = linear.render_cards(tasks, {"Todo", "In Progress"}, lookback_hours=18)
     card = payload["cards"][0]
 
-    assert card["projectName"] == "Hangout Automator / Competitions"
+    assert card["projectName"] == "HA / C"
     assert card["projectIcon"] == "🏆"
+
+
+def test_project_acronym_keeps_capitals_digits_and_dashes():
+    assert linear.project_acronym("Clusterfork") == "C"
+    assert linear.project_acronym("Reading List") == "RL"
+    assert linear.project_acronym("Condition Assessment Report Generator") == "CARG"
+    assert linear.project_acronym("Linux State Search") == "LSS"
+    assert linear.project_acronym("Hangout Automator") == "HA"
+    assert linear.project_acronym("ChainReactor") == "CR"
+    assert linear.project_acronym("CISC 595 - ChainReactor Research") == "C595-CRR"
+    assert linear.project_acronym("WebApp-2") == "WA-2"
+    assert linear.project_acronym("ISO-9001") == "I-9001"
+    assert linear.project_acronym("API Gateway") == "AG"
+    assert linear.project_acronym("NASA") == "N"
+    assert linear.project_acronym("Competitions") == "C"
+    assert linear.project_acronym("") == ""
 
 
 def test_render_cards_carries_first_label():

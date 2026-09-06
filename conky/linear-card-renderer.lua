@@ -1,9 +1,11 @@
 -- Task cards: a gapless grid of soft-filled records with project and state on
--- top, a fully wrapped title, then the issue id and deadline.
+-- top, a title that shrinks before wrapping past two lines, then the issue id
+-- and deadline.
 return function(shared, repo_root)
   local cards_path = repo_root .. '/cache/linear-cards.json'
   local ui = shared.ui
-  local card_min_width, row_height, max_title_lines = 252, 124, 3
+  local card_min_width, row_height, max_title_lines = 252, 124, 2
+  local title_sizes = {15, 14, 13}
 
   local function read_cards()
     local content = shared.read_file(cards_path)
@@ -107,12 +109,25 @@ return function(shared, repo_root)
     return state, tone, table.concat(meta, ' · ')
   end
 
-  local function title_lines(cr, card, width)
-    ui.font(cr, 15, false, 'medium')
-    return shared.wrap_title(cr, card.title, width - 24, max_title_lines)
+  local function title_layout(cr, card, width)
+    local max_width = width - 24
+    local size, lines = title_sizes[#title_sizes], nil
+    for _, candidate in ipairs(title_sizes) do
+      size = candidate
+      ui.font(cr, size, false, 'medium')
+      lines = shared.wrap_title(cr, card.title, max_width, 32)
+      if #lines <= max_title_lines then
+        return {lines = lines, size = size}
+      end
+    end
+    ui.font(cr, size, false, 'medium')
+    return {
+      lines = shared.wrap_title(cr, card.title, max_width, max_title_lines),
+      size = size,
+    }
   end
 
-  local function draw_card(cr, card, lines, x, y, width, height, fade)
+  local function draw_card(cr, card, layout, x, y, width, height, fade)
     ui.group(cr, fade, function()
       local state, tone, meta = describe(card)
       local fill = ui[tone]
@@ -131,8 +146,9 @@ return function(shared, repo_root)
       end
       ui.text(cr, card.project_name ~= '' and card.project_name or 'No project',
         project_x, y + 24, {size = 12, color = ui.muted, width = project_max_width})
-      for index, line in ipairs(lines) do
-        ui.text(cr, line, x + 12, y + 46 + (index - 1) * 20, {size = 15, bold = 'medium'})
+      for index, line in ipairs(layout.lines) do
+        ui.text(cr, line, x + 12, y + 46 + (index - 1) * 20,
+          {size = layout.size, bold = 'medium'})
       end
       local id_width = ui.text(cr, card.identifier, x + 12, y + height - 16,
         {size = 12, mono = true, color = ui.muted})
@@ -165,16 +181,16 @@ return function(shared, repo_root)
       local y = 0
       for row_start = first, last, columns do
         local row_end = math.min(last, row_start + columns - 1)
-        local lines, row_h = {}, 104
+        local layouts, row_h = {}, 104
         for index = row_start, row_end do
-          lines[index] = title_lines(cr, cards[index], card_width)
-          row_h = math.max(row_h, 64 + #lines[index] * 20)
+          layouts[index] = title_layout(cr, cards[index], card_width)
+          row_h = math.max(row_h, 64 + #layouts[index].lines * 20)
         end
         for index = row_start, row_end do
           local card = cards[index]
           local age = card.completed_at_epoch > 0 and os.time() - card.completed_at_epoch or 0
           local fade = card.done and (1 - shared.clamp(age / lookback, 0, 1)) or 1
-          draw_card(cr, card, lines[index], (index - row_start) * card_width, y, card_width, row_h, fade)
+          draw_card(cr, card, layouts[index], (index - row_start) * card_width, y, card_width, row_h, fade)
         end
         y = y + row_h
       end
