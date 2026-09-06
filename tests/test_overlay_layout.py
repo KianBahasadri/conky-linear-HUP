@@ -79,7 +79,7 @@ def test_merged_allocation_counts_joined_sessions_once_and_keeps_residuals(tmp_p
     (tmp_path / "sessions.json").write_text(json.dumps(sessions))
     counts = overlay_layout.cache_counts(tmp_path)
     plan = overlay_layout.plan(1920, 1080, 40, counts, {})
-    assert plan["git"][3] == 150  # one dirty row at 44px + five settled rows at 18px = 134px plus the 16px footer allowance
+    assert plan["git"][3] == 142  # one dirty row at 36px + five settled rows at 18px = 126px plus the 16px footer allowance
     sessions["sessions"][0]["attached"] = "laptop, phone"
     sessions["devices"].extend([
         {"name": "phone", "glyph": "phone", "session": "edit", "state": "live"},
@@ -89,4 +89,4 @@ def test_merged_allocation_counts_joined_sessions_once_and_keeps_residuals(tmp_p
     heights = overlay_layout.merged_heights(repos, sessions, 248, {})
     assert len(heights) == 8  # six repositories, an attached alert, and a distinct repo session
     assert heights[1] == 18  # attached devices sit horizontally in presence without extra row height
-    assert sum(heights) > 134
+    assert sum(heights) > 126

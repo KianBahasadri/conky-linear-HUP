@@ -4,7 +4,7 @@ return function(shared, repo_root)
   local status_path = repo_root .. '/cache/git-status.json'
   local presence = dofile(module_dir .. '/repository-presence.lua')(shared, repo_root)
   local ui = shared.ui
-  local settled_pitch, busy_pitch = 18, 44
+  local settled_pitch, busy_pitch = 18, 36
   -- Matches the fetcher's GIT_DEFAULT_BRANCHES: a settled repository names its
   -- branch only when being off the default is the reason to look.
   local default_branches = {}

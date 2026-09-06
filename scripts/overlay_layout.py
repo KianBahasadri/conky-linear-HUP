@@ -25,8 +25,8 @@ def repo_height(repo):
     going, keeps the two-line row with its badge.
     """
     if not repo.get("ok") or (repo.get("state") or "error") != "clean":
-        return 44
-    return 44 if repo.get("actions") in ("fail", "run") else 18
+        return 36
+    return 36 if repo.get("actions") in ("fail", "run") else 18
 
 
 def enabled(env, key):
@@ -91,16 +91,16 @@ def merged_heights(repos, state, width, env):
         parts = (1 if cv_width > 0 else 0) + (1 if dev_width > 0 else 0) + (1 if session_text else 0)
         presence = (len(session_text) * 7.2 if session_text else 0) + cv_width + dev_width + (max(0, parts - 1) * 6)
         pitch = repo_height(repo) if repo else 18
-        branch = repo.get("branch", "") if pitch == 44 or repo.get("branch") not in default_branches else ""
+        branch = repo.get("branch", "") if pitch >= 36 or repo.get("branch") not in default_branches else ""
         available = width
         if (presence > available * 0.5
                 or (branch and min(width * 0.5, available - 96) - presence - (8 if presence else 0) < 48)):
-            pitch = 44
+            pitch = 36
         tokens = [prefix + str(repo.get(key)) for key, prefix in
                   (("staged", "S"), ("modified", "M"), ("untracked", "U"), ("conflicted", "C"),
                    ("ahead", "ahead "), ("behind", "behind "), ("stash", "stash ")) if repo.get(key, 0) > 0]
         counts_width = len("  ".join(tokens)) * 7.2
-        if pitch == 44:
+        if pitch >= 36:
             below = presence > 0 and (presence > width * 0.46 or counts_width + presence + (48 if branch else 0) + 24 > available)
             detail_width = available - (presence + 12 if presence and not below else 0)
             if len(tokens) > 1 and counts_width + (48 if branch else 0) + 12 > detail_width:
@@ -122,12 +122,12 @@ def merged_heights(repos, state, width, env):
     active = {s.get("name") for s in sessions if s.get("windows", 0) > 0}
     logins = [d for d in state.get("devices") or [] if isinstance(d, dict)
               and (d.get("state") == "alert" or not names(d.get("session")) & active)] if state.get("ok") else []
-    extra = [18 if d.get("state") == "alert" else 44 for d in logins]
+    extra = [18 if d.get("state") == "alert" else 36 for d in logins]
     extra += [group_height(group) for group in residual]
     if heights and extra:
         extra[0] += 8
     if not state.get("ok"):
-        extra.append(44)
+        extra.append(36)
     return heights + extra
 
 
@@ -192,12 +192,12 @@ def plan(width, height, top=40, counts=None, env=None):
     minecraft_foot = minecraft_h + gutter if minecraft else 0
     merged = enabled(env, "GIT_OVERLAY_ENABLED") and enabled(env, "SESSIONS_OVERLAY_ENABLED")
     git_limit = available - minecraft_foot
-    repo_heights = counts.get("repo_heights") or [44] * (counts.get("repos", 0) or 1)
+    repo_heights = counts.get("repo_heights") or [36] * (counts.get("repos", 0) or 1)
     if merged:
         if "repo_records" in counts:
-            repo_heights = merged_heights(counts["repo_records"], counts["session_state"], left, env) or [44]
+            repo_heights = merged_heights(counts["repo_records"], counts["session_state"], left, env) or [36]
         else:
-            repo_heights = repo_heights + [44] * counts.get("sessions", 0)
+            repo_heights = repo_heights + [36] * counts.get("sessions", 0)
     git_used = 0
     for pitch in repo_heights:
         if git_used + pitch > git_limit - 16:

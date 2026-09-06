@@ -105,7 +105,7 @@ For several sessions in one repository, `2× 1m` means two sessions with the mos
 recent activity one minute ago. Individual session names, window counts, and
 pane counts are omitted from joined repository rows. They remain in the cache.
 
-Settled rows normally take 18px and rows with Git badges 44px. Crowded metadata
+Settled rows normally take 18px and rows with Git badges 36px. Crowded metadata
 can add lines. Branches truncate first, preserving the Git
 counts and presence; counts wrap as complete tokens when necessary. Repository
 health badges retain the ordering described in [Git status](git.md).
