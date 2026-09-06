@@ -767,8 +767,17 @@ return function(shared, repo_root)
     if nw > 0 then
       ui.text(cr, name, x, y + 13, {size = 11, mono = true, color = used >= 100 and ui.danger or ui.muted})
     end
-    ui.text(cr, count, count_x, y + 13,
-      {size = 11, mono = true, color = refresh and ui.caution or ui.muted})
+    -- Two-part countdowns left-align each quantity in a 3-character field
+    -- so both number columns share x-positions across rows.
+    local count_color = refresh and ui.caution or ui.muted
+    local first, second = count:match('^(%S+)%s+(%S+)$')
+    if first then
+      ui.text(cr, first, count_x, y + 13, {size = 11, mono = true, color = count_color})
+      ui.text(cr, second, count_x + ui.width(cr, '00d ', 11, true), y + 13,
+        {size = 11, mono = true, color = count_color})
+    else
+      ui.text(cr, count, count_x, y + 13, {size = 11, mono = true, color = count_color})
+    end
 
     local by = y + 9
     ui.rect(cr, bx, by, bw, 3, ui.line, 0)

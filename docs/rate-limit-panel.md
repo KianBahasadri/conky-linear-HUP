@@ -4,8 +4,10 @@
 
 Each row displays the provider mark (brand logo) on the first row of its group,
 followed by the account name and quota windows. Reset countdowns occupy a fixed-width
-column flanking the flat observed-data bars on the right, keeping bar lengths uniform
-and countdown text aligned across rows rather than staggering based on text length.
+column flanking the flat observed-data bars on the right, keeping bar lengths uniform.
+Two-part labels left-align each quantity in a 3-character field so both numbers
+share x-positions across rows (`9h  58m`, `10d 11h`, `17d 1h`) rather than
+staggering with digit count.
 Pool-distinguishing labels (like `Auto`, `API`, `Reserve`, or Gemini model families) flank
 on the left. Standard interval windows (`5h`, `7d`, `Month`) omit the leading label so
 bars start directly beside the account name.
