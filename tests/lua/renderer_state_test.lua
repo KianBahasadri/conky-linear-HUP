@@ -46,7 +46,7 @@ files['codex-usage-render.tsv'] = table.concat({
 }, '\n')
 draw('rate-limit-panel-renderer.lua')
 assert(has('Refresh'), 'expired reset must request refresh')
-assert(has('42%'), 'unexpired cached quota must remain visible')
+assert(has('2h 46m'), 'unexpired cached quota must remain visible')
 assert(not has('95%'), 'expired quota must not remain a usable reading')
 files['codex-usage-render.tsv'] = 'meta\tok\t0\naccount\tbroken\tplus\t0\t0\tUnauthorized\t0'
 draw('rate-limit-panel-renderer.lua')

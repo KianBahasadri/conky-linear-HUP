@@ -25,7 +25,7 @@ def cache_counts(cache_dir):
         cards = [c for c in cards if any(c.get(k) for k in
                  ("done", "dueToday", "competitionUpcoming", "backlogDueSoon"))]
     accounts = 0
-    for provider in ("codex", "claude", "cursor", "gemini", "grok", "opencode", "commandcode"):
+    for provider in ("codex", "claude", "cursor", "gemini", "grok", "commandcode"):
         try:
             accounts += sum(line.startswith("account\t") for line in
                             (cache_dir / f"{provider}-usage-render.tsv").read_text().splitlines())
@@ -49,19 +49,22 @@ def plan(width, height, top=40, counts=None, env=None):
     center_x, right_x = margin + left + gutter, width - margin - right
 
     # Center: quota rows sit at the bottom, the calendar above them, and the
-    # task grid takes what is left. Quota rows are 24px wide-layout rows, 40px
+    # task grid takes what is left. Quota rows are 18px wide-layout rows, 40px
     # two-column rows, or 76px stacks.
-    row = 24 if center >= 880 else 40 if center >= 760 else 76
+    row = 18 if center >= 880 else 40 if center >= 760 else 76
     quota_limit = int(available * (0.55 if available >= 900 else 0.44))
-    quota_rows = max(1, min(counts.get("accounts", 0) or 1, (quota_limit - 16) // row))
-    quota_h = max(112, 16 + quota_rows * row)
+    quota_rows = max(1, min(counts.get("accounts", 0) or 1, quota_limit // row))
+    quota_h = max(100, quota_rows * row)
     github = env.get("GITHUB_OVERLAY_ENABLED", "1") != "0"
     github_h = 128 if available >= 900 else 112
-    quota_y = height - margin - quota_h
+    quota_y = height - 4 - quota_h
     github_y = quota_y - 12 - github_h
     # A task row reserves 124px so a three-line title wraps without clipping.
     task_bottom = github_y - 12 if github else quota_y - 12
     task_h = max(124, task_bottom - top)
+    quota_gutter = 12
+    quota_x = margin + left + quota_gutter
+    quota_w = width - margin - right - quota_gutter - quota_x
 
     # Left rail: repositories above sessions, with Minecraft pinned to the foot.
     # A disabled Minecraft panel keeps a valid rectangle; only its reservation
@@ -86,7 +89,7 @@ def plan(width, height, top=40, counts=None, env=None):
     weather_h = max(160, height - margin - weather_y)
     windows = {
         "linear": [center_x, top, center, task_h],
-        "rate-limit-panel": [center_x, quota_y, center, quota_h],
+        "rate-limit-panel": [quota_x, quota_y, quota_w, quota_h],
         "github": [center_x, github_y, center, github_h],
         "git": [margin, top, left, git_h],
         "sessions": [margin, sessions_y, left, sessions_h],

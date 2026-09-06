@@ -3,21 +3,21 @@
 ## Display
 
 Each row names the provider and account, followed by its quota windows. Window
-labels, percent used, and reset countdowns sit above flat observed-data bars.
+labels and reset countdowns flank the flat observed-data bars on either side.
 Selected profiles use a neutral raised row and a medium-weight account name.
 Provider identity does not determine bar color. Shared typography, colors, and
 overflow are owned by the [Desktop design system](design-system.md).
 
 - Accounts sort alphabetically within each provider, regardless of plan tier.
 - A row without usable windows remains visible with `Retrying:` and its error.
-- A full window is labeled `full`; its fill and percentage use danger color.
+- A full window is labeled `full`; its bar fill uses danger color.
 - Expired/stale accounts keep their cached fill and reset time until that
   window's absolute reset passes, then show `Refresh`. See
   [Expired credentials and stale cache](expired-credentials.md).
 - Reset labels count down (`3h 16m`, `6d 8h`). A window with nothing used and
   no pending reset shows its full span (`5h left`, `7d left`) and no pace tick.
   `wait` means the countdown ended while usage remains.
-- The provider's average pace delta in percentage points (`pp`) sits beside its
+- The provider's average pace delta in percent (`%`) sits beside its
   name on the first row of each group, in derived-data color. There is no
   separate summary row and no combined pace value. The vertical tick on each
   eligible bar uses the same derived color.
@@ -26,8 +26,8 @@ overflow are owned by the [Desktop design system](design-system.md).
 
 Selected profiles are resolved by the existing fetchers: shared `current`
 profiles for Codex/Cursor, the active Claude credential file or matching access
-token, Antigravity's current profile, active Grok/Command Code auth, and the
-configured OpenCode workspace. Claude requires token comparison because its
+token, Antigravity's current profile, and active Grok/Command Code auth.
+Claude requires token comparison because its
 CLI replaces the credential file during refresh.
 
 Account-rotation tooling lives in `~/.config/clusterfork`; shared Codex/Cursor
@@ -87,6 +87,7 @@ profiles live in `~/.local/share/clusterfork-auth/`.
 
 ## Removed providers
 
+- **OpenCode Go** was removed from the rate limit panel.
 - **Pioneer** was removed from the rate limit panel. The Pioneer fetch script, cache files, env vars, and panel chip are no longer used.
 
 ## Adaptive polling

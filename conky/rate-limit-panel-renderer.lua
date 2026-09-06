@@ -356,7 +356,6 @@ return function(shared, repo_root)
     local cursor_usage = read_cursor_usage_tsv()
     local gemini_usage = read_gemini_usage_tsv()
     local grok_usage = read_grok_usage_tsv()
-    local opencode_usage = read_opencode_usage_tsv()
     local commandcode_usage = read_commandcode_usage_tsv()
     local usage = {
       ok = false,
@@ -413,17 +412,6 @@ return function(shared, repo_root)
       end
       for _, account in ipairs(grok_usage.accounts or {}) do
         account.provider = account.provider or 'Grok'
-        table.insert(usage.accounts, account)
-      end
-    end
-
-    if opencode_usage then
-      usage.ok = usage.ok or opencode_usage.ok
-      if usage.error == '' then
-        usage.error = opencode_usage.error or ''
-      end
-      for _, account in ipairs(opencode_usage.accounts or {}) do
-        account.provider = account.provider or 'OpenCode'
         table.insert(usage.accounts, account)
       end
     end
@@ -728,32 +716,36 @@ return function(shared, repo_root)
     ['gemini-5h']='Gem 5h', ['gemini-weekly']='Gem 7d', ['other-5h']='Other 5h',
     ['other-weekly']='Other 7d', ['3p-weekly']='Other 7d', ['3p-5h']='Other 5h'}
 
-  local function row_height(width) return width < 760 and 76 or width < 880 and 40 or 24 end
+  local function row_height(width) return width < 760 and 76 or width < 880 and 40 or 18 end
 
-  -- One quota window: label, percent, and countdown over a flat observed bar
+  -- One quota window: label and countdown on the sides of a flat observed bar
   -- with a derived-color tick at the expected on-pace position.
   local function draw_window(cr, account, window, x, y, width, show_pace, tall)
     local refresh = window_needs_refresh(account, window)
     local used = shared.clamp(window.used_percent or 0, 0, 100)
     local name = window_labels[window.label] or window.label
     local count = refresh and 'Refresh' or format_window_countdown(window)
-    local percent = refresh and '—' or string.format('%.0f%%', used)
     if used >= 100 and not refresh then name = name .. ' full' end
     local color = refresh and ui.caution or used >= 100 and ui.danger or ui.accent
-    ui.text(cr, name, x, y + 14, {size = 11, mono = true, color = used >= 100 and ui.danger or ui.muted, width = width - (tall and 36 or 116)})
-    ui.text(cr, percent, x + width, y + 14,
-      {size = 11, mono = true, align = 'right', color = used >= 100 and ui.danger or ui.ink})
-    local countdown_x = x + width - 40
-    if tall then countdown_x = x + width end
-    ui.text(cr, count, countdown_x, y + (tall and 30 or 14),
+
+    local nw = ui.width(cr, name, 11, true)
+    local cw = ui.width(cr, count, 11, true)
+    local gap = 6
+    local bx = x + nw + gap
+    local bx2 = x + width - cw - gap
+    local bw = math.max(10, bx2 - bx)
+
+    ui.text(cr, name, x, y + 13, {size = 11, mono = true, color = used >= 100 and ui.danger or ui.muted})
+    ui.text(cr, count, x + width, y + 13,
       {size = 11, mono = true, align = 'right', color = refresh and ui.caution or ui.muted})
-    local by = y + (tall and 34 or 18)
-    ui.rect(cr, x, by, width, 3, ui.line, 0)
-    if not refresh then ui.rect(cr, x, by, width * used / 100, 3, color, 0) end
+
+    local by = y + 9
+    ui.rect(cr, bx, by, bw, 3, ui.line, 0)
+    if not refresh then ui.rect(cr, bx, by, bw * used / 100, 3, color, 0) end
     if show_pace and not refresh then
       local pace = calculate_window_pace(window, window_duration(window))
       if pace and pace.expected > 0 then
-        local px = x + width * pace.expected / 100
+        local px = bx + bw * pace.expected / 100
         ui.line_between(cr, px, by - 2, px, by + 5, ui.derived, 1)
       end
     end
@@ -769,7 +761,7 @@ return function(shared, repo_root)
       end
       local rh = row_height(width)
       local first, last, page = ui.rows(#accounts, height, rh, 0)
-      local provider_width, name_width = width < 880 and 100 or 128, width < 880 and 96 or 120
+      local provider_width, name_width = width < 880 and 96 or 112, width < 880 and 48 or 56
       for index = first, last do
         local account = accounts[index]
         local y = (index - first) * rh
@@ -778,19 +770,19 @@ return function(shared, repo_root)
           -- The provider's average pace delta is a derived value; it sits beside
           -- the group label rather than in a separate summary row.
           local delta = calculate_provider_average_pace(accounts, account.provider)
-          local delta_width = ui.text(cr, delta and string.format('%+.0fpp', delta) or '—',
-            provider_width - 8, y + 16, {size = 11, mono = true, color = ui.derived, align = 'right'})
-          ui.text(cr, provider_labels[account.provider] or account.provider, 6, y + 16,
-            {size = 13.5, color = ui.muted, width = provider_width - delta_width - 18})
+          local delta_width = ui.text(cr, delta and string.format('%+.0f%%', delta) or '—',
+            provider_width - 6, y + 13, {size = 11, mono = true, color = ui.derived, align = 'right'})
+          ui.text(cr, provider_labels[account.provider] or account.provider, 6, y + 13,
+            {size = 13.5, color = ui.muted, width = provider_width - delta_width - 12})
         end
-        ui.text(cr, account.label, provider_width, y + 16,
+        ui.text(cr, account.label, provider_width, y + 13,
           {size = 13.5, bold = account.is_selected and 'medium' or nil,
-            color = account.is_selected and ui.strong or ui.ink, width = name_width - 12})
+            color = account.is_selected and ui.strong or ui.ink, width = name_width - 4})
         local x = provider_width + name_width
         local wins = get_row_windows(account)
         if #wins == 0 then
           ui.text(cr, 'Retrying: ' .. (account.error ~= '' and account.error or 'No usable windows'),
-            x, y + 16, {size = 12, color = ui.danger, width = width - x - 8})
+            x, y + 13, {size = 12, color = ui.danger, width = width - x - 8})
         else
           local window_columns = width < 760 and math.min(2, #wins) or #wins
           local ww = (width - x) / window_columns
