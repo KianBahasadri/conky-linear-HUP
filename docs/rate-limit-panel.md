@@ -3,15 +3,17 @@
 ## Display
 
 Each row displays the provider mark (brand logo) on the first row of its group,
-followed by the account name and quota windows. Window labels and reset countdowns
-flank the flat observed-data bars on either side. Selected profiles use a neutral
-raised row and a medium-weight account name. Provider identity does not determine
-bar color. Shared typography, colors, and overflow are owned by the
-[Desktop design system](design-system.md).
+followed by the account name and quota windows. Reset countdowns flank the flat
+observed-data bars on the right, while pool-distinguishing labels (like `Auto`, `API`,
+`Reserve`, or Gemini model families) flank on the left. Standard interval windows
+(`5h`, `7d`, `Month`) omit the leading label so bars start directly beside the account name.
+Selected profiles use a neutral raised row and a medium-weight account name.
+Provider identity does not determine bar color. Shared typography, colors, and
+overflow are owned by the [Desktop design system](design-system.md).
 
 - Accounts sort alphabetically within each provider, regardless of plan tier.
 - A row without usable windows remains visible with `Retrying:` and its error.
-- A full window is labeled `full`; its bar fill uses danger color.
+- Full windows do not display a `full` text label; the 100% bar fill and danger color indicate capacity exhaustion.
 - Expired/stale accounts keep their cached fill and reset time until that
   window's absolute reset passes, then show `Refresh`. See
   [Expired credentials and stale cache](expired-credentials.md).
@@ -41,7 +43,7 @@ profiles live in `~/.local/share/clusterfork-auth/`.
 - When the account-level limit is reached (`limit_reached` / `allowed`), only the blocking window is pinned to 100%: the one whose reset matches the response's `rate_limit_upsell.reset_at`, or the fullest window when the banner is missing (rollout samples always use the fullest window, since they carry no banner). Other windows keep their reported percentages, so an exhausted 5h window no longer pegs the weekly bar.
 - A third `reserve` bar is rendered when `/wham/usage` includes `additional_rate_limits` whose `limit_name` contains `reserve` (today `gpt-reserve`, Luna Reserve). That bucket is a fallback weekly pool, not a refill of the main 5h/weekly windows, so account-level reached/allowed flags never pin it. The bar is labelled `RESERVE` on the bar. Accounts without that extra limit keep two bars.
 - Recent Codex rollout samples are still logged per session for diagnostics, including their values and matching account candidates. They never override a fresh endpoint response, so an older local sample cannot make a bar move backward. Local samples only carry 5h and weekly; an existing reserve window is kept beside them rather than dropped.
-- The `CODEX` summary's pace percentage uses the weekly window when available and falls back to the 5h window only when weekly is absent (Pro accounts are weighted 20x relative to Plus accounts in the average). Reserve is never the summary's pace source. Free accounts have a single 30-day window and display `Month` (or `Month full`).
+- The `CODEX` summary's pace percentage uses the weekly window when available and falls back to the 5h window only when weekly is absent (Pro accounts are weighted 20x relative to Plus accounts in the average). Reserve is never the summary's pace source. Free accounts have a single 30-day window.
 
 ## Claude
 
@@ -60,7 +62,7 @@ profiles live in `~/.local/share/clusterfork-auth/`.
 ## Gemini
 
 - Accounts are discovered from Antigravity's rotation state in `~/.gemini/antigravity-cli/rotate-auth`. The selected profile reads the live GNOME Keyring item `service=gemini username=antigravity`; inactive profiles read `service=rotate-antigravity username=<profile>`.
-- Usage is fetched from Antigravity's Code Assist API (`retrieveUserQuotaSummary`). Pro accounts render four quota bars: Gemini 5-hour (`gemini-5h`), Gemini weekly (`gemini-weekly`), Other/Claude/GPT 5-hour (`other-5h`), and Other/Claude/GPT weekly (`other-weekly`). Free accounts render two weekly bars: Gemini weekly (`gemini-weekly`) and Other weekly (`other-weekly`). Paid tiers (such as Google AI Pro) are recognized from the account's `paidTier` subscription.
+- Usage is fetched from Antigravity's Code Assist API (`retrieveUserQuotaSummary`). Pro accounts render four quota bars: Gemini 5-hour and Gemini weekly (labelled `Gem`), and Other/Claude/GPT 5-hour and Other/Claude/GPT weekly (labelled `Other`). Free accounts render two weekly bars (`Gem` and `Other`). Paid tiers (such as Google AI Pro) are recognized from the account's `paidTier` subscription.
 - `GEMINI_ANTIGRAVITY_STATE_DIR` overrides the rotation state directory, `GEMINI_CODE_ASSIST_ENDPOINT` overrides the Antigravity API endpoint, `GEMINI_ANTIGRAVITY_CLI` overrides the `agy` executable, and `GEMINI_AUTH_REFRESH_TIMEOUT_SECONDS` controls the refresh timeout.
 
 ## Grok

@@ -721,9 +721,13 @@ return function(shared, repo_root)
 
   local provider_labels = {Codex='Codex', Claude='Claude', Cursor='Cursor',
     Gemini='Antigravity', Grok='Grok', OpenCode='OpenCode', CommandCode='Cmd'}
-  local window_labels = {weekly='7d', monthly='Month', reserve='Reserve', auto='Auto', api='API',
-    ['gemini-5h']='Gem 5h', ['gemini-weekly']='Gem 7d', ['other-5h']='Other 5h',
-    ['other-weekly']='Other 7d', ['3p-weekly']='Other 7d', ['3p-5h']='Other 5h'}
+  local window_labels = {
+    ['5h'] = '', weekly = '', monthly = '', month = '',
+    reserve = 'Reserve', auto = 'Auto', api = 'API',
+    gemini = 'Gem', other = 'Other',
+    ['gemini-5h'] = 'Gem', ['gemini-weekly'] = 'Gem', ['other-5h'] = 'Other',
+    ['other-weekly'] = 'Other', ['3p-weekly'] = 'Other', ['3p-5h'] = 'Other',
+  }
 
   local function row_height(width) return width < 760 and 76 or width < 880 and 40 or 18 end
 
@@ -733,19 +737,26 @@ return function(shared, repo_root)
     local refresh = window_needs_refresh(account, window)
     local used = shared.clamp(window.used_percent or 0, 0, 100)
     local norm_label = normalized_window_label(window)
-    local name = window_labels[norm_label] or window_labels[window.label] or window.label
+    local name = window_labels[norm_label]
+    if name == nil then
+      name = window_labels[window.label]
+    end
+    if name == nil then
+      name = window.label or ''
+    end
     local count = refresh and 'Refresh' or format_window_countdown(window)
-    if used >= 100 and not refresh then name = name .. ' full' end
     local color = refresh and ui.caution or used >= 100 and ui.danger or ui.accent
 
-    local nw = ui.width(cr, name, 11, true)
+    local nw = (name ~= '') and ui.width(cr, name, 11, true) or 0
     local cw = ui.width(cr, count, 11, true)
     local gap = 6
-    local bx = x + nw + gap
+    local bx = (nw > 0) and (x + nw + gap) or x
     local bx2 = x + width - cw - gap
     local bw = math.max(10, bx2 - bx)
 
-    ui.text(cr, name, x, y + 13, {size = 11, mono = true, color = used >= 100 and ui.danger or ui.muted})
+    if nw > 0 then
+      ui.text(cr, name, x, y + 13, {size = 11, mono = true, color = used >= 100 and ui.danger or ui.muted})
+    end
     ui.text(cr, count, x + width, y + 13,
       {size = 11, mono = true, align = 'right', color = refresh and ui.caution or ui.muted})
 
