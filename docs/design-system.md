@@ -64,8 +64,8 @@ and close commands. Brand colors identify a provider and never encode state.
 
 `scripts/overlay_layout.py` plans each monitor in local pixels. It reads only
 current cache counts; startup does not fetch data to measure the windows.
-The default has 16px outer insets, 24px right gutter, a 12px gutter between the
-left rail and center column, and 40px top clearance on the primary monitor (16px on other monitors).
+The default has 8px outer insets, 24px right gutter, a 12px gutter between the
+left rail and center column, and 40px top clearance on the primary monitor (8px on other monitors).
 
 Each region is sized to its records and the remainder is spent on its rail, so
 no gap is left between panels. The left rail's repository/session composition is

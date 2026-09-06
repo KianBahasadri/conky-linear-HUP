@@ -803,7 +803,7 @@ for line in "${monitor_lines[@]}"; do
   fi
   width="${BASH_REMATCH[1]}"
   monitor_height="${BASH_REMATCH[2]}"
-  top=16
+  top=8
   if [[ "$line" =~ ^[[:space:]]*[0-9]+:[[:space:]]*[^[:space:]]*\* ]] || { [[ "$MONITOR_HAS_PRIMARY" -eq 0 ]] && [[ "$index" -eq "$LINEAR_PRIMARY_MONITOR_INDEX" ]]; }; then
     top=40
   fi

@@ -168,7 +168,7 @@ def cache_counts(cache_dir):
 def plan(width, height, top=40, counts=None, env=None):
     """Size each region to its records, then spend the remainder on its rail."""
     counts, env = counts or {}, os.environ if env is None else env
-    margin, gutter = 16, 24
+    margin, gutter = 8, 24
     available = height - top - margin
     left = 316 if width >= 1600 else 260
     right = 400 if width >= 1600 else 360
@@ -186,7 +186,7 @@ def plan(width, height, top=40, counts=None, env=None):
     quota_h = max(100, quota_rows * row + stacked_extra)
     github = env.get("GITHUB_OVERLAY_ENABLED", "1") != "0"
     github_h = 128 if available >= 900 else 112
-    quota_y = height - 4 - quota_h
+    quota_y = height - margin - quota_h
     github_y = quota_y - 12 - github_h
     # A task row reserves 124px so a three-line title wraps without clipping.
     task_bottom = github_y - 12 if github else quota_y - 12
