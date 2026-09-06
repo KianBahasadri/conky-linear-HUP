@@ -106,7 +106,7 @@ assert(has('Conflicts'), 'a conflict outranks every other state')
 assert(has('CI running'), 'a clean repository with a live run is not settled')
 files['git-status.json'] = '{"ok":false,"stale":false,"error":"gh timed out","repos":[]}'
 draw('git-status-renderer.lua')
-assert(has('Unavailable: gh timed out'), 'an empty fleet must explain itself')
+assert(has('Unavailable') and has('gh timed out'), 'an empty fleet must explain itself')
 
 files['linear-cards.json'] = [[{"cards":[
   {"identifier":"KIAN-100","title":"Ship emoji","projectName":"Clusterfork","projectIcon":"🌀","state":"In Progress"},

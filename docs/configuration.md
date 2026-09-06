@@ -235,9 +235,9 @@ See [Git status overlay](git.md) for layout, severity rules, and overflow.
 
 | Variable | Purpose |
 | --- | --- |
-| `SESSIONS_OVERLAY_ENABLED` | Set to `0` to disable |
-| `SESSIONS_GAP_X` | Left offset in px; empty follows the left rail |
-| `SESSIONS_GAP_Y` | Bottom offset in px; empty sits below repositories |
+| `SESSIONS_OVERLAY_ENABLED` | Set to `0` to disable session presence and its fetch loop |
+| `SESSIONS_GAP_X` | Standalone sessions left offset when Git is disabled; empty follows the left rail |
+| `SESSIONS_GAP_Y` | Standalone sessions bottom offset when Git is disabled; empty pins above Minecraft |
 | `SESSIONS_REFRESH_SECONDS` | Fetch interval (default `20`) |
 | `SESSIONS_CODEVIEW_REPO_PATHS` | Optional colon/comma/newline-separated codeview repo roots pinned ahead of fleet discovery |
 | `SESSIONS_CODEVIEW_SCAN_ROOT` | Root for the shallow fallback codeview scan (default `$HOME`) |

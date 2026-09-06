@@ -68,8 +68,9 @@ The default has 16px outer insets, 24px gutters, and 40px top clearance on the
 primary monitor (16px on other monitors).
 
 Each region is sized to its records and the remainder is spent on its rail, so
-no gap is left between panels. The left rail holds repositories above sessions,
-with Minecraft pinned to the foot when enabled. The center holds the task grid,
+no gap is left between panels. The left rail's repository/session composition is
+described in [Sessions](sessions.md), with Minecraft pinned to the foot when enabled.
+The center holds the task grid,
 the contribution calendar, and AI usage rows at the bottom. The right rail
 holds resource readings, the budget map, then weather and training. The
 standard 1920×1080 layout has 304px and 400px side rails and a flexible center.

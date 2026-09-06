@@ -54,11 +54,11 @@ See [Configuration](configuration.md) for the full variable table.
 ## Reading the panel
 
 A settled repository — clean, with no failed or running workflow — is a single
-muted line carrying just its name, plus its branch at the right edge when that
-branch is not a default (`GIT_DEFAULT_BRANCHES`). Being off main is the only
-reason a settled repository is worth reading, so nothing else is drawn for one.
+muted line carrying its name, plus its branch at the right edge when that
+branch is not a default (`GIT_DEFAULT_BRANCHES`). Session and CodeView presence
+are described in [Sessions in the repository panel](sessions.md).
 
-Any other repository takes two lines: its name with one badge, then the branch
+Any other repository starts with two lines: its name with one badge, then the branch
 and nonzero counts (`S` staged, `M` modified, `U` untracked, `C` conflicted,
 ahead, behind, and stash). Failed scans retain their error text in place of the
 counts.

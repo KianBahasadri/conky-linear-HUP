@@ -307,7 +307,7 @@ def test_generate_only_preserves_processes_logs_and_pid_files_and_honors_env(
         env=env,
     )
 
-    assert "Generated 18 overlay config(s) for 2 monitor(s)" in result.stdout
+    assert "Generated 16 overlay config(s) for 2 monitor(s)" in result.stdout
     assert pid_file.read_text(encoding="utf-8") == "99999999\n"
     assert not Path(env["PROCESS_CALLS"]).exists()
     assert not (repo / "cache" / "conky-linear.log.1").exists()
@@ -382,7 +382,25 @@ def test_generate_only_uses_cached_negative_coordinate_layout(tmp_path):
         env=launcher_env(repo, bin_dir, tmp_path),
     )
     assert "for 2 monitor(s)" in result.stdout
-    assert (repo / "conky" / "generated" / "sessions-overlay-1.conkyrc").is_file()
+    assert (repo / "conky" / "generated" / "git-overlay-1.conkyrc").is_file()
+    assert not list((repo / "conky" / "generated").glob("sessions-overlay-*.conkyrc"))
+
+
+@pytest.mark.parametrize("git,sessions,expected", [
+    ("1", "1", {"git"}), ("0", "1", {"sessions"}),
+    ("1", "0", {"git"}), ("0", "0", set()), ("off", "1", {"sessions"}),
+])
+def test_launcher_merges_session_window_and_prunes_previous_configs(tmp_path, git, sessions, expected):
+    repo, bin_dir = make_launcher_repo(tmp_path, "Monitors: 1\n 0: +*DP-1 1920/1x1080/1+0+0 DP-1\n")
+    generated = repo / "conky" / "generated"
+    generated.mkdir()
+    (generated / "sessions-overlay-0.conkyrc").write_text("previous standalone window")
+    env = {**launcher_env(repo, bin_dir, tmp_path), "GIT_OVERLAY_ENABLED": git,
+           "SESSIONS_OVERLAY_ENABLED": sessions}
+    subprocess.run([str(repo / "scripts" / "start_conky_overlays.sh"), "--generate-only"],
+                   check=True, capture_output=True, env=env)
+    assert {key for key in ("git", "sessions") if (generated / f"{key}-overlay-0.conkyrc").exists()} == expected
+    assert not Path(env["PROCESS_CALLS"]).exists()
 
 
 @pytest.mark.parametrize("generate_only", [True, False])

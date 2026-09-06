@@ -29,6 +29,106 @@ def repo_height(repo):
     return 44 if repo.get("actions") in ("fail", "run") else 26
 
 
+def enabled(env, key):
+    return env.get(key, "1").lower() not in {"0", "false", "no", "off", "disabled"}
+
+
+def merged_heights(repos, state, width, env):
+    """Conservative natural heights; Cairo measures and packs the actual rows.
+
+    Count only real sessions, resolve all attached device names, and keep
+    unmatched sessions and inbound logins in the allocation. The mono estimate
+    rounds up so a width-dependent extra line has room at launch.
+    """
+    def names(value):
+        return {name.strip() for name in (value or "").split(",") if name.strip()}
+
+    def path_of(value):
+        value = os.path.expanduser(value or "")
+        return os.path.normpath(value) if os.path.isabs(value) else None
+
+    def age(seconds):
+        if seconds is None or seconds < 0:
+            return "unknown"
+        for unit, scale in (("d", 86400), ("h", 3600), ("m", 60)):
+            if seconds >= scale:
+                return f"{int(seconds // scale)}{unit}"
+        return f"{int(seconds)}s"
+
+    default_branches = set(env.get("GIT_DEFAULT_BRANCHES", "main,master").replace(":", ",").replace(" ", ",").split(","))
+    groups = [{"repo": repo, "sessions": []} for repo in repos]
+    residual = []
+    sessions = [s for s in state.get("sessions") or [] if isinstance(s, dict)] if state.get("ok") else []
+    for session in sessions:
+        path = path_of(session.get("path"))
+        matches, named = [], []
+        for group in groups:
+            repo = group["repo"]
+            repo_path = path_of(repo.get("path"))
+            if path and repo_path:
+                if path == repo_path or path.startswith(repo_path + "/"):
+                    matches.append((len(repo_path), group))
+            elif session.get("repo") and repo.get("name") == session["repo"]:
+                named.append(group)
+        target = max(matches, key=lambda item: item[0])[1] if matches else named[0] if len(named) == 1 else None
+        if target is None:
+            residual.append({"repo": {}, "sessions": [session]})
+        else:
+            target["sessions"].append(session)
+
+    def group_height(group):
+        repo, records = group["repo"], group["sessions"]
+        live = [s for s in records if s.get("windows", 0) > 0]
+        devices = set().union(*(names(s.get("attached")) for s in live))
+        cv = next((s for s in records if s.get("codeviewRunning")),
+                  next((s for s in records if s.get("codeviewPresent")), None))
+        known_ages = [s.get("idleSeconds", -1) for s in live if s.get("idleSeconds", -1) is not None and s.get("idleSeconds", -1) >= 0]
+        session_text = ((f"{len(live)}× " if len(live) > 1 else "") + age(min(known_ages) if known_ages else -1)) if live else ""
+        cv_text = age(cv.get("codeviewIndexAgeSeconds", -1)) if cv and cv.get("codeviewRunning") else ""
+        cv_width = (len(cv_text) * 7.2 + 18 if cv_text else 14) if cv else 0
+        presence = len(session_text) * 7.2 + cv_width + (8 if live and cv else 0)
+        pitch = repo_height(repo) if repo else 26
+        branch = repo.get("branch", "") if pitch == 44 or repo.get("branch") not in default_branches else ""
+        available = width - 20
+        if (len(devices) > 1 or presence > available * 0.5
+                or (branch and min(width * 0.5, available - 96) - presence - (8 if presence else 0) < 48)):
+            pitch = 44
+        tokens = [prefix + str(repo.get(key)) for key, prefix in
+                  (("staged", "S"), ("modified", "M"), ("untracked", "U"), ("conflicted", "C"),
+                   ("ahead", "ahead "), ("behind", "behind "), ("stash", "stash ")) if repo.get(key, 0) > 0]
+        counts_width = len("  ".join(tokens)) * 7.2
+        if pitch == 44:
+            below = presence > 0 and (presence > width * 0.46 or counts_width + presence + (48 if branch else 0) + 24 > available)
+            detail_width = available - (presence + 12 if presence and not below else 0)
+            if len(tokens) > 1 and counts_width + (48 if branch else 0) + 12 > detail_width:
+                line, lines = "", 1
+                for token in tokens:
+                    candidate = (line + "  " if line else "") + token
+                    if line and len(candidate) * 7.2 > available:
+                        lines += 1
+                        line = token
+                    else:
+                        line = candidate
+                pitch += 18 * lines
+                below = presence > 0
+            if below:
+                pitch += 18
+        slots = min(3, len(devices)) + (len(devices) > 3)
+        return max(pitch, slots * 18 + 8)
+
+    heights = [group_height(group) for group in groups]
+    active = {s.get("name") for s in sessions if s.get("windows", 0) > 0}
+    logins = [d for d in state.get("devices") or [] if isinstance(d, dict)
+              and (d.get("state") == "alert" or not names(d.get("session")) & active)] if state.get("ok") else []
+    extra = [26 if d.get("state") == "alert" else 44 for d in logins]
+    extra += [group_height(group) for group in residual]
+    if heights and extra:
+        extra[0] += 8
+    if not state.get("ok"):
+        extra.append(44)
+    return heights + extra
+
+
 def cache_counts(cache_dir):
     cards = cache_object("linear-cards.json", cache_dir).get("cards", [])
     cards = [c for c in cards if isinstance(c, dict) and c.get("title")]
@@ -47,6 +147,7 @@ def cache_counts(cache_dir):
              if isinstance(r, dict)]
     return {"cards": len(cards), "accounts": accounts,
             "repos": len(repos), "repo_heights": [repo_height(r) for r in repos],
+            "repo_records": repos, "session_state": sessions,
             "sessions": len(sessions.get("devices") or []) + len(sessions.get("sessions") or []),
             "providers": len(cache_object("billing-usage.json", cache_dir).get("providers") or [])}
 
@@ -79,25 +180,28 @@ def plan(width, height, top=40, counts=None, env=None):
     quota_x = margin + left + quota_gutter
     quota_w = width - margin - right - quota_gutter - quota_x
 
-    # Left rail: repositories at the top, sessions pinned to the bottom left,
-    # with Minecraft pinned below sessions to the foot when enabled.
+    # Left rail: sessions join repositories at the top. The standalone sessions
+    # rectangle is used only when Git is disabled. Minecraft remains at the foot.
     # A disabled Minecraft panel keeps a valid rectangle; only its reservation
     # in the rail collapses, so the launcher can enable it without replanning.
     minecraft = env.get("MINECRAFT_OVERLAY_ENABLED", "1") != "0"
     minecraft_h = 100
     minecraft_foot = minecraft_h + gutter if minecraft else 0
-    # Session records are two lines on a 44px pitch; repository rows vary,
-    # since a settled one collapses to a single line, so the panel is sized to
-    # the records the cache actually holds.
-    git_limit = min(456, available * 0.45 - (76 if minecraft else 0))
+    merged = enabled(env, "GIT_OVERLAY_ENABLED") and enabled(env, "SESSIONS_OVERLAY_ENABLED")
+    git_limit = available - minecraft_foot
     repo_heights = counts.get("repo_heights") or [44] * (counts.get("repos", 0) or 1)
+    if merged:
+        if "repo_records" in counts:
+            repo_heights = merged_heights(counts["repo_records"], counts["session_state"], left, env) or [44]
+        else:
+            repo_heights = repo_heights + [44] * counts.get("sessions", 0)
     git_used = 0
     for pitch in repo_heights:
         if git_used + pitch > git_limit - 16:
             break
         git_used += pitch
     git_h = max(100, 16 + git_used)
-    max_sessions_available = height - margin - minecraft_foot - (top + git_h + gutter)
+    max_sessions_available = available - minecraft_foot
     sessions_limit = min(456, max(100, max_sessions_available))
     session_rows = max(1, min(counts.get("sessions", 0) or 1, int((sessions_limit - 16) // 44)))
     sessions_h = max(100, 16 + session_rows * 44)

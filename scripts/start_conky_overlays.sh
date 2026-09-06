@@ -750,6 +750,9 @@ stage_monitor() {
   resolve_monitor_layout "$monitor_width" "$monitor_height" "$top"
   for key in "${overlay_keys[@]}"; do
     overlay_enabled "$key" || continue
+    # Sessions still fetch independently; only their separate window disappears
+    # when the Git renderer consumes the session cache in the merged list.
+    if [[ "$key" == "sessions" ]] && overlay_enabled git; then continue; fi
     config_path="$GENERATED_DIR/$key-overlay-$monitor_index.conkyrc"
     generate_config "${overlay_config[$key]}" "$config_path" "${monitor_index/fallback/0}" \
       "${layout_x[$key]}" "${layout_y[$key]}" "${layout_height[$key]}" "${layout_width[$key]}"

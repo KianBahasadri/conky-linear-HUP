@@ -9,9 +9,9 @@ uv sync
 ./scripts/stop_conky_overlays.sh
 ```
 
-`start_conky_overlays.sh` stages one Linear, rate limit panel, Minecraft, GitHub,
-weather, system-resource, billing, git-status, and sessions config per
-detected monitor. It installs the complete set only after every config succeeds,
+`start_conky_overlays.sh` stages the enabled overlay configs for every detected
+monitor, using the [session composition](sessions.md#placement) for the left rail.
+It installs the complete set only after every config succeeds,
 then replaces the owned overlay windows and fetch loops; a generation failure
 therefore leaves the running desktop and last complete config set intact.
 

@@ -1,4 +1,5 @@
 import itertools
+import json
 
 import pytest
 
@@ -9,13 +10,20 @@ import overlay_layout
 @pytest.mark.parametrize("minecraft", [False, True])
 @pytest.mark.parametrize("github", [False, True])
 @pytest.mark.parametrize("count", [0, 1, 30, 150])
-def test_planned_windows_fit_without_overlap_under_changing_record_counts(size, minecraft, github, count):
+@pytest.mark.parametrize("git,sessions", [(True, True), (True, False), (False, True)])
+def test_planned_windows_fit_without_overlap_under_changing_record_counts(size, minecraft, github, count, git, sessions):
     width, height = size
     counts = dict.fromkeys(("cards", "accounts", "repos", "sessions", "providers"), count)
     windows = overlay_layout.plan(width, height, 40, counts, {
         "MINECRAFT_OVERLAY_ENABLED": str(int(minecraft)),
         "GITHUB_OVERLAY_ENABLED": str(int(github)),
+        "GIT_OVERLAY_ENABLED": str(int(git)),
+        "SESSIONS_OVERLAY_ENABLED": str(int(sessions)),
     })
+    if git or not sessions:
+        windows.pop("sessions")
+    if not git:
+        windows.pop("git")
     if not minecraft:
         windows.pop("minecraft")
     if not github:
@@ -53,3 +61,32 @@ def test_cache_counts_follow_linear_urgency_filter_and_keep_empty_account_rows(t
     assert counts["cards"] == 3
     assert counts["accounts"] == 1
     assert counts["sessions"] == 0
+
+
+def test_merged_allocation_counts_joined_sessions_once_and_keeps_residuals(tmp_path):
+    repos = [{"name": name, "path": "/work/" + name, "ok": True,
+              "state": "clean", "actions": "ok", "branch": "main"}
+             for name in ("alpha", "bravo", "charlie", "delta", "echo", "foxtrot")]
+    repos[0].update(state="dirty", modified=11, untracked=1, branch="checkpoint/long-branch")
+    sessions = {"ok": True, "devices": [{"name": "laptop", "glyph": "laptop", "session": "edit", "state": "live"}],
+                "sessions": [
+                    {"name": "edit", "repo": "bravo", "path": "/work/bravo/src", "windows": 1,
+                     "attached": "laptop", "idleSeconds": 79, "codeviewPresent": True},
+                    {"name": "charlie", "repo": "charlie", "path": "/work/charlie", "windows": 0,
+                     "codeviewPresent": True},
+                ]}
+    (tmp_path / "git-status.json").write_text(json.dumps({"ok": True, "repos": repos}))
+    (tmp_path / "sessions.json").write_text(json.dumps(sessions))
+    counts = overlay_layout.cache_counts(tmp_path)
+    plan = overlay_layout.plan(1920, 1080, 40, counts, {})
+    assert plan["git"][3] == 190  # six rows at 174px plus the 16px footer allowance
+    sessions["sessions"][0]["attached"] = "laptop, phone"
+    sessions["devices"].extend([
+        {"name": "phone", "glyph": "phone", "session": "edit", "state": "live"},
+        {"name": "unknown", "glyph": "alert", "session": "edit", "state": "alert"},
+    ])
+    sessions["sessions"].append({"name": "same-name-other-repo", "repo": "bravo", "path": "/other/bravo", "windows": 1})
+    heights = overlay_layout.merged_heights(repos, sessions, 248, {})
+    assert len(heights) == 8  # six repositories, an attached alert, and a distinct repo session
+    assert heights[1] >= 44  # both devices get their own vertical slot
+    assert sum(heights) > 174
