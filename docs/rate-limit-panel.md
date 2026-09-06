@@ -2,11 +2,12 @@
 
 ## Display
 
-Each row names the provider and account, followed by its quota windows. Window
-labels and reset countdowns flank the flat observed-data bars on either side.
-Selected profiles use a neutral raised row and a medium-weight account name.
-Provider identity does not determine bar color. Shared typography, colors, and
-overflow are owned by the [Desktop design system](design-system.md).
+Each row displays the provider mark (brand logo) on the first row of its group,
+followed by the account name and quota windows. Window labels and reset countdowns
+flank the flat observed-data bars on either side. Selected profiles use a neutral
+raised row and a medium-weight account name. Provider identity does not determine
+bar color. Shared typography, colors, and overflow are owned by the
+[Desktop design system](design-system.md).
 
 - Accounts sort alphabetically within each provider, regardless of plan tier.
 - A row without usable windows remains visible with `Retrying:` and its error.
@@ -18,7 +19,7 @@ overflow are owned by the [Desktop design system](design-system.md).
   no pending reset shows its full span (`5h left`, `7d left`) and no pace tick.
   `wait` means the countdown ended while usage remains.
 - The provider's average pace delta in percent (`%`) sits beside its
-  name on the first row of each group, in derived-data color. There is no
+  brand logo on the first row of each group, in derived-data color. There is no
   separate summary row and no combined pace value. The vertical tick on each
   eligible bar uses the same derived color.
 - Cache refreshes do not resize or reload windows. Startup bounds the list and

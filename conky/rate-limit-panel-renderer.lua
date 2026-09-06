@@ -761,19 +761,23 @@ return function(shared, repo_root)
       end
       local rh = row_height(width)
       local first, last, page = ui.rows(#accounts, height, rh, 0)
-      local provider_width, name_width = width < 880 and 96 or 112, width < 880 and 48 or 56
+      local provider_width, name_width = width < 880 and 56 or 64, width < 880 and 48 or 56
       for index = first, last do
         local account = accounts[index]
         local y = (index - first) * rh
         if account.is_selected then ui.rect(cr, 0, y, width, rh, ui.raised, 4) end
         if index == first or accounts[index - 1].provider ~= account.provider then
           -- The provider's average pace delta is a derived value; it sits beside
-          -- the group label rather than in a separate summary row.
+          -- the group mark rather than in a separate summary row.
           local delta = calculate_provider_average_pace(accounts, account.provider)
           local delta_width = ui.text(cr, delta and string.format('%+.0f%%', delta) or '—',
             provider_width - 6, y + 13, {size = 11, mono = true, color = ui.derived, align = 'right'})
-          ui.text(cr, provider_labels[account.provider] or account.provider, 6, y + 13,
-            {size = 13.5, color = ui.muted, width = provider_width - delta_width - 12})
+          local pkey = provider_name(account)
+          local mark_drawn = ui.mark(cr, pkey, 12, y + 9, 12, account.is_selected and ui.strong or ui.ink)
+          if not mark_drawn then
+            ui.text(cr, provider_labels[account.provider] or account.provider, 6, y + 13,
+              {size = 13.5, color = ui.muted, width = provider_width - delta_width - 12})
+          end
         end
         ui.text(cr, account.label, provider_width, y + 13,
           {size = 13.5, bold = account.is_selected and 'medium' or nil,

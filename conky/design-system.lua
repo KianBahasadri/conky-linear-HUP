@@ -300,7 +300,7 @@ return function(shared)
   end
 
   -- Provider mark centered on (x, y). Wide marks use 1.2× `size` for their width.
-  function ui.mark(cr, key, x, y, size)
+  function ui.mark(cr, key, x, y, size, color)
     local mark = key and ui.marks[key]
     if not mark then return false end
     local mark_width = mark.ratio > 1.8 and size * 1.2 or size
@@ -324,11 +324,13 @@ return function(shared)
       ui.path(cr, piece.d)
       cairo_set_fill_rule(cr, piece.evenodd and (CAIRO_FILL_RULE_EVEN_ODD or 1) or (CAIRO_FILL_RULE_WINDING or 0))
       if piece.fill ~= 'none' then
-        shared.set_hex(cr, piece.fill == 'currentColor' and ui.strong or piece.fill, piece.opacity or 1)
+        local fill_color = piece.fill == 'currentColor' and (color or ui.strong) or piece.fill
+        shared.set_hex(cr, fill_color, piece.opacity or 1)
         if piece.stroke then cairo_fill_preserve(cr) else cairo_fill(cr) end
       end
       if piece.stroke then
-        shared.set_hex(cr, piece.stroke, 1)
+        local stroke_color = piece.stroke == 'currentColor' and (color or ui.strong) or piece.stroke
+        shared.set_hex(cr, stroke_color, 1)
         local stroke_width = piece.stroke_width or 1
         if piece.non_scaling then stroke_width = stroke_width / (scale * piece_scale) end
         cairo_set_line_width(cr, stroke_width)
