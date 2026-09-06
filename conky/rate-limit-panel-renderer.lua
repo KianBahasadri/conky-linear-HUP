@@ -482,7 +482,7 @@ return function(shared, repo_root)
 
   local function format_window_countdown(window)
     if window_has_not_started(window) then
-      return format_window_span(window_duration(window)) .. ' left'
+      return format_window_span(window_duration(window))
     end
     return format_reset(seconds_until_reset(window))
   end
@@ -638,6 +638,15 @@ return function(shared, repo_root)
     -- Every expired/stale account: keep cached fill and reset until that
     -- window's reset time has already passed.
     return account.stale and window_reset_has_passed(window)
+  end
+
+  local function account_has_filled_bar(account, wins)
+    for _, window in ipairs(wins or {}) do
+      if not window_needs_refresh(account, window) and (window.used_percent or 0) >= 100 then
+        return true
+      end
+    end
+    return false
   end
 
   local function get_row_windows(account)
@@ -800,11 +809,14 @@ return function(shared, repo_root)
               {size = 13.5, color = ui.muted, width = provider_width - delta_width - 12})
           end
         end
+        local wins = get_row_windows(account)
+        local has_filled_bar = account_has_filled_bar(account, wins)
+        local name_color = has_filled_bar and ui.danger
+          or (account.is_selected and ui.strong or ui.ink)
         ui.text(cr, account.label, provider_width, y + 13,
           {size = 13.5, bold = account.is_selected and 'medium' or nil,
-            color = account.is_selected and ui.strong or ui.ink, width = name_width - 4})
+            color = name_color, width = name_width - 4})
         local x = provider_width + name_width
-        local wins = get_row_windows(account)
         if #wins == 0 then
           ui.text(cr, 'Retrying: ' .. (account.error ~= '' and account.error or 'No usable windows'),
             x, y + 13, {size = 12, color = ui.danger, width = width - x - 8})
@@ -829,5 +841,6 @@ return function(shared, repo_root)
   end
 
   return {draw = draw, height_spacer = height_spacer,
-    _test = {read_ai_usage = read_ai_usage, sort_accounts = sort_accounts}}
+    _test = {read_ai_usage = read_ai_usage, sort_accounts = sort_accounts,
+             account_has_filled_bar = account_has_filled_bar}}
 end

@@ -13,12 +13,12 @@ overflow are owned by the [Desktop design system](design-system.md).
 
 - Accounts sort alphabetically within each provider, regardless of plan tier.
 - A row without usable windows remains visible with `Retrying:` and its error.
-- Full windows do not display a `full` text label; the 100% bar fill and danger color indicate capacity exhaustion.
+- Full windows do not display a `full` text label; the 100% bar fill and danger color indicate capacity exhaustion, and the account name turns danger color if any of its displayed bars are filled.
 - Expired/stale accounts keep their cached fill and reset time until that
   window's absolute reset passes, then show `Refresh`. See
   [Expired credentials and stale cache](expired-credentials.md).
 - Reset labels count down (`3h 16m`, `6d 8h`). A window with nothing used and
-  no pending reset shows its full span (`5h left`, `7d left`) and no pace tick.
+  no pending reset shows its full span (`5h`, `7d`) and no pace tick.
   `wait` means the countdown ended while usage remains.
 - The provider's average pace delta in percent (`%`) sits beside its
   brand logo on the first row of each group, in derived-data color. There is no

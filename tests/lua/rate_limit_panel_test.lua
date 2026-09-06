@@ -91,6 +91,18 @@ eq(table.concat(ordered, ','),
   'Codex:ahmad,Codex:bashir,Codex:kian,Codex:sepehr,Cursor:21kb60,Cursor:kian,Cursor:sepehr,Gemini:baba,Gemini:kian',
   'accounts within each provider are sorted alphabetically without separating free accounts')
 
+local has_filled = renderer._test.account_has_filled_bar
+local normal_acct = { stale = false }
+local partial_wins = { { used_percent = 50.0 }, { used_percent = 0.0 } }
+local full_wins = { { used_percent = 50.0 }, { used_percent = 100.0 } }
+local over_wins = { { used_percent = 105.0 } }
+local refresh_wins = { { used_percent = 100.0, needs_refresh = true } }
+
+eq(has_filled(normal_acct, partial_wins), false, 'partial bars do not trigger filled status')
+eq(has_filled(normal_acct, full_wins), true, '100% bar triggers filled status')
+eq(has_filled(normal_acct, over_wins), true, 'over 100% bar triggers filled status')
+eq(has_filled(normal_acct, refresh_wins), false, 'refresh-needed bar does not trigger filled status')
+
 if failures > 0 then
   print(failures .. ' failure(s)')
   os.exit(1)
