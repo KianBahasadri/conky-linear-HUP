@@ -462,6 +462,32 @@ return function(shared)
     return 1, math.max(1, last), ''
   end
 
+  -- Variable-height records packed into pages, rotating like `ui.page`.
+  function ui.pack(heights, height, top, period)
+    if #heights == 0 then return 1, 0, '' end
+    top = top or 0
+    local function pages_for(available)
+      local pages, current, used = {}, {}, 0
+      for index, value in ipairs(heights) do
+        local pitch = math.max(1, value)
+        if #current > 0 and used + pitch > available then
+          pages[#pages + 1] = current
+          current, used = {}, 0
+        end
+        current[#current + 1] = index
+        used = used + pitch
+      end
+      if #current > 0 then pages[#pages + 1] = current end
+      return pages
+    end
+    local pages = pages_for(math.max(1, height - top))
+    if #pages <= 1 then return 1, #heights, '' end
+    pages = pages_for(math.max(1, height - top - 16))
+    local slots = pages[math.floor(os.time() / (period or 30)) % #pages + 1]
+    return slots[1], slots[#slots],
+      string.format('%d–%d of %d', slots[1], slots[#slots], #heights)
+  end
+
   function ui.footer(cr, text, width, height, color)
     if text and text ~= '' then
       ui.text(cr, text, width, height - 4, {size = 11, mono = true, color = color or ui.muted, align = 'right'})

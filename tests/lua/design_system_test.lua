@@ -52,6 +52,17 @@ assert(over_footer_first == 1 and over_footer_last == 1, 'overflowing stack with
 local tall_first, tall_last = ui.stack({200, 26}, 100, 0)
 assert(tall_first == 1 and tall_last == 1, 'an oversized first record is still displayed')
 
+-- Variable-height records pack whole rows into pages and rotate.
+os.time = function() return 0 end
+local pack_first, pack_last, pack_label = ui.pack({18, 18, 36, 18}, 200, 0)
+assert(pack_first == 1 and pack_last == 4 and pack_label == '', 'a fitting pack must not page')
+local _, page_last, page_label = ui.pack({18, 18, 36, 18, 18, 18, 18, 18, 18, 18}, 90, 0)
+assert(page_last == 3 and page_label ~= '', 'an overflowing pack reserves its footer and pages whole records')
+os.time = function() return 30 end
+local page2_first = ui.pack({18, 18, 36, 18, 18, 18, 18, 18, 18, 18}, 90, 0)
+assert(page2_first > 1, 'pack pages rotate')
+os.time = original_time
+
 assert(ui.radius('danger') == 0, 'danger shapes are square')
 assert(ui.radius('caution') == 4, 'caution shapes are intermediate')
 assert(ui.radius('good') == 6 and ui.radius(nil, 10) == 10, 'good shapes keep the base radius')

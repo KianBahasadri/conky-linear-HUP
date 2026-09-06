@@ -740,9 +740,32 @@ return function(shared, repo_root)
 
   local function row_height(width) return width < 760 and 76 or width < 880 and 40 or 18 end
 
+  -- Pro Gemini has both 5h and weekly pools: stack Gem/Other tightly within
+  -- each duration column so the pair stays on one account row. Free Gemini
+  -- is weekly-only and stays a single row of full-size bars.
+  local function gemini_duration_columns(wins)
+    local five, week = {}, {}
+    for _, window in ipairs(wins or {}) do
+      if normalized_window_label(window):find('weekly', 1, true) then
+        week[#week + 1] = window
+      else
+        five[#five + 1] = window
+      end
+    end
+    if #five == 0 or #week == 0 then return nil end
+    return {five, week}
+  end
+
+  local function account_pitch(width, account, wins)
+    return row_height(width)
+  end
+
   -- One quota window: label and countdown on the sides of a flat observed bar
   -- with a derived-color tick at the expected on-pace position.
-  local function draw_window(cr, account, window, x, y, width, show_pace, tall)
+  local function draw_window(cr, account, window, x, y, width, show_pace, tall, band, bar_align)
+    band = band or 18
+    local compact = band < 16
+    local size = compact and 9 or 11
     local refresh = window_needs_refresh(account, window)
     local used = shared.clamp(window.used_percent or 0, 0, 100)
     local norm_label = normalized_window_label(window)
@@ -755,38 +778,49 @@ return function(shared, repo_root)
     end
     local count = refresh and 'Refresh' or format_window_countdown(window)
     local color = refresh and ui.caution or used >= 100 and ui.danger or ui.accent
+    local text_y = compact and (y + band - 1) or (y + 13)
+    local bar_h = 3
+    local by
+    if not compact then
+      by = y + 9
+    elseif bar_align == 'start' then
+      by = y + 1
+    elseif bar_align == 'end' then
+      by = y + band - bar_h - 1
+    else
+      by = y + math.floor((band - bar_h) / 2)
+    end
 
-    local nw = (name ~= '') and ui.width(cr, name, 11, true) or 0
-    local count_width = ui.width(cr, '00d 00h', 11, true)
+    local nw = (name ~= '') and ui.width(cr, name, size, true) or 0
+    local count_width = ui.width(cr, '00d 00h', size, true)
     local count_x = x + width - count_width
-    local gap = 6
+    local gap = compact and 4 or 6
     local bx = (nw > 0) and (x + nw + gap) or x
     local bx2 = count_x - gap
     local bw = math.max(10, bx2 - bx)
 
     if nw > 0 then
-      ui.text(cr, name, x, y + 13, {size = 11, mono = true, color = used >= 100 and ui.danger or ui.muted})
+      ui.text(cr, name, x, text_y, {size = size, mono = true, color = used >= 100 and ui.danger or ui.muted})
     end
     -- Two-part countdowns left-align each quantity in a 3-character field
     -- so both number columns share x-positions across rows.
     local count_color = refresh and ui.caution or ui.muted
     local first, second = count:match('^(%S+)%s+(%S+)$')
     if first then
-      ui.text(cr, first, count_x, y + 13, {size = 11, mono = true, color = count_color})
-      ui.text(cr, second, count_x + ui.width(cr, '00d ', 11, true), y + 13,
-        {size = 11, mono = true, color = count_color})
+      ui.text(cr, first, count_x, text_y, {size = size, mono = true, color = count_color})
+      ui.text(cr, second, count_x + ui.width(cr, '00d ', size, true), text_y,
+        {size = size, mono = true, color = count_color})
     else
-      ui.text(cr, count, count_x, y + 13, {size = 11, mono = true, color = count_color})
+      ui.text(cr, count, count_x, text_y, {size = size, mono = true, color = count_color})
     end
 
-    local by = y + 9
-    ui.rect(cr, bx, by, bw, 3, ui.line, 0)
-    if not refresh then ui.rect(cr, bx, by, bw * used / 100, 3, color, 0) end
+    ui.rect(cr, bx, by, bw, bar_h, ui.line, 0)
+    if not refresh then ui.rect(cr, bx, by, bw * used / 100, bar_h, color, 0) end
     if show_pace and not refresh then
       local pace = calculate_window_pace(window, window_duration(window))
       if pace and pace.expected > 0 then
         local px = bx + bw * pace.expected / 100
-        ui.line_between(cr, px, by - 2, px, by + 5, ui.derived, 1)
+        ui.line_between(cr, px, by - 1, px, by + bar_h + 1, ui.derived, 1)
       end
     end
   end
@@ -800,45 +834,85 @@ return function(shared, repo_root)
         return
       end
       local rh = row_height(width)
-      local first, last, page = ui.rows(#accounts, height, rh, 0)
+      local windows_for, heights = {}, {}
+      for index, account in ipairs(accounts) do
+        windows_for[index] = get_row_windows(account)
+        heights[index] = account_pitch(width, account, windows_for[index])
+      end
+      local first, last, page = ui.pack(heights, height, 0)
       local provider_width, name_width = width < 880 and 56 or 64, width < 880 and 48 or 56
+      local y = 0
       for index = first, last do
         local account = accounts[index]
-        local y = (index - first) * rh
-        if account.is_selected then ui.rect(cr, 0, y, width, rh, ui.raised, 4) end
+        local pitch = heights[index]
+        local wins = windows_for[index]
+        if account.is_selected then ui.rect(cr, 0, y, width, pitch, ui.raised, 4) end
+        local name_baseline = y + 13
         if index == first or accounts[index - 1].provider ~= account.provider then
           -- The provider's average pace delta is a derived value; it sits beside
           -- the group mark rather than in a separate summary row.
           local delta = calculate_provider_average_pace(accounts, account.provider)
           local delta_width = ui.text(cr, delta and string.format('%+.0f%%', delta) or '—',
-            provider_width - 6, y + 13, {size = 11, mono = true, color = ui.derived, align = 'right'})
+            provider_width - 6, name_baseline, {size = 11, mono = true, color = ui.derived, align = 'right'})
           local pkey = provider_name(account)
-          local mark_drawn = ui.mark(cr, pkey, 12, y + 9, 12, account.is_selected and ui.strong or ui.ink)
+          local mark_drawn = ui.mark(cr, pkey, 12, name_baseline - 4, 12, account.is_selected and ui.strong or ui.ink)
           if not mark_drawn then
-            ui.text(cr, provider_labels[account.provider] or account.provider, 6, y + 13,
+            ui.text(cr, provider_labels[account.provider] or account.provider, 6, name_baseline,
               {size = 13.5, color = ui.muted, width = provider_width - delta_width - 12})
           end
         end
-        local wins = get_row_windows(account)
         local has_filled_bar = account_has_filled_bar(account, wins)
         local name_color = has_filled_bar and ui.danger
           or (account.is_selected and ui.strong or ui.ink)
-        ui.text(cr, account.label, provider_width, y + 13,
+        ui.text(cr, account.label, provider_width, name_baseline,
           {size = 13.5, bold = account.is_selected and 'medium' or nil,
             color = name_color, width = name_width - 4})
         local x = provider_width + name_width
         if #wins == 0 then
           ui.text(cr, 'Retrying: ' .. (account.error ~= '' and account.error or 'No usable windows'),
-            x, y + 13, {size = 12, color = ui.danger, width = width - x - 8})
+            x, name_baseline, {size = 12, color = ui.danger, width = width - x - 8})
         else
-          local window_columns = width < 760 and math.min(2, #wins) or #wins
-          local ww = (width - x) / window_columns
+          local columns = provider_name(account) == 'gemini' and gemini_duration_columns(wins)
           local show_pace = not is_free_account(account) or provider_is_free_only(accounts, account.provider)
-          for i, window in ipairs(wins) do
-            draw_window(cr, account, window, x + ((i - 1) % window_columns) * ww,
-              y + math.floor((i - 1) / window_columns) * 36, ww - 16, show_pace, rh > 24)
+          if columns then
+            local ww = (width - x) / #columns
+            local lines = 1
+            for _, group in ipairs(columns) do lines = math.max(lines, #group) end
+            local band = pitch / lines
+            for col, group in ipairs(columns) do
+              for row, window in ipairs(group) do
+                local align = row == 1 and 'start' or row == #group and 'end' or nil
+                draw_window(cr, account, window, x + (col - 1) * ww,
+                  y + (row - 1) * band, ww - 16, show_pace, pitch > 24, band, align)
+              end
+            end
+          else
+            local window_columns = width < 760 and math.min(2, #wins) or #wins
+            local ww = (width - x) / window_columns
+            for i, window in ipairs(wins) do
+              draw_window(cr, account, window, x + ((i - 1) % window_columns) * ww,
+                y + math.floor((i - 1) / window_columns) * 36, ww - 16, show_pace, pitch > 24)
+            end
           end
         end
+        y = y + pitch
+      end
+      -- Faint rounded frames around each provider cluster. Drawn last so the
+      -- stroke sits on top of selected-row fills. Inset 1px so adjacent
+      -- groups do not share an edge.
+      local gy, gstart = 0, first
+      while gstart <= last do
+        local provider = accounts[gstart].provider
+        local gend, gh = gstart, 0
+        while gend <= last and accounts[gend].provider == provider do
+          gh = gh + heights[gend]
+          gend = gend + 1
+        end
+        if gend - gstart > 1 then
+          ui.rect(cr, 1, gy + 1, width - 2, math.max(1, gh - 2), ui.line, 6, 1, 1)
+        end
+        gy = gy + gh
+        gstart = gend
       end
       ui.footer(cr, page, width, height)
     end)
@@ -852,5 +926,7 @@ return function(shared, repo_root)
 
   return {draw = draw, height_spacer = height_spacer,
     _test = {read_ai_usage = read_ai_usage, sort_accounts = sort_accounts,
-             account_has_filled_bar = account_has_filled_bar}}
+             account_has_filled_bar = account_has_filled_bar,
+             gemini_duration_columns = gemini_duration_columns,
+             account_pitch = account_pitch}}
 end

@@ -12,7 +12,8 @@ Pool-distinguishing labels (like `Auto`, `API`, `Reserve`, or Gemini model famil
 on the left. Standard interval windows (`5h`, `7d`, `Month`) omit the leading label so
 bars start directly beside the account name.
 Selected profiles use a neutral raised row and a medium-weight account name.
-Provider identity does not determine bar color. Shared typography, colors, and
+Providers with more than one visible account sit inside a faint rounded outline
+so those clusters read as a group. Single-account providers stay unframed. Provider identity does not determine bar color. Shared typography, colors, and
 overflow are owned by the [Desktop design system](design-system.md).
 
 - Accounts sort alphabetically within each provider, regardless of plan tier.
@@ -66,7 +67,7 @@ profiles live in `~/.local/share/clusterfork-auth/`.
 ## Gemini
 
 - Accounts are discovered from Antigravity's rotation state in `~/.gemini/antigravity-cli/rotate-auth`. The selected profile reads the live GNOME Keyring item `service=gemini username=antigravity`; inactive profiles read `service=rotate-antigravity username=<profile>`.
-- Usage is fetched from Antigravity's Code Assist API (`retrieveUserQuotaSummary`). Pro accounts render four quota bars: Gemini 5-hour and Gemini weekly (labelled `Gem`), and Other/Claude/GPT 5-hour and Other/Claude/GPT weekly (labelled `Other`). Free accounts render two weekly bars (`Gem` and `Other`). Paid tiers (such as Google AI Pro) are recognized from the account's `paidTier` subscription.
+- Usage is fetched from Antigravity's Code Assist API (`retrieveUserQuotaSummary`). Pro accounts render four quota bars as a compact 2×2 in one row: Gemini and Other 5-hour stacked tightly in the first column, Gemini and Other weekly stacked in the second, both labelled `Gem` / `Other`. Free accounts render two weekly bars (`Gem` and `Other`) on one row. Paid tiers (such as Google AI Pro) are recognized from the account's `paidTier` subscription.
 - `GEMINI_ANTIGRAVITY_STATE_DIR` overrides the rotation state directory, `GEMINI_CODE_ASSIST_ENDPOINT` overrides the Antigravity API endpoint, `GEMINI_ANTIGRAVITY_CLI` overrides the `agy` executable, and `GEMINI_AUTH_REFRESH_TIMEOUT_SECONDS` controls the refresh timeout.
 
 ## Grok

@@ -103,6 +103,25 @@ eq(has_filled(normal_acct, full_wins), true, '100% bar triggers filled status')
 eq(has_filled(normal_acct, over_wins), true, 'over 100% bar triggers filled status')
 eq(has_filled(normal_acct, refresh_wins), false, 'refresh-needed bar does not trigger filled status')
 
+local gemini_wins = {
+  {label = 'gemini-5h'}, {label = 'gemini-weekly'},
+  {label = 'other-5h'}, {label = 'other-weekly'},
+}
+local columns = renderer._test.gemini_duration_columns(gemini_wins)
+eq(columns ~= nil, true, 'pro Gemini windows split into duration columns')
+eq(columns[1][1].label, 'gemini-5h', '5h column starts with Gem')
+eq(columns[1][2].label, 'other-5h', '5h column stacks Other under Gem')
+eq(columns[2][1].label, 'gemini-weekly', 'weekly column starts with Gem')
+eq(columns[2][2].label, 'other-weekly', 'weekly column stacks Other under Gem')
+eq(renderer._test.gemini_duration_columns({{label = 'gemini-weekly'}, {label = 'other-weekly'}}) == nil, true,
+  'weekly-only Gemini stays a single row')
+eq(renderer._test.account_pitch(1040, {provider = 'Gemini'}, gemini_wins), 18,
+  'pro Gemini keeps one row with the compact 2×2 stack')
+eq(renderer._test.account_pitch(1040, {provider = 'Gemini'}, {{label = 'gemini-weekly'}}), 18,
+  'free Gemini keeps a single line')
+eq(renderer._test.account_pitch(1040, {provider = 'Codex'}, gemini_wins), 18,
+  'non-Gemini accounts keep a single line')
+
 if failures > 0 then
   print(failures .. ' failure(s)')
   os.exit(1)
