@@ -131,9 +131,9 @@ eq(linear_inst.title_color({state = 'In Progress', done = true}), shared.ui.mute
   'completed in-progress task title is muted')
 
 -- Upstairs describe behavior:
--- In Progress and Todo labels are dropped (conveyed via title contrast).
+-- In Progress, Todo, and Done labels are dropped.
 -- Nonessential labels (e.g. Bug) are dropped.
--- Deadlines move upstairs. Urgency and Done states remain.
+-- Deadlines move upstairs. Urgency states remain.
 local s, t = linear_inst.describe({state = 'In Progress', due_date = ''})
 eq(s, '', 'in-progress without deadline has no state text')
 eq(t, 'neutral', 'in-progress has neutral tone')
@@ -162,7 +162,7 @@ eq(s7, 'Due today', 'due today card shows Due today')
 eq(t7, 'danger', 'due today card has danger tone')
 
 local s8, t8 = linear_inst.describe({done = true, due_date = 'Sep 05'})
-eq(s8, 'Done', 'done card shows Done')
+eq(s8, '', 'done card has no state text')
 eq(t8, 'good', 'done card has good tone')
 
 if failures > 0 then

@@ -102,7 +102,6 @@ return function(shared, repo_root)
     local parts = {}
     local tone
     if card.done then
-      parts[#parts + 1] = 'Done'
       tone = 'good'
     elseif card.due_today then
       parts[#parts + 1] = 'Due today'
