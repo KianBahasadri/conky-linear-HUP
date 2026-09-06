@@ -130,7 +130,7 @@ return function(shared, repo_root)
   end
 
   local function layout_row(cr, row, width)
-    local layout = {branch = '', counts = '', tokens = {}, count_lines = {}, session_text = '', cv_text = '',
+    local layout = {branch = '', counts = '', tokens = {}, count_lines = {}, session_text = '',
       presence_width = 0, branch_width = 0, counts_width = 0, pitch = settled_pitch}
     local function measure(text) return ui.width(cr, text, 12, true) end
     if row.repo then
@@ -145,13 +145,12 @@ return function(shared, repo_root)
     elseif row.error then
       layout.label, layout.kind, layout.tokens = 'Unavailable', 'danger', {row.error}
     end
-    if row.cv and row.cv.running then layout.cv_text = ui.ago(row.cv.age) end
     local sw = measure(layout.session_text)
-    local cw = row.cv and (row.cv.running and measure(layout.cv_text) + 18 or 14) or 0
+    local cw = row.cv and 14 or 0
     local dev_count = #row.devices
     local dw = 0
     if dev_count > 0 then
-      dw = dev_count * 14 + (dev_count - 1) * 4
+      dw = dev_count * 14 + (dev_count - 1) * 6
     end
     local pw = 0
     local parts = 0
@@ -207,14 +206,9 @@ return function(shared, repo_root)
   local function draw_presence(cr, row, layout, right, baseline)
     local icon_y = baseline - 11
     if row.cv then
-      -- CodeView identity and state use neutral ink, including old indexes.
+      -- CodeView identity and state use neutral ink.
       ui.icon(cr, row.cv.running and 'eye' or 'eye-closed', right - 14, icon_y, 14, ui.muted)
       right = right - 14
-      if layout.cv_text ~= '' then
-        right = right - 4
-        right = right - ui.text(cr, layout.cv_text, right, baseline,
-          {size = 12, mono = true, color = ui.muted, align = 'right'})
-      end
       if #row.devices > 0 or layout.session_text ~= '' then
         right = right - 6
       end
@@ -223,7 +217,7 @@ return function(shared, repo_root)
       for index = #row.devices, 1, -1 do
         ui.icon(cr, row.devices[index].glyph, right - 14, icon_y, 14, ui.muted)
         right = right - 14
-        if index > 1 then right = right - 4 end
+        if index > 1 then right = right - 6 end
       end
       if layout.session_text ~= '' then
         right = right - 6

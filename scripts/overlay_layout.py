@@ -88,10 +88,9 @@ def merged_heights(repos, state, width, env):
             marks.extend(attached or ["terminal"])
         cv = next((s for s in records if s.get("codeviewRunning")),
                   next((s for s in records if s.get("codeviewPresent")), None))
-        cv_text = age(cv.get("codeviewIndexAgeSeconds", -1)) if cv and cv.get("codeviewRunning") else ""
-        cv_width = (len(cv_text) * 7.2 + 18 if cv_text else 14) if cv else 0
+        cv_width = 14 if cv else 0
         dev_count = len(marks)
-        dev_width = (dev_count * 14 + (dev_count - 1) * 4) if dev_count > 0 else 0
+        dev_width = (dev_count * 14 + (dev_count - 1) * 6) if dev_count > 0 else 0
         parts = (1 if cv_width > 0 else 0) + (1 if dev_width > 0 else 0)
         presence = cv_width + dev_width + (max(0, parts - 1) * 6)
         pitch = repo_height(repo) if repo else 18

@@ -92,13 +92,13 @@ Attached devices show neutral Lucide laptop, phone, or monitor glyphs sitting
 horizontally next to the CodeView glyph in the row's presence section on the right,
 eliminating the left gutter. A terminal glyph stands for a session with no resolved
 device. Each live session contributes its attached device glyphs, so four sessions
-on one laptop draw four laptop glyphs. Crowded presence drops to its own line.
+on one laptop draw four laptop glyphs. Presence glyphs share a uniform 6px gap (20px
+pitch on 14px icons), keeping device and CodeView icons aligned into consistent
+vertical columns across adjacent rows. Crowded presence drops to its own line.
 
-Session idle time is not drawn. Running CodeView has an open
-Lucide eye with the index age beside it; stopped CodeView has a closed eye with
-no status text. Neither `tmux`, `cv`, nor `off` is printed. Eyes and index ages
-always use neutral grey, including old indexes. CodeView age does not trigger
-a yellow or red treatment. Unknown CodeView ages say `unknown`.
+Session idle time and CodeView index age are not drawn. Running CodeView has an open
+Lucide eye; stopped CodeView has a closed eye. Neither `tmux`, `cv`, `off`, nor index
+timestamps are printed. Eyes always use neutral grey.
 
 Individual session names, window counts, and pane counts are omitted from joined
 repository rows. They remain in the cache.

@@ -84,7 +84,7 @@ assert(mark_count('laptop-minimal') == 2 and mark_count('smartphone') == 1,
   'one glyph per session attachment, including repeats on the same host')
 assert(count('2×') == 0, 'session count is the glyphs')
 assert(count('15s') == 0 and count('1m') == 0, 'session idle is not drawn')
-assert(mark_count('eye') == 1 and count('2h') == 1, 'running CodeView keeps its open eye and index age')
+assert(mark_count('eye') == 1 and count('2h') == 0, 'running CodeView keeps its open eye without index age text')
 assert(mark_count('eye-closed') == 1 and count('off') == 0, 'stopped CodeView uses a closed eye without text')
 assert(count('CI failed') == 1 and count('M11  U1') == 1, 'health badges and counts must survive long branches')
 for _, box in ipairs(boxes) do
@@ -167,4 +167,35 @@ for _, box in ipairs(boxes) do
   if box.text == 'S1' then assert(box.color == ui.muted, 'wrapped staged count must be muted') end
 end
 
+-- Presence icons must align vertically across rows whether formed by multiple devices or device + CodeView (running or stopped)
+width = 316
+files['git-status.json'] = [[{"ok":true,"repos":[
+  {"name":"running_cv","path":"/work/one","ok":true,"branch":"main","state":"clean"},
+  {"name":"stopped_cv","path":"/work/two","ok":true,"branch":"main","state":"clean"},
+  {"name":"two_devs","path":"/work/three","ok":true,"branch":"main","state":"clean"}]}]]
+files['sessions.json'] = [[{"ok":true,"devices":[
+  {"name":"lap1","glyph":"laptop","session":"s1","state":"live"},
+  {"name":"lap2","glyph":"laptop","session":"s2","state":"live"}],"sessions":[
+  {"name":"s1","repo":"running_cv","path":"/work/one","windows":1,"attached":"lap1","codeviewPresent":true,"codeviewRunning":true,"codeviewIndexAgeSeconds":120},
+  {"name":"s2","repo":"stopped_cv","path":"/work/two","windows":1,"attached":"lap1","codeviewPresent":true,"codeviewRunning":false},
+  {"name":"s3","repo":"two_devs","path":"/work/three","windows":1,"attached":"lap1, lap2"}]}]]
+draw()
+local by_y = {}
+for _, mark in ipairs(icons) do
+  by_y[mark.y] = by_y[mark.y] or {}
+  table.insert(by_y[mark.y], mark)
+end
+local y_keys = {}
+for y in pairs(by_y) do y_keys[#y_keys + 1] = y end
+table.sort(y_keys)
+assert(#y_keys == 3, 'expected three rows with presence icons')
+for _, y in ipairs(y_keys) do
+  local row_marks = by_y[y]
+  table.sort(row_marks, function(a, b) return a.x > b.x end)
+  assert(#row_marks == 2, 'each row should have 2 presence icons')
+  assert(row_marks[1].x == width - 14, 'rightmost icon must align at width - 14')
+  assert(row_marks[2].x == width - 34, 'second icon must align at width - 34')
+end
+
 print('merged repository presence and layout OK')
+
