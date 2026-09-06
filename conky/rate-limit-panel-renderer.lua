@@ -814,8 +814,10 @@ return function(shared, repo_root)
     if show_pace and not refresh then
       local pace = calculate_window_pace(window, window_duration(window))
       if pace and pace.expected > 0 then
-        local px = bx + bw * pace.expected / 100
-        ui.line_between(cr, px, by - 1, px, by + bar_h + 1, ui.derived, 1)
+        local px = math.floor(shared.clamp(bx + bw * pace.expected / 100, bx, bx + bw) + 0.5)
+        local is_above_bar = not refresh and used > 0 and pace.expected <= used
+        local alpha = is_above_bar and 1.0 or 0.7
+        ui.line_between(cr, px + 0.5, by - 1, px + 0.5, by + bar_h + 1, ui.derived, 1, alpha)
       end
     end
   end

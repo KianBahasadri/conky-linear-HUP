@@ -108,7 +108,7 @@ profiles live in `~/.local/share/clusterfork-auth/`.
 ## Pace markers
 
 - Weekly and 5h pace markers are per paid account: each bar uses that window's own reset time.
-- The derived-color tick is **expected** usage for on-pace spend: `expected = (windowSeconds - remainingSeconds) / windowSeconds * 100` (elapsed time through the reset window, not `usedPercent`).
+- The derived-color tick is **expected** usage for on-pace spend: `expected = (windowSeconds - remainingSeconds) / windowSeconds * 100` (elapsed time through the reset window, not `usedPercent`). Ticks render on top of the bar fill with full opacity (`1.0`) when positioned within the filled progress region (`expected <= usedPercent`), and quieter opacity (`0.7`) when ahead on the empty track.
 - **Visibility:** hide the tick while none of the reset window has elapsed (`expected <= 0`). Unused sliding resets report remaining equal to the full duration at fetch time; treat those as not elapsed even after later wall-clock countdown. Show the tick as soon as any of the window has elapsed (`expected > 0`), even at 0% fill or the left edge. Do not gate on `usedPercent`, and do not hide based on pixel/rounded display position. A window that has not started has its whole span ahead of it, not behind it: treat its zero countdown as fully remaining so the tick stays hidden instead of pinning to the right edge.
 - Per-provider summary deltas and per-bar ticks also cover paid accounts only, except when a provider has no paid account at all (Antigravity today): then its free accounts carry the pace instead, so the summary delta and ticks stay live.
 - Each provider group shows one pace value, its average delta, beside the group name.
