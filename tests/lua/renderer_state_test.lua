@@ -26,6 +26,7 @@ ui.badge = function(_, value) labels[#labels + 1] = value; return #value * 6 + 1
 ui.callout = function(_, label, message) labels[#labels + 1] = label .. ': ' .. message; return 36 end
 ui.metric = function(_, label, value) labels[#labels + 1] = label; labels[#labels + 1] = value end
 ui.reading = function(_, _, value, unit) labels[#labels + 1] = value .. (unit or '') end
+ui.emoji = function(_, glyph) labels[#labels + 1] = glyph; return 12 end
 local original_time = os.time
 os.time = function(date) return date and original_time(date) or 120000 end
 
@@ -106,6 +107,15 @@ assert(has('CI running'), 'a clean repository with a live run is not settled')
 files['git-status.json'] = '{"ok":false,"stale":false,"error":"gh timed out","repos":[]}'
 draw('git-status-renderer.lua')
 assert(has('Unavailable: gh timed out'), 'an empty fleet must explain itself')
+
+files['linear-cards.json'] = [[{"cards":[
+  {"identifier":"KIAN-100","title":"Ship emoji","projectName":"Clusterfork","projectIcon":"🌀","state":"In Progress"},
+  {"identifier":"KIAN-101","title":"No icon","projectName":"Plain Project","projectIcon":"","state":"Todo"}
+]}]]
+draw('linear-card-renderer.lua')
+assert(has('Clusterfork') and has('🌀'), 'card with project emoji must render both')
+assert(has('Plain Project'), 'card without emoji must render project name')
+assert(has('Ship emoji') and has('KIAN-100'), 'card title and id must render')
 
 os.time = original_time
 print('renderer data and state semantics OK')

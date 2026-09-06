@@ -20,6 +20,7 @@ return function(shared, repo_root)
       local identifier = shared.json_string(object, 'identifier', '')
       local label = shared.json_string(object, 'label', '')
       local project_name = shared.json_string(object, 'projectName', '')
+      local project_icon = shared.json_string(object, 'projectIcon', '')
       local state = shared.json_string(object, 'state', '')
       local title = shared.json_string(object, 'title', nil)
       local done = shared.json_boolean(object, 'done', false)
@@ -36,6 +37,7 @@ return function(shared, repo_root)
           identifier = identifier,
           label = label,
           project_name = project_name,
+          project_icon = project_icon,
           state = state,
           title = title,
           done = done,
@@ -117,8 +119,18 @@ return function(shared, repo_root)
       ui.rect(cr, x, y, width, height, fill or ui.surface, ui.radius(tone), fill and 0.14 or 1)
       local state_width = ui.text(cr, state, x + width - 12, y + 24,
         {size = 12, bold = 'medium', align = 'right', color = fill or ui.muted, width = width * 0.55})
+      local project_x = x + 12
+      local project_max_width = width - 32 - state_width
+      if card.project_icon ~= '' then
+        local icon_w = ui.emoji(cr, card.project_icon, project_x, y + 24, 11)
+        if icon_w > 0 then
+          local step = icon_w + 5
+          project_x = project_x + step
+          project_max_width = math.max(0, project_max_width - step)
+        end
+      end
       ui.text(cr, card.project_name ~= '' and card.project_name or 'No project',
-        x + 12, y + 24, {size = 12, color = ui.muted, width = width - 32 - state_width})
+        project_x, y + 24, {size = 12, color = ui.muted, width = project_max_width})
       for index, line in ipairs(lines) do
         ui.text(cr, line, x + 12, y + 46 + (index - 1) * 20, {size = 15, bold = 'medium'})
       end
@@ -170,5 +182,5 @@ return function(shared, repo_root)
     end)
   end
 
-  return {draw = draw, height_spacer = height_spacer}
+  return {draw = draw, height_spacer = height_spacer, read_cards = read_cards}
 end

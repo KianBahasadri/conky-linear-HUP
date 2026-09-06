@@ -7,9 +7,11 @@
   `Due today` is danger with square corners, `Urgent` is caution, and every
   ordinary workflow state is neutral. There is no separate status badge, status
   dot, or inset rail inside a card.
-- Titles wrap and metadata truncates at the available width; project emoji are
-  omitted. Shared styling and paging belong to the
-  [Desktop design system](design-system.md).
+- The project's emoji is drawn to the left of the project name from `Noto
+  Color Emoji`, resolved by the fetcher from Linear's shortcode icons; projects
+  using built-in icon names or no icon show the project name alone. Titles wrap
+  and metadata truncates at the available width. Shared styling and paging
+  belong to the [Desktop design system](design-system.md).
 - If any unfinished card is due today, non-due unfinished cards are hidden so urgent work dominates the overlay.
 - Unfinished issues in the `Competitions` project due in the next 3 days are always shown, with their due date beside the issue id.
 - Issues in the `Backlog` state with a due date in the next 3 days are also shown (including when urgent due-today filtering is active).

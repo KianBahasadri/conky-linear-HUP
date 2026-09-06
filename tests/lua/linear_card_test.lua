@@ -77,6 +77,12 @@ eq(spacer_for([[{"cards":[
 eq(spacer_for('{"cards":[{"identifier":"broken","title":"unterminated}]}'),
   '${voffset 124}', 'malformed cache degrades to an empty panel')
 
+write_cards('{"cards":[{"identifier":"HUP-1","title":"Task with emoji","projectName":"Clusterfork","projectIcon":"🌀"}]}')
+local parsed = factory(shared, cache_root).read_cards()
+eq(#parsed.cards, 1, 'one card parsed')
+eq(parsed.cards[1].project_name, 'Clusterfork', 'card retains project name')
+eq(parsed.cards[1].project_icon, '🌀', 'card retains project icon')
+
 if failures > 0 then
   print(failures .. ' failure(s)')
   os.exit(1)

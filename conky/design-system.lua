@@ -80,6 +80,20 @@ return function(shared)
     return ui.text(cr, string.upper(value), x, y, opts)
   end
 
+  -- Color glyphs (Noto Color Emoji) alongside UI text; Cairo toy API does not
+  -- fall back per glyph, so emoji characters require their own font selection.
+  function ui.emoji(cr, glyph, x, y, size)
+    if not glyph or glyph == '' then return 0 end
+    cairo_select_font_face(cr, 'Noto Color Emoji', CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL)
+    cairo_set_font_size(cr, size or 11)
+    local ext = cairo_text_extents_t:create()
+    cairo_text_extents(cr, glyph, ext)
+    shared.set_hex(cr, ui.strong, 0.95)
+    cairo_move_to(cr, x, y)
+    cairo_show_text(cr, glyph)
+    return ext.x_advance
+  end
+
   function ui.line_between(cr, x1, y1, x2, y2, color, width, alpha)
     cairo_new_path(cr)
     shared.set_hex(cr, color or ui.line, alpha or 1)
