@@ -223,9 +223,9 @@ def plan(width, height, top=40, counts=None, env=None):
     sessions_bottom = height - margin - minecraft_foot
     sessions_y = sessions_bottom - sessions_h
 
-    # Right rail: resource readings, the budget map, then weather and training.
-    # Four readings are a two-column grid of 116px cells with 16px gaps.
-    resource_h = 248
+    # Right rail: arc gauge resource readings, the budget map, then weather and training.
+    # Four arc gauges fit on a single row next to each other.
+    resource_h = 100
     # The map keeps the guide's projection ratio.
     map_h = round(2 * 94 * 0.82 * min(right - 32, 720) / 305 + 32)
     billing_y = top + resource_h + 12

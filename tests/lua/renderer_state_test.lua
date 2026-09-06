@@ -26,6 +26,7 @@ ui.badge = function(_, value) labels[#labels + 1] = value; return #value * 6 + 1
 ui.callout = function(_, label, message) labels[#labels + 1] = label .. ': ' .. message; return 36 end
 ui.metric = function(_, label, value) labels[#labels + 1] = label; labels[#labels + 1] = value end
 ui.reading = function(_, _, value, unit) labels[#labels + 1] = value .. (unit or '') end
+ui.arc_gauge = function(_, _, value, unit) labels[#labels + 1] = value .. (unit or '') end
 ui.emoji = function(_, glyph) labels[#labels + 1] = glyph; return 12 end
 local original_time = os.time
 os.time = function(date) return date and original_time(date) or 120000 end
@@ -158,6 +159,14 @@ assert(not has('Bug'), 'nonessential labels must not render')
 assert(has('Due Sep 09'), 'deadlines must render upstairs')
 assert(has('Urgent · Due Sep 10'), 'urgent cards with deadlines must render both upstairs')
 assert(has('KIAN-102') and has('KIAN-103'), 'all issue identifiers must render')
+
+files['stat'] = 'cpu  1000 200 300 4000 50 10 20 0\n'
+files['meminfo'] = 'MemTotal: 16000000 kB\nMemAvailable: 8000000 kB\n'
+files['route'] = 'eth0\t00000000\t0102A8C0\t0003\t0\t0\t100\t00000000\t0\t0\t0\n'
+files['dev'] = 'eth0: 1000000 0 0 0 0 0 0 0 500000 0 0 0 0 0 0 0\n'
+files['resource-net-peaks.tsv'] = '# hour_epoch rx_peak_bps tx_peak_bps network_id\n119999 5000000 1000000 eth0@192.168.2.1\n'
+draw('resource-monitor-renderer.lua')
+assert(has('50%'), 'memory percentage must render')
 
 os.time = original_time
 print('renderer data and state semantics OK')

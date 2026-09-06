@@ -152,15 +152,17 @@ The panel's lower training section summarizes workouts uploaded from the phone (
 | `RESOURCE_MONITOR_GAP_X` | Horizontal gap from the right screen edge |
 | `RESOURCE_MONITOR_GAP_Y` | Optional vertical gap override; when unset, follows Linear’s per-monitor `gap_y` so panels align |
 | `RESOURCE_HISTORY_SAMPLES` | Samples retained per history trace; defaults to `90` |
-| `RESOURCE_NETWORK_MAX_MBPS` | Fixed top of both network plots in MB/s; defaults to `12.5` |
+| `RESOURCE_NETWORK_MAX_MBPS` | Optional fallback or ceiling override for network plots in MB/s; defaults to `12.5` when no weekly history exists |
 
-Four readings share one grid: CPU, memory, network in, and network out. Each is
-a Lucide symbol over its current value and unit, with a 64px observed history
-directly beneath. The plots do not rescale on every update: CPU and memory are
-fixed at 0–100% with a dashed caution line at 80%, and both network plots use
-`RESOURCE_NETWORK_MAX_MBPS`. A reading above its plot maximum keeps its real
-number and is clipped only in the plot. Utilization at or above 80% turns the
-number caution, and 95% turns it danger.
+Four readings share one row: CPU, memory, network in, and network out. Each is
+a compact 270° arc gauge with its symbol in the upper dome, centered numeral and
+unit at the midline, and qualitative threshold bands. The gauges do not rescale on every update: CPU and memory are fixed at 0–100%
+with qualitative caution bands from 80% to 95%, a danger band above 95%, and a tick at 80%.
+The network dials use the highest recorded usage on the active network in the last week
+(`cache/resource-net-peaks.tsv`) as the scale ceiling / red danger zone, with matching
+caution bands at 80%–95%, danger band above 95%, and warning ticks at 80%. A reading above its plot maximum
+keeps its real number and is clipped only in the gauge fill. Utilization at or above 80% turns the
+active fill and number caution, and 95% turns them danger.
 
 Positions come from elapsed time rather than sample index, so a delivery gap
 longer than 1.5 update intervals breaks the trace instead of being bridged.

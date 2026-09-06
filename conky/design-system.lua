@@ -390,6 +390,128 @@ return function(shared)
     end
   end
 
+  -- Arc gauge: a scalable 270° dial (opening at bottom) centered in `width`,
+  -- with a Lucide symbol in the upper dome and a bold number at midline.
+  -- Has a track with round caps, optional qualitative threshold bands, 2px tick,
+  -- and active zone arc stroke.
+  function ui.arc_gauge(cr, icon, value, unit, x, y, width, opts)
+    opts = opts or {}
+    local size = opts.size or 132
+    local s = size / 132
+    local max = opts.max or 100
+    local warning = opts.warning
+    local critical = opts.critical
+    local num_color = opts.color or ui.muted
+    local measured = opts.measured ~= false
+
+    local dial_x = x + math.floor((width - size) / 2)
+    local dial_y = y
+    local cx = dial_x + size / 2
+    local cy = dial_y + size / 2
+    local r = 52 * s
+    local track_w = math.max(3, math.floor(10 * s + 0.5))
+    local band_w = math.max(2, math.floor(8 * s + 0.5))
+    local tick_len = 7 * s
+    local tick_w = math.max(1.5, 2 * s)
+
+    local deg_to_rad = math.pi / 180
+    local start_rad = 135 * deg_to_rad
+    local end_rad = 405 * deg_to_rad
+
+    local function to_rad(val)
+      local t = max > 0 and (val / max) or 0
+      t = shared.clamp(t, 0, 1)
+      return (135 + t * 270) * deg_to_rad
+    end
+
+    -- 1. Track with round caps
+    cairo_new_path(cr)
+    cairo_arc(cr, cx, cy, r, start_rad, end_rad)
+    shared.set_hex(cr, ui.line, 1)
+    cairo_set_line_width(cr, track_w)
+    cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND or 1)
+    cairo_stroke(cr)
+
+    -- 2. Threshold bands
+    local has_bands = warning ~= nil or critical ~= nil
+    if has_bands then
+      local warn = warning or (critical or max)
+      local crit = critical or max
+      cairo_set_line_width(cr, band_w)
+      cairo_set_line_cap(cr, CAIRO_LINE_CAP_BUTT or 0)
+      if crit > warn then
+        cairo_new_path(cr)
+        cairo_arc(cr, cx, cy, r, to_rad(warn), to_rad(crit))
+        shared.set_hex(cr, ui.caution, 0.6)
+        cairo_stroke(cr)
+      end
+      if max > crit then
+        cairo_new_path(cr)
+        cairo_arc(cr, cx, cy, r, to_rad(crit), to_rad(max))
+        shared.set_hex(cr, ui.danger, 0.8)
+        cairo_stroke(cr)
+      end
+    end
+
+    -- 3. Tick at warning value
+    if warning and warning <= max then
+      local tick_rad = to_rad(warning)
+      local cos_t, sin_t = math.cos(tick_rad), math.sin(tick_rad)
+      cairo_new_path(cr)
+      cairo_move_to(cr, cx + (r - tick_len) * cos_t, cy + (r - tick_len) * sin_t)
+      cairo_line_to(cr, cx + (r + tick_len) * cos_t, cy + (r + tick_len) * sin_t)
+      shared.set_hex(cr, ui.strong, 1)
+      cairo_set_line_width(cr, tick_w)
+      cairo_set_line_cap(cr, CAIRO_LINE_CAP_SQUARE or 2)
+      cairo_stroke(cr)
+    end
+
+    -- 4. Active zone arc fill
+    local num_val = tonumber(opts.reading)
+    if measured and num_val ~= nil then
+      local fill_rad = to_rad(num_val)
+      if fill_rad > start_rad + 0.01 then
+        cairo_new_path(cr)
+        cairo_arc(cr, cx, cy, r, start_rad, fill_rad)
+        local fill_color = ui.accent
+        local fill_alpha = 1.0
+        if has_bands then
+          if critical and num_val >= critical then
+            fill_color, fill_alpha = ui.danger, 1.0
+          elseif warning and num_val >= warning then
+            fill_color, fill_alpha = ui.caution, 1.0
+          else
+            fill_color, fill_alpha = ui.good, 0.6
+          end
+        end
+        shared.set_hex(cr, fill_color, fill_alpha)
+        cairo_set_line_width(cr, band_w)
+        cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND or 1)
+        cairo_stroke(cr)
+      end
+    end
+
+    -- 5. Lucide symbol in upper dome
+    local icon_size = math.max(14, math.floor(24 * s + 0.5))
+    local icon_top = dial_y + math.floor(22 * s + 0.5)
+    ui.icon(cr, icon, cx - icon_size / 2, icon_top, icon_size, ui.muted)
+
+    -- 6. Value and unit centered at dial midline (cy)
+    local num_size = math.max(14, math.floor(26 * s + 0.5))
+    local unit_size = math.max(9, math.floor(12 * s + 0.5))
+    local gap_val = math.max(2, math.floor(5 * s + 0.5))
+    local val_str = tostring(value or '—')
+    local unit_str = tostring(unit or '')
+    local val_w = ui.width(cr, val_str, num_size, false, 'bold')
+    local unit_w = unit_str ~= '' and (ui.width(cr, unit_str, unit_size, true) + gap_val) or 0
+    local left = cx - (val_w + unit_w) / 2
+    local baseline = cy + math.floor(9 * s + 0.5)
+    ui.text(cr, val_str, left, baseline, {size = num_size, bold = 'bold', color = num_color})
+    if unit_str ~= '' then
+      ui.text(cr, unit_str, left + val_w + gap_val, baseline, {size = unit_size, mono = true, color = num_color})
+    end
+  end
+
   -- Inline callout: a semibold status label followed by its message, borderless.
   function ui.callout(cr, label, message, x, y, width, kind)
     local semantic = kind and kind ~= 'info' and ui[kind] or nil

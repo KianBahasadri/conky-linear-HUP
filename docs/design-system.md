@@ -43,8 +43,8 @@ and bounded list paging.
   [Linear overlay](linear.md).
 - **The budget map** is the shared time-and-limit plane behind the billing
   panel. See [Billing forecast panel](billing.md).
-- **Resource readings** center a Lucide symbol over a 26px value with its unit
-  alongside, then a 64px history on a fixed zero-based scale. See
+- **Resource readings** place compact 270° arc gauges with qualitative
+  threshold bands and active zone fills in a single row. See
   [Configuration](configuration.md#system-resource-monitor).
 - **Record lists** (repositories, sessions, quota accounts, budget summaries)
   are aligned text rows on a fixed pitch, with a status badge or status text at

@@ -16,7 +16,7 @@ conky.config = {
   font = 'IBM Plex Sans:size=10',
   gap_x = 16,
   gap_y = 40,
-  minimum_height = 172,
+  minimum_height = 100,
   minimum_width = 400,
   maximum_width = 400,
   no_buffers = true,
