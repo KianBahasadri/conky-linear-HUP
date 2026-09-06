@@ -434,6 +434,30 @@ return function(shared)
     return ui.page(count, math.max(1, math.floor((height - top - 16) / pitch)))
   end
 
+  -- Records whose heights differ. Whole records are packed into pages that fit
+  -- the window, then one page shows per period, so a list that collapses its
+  -- settled records still exposes every record once per cycle.
+  function ui.stack(heights, height, top, footer, period)
+    local total = 0
+    for _, value in ipairs(heights) do total = total + value end
+    local available = height - (top or 0)
+    if total <= available and not footer then return 1, #heights, '' end
+    available = available - 16
+    local pages, first, used = {}, 1, 0
+    for index, value in ipairs(heights) do
+      -- A record taller than the window still gets a page to itself.
+      if used > 0 and used + value > available then
+        pages[#pages + 1] = {first, index - 1}
+        first, used = index, 0
+      end
+      used = used + value
+    end
+    pages[#pages + 1] = {first, #heights}
+    local page = pages[math.floor(os.time() / (period or 30)) % #pages + 1]
+    return page[1], page[2], #pages > 1 and
+      string.format('%d–%d of %d', page[1], page[2], #heights) or ''
+  end
+
   function ui.footer(cr, text, width, height, color)
     if text and text ~= '' then
       ui.text(cr, text, width, height - 4, {size = 11, mono = true, color = color or ui.muted, align = 'right'})

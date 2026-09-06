@@ -42,7 +42,7 @@ GIT_OVERLAY_ENABLED=1
 | `GIT_MAX_REPOS` | Cap on rows shown after sort and the idle-row filter (default `6`) |
 | `GIT_HIDE_CLEAN` | `1` hides fully clean repos |
 | `GIT_INCLUDE_STASH` | `0` skips stash counting |
-| `GIT_DEFAULT_BRANCHES` | Branches treated as default for muted styling and idle-row hiding (`main`, `master`) |
+| `GIT_DEFAULT_BRANCHES` | Branches treated as default for idle-row hiding and for suppressing the branch on a settled row (`main`, `master`) |
 | `GIT_ACTIONS_ENABLED` | `0` disables the per-row Actions status |
 | `GIT_ACTIONS_TTL_SECONDS` | Cache TTL for `ok` / `fail` states (default `180`) |
 | `GIT_ACTIONS_RUNNING_TTL_SECONDS` | Cache TTL while a run is `in_progress` / queued (default `20`) |
@@ -53,12 +53,24 @@ See [Configuration](configuration.md) for the full variable table.
 
 ## Reading the panel
 
-Each repository is two lines: its name with an Actions status badge, then the
-branch, nonzero counts (`S` staged, `M` modified, `U` untracked, `C` conflicted,
-ahead, behind, and stash), and the explicit working-tree state at the right
-edge. Failed scans retain their error text in place of the counts. The badge
-shows `Passed`, `Running`, or `Failed`; no recent workflow leaves it off. A
-stale cache is named in the panel's footer line.
+A settled repository — clean, with no failed or running workflow — is a single
+muted line carrying just its name, plus its branch at the right edge when that
+branch is not a default (`GIT_DEFAULT_BRANCHES`). Being off main is the only
+reason a settled repository is worth reading, so nothing else is drawn for one.
+
+Any other repository takes two lines: its name with one badge, then the branch
+and nonzero counts (`S` staged, `M` modified, `U` untracked, `C` conflicted,
+ahead, behind, and stash). Failed scans retain their error text in place of the
+counts.
+
+The badge names the worst thing true of the repository, in the fetcher's own
+severity order with the Actions result folded in — `Error`, `Conflicts`,
+`CI failed`, `Detached`, `Behind n`, `Dirty`, `Stashed`, `Ahead n`, then
+`CI running`. A passing run draws no badge at all: it is the baseline, and
+spending a green pill on it buries the rows that need attention. A stale cache
+is named in the panel's footer line.
 
 The list uses the [Desktop design system](design-system.md). The renderer keeps
 the fetcher's severity order and rotates excess rows within its bounded region.
+Because rows differ in height, the launcher sizes the window to the records the
+cache holds, so a fleet that is mostly settled leaves the rail shorter.

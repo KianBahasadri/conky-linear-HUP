@@ -36,6 +36,34 @@ local _, footer_last = ui.rows(4, 200, 44, 0, true)
 assert(footer_last == 4, 'a reserved footer must not drop a fitting record')
 os.time = original_time
 
+-- Variable-height records must page like fixed ones: whole records only, each
+-- shown exactly once per cycle, whatever order of tall and short rows arrives.
+os.time = function() return 0 end
+local fits_first, fits_last, fits_label = ui.stack({26, 26, 44}, 200, 0)
+assert(fits_first == 1 and fits_last == 3 and fits_label == '', 'a fitting stack must not page')
+local _, reserved_last = ui.stack({26, 26, 44}, 200, 0, true)
+assert(reserved_last == 3, 'a reserved footer must not drop a fitting record')
+for _, heights in ipairs({{44, 44, 44, 44, 44, 44, 44, 44}, {26, 44, 26, 44, 26, 44, 26},
+                          {26, 26, 26, 26, 26, 26, 26, 26, 26, 26}, {200, 26, 26}}) do
+  local seen, boundaries, previous = {}, {}, 0
+  for tick = 0, 20 do
+    os.time = function() return tick * 30 end
+    local first, last, label = ui.stack(heights, 160, 0)
+    assert(first == previous + 1 or first == 1, 'pages must cover the list in order')
+    local used = 0
+    for index = first, last do
+      used = used + heights[index]
+      seen[index] = true
+    end
+    assert(used <= 144 or last == first, 'a page may only overflow for one oversized record')
+    assert(label ~= '', 'an overflowing stack names its visible range')
+    boundaries[first] = true
+    previous = last == #heights and 0 or last
+  end
+  for index = 1, #heights do assert(seen[index], 'record never displayed') end
+end
+os.time = original_time
+
 assert(ui.radius('danger') == 0, 'danger shapes are square')
 assert(ui.radius('caution') == 4, 'caution shapes are intermediate')
 assert(ui.radius('good') == 6 and ui.radius(nil, 10) == 10, 'good shapes keep the base radius')

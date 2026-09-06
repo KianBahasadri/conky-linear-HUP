@@ -80,7 +80,8 @@ Windows have explicit sizes and zero Conky border margins. They stay inside
 separate allocated regions when new records arrive. A list that fits is drawn
 whole; one that overflows gives up a single 16px line to a footer naming the
 visible range, then rotates in 30-second pages so every record appears once per
-complete cycle. Short displays alternate weather and training with `1/2` and
+complete cycle. Where records differ in height, whole records are packed into
+each page rather than counted against a fixed pitch. Short displays alternate weather and training with `1/2` and
 `2/2`. Narrow quota rows place up to four windows in a two-column arrangement.
 Rerunning the launcher reallocates space using the latest cache counts.
 

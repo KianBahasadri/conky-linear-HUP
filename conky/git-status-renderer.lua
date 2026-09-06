@@ -1,9 +1,16 @@
--- Local repository fleet: two aligned lines per repository with an explicit
--- working-tree state and a GitHub Actions status badge.
+-- Local repository fleet. A settled repository is one quiet line; only a
+-- repository with something to answer for earns a second line and a badge.
 return function(shared, repo_root)
   local status_path = repo_root .. '/cache/git-status.json'
   local ui = shared.ui
-  local pitch = 44
+  local settled_pitch, busy_pitch = 26, 44
+  -- Matches the fetcher's GIT_DEFAULT_BRANCHES: a settled repository names its
+  -- branch only when being off the default is the reason to look.
+  local default_branches = {}
+  for name in (os.getenv('GIT_DEFAULT_BRANCHES') or 'main,master'):gmatch('[^,:%s]+') do
+    default_branches[name] = true
+  end
+
   local function json_string(content, key, fallback)
     local value = shared.json_string(content, key, nil)
     return value ~= nil and value or fallback or ''
@@ -53,6 +60,33 @@ return function(shared, repo_root)
     }
   end
 
+  -- The worst thing true of a repository, as badge text and severity. The
+  -- order follows the fetcher's own severity ranking with the Actions result
+  -- folded in: a failed run outranks every working-tree state but a conflict.
+  -- Nil means the repository is settled and collapses to a single line.
+  local function verdict(repo)
+    if not repo.ok or repo.state == 'error' then return 'Error', 'danger' end
+    if repo.state == 'conflict' then return 'Conflicts', 'danger' end
+    if repo.actions == 'fail' then return 'CI failed', 'danger' end
+    if repo.state == 'detached' then return 'Detached', 'caution' end
+    if repo.state == 'behind' then return 'Behind ' .. repo.behind, 'caution' end
+    if repo.state == 'dirty' then return 'Dirty', 'caution' end
+    if repo.state == 'stash' then return 'Stashed', 'caution' end
+    if repo.state == 'ahead' then return 'Ahead ' .. repo.ahead, 'caution' end
+    if repo.actions == 'run' then return 'CI running', 'caution' end
+    return nil, nil
+  end
+
+  local function counts_of(repo)
+    if not repo.ok then return repo.error end
+    local counts = {}
+    for _, pair in ipairs({{'staged', 'S'}, {'modified', 'M'}, {'untracked', 'U'},
+      {'conflicted', 'C'}, {'ahead', 'ahead '}, {'behind', 'behind '}, {'stash', 'stash '}}) do
+      if repo[pair[1]] > 0 then counts[#counts + 1] = pair[2] .. repo[pair[1]] end
+    end
+    return table.concat(counts, '  ')
+  end
+
   local function draw()
     ui.draw(function(cr, width, height)
       local state = read_status()
@@ -62,31 +96,35 @@ return function(shared, repo_root)
         else ui.text(cr, 'No repositories to show', 0, 16, {size = 13.5, color = ui.muted}) end
         return
       end
-      local first, last, page = ui.rows(#repos, height, pitch, 0, state.stale)
+      local heights, labels, kinds = {}, {}, {}
+      for index, repo in ipairs(repos) do
+        labels[index], kinds[index] = verdict(repo)
+        heights[index] = labels[index] and busy_pitch or settled_pitch
+      end
+      local first, last, page = ui.stack(heights, height, 0, state.stale)
+      local y = 0
       for index = first, last do
-        local repo = repos[index]
-        local y = (index - first) * pitch
-        local action = repo.actions == 'ok' and 'Passed' or repo.actions == 'run' and 'Running'
-          or repo.actions == 'fail' and 'Failed' or ''
-        local action_kind = repo.actions == 'ok' and 'good' or repo.actions == 'run' and 'caution' or 'danger'
-        local badge_width = action ~= '' and ui.badge(cr, action, width, y + 1, action_kind, {right = true}) or 0
-        ui.text(cr, repo.name, 0, y + 15, {size = 13.5, bold = 'medium', width = width - badge_width - 12})
-        local kind = (repo.state == 'error' or repo.conflicted > 0) and 'danger'
-          or (repo.behind > 0 or repo.state == 'dirty') and 'caution' or nil
-        local label = repo.state == 'clean' and 'Clean' or (repo.state:gsub('^%l', string.upper))
-        local state_width = ui.text(cr, label, width, y + 33,
-          {size = 12, bold = 'medium', color = ui[kind] or ui.muted, align = 'right'})
-        local counts = {}
-        for _, pair in ipairs({{'staged', 'S'}, {'modified', 'M'}, {'untracked', 'U'},
-          {'conflicted', 'C'}, {'ahead', 'ahead '}, {'behind', 'behind '}, {'stash', 'stash '}}) do
-          if repo[pair[1]] > 0 then counts[#counts + 1] = pair[2] .. repo[pair[1]] end
+        local repo, label = repos[index], labels[index]
+        if not label then
+          -- Settled: the name alone, and the branch only when it is not the
+          -- default, since that is the whole reason to read the line.
+          local branch_width = 0
+          if not default_branches[repo.branch] and repo.branch ~= '' then
+            branch_width = ui.text(cr, repo.branch, width, y + 15,
+              {size = 12, mono = true, color = ui.faint, align = 'right', width = width * 0.5}) + 12
+          end
+          ui.text(cr, repo.name, 0, y + 15,
+            {size = 13.5, bold = 'medium', color = ui.muted, width = width - branch_width})
+        else
+          local badge_width = ui.badge(cr, label, width, y + 1, kinds[index], {right = true})
+          ui.text(cr, repo.name, 0, y + 15,
+            {size = 13.5, bold = 'medium', width = width - badge_width - 12})
+          local branch_width = ui.text(cr, repo.branch ~= '' and repo.branch or 'Unavailable', 0, y + 33,
+            {size = 12, mono = true, color = ui.muted, width = width * 0.62})
+          ui.text(cr, counts_of(repo), branch_width + 12, y + 33,
+            {size = 12, mono = true, color = ui.muted, width = width - branch_width - 12})
         end
-        if not repo.ok then counts = {repo.error} end
-        local branch_width = ui.text(cr, repo.branch ~= '' and repo.branch or 'Unavailable', 0, y + 33,
-          {size = 12, mono = true, color = ui.muted, width = (width - state_width - 12) / 2})
-        ui.text(cr, table.concat(counts, '  '), branch_width + 8, y + 33,
-          {size = 11, mono = true, color = kind == 'danger' and ui.danger or ui.muted,
-            width = width - branch_width - state_width - 20})
+        y = y + heights[index]
       end
       local notes = {}
       if state.stale then notes[#notes + 1] = 'Stale cache' end

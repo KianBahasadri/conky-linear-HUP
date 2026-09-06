@@ -18,6 +18,17 @@ def cache_object(name, cache_dir):
         return {}
 
 
+def repo_height(repo):
+    """Mirror git-status-renderer: a settled repository collapses to one line.
+
+    Anything not clean, and any repository whose Actions run failed or is still
+    going, keeps the two-line row with its badge.
+    """
+    if not repo.get("ok") or (repo.get("state") or "error") != "clean":
+        return 44
+    return 44 if repo.get("actions") in ("fail", "run") else 26
+
+
 def cache_counts(cache_dir):
     cards = cache_object("linear-cards.json", cache_dir).get("cards", [])
     cards = [c for c in cards if isinstance(c, dict) and c.get("title")]
@@ -32,8 +43,10 @@ def cache_counts(cache_dir):
         except OSError:
             pass
     sessions = cache_object("sessions.json", cache_dir)
+    repos = [r for r in cache_object("git-status.json", cache_dir).get("repos") or []
+             if isinstance(r, dict)]
     return {"cards": len(cards), "accounts": accounts,
-            "repos": len(cache_object("git-status.json", cache_dir).get("repos") or []),
+            "repos": len(repos), "repo_heights": [repo_height(r) for r in repos],
             "sessions": len(sessions.get("devices") or []) + len(sessions.get("sessions") or []),
             "providers": len(cache_object("billing-usage.json", cache_dir).get("providers") or [])}
 
@@ -73,10 +86,17 @@ def plan(width, height, top=40, counts=None, env=None):
     minecraft = env.get("MINECRAFT_OVERLAY_ENABLED", "1") != "0"
     minecraft_h = 100
     minecraft_foot = minecraft_h + gutter if minecraft else 0
-    # Repository and session records are two lines on a 44px pitch.
+    # Session records are two lines on a 44px pitch; repository rows vary,
+    # since a settled one collapses to a single line, so the panel is sized to
+    # the records the cache actually holds.
     git_limit = min(456, available * 0.45 - (76 if minecraft else 0))
-    repo_rows = max(1, min(counts.get("repos", 0) or 1, int((git_limit - 16) // 44)))
-    git_h = max(100, 16 + repo_rows * 44)
+    repo_heights = counts.get("repo_heights") or [44] * (counts.get("repos", 0) or 1)
+    git_used = 0
+    for pitch in repo_heights:
+        if git_used + pitch > git_limit - 16:
+            break
+        git_used += pitch
+    git_h = max(100, 16 + git_used)
     max_sessions_available = height - margin - minecraft_foot - (top + git_h + gutter)
     sessions_limit = min(456, max(100, max_sessions_available))
     session_rows = max(1, min(counts.get("sessions", 0) or 1, int((sessions_limit - 16) // 44)))

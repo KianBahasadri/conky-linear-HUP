@@ -82,5 +82,30 @@ os.time = function(date) return date and original_time(date) or 120030 end
 draw('weather-renderer.lua')
 assert(has('12.5 km') and has('2/2'), 'compact training page must expose workout data')
 assert(not has('AQI Good'), 'compact pages must not overlap')
+
+-- A settled repository must collapse to its name: no badge, and no branch
+-- unless it sits somewhere other than the default. Anything unsettled keeps
+-- its badge, and the badge names the worst thing true of the repository.
+files['git-status.json'] = [[{"ok":true,"stale":false,"repos":[
+  {"name":"alpha","ok":true,"branch":"main","state":"clean","actions":"ok"},
+  {"name":"bravo","ok":true,"branch":"release/2.4","state":"clean","actions":"ok"},
+  {"name":"charlie","ok":true,"branch":"main","state":"dirty","actions":"ok","modified":2},
+  {"name":"delta","ok":true,"branch":"main","state":"dirty","actions":"fail","modified":1},
+  {"name":"echo","ok":true,"branch":"main","state":"conflict","actions":"ok","conflicted":3},
+  {"name":"foxtrot","ok":true,"branch":"main","state":"clean","actions":"run"}]}]]
+height = 420
+draw('git-status-renderer.lua')
+assert(has('alpha') and has('bravo') and has('charlie'), 'every repository must appear')
+assert(not has('Passed'), 'a passing run must not put a badge on a settled repository')
+assert(not has('Clean'), 'a settled repository must not spend a line saying so')
+assert(has('release/2.4'), 'an off-default branch is the reason to read a settled line')
+assert(has('Dirty') and has('M2'), 'an unsettled repository keeps its badge and counts')
+assert(has('CI failed'), 'a failed run outranks the working tree it was run against')
+assert(has('Conflicts'), 'a conflict outranks every other state')
+assert(has('CI running'), 'a clean repository with a live run is not settled')
+files['git-status.json'] = '{"ok":false,"stale":false,"error":"gh timed out","repos":[]}'
+draw('git-status-renderer.lua')
+assert(has('Unavailable: gh timed out'), 'an empty fleet must explain itself')
+
 os.time = original_time
 print('renderer data and state semantics OK')
