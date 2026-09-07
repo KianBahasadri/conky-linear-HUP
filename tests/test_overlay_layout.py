@@ -43,12 +43,12 @@ def test_rate_limit_panel_adds_space_for_each_gemini_pro_stack():
     assert stacked["rate-limit-panel"][3] == base["rate-limit-panel"][3] + 6
 
 
-def test_rate_limit_panel_shares_the_task_grid_left_edge_and_is_narrower():
+def test_rate_limit_panel_is_centered_in_center_column_and_is_narrower():
     windows = overlay_layout.plan(1920, 1080, 40, {"accounts": 8}, {})
     linear = windows["linear"]
     quota = windows["rate-limit-panel"]
-    assert quota[0] == linear[0]
-    assert quota[2] == linear[2] - 144
+    assert quota[0] == linear[0] + (linear[2] - quota[2]) // 2
+    assert quota[2] == linear[2] - 240
 
 
 def test_explicit_position_overrides_keep_their_original_edge_semantics():
