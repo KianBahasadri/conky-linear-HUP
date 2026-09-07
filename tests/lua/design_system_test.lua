@@ -108,4 +108,33 @@ for name, mark in pairs(ui.marks) do
     assert(commands(piece.d):find('move'), 'mark ' .. name .. ' has an unreadable path')
   end
 end
+
+-- Arc gauge: standard gauge draws no tick; peak hold gauge draws a 2px square-capped tick.
+local caps = {}
+cairo_new_path, cairo_stroke, cairo_fill = function() end, function() end, function() end
+cairo_set_line_width = function() end
+cairo_set_line_cap = function(_, cap) caps[#caps + 1] = cap end
+cairo_set_line_join = function() end
+cairo_set_source_rgba = function() end
+cairo_text_extents_t = { create = function() return { x_advance = 10 } end }
+cairo_text_extents = function() end
+cairo_select_font_face, cairo_set_font_size, cairo_show_text = function() end, function() end, function() end
+
+local function has_square_cap(cap_list)
+  for _, c in ipairs(cap_list) do if c == 2 then return true end end
+  return false
+end
+
+caps = {}
+ui.arc_gauge({}, 'cpu', 50, '%', 0, 0, 100, {reading = 50, max = 100, warning = 80, critical = 95})
+assert(not has_square_cap(caps), 'standard arc gauge must not draw a square-capped tick line')
+
+caps = {}
+ui.arc_gauge({}, 'cpu', 50, '%', 0, 0, 100, {reading = 50, max = 100, peak = 80, peak_hold = true, warning = 80, critical = 95})
+assert(has_square_cap(caps), 'arc gauge with peak hold must draw a square-capped tick line')
+
+caps = {}
+ui.arc_gauge({}, 'cpu', '—', '', 0, 0, 100, {measured = false, max = 100, peak = 80, peak_hold = true})
+assert(not has_square_cap(caps), 'unmeasured arc gauge must not draw a square-capped tick line')
+
 print('design-system components OK')

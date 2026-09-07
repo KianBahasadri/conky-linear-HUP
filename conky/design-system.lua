@@ -392,8 +392,9 @@ return function(shared)
 
   -- Arc gauge: a scalable 270° dial (opening at bottom) centered in `width`,
   -- with a Lucide symbol in the upper dome and a bold number at midline.
-  -- Has a track with round caps, optional qualitative threshold bands, 2px tick,
-  -- and active zone arc stroke.
+  -- Has an unread nominal track stopping where threshold bands begin,
+  -- qualitative threshold bands, an active zone fill, and an optional 2px
+  -- square-capped peak hold tick indicator at the peak reading.
   function ui.arc_gauge(cr, icon, value, unit, x, y, width, opts)
     opts = opts or {}
     local size = opts.size or 132
@@ -409,7 +410,6 @@ return function(shared)
     local cx = dial_x + size / 2
     local cy = dial_y + size / 2
     local r = 52 * s
-    local track_w = math.max(3, math.floor(10 * s + 0.5))
     local band_w = math.max(2, math.floor(8 * s + 0.5))
     local tick_len = 7 * s
     local tick_w = math.max(1.5, 2 * s)
@@ -424,19 +424,34 @@ return function(shared)
       return (135 + t * 270) * deg_to_rad
     end
 
-    -- 1. Track with round caps
-    cairo_new_path(cr)
-    cairo_arc(cr, cx, cy, r, start_rad, end_rad)
-    shared.set_hex(cr, ui.line, 1)
-    cairo_set_line_width(cr, track_w)
-    cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND or 1)
-    cairo_stroke(cr)
-
-    -- 2. Threshold bands
+    local num_val = tonumber(opts.reading)
+    local has_fill = measured and num_val ~= nil and num_val > 0
     local has_bands = warning ~= nil or critical ~= nil
+    local warn = warning or (critical or max)
+    local crit = critical or max
+    local peak_val = measured and tonumber(opts.peak) or nil
+    local is_peak_gauge = opts.peak_hold == true or (peak_val ~= nil)
+
+    -- 1. Track for the unread nominal sweep (stopping where threshold bands begin)
+    local track_start = has_fill and to_rad(num_val) or start_rad
+    local track_end = has_bands and to_rad(warn) or end_rad
+    if track_end - track_start >= 0.007 then
+      cairo_new_path(cr)
+      cairo_arc(cr, cx, cy, r, track_start, track_end)
+      shared.set_hex(cr, ui.line, 1)
+      cairo_set_line_width(cr, band_w)
+      cairo_set_line_cap(cr, CAIRO_LINE_CAP_BUTT or 0)
+      cairo_stroke(cr)
+    end
+    if not has_fill then
+      ui.circle(cr, cx + r * math.cos(start_rad), cy + r * math.sin(start_rad), band_w / 2, ui.line, 1)
+    end
+    if not has_bands then
+      ui.circle(cr, cx + r * math.cos(end_rad), cy + r * math.sin(end_rad), band_w / 2, ui.line, 1)
+    end
+
+    -- 2. Threshold bands with butt caps; terminal band caps with rounded tip
     if has_bands then
-      local warn = warning or (critical or max)
-      local crit = critical or max
       cairo_set_line_width(cr, band_w)
       cairo_set_line_cap(cr, CAIRO_LINE_CAP_BUTT or 0)
       if crit > warn then
@@ -451,12 +466,44 @@ return function(shared)
         shared.set_hex(cr, ui.danger, 0.8)
         cairo_stroke(cr)
       end
+      local term_color = max > crit and ui.danger or (crit > warn and ui.caution or nil)
+      local term_alpha = max > crit and 0.8 or 0.6
+      if term_color then
+        ui.circle(cr, cx + r * math.cos(end_rad), cy + r * math.sin(end_rad), band_w / 2, term_color, term_alpha)
+      end
     end
 
-    -- 3. Tick at warning value
-    if warning and warning <= max then
-      local tick_rad = to_rad(warning)
-      local cos_t, sin_t = math.cos(tick_rad), math.sin(tick_rad)
+    -- 3. Active zone arc fill
+    if has_fill then
+      local cap_angle = (band_w / 2) / r
+      local fill_rad = is_peak_gauge and math.max(start_rad, to_rad(num_val) - cap_angle) or to_rad(num_val)
+      local fill_color = ui.accent
+      local fill_alpha = 1.0
+      if has_bands then
+        if critical and num_val >= critical then
+          fill_color, fill_alpha = ui.danger, 1.0
+        elseif warning and num_val >= warning then
+          fill_color, fill_alpha = ui.caution, 1.0
+        else
+          fill_color, fill_alpha = ui.good, 0.6
+        end
+      end
+      if fill_rad > start_rad then
+        cairo_new_path(cr)
+        cairo_arc(cr, cx, cy, r, start_rad, fill_rad)
+        shared.set_hex(cr, fill_color, fill_alpha)
+        cairo_set_line_width(cr, band_w)
+        cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND or 1)
+        cairo_stroke(cr)
+      else
+        ui.circle(cr, cx + r * math.cos(start_rad), cy + r * math.sin(start_rad), band_w / 2, fill_color, fill_alpha)
+      end
+    end
+
+    -- 4. Peak hold tick line across radius 45px to 59px (r - 7*s to r + 7*s)
+    if is_peak_gauge and peak_val ~= nil and peak_val > 0 then
+      local peak_rad = to_rad(peak_val)
+      local cos_t, sin_t = math.cos(peak_rad), math.sin(peak_rad)
       cairo_new_path(cr)
       cairo_move_to(cr, cx + (r - tick_len) * cos_t, cy + (r - tick_len) * sin_t)
       cairo_line_to(cr, cx + (r + tick_len) * cos_t, cy + (r + tick_len) * sin_t)
@@ -464,31 +511,6 @@ return function(shared)
       cairo_set_line_width(cr, tick_w)
       cairo_set_line_cap(cr, CAIRO_LINE_CAP_SQUARE or 2)
       cairo_stroke(cr)
-    end
-
-    -- 4. Active zone arc fill
-    local num_val = tonumber(opts.reading)
-    if measured and num_val ~= nil then
-      local fill_rad = to_rad(num_val)
-      if fill_rad > start_rad + 0.01 then
-        cairo_new_path(cr)
-        cairo_arc(cr, cx, cy, r, start_rad, fill_rad)
-        local fill_color = ui.accent
-        local fill_alpha = 1.0
-        if has_bands then
-          if critical and num_val >= critical then
-            fill_color, fill_alpha = ui.danger, 1.0
-          elseif warning and num_val >= warning then
-            fill_color, fill_alpha = ui.caution, 1.0
-          else
-            fill_color, fill_alpha = ui.good, 0.6
-          end
-        end
-        shared.set_hex(cr, fill_color, fill_alpha)
-        cairo_set_line_width(cr, band_w)
-        cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND or 1)
-        cairo_stroke(cr)
-      end
     end
 
     -- 5. Lucide symbol in upper dome

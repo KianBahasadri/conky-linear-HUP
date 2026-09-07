@@ -26,7 +26,11 @@ ui.badge = function(_, value) labels[#labels + 1] = value; return #value * 6 + 1
 ui.callout = function(_, label, message) labels[#labels + 1] = label .. ': ' .. message; return 36 end
 ui.metric = function(_, label, value) labels[#labels + 1] = label; labels[#labels + 1] = value end
 ui.reading = function(_, _, value, unit) labels[#labels + 1] = value .. (unit or '') end
-ui.arc_gauge = function(_, _, value, unit) labels[#labels + 1] = value .. (unit or '') end
+local arc_gauge_calls = {}
+ui.arc_gauge = function(_, icon, value, unit, x, y, width, opts)
+  labels[#labels + 1] = value .. (unit or '')
+  arc_gauge_calls[#arc_gauge_calls + 1] = {icon = icon, value = value, unit = unit, opts = opts}
+end
 ui.emoji = function(_, glyph) labels[#labels + 1] = glyph; return 12 end
 local original_time = os.time
 os.time = function(date) return date and original_time(date) or 120000 end
@@ -167,6 +171,32 @@ files['dev'] = 'eth0: 1000000 0 0 0 0 0 0 0 500000 0 0 0 0 0 0 0\n'
 files['resource-net-peaks.tsv'] = '# hour_epoch rx_peak_bps tx_peak_bps network_id\n119999 5000000 1000000 eth0@192.168.2.1\n'
 draw('resource-monitor-renderer.lua')
 assert(has('50%'), 'memory percentage must render')
+
+-- Test resource monitor peak hold and slowed decay
+local res_mod = dofile(root .. '/conky/resource-monitor-renderer.lua')(shared, '/fixture')
+arc_gauge_calls = {}
+os.time = function() return 1000 end
+files['meminfo'] = 'MemTotal: 100000 kB\nMemAvailable: 20000 kB\n' -- 80% RAM
+res_mod.draw()
+local ram_peak_1 = res_mod._test.peaks['ram']
+assert(ram_peak_1 == 80, 'initial peak equals reading: ' .. tostring(ram_peak_1))
+assert(arc_gauge_calls[2].opts.peak == 80 and arc_gauge_calls[2].opts.peak_hold == true, 'passes peak and peak_hold')
+
+-- 10 seconds later, reading drops to 40%.
+-- Decay is 0.5% (0.005) of max (100) per second = 0.5 / sec.
+-- In 10 seconds, decay is 5. Peak should be 80 - 5 = 75%.
+os.time = function() return 1010 end
+files['meminfo'] = 'MemTotal: 100000 kB\nMemAvailable: 60000 kB\n' -- 40% RAM
+res_mod.draw()
+local ram_peak_2 = res_mod._test.peaks['ram']
+assert(math.abs(ram_peak_2 - 75) < 0.01, 'decayed peak after 10s should be 75%: ' .. tostring(ram_peak_2))
+
+-- 2 seconds later, reading spikes to 90%. Peak should immediately push up to 90%.
+os.time = function() return 1012 end
+files['meminfo'] = 'MemTotal: 100000 kB\nMemAvailable: 10000 kB\n' -- 90% RAM
+res_mod.draw()
+local ram_peak_3 = res_mod._test.peaks['ram']
+assert(ram_peak_3 == 90, 'spike immediately pushes peak to 90%: ' .. tostring(ram_peak_3))
 
 os.time = original_time
 print('renderer data and state semantics OK')

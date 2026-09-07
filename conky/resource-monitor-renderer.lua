@@ -1,5 +1,5 @@
--- Realtime resource readings: 132x132 270° arc gauges with a 24px history
--- directly beneath, on a fixed zero-based scale.
+-- Realtime resource readings: 132x132 270° arc gauges with peak hold indicators
+-- on a fixed zero-based scale.
 return function(shared, repo_root)
   local ui = shared.ui
   local interval = 2
@@ -7,6 +7,16 @@ return function(shared, repo_root)
   local network_max = (tonumber(os.getenv('RESOURCE_NETWORK_MAX_MBPS')) or 12.5) * 1048576
   if network_max <= 0 then network_max = 12.5 * 1048576 end
   local history = {}
+  local peaks = {}
+  local last_peak_time = nil
+
+  -- Peak hold decay: design guide defaults to 5% (0.05) of channel.max per second.
+  -- "slow down the peak hold decay by a lot": default to 0.5% (0.005) of channel.max per second (10x slower).
+  local raw_peak_decay = tonumber(os.getenv('RESOURCE_PEAK_DECAY_RATE'))
+  local peak_decay_fraction = 0.005
+  if raw_peak_decay and raw_peak_decay > 0 then
+    peak_decay_fraction = raw_peak_decay > 1 and (raw_peak_decay / 100) or raw_peak_decay
+  end
 
   local net_week_seconds = 7 * 24 * 3600
   local net_week_flush_interval = 30
@@ -496,6 +506,10 @@ return function(shared, repo_root)
       local show_sparkline = height >= dial_size + 24
       local y = show_sparkline and 0 or math.max(0, math.floor((height - dial_size) / 2))
 
+      local now = status.timestamp or os.time()
+      local dt = last_peak_time and math.max(0, math.min(30, now - last_peak_time)) or 0
+      last_peak_time = now
+
       for index, channel in ipairs(channels) do
         local x = (index - 1) * (column_width + gap)
         local value, unit, color = '—', '', ui.muted
@@ -521,6 +535,22 @@ return function(shared, repo_root)
           end
         end
 
+        local peak = nil
+        if measured and reading ~= nil then
+          local cur_peak = peaks[channel.field]
+          if cur_peak == nil or dt > 30 then
+            cur_peak = reading
+          elseif reading >= cur_peak then
+            cur_peak = reading
+          elseif dt > 0 then
+            local decay_rate = channel.max * peak_decay_fraction
+            cur_peak = math.max(reading, cur_peak - decay_rate * dt)
+          end
+          if cur_peak > channel.max then cur_peak = channel.max end
+          peaks[channel.field] = cur_peak
+          peak = cur_peak
+        end
+
         ui.arc_gauge(cr, channel.icon, value, unit, x, y, column_width, {
           size = dial_size,
           max = channel.max,
@@ -528,6 +558,8 @@ return function(shared, repo_root)
           critical = channel.critical,
           color = color,
           reading = reading,
+          peak = peak,
+          peak_hold = true,
           measured = measured,
         })
         if show_sparkline then
@@ -536,5 +568,12 @@ return function(shared, repo_root)
       end
     end)
   end
-  return {draw = draw}
+  return {
+    draw = draw,
+    _test = {
+      peaks = peaks,
+      get_peaks = function() return peaks end,
+      decay_fraction = peak_decay_fraction,
+    },
+  }
 end
