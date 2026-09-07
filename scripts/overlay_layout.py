@@ -184,7 +184,7 @@ def plan(width, height, top=40, counts=None, env=None):
     # Center: quota rows sit at the bottom, the calendar above them, and the
     # task grid takes what is left. On wide displays with many accounts, quota
     # rows split into two columns side by side across the bottom.
-    row = 18 if center >= 880 else 40 if center >= 760 else 76
+    row = 16 if center >= 880 else 40 if center >= 760 else 76
     is_wide = width >= 1600
     account_count = counts.get("accounts", 0) or 1
     two_col = is_wide and account_count > 8
@@ -192,7 +192,7 @@ def plan(width, height, top=40, counts=None, env=None):
     max_quota_available = height - margin - (weather_y + weather_h + 12) if two_col else available
     quota_limit = min(int(available * (0.55 if available >= 900 else 0.44)), max_quota_available)
     quota_rows = max(1, min(effective_accounts, quota_limit // row))
-    stacked_extra = 6 * counts.get("gemini_pro", 0) if row <= 18 else 0
+    stacked_extra = 6 * counts.get("gemini_pro", 0) if row <= 16 else 0
     quota_h = max(100, quota_rows * row + stacked_extra)
     github = env.get("GITHUB_OVERLAY_ENABLED", "1") != "0"
     github_h = 128 if available >= 900 else 112

@@ -729,11 +729,11 @@ return function(shared, repo_root)
     ['other-weekly'] = 'Other', ['3p-weekly'] = 'Other', ['3p-5h'] = 'Other',
   }
 
-  local function row_height(width) return width < 760 and 76 or width < 880 and 40 or 18 end
+  local function row_height(width) return width < 760 and 76 or width < 880 and 40 or 16 end
 
   -- Pro Gemini has both 5h and weekly pools: stack Gem/Other within each
   -- duration column on a 24px row. Free Gemini is weekly-only and stays on
-  -- the 18px grid.
+  -- the 16px grid.
   local function gemini_duration_columns(wins)
     local five, week = {}, {}
     for _, window in ipairs(wins or {}) do
@@ -749,7 +749,7 @@ return function(shared, repo_root)
 
   local function account_pitch(width, account, wins)
     local rh = row_height(width)
-    if rh > 18 then return rh end
+    if rh > 16 then return rh end
     if provider_name(account) == 'gemini' and gemini_duration_columns(wins) then
       return 24
     end
@@ -774,8 +774,8 @@ return function(shared, repo_root)
     local count = refresh and 'Refresh' or format_window_countdown(window)
     local color = refresh and ui.caution or used >= 100 and ui.danger or ui.accent
     local bar_h = 3
-    by = by or (y + 9)
-    local text_y = compact and (by + 4) or (y + 13)
+    by = by or (y + 7)
+    local text_y = compact and (by + 4) or (y + 12)
 
     local nw = (name ~= '') and ui.width(cr, name, size, true) or 0
     local count_width = ui.width(cr, '00d 00h', size, true)
@@ -848,7 +848,7 @@ return function(shared, repo_root)
       local windows_for, heights = {}, {}
       for index, account in ipairs(accounts) do
         windows_for[index] = get_row_windows(account)
-        heights[index] = is_two_col and 18 or account_pitch(width, account, windows_for[index])
+        heights[index] = is_two_col and 16 or account_pitch(width, account, windows_for[index])
       end
 
       local function draw_column(first, last, col_x, col_width)
@@ -860,7 +860,7 @@ return function(shared, repo_root)
           local pitch = heights[index]
           local wins = windows_for[index]
           if account.is_selected then ui.rect(cr, col_x, y, col_width, pitch, ui.raised, 4) end
-          local name_baseline = y + 13 + math.max(0, (pitch - 18) / 2)
+          local name_baseline = y + 12 + math.max(0, (pitch - 16) / 2)
           if index == first or accounts[index - 1].provider ~= account.provider then
             -- The provider's average pace delta is a derived value; it sits beside
             -- the group mark rather than in a separate summary row.

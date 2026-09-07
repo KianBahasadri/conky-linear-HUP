@@ -67,7 +67,7 @@ profiles live in `~/.local/share/clusterfork-auth/`.
 ## Gemini
 
 - Accounts are discovered from Antigravity's rotation state in `~/.gemini/antigravity-cli/rotate-auth`. The selected profile reads the live GNOME Keyring item `service=gemini username=antigravity`; inactive profiles read `service=rotate-antigravity username=<profile>`.
-- Usage is fetched from Antigravity's Code Assist API (`retrieveUserQuotaSummary`). Pro accounts render two quota bars: 5-hour and weekly on one 18px row. Free accounts render one weekly bar on one 18px row. Paid tiers (such as Google AI Pro) are recognized from the account's `paidTier` subscription.
+- Usage is fetched from Antigravity's Code Assist API (`retrieveUserQuotaSummary`). Pro accounts render two quota bars: 5-hour and weekly on one 16px row. Free accounts render one weekly bar on one 16px row. Paid tiers (such as Google AI Pro) are recognized from the account's `paidTier` subscription.
 - `GEMINI_ANTIGRAVITY_STATE_DIR` overrides the rotation state directory, `GEMINI_CODE_ASSIST_ENDPOINT` overrides the Antigravity API endpoint, `GEMINI_ANTIGRAVITY_CLI` overrides the `agy` executable, and `GEMINI_AUTH_REFRESH_TIMEOUT_SECONDS` controls the refresh timeout.
 
 ## Grok
