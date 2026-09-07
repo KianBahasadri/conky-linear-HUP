@@ -71,7 +71,9 @@ def discover_credentials():
         return [(credentials_label(path), path, is_selected_credentials(path, default_token)) for path in suffixed_paths]
 
     path = default_credentials_path()
-    return [(configured_label(path), path, is_selected_credentials(path, default_token))]
+    if path.is_file() and credentials_access_token(path):
+        return [(configured_label(path), path, is_selected_credentials(path, default_token))]
+    return []
 
 
 def configured_label(path):
@@ -591,14 +593,14 @@ def main():
         output = {
             "updatedAt": datetime.now(timezone.utc).isoformat(),
             "provider": "Claude",
-            "ok": ok_count > 0,
+            "ok": True if not credentials else (ok_count > 0),
             "accounts": accounts,
             "bars": flatten_bars(accounts),
         }
         common.write_usage_outputs(OUTPUT_PATH, RENDER_PATH, output)
         log_event(f"completed fetch accounts={len(accounts)} ok={ok_count} wrote={OUTPUT_PATH.name}")
         print(json.dumps(output, indent=2))
-        return 0 if ok_count > 0 else 1
+        return 0 if (not credentials or ok_count > 0) else 1
     except Exception as error:
         write_error(f"Claude usage fetch failed: {error}")
         return 1

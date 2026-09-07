@@ -55,6 +55,13 @@ def test_discover_credentials_marks_selected_by_token_without_symlink(monkeypatc
     ]
 
 
+def test_discover_credentials_returns_empty_when_no_valid_credentials(monkeypatch, tmp_path):
+    monkeypatch.setenv("CLAUDE_HOME", str(tmp_path))
+    assert claude.discover_credentials() == []
+    write_credentials(tmp_path / ".credentials.json", token="")
+    assert claude.discover_credentials() == []
+
+
 def test_usage_from_headers_normalizes_unified_limits():
     now = int(datetime.now(timezone.utc).timestamp())
     headers = {

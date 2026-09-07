@@ -13,7 +13,7 @@ on the left. Standard interval windows (`5h`, `7d`, `Month`) omit the leading la
 bars start directly beside the account name.
 Selected profiles use a neutral raised row and a medium-weight account name.
 Providers with more than one visible account sit inside a faint rounded outline
-so those clusters read as a group. Single-account providers stay unframed. Provider identity does not determine bar color. Shared typography, colors, and
+so those clusters read as a group, unless that provider is the only section in its column (such as Codex filling the left side alone). Single-account providers stay unframed. In two-column mode, whichever column has fewer accounts automatically expands its row pitch to fit the taller side so top and bottom edges are flush. Provider identity does not determine bar color. Shared typography, colors, and
 overflow are owned by the [Desktop design system](design-system.md).
 
 - Accounts sort alphabetically within each provider, regardless of plan tier.
@@ -52,7 +52,7 @@ profiles live in `~/.local/share/clusterfork-auth/`.
 
 ## Claude
 
-- Multiple accounts are discovered from `~/.claude/.credentials.json.*`; `CLAUDE_CREDENTIALS_PATH` or `CLAUDE_AUTH_PATH` forces a single credentials file.
+- The Claude account was removed from active display because the Claude subscription expired. Multiple accounts are discovered from `~/.claude/.credentials.json.*` when valid credentials exist; `CLAUDE_CREDENTIALS_PATH` or `CLAUDE_AUTH_PATH` forces a single credentials file.
 - Claude selected accounts use the same neutral row treatment as Codex.
 - Usage is fetched with a direct Anthropic quota-check request and cached per account. `CLAUDE_HOME`, `CLAUDE_USAGE_TTL`, `CLAUDE_PLAN_TYPE`, and `ANTHROPIC_DEFAULT_HAIKU_MODEL` are advanced overrides.
 - Expired-grant display follows the general rule in [Expired credentials and stale cache](expired-credentials.md): cached 5h and weekly fills are held until each window's reset passes. The `refresh` prompt appears per window once its reset is over, or on the whole row when no cached sample exists.
@@ -95,6 +95,7 @@ profiles live in `~/.local/share/clusterfork-auth/`.
 
 ## Removed providers
 
+- **Claude** account was removed from the rate limit panel because the Claude subscription expired.
 - **OpenCode Go** was removed from the rate limit panel.
 - **Pioneer** was removed from the rate limit panel. The Pioneer fetch script, cache files, env vars, and panel chip are no longer used.
 

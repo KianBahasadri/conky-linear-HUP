@@ -758,7 +758,7 @@ return function(shared, repo_root)
 
   -- One quota window: label and countdown on the sides of a flat observed bar
   -- with a derived-color tick at the expected on-pace position.
-  local function draw_window(cr, account, window, x, y, width, show_pace, tall, by)
+  local function draw_window(cr, account, window, x, y, width, show_pace, tall, by, pitch)
     local compact = by ~= nil
     local size = compact and 9 or 11
     local refresh = window_needs_refresh(account, window)
@@ -774,8 +774,9 @@ return function(shared, repo_root)
     local count = refresh and 'Refresh' or format_window_countdown(window)
     local color = refresh and ui.caution or used >= 100 and ui.danger or ui.accent
     local bar_h = 3
-    by = by or (y + 7)
-    local text_y = compact and (by + 4) or (y + 12)
+    local offset = math.max(0, math.floor(((pitch or 16) - 16) / 2))
+    by = by or (y + 7 + offset)
+    local text_y = compact and (by + 4) or (y + 12 + offset)
 
     local nw = (name ~= '') and ui.width(cr, name, size, true) or 0
     local count_width = ui.width(cr, '00d 00h', size, true)
@@ -848,7 +849,32 @@ return function(shared, repo_root)
       local windows_for, heights = {}, {}
       for index, account in ipairs(accounts) do
         windows_for[index] = get_row_windows(account)
-        heights[index] = is_two_col and 16 or account_pitch(width, account, windows_for[index])
+      end
+
+      if is_two_col then
+        local split = find_split_point(accounts)
+        local left_count = split
+        local right_count = #accounts - split
+        local max_count = math.max(left_count, right_count)
+        local target_h = max_count * 16
+
+        local function compute_column_pitches(start_idx, count)
+          if count <= 0 then return end
+          local base = math.floor(target_h / count)
+          local rem = target_h % count
+          for i = 1, count do
+            local idx = start_idx + i - 1
+            local extra = (rem > 0 and i > math.floor((count - rem) / 2) and i <= math.floor((count - rem) / 2) + rem) and 1 or 0
+            heights[idx] = base + extra
+          end
+        end
+
+        compute_column_pitches(1, left_count)
+        compute_column_pitches(split + 1, right_count)
+      else
+        for index, account in ipairs(accounts) do
+          heights[index] = account_pitch(width, account, windows_for[index])
+        end
       end
 
       local function draw_column(first, last, col_x, col_width)
@@ -898,7 +924,7 @@ return function(shared, repo_root)
                 for row, window in ipairs(group) do
                   local by = y + gap * row + bar_h * (row - 1)
                   draw_window(cr, account, window, x + (col - 1) * ww,
-                    y, ww - 16, show_pace, pitch > 24, by)
+                    y, ww - 16, show_pace, pitch > 24, by, pitch)
                 end
               end
             else
@@ -906,7 +932,7 @@ return function(shared, repo_root)
               local ww = bar_area / window_columns
               for i, window in ipairs(wins) do
                 draw_window(cr, account, window, x + (i - 1) * ww,
-                  y, ww - 16, show_pace, pitch > 24)
+                  y, ww - 16, show_pace, pitch > 24, nil, pitch)
               end
             end
           end
@@ -914,20 +940,24 @@ return function(shared, repo_root)
         end
         -- Faint rounded frames around each provider cluster. Drawn last so the
         -- stroke sits on top of selected-row fills. Inset 1px so adjacent
-        -- groups do not share an edge.
-        local gy, gstart = 0, first
-        while gstart <= last do
-          local provider = accounts[gstart].provider
-          local gend, gh = gstart, 0
-          while gend <= last and accounts[gend].provider == provider do
-            gh = gh + heights[gend]
-            gend = gend + 1
+        -- groups do not share an edge. If a provider is the only provider on
+        -- that side, omit the frame.
+        local is_only_provider = accounts[first].provider == accounts[last].provider
+        if not is_only_provider then
+          local gy, gstart = 0, first
+          while gstart <= last do
+            local provider = accounts[gstart].provider
+            local gend, gh = gstart, 0
+            while gend <= last and accounts[gend].provider == provider do
+              gh = gh + heights[gend]
+              gend = gend + 1
+            end
+            if gend - gstart > 1 then
+              ui.rect(cr, col_x + 1, gy + 1, col_width - 2, math.max(1, gh - 2), ui.line, 6, 1, 1)
+            end
+            gy = gy + gh
+            gstart = gend
           end
-          if gend - gstart > 1 then
-            ui.rect(cr, col_x + 1, gy + 1, col_width - 2, math.max(1, gh - 2), ui.line, 6, 1, 1)
-          end
-          gy = gy + gh
-          gstart = gend
         end
       end
 
