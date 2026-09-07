@@ -1801,6 +1801,77 @@ def github_actions_provider(period, timeout):
     return provider
 
 
+def load_blacksmith_credentials():
+    config_dir = Path(
+        os.environ.get("BLACKSMITH_CONFIG_DIR", Path.home() / ".blacksmith")
+    )
+    return load_json(config_dir / "credentials", {})
+
+
+def fetch_blacksmith_email_alert_threshold(org=None, timeout=10):
+    env_cap = (
+        os.environ.get("BILLING_BLACKSMITH_ALERT_THRESHOLD", "").strip()
+        or os.environ.get("BILLING_BLACKSMITH_CAP", "").strip()
+    )
+    if env_cap:
+        try:
+            val = Decimal(env_cap)
+            if val > 0:
+                return val
+        except InvalidOperation:
+            log_event(f"Blacksmith: invalid environment alert threshold {env_cap!r}")
+
+    creds = load_blacksmith_credentials()
+    current_org = creds.get("current_org") or ""
+    effective_org = (
+        (org or "").strip()
+        or os.environ.get("BILLING_BLACKSMITH_ORG", "").strip()
+        or os.environ.get("BLACKSMITH_ORG", "").strip()
+        or current_org
+    )
+    if not effective_org:
+        return None
+
+    org_entry = creds.get("orgs", {}).get(effective_org, {})
+    if not org_entry and current_org in creds.get("orgs", {}):
+        org_entry = creds["orgs"][current_org]
+
+    token = (
+        os.environ.get("BLACKSMITH_TOKEN", "").strip()
+        or org_entry.get("token", "").strip()
+    )
+    if not token:
+        return None
+
+    api_url = (
+        os.environ.get("BLACKSMITH_API_URL", "").strip()
+        or org_entry.get("api_url", "").strip()
+        or "https://backend.blacksmith.sh"
+    ).rstrip("/")
+
+    url = f"{api_url}/api/user/github/orgs/{urllib.parse.quote(effective_org)}/email-alert-threshold"
+    request = urllib.request.Request(
+        url,
+        headers={
+            "Authorization": f"Bearer {token}",
+            "User-Agent": USER_AGENT,
+            "Accept": "application/json",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+            threshold_raw = payload.get("threshold")
+            if threshold_raw is not None:
+                val = Decimal(str(threshold_raw))
+                if val > 0:
+                    return val
+    except Exception as exc:
+        log_event(f"Blacksmith: could not fetch email alert threshold: {exc}")
+        return None
+    return None
+
+
 def blacksmith_usage(period, timeout):
     tzinfo = period["localNow"].tzinfo
     start = datetime.combine(period["periodStart"], time.min, tzinfo=tzinfo)
@@ -1821,12 +1892,14 @@ def blacksmith_usage(period, timeout):
     return run_json(command, timeout)
 
 
-def blacksmith_history_pressures(daily_rows, period, allowance):
-    """Cumulative 2vCPU minutes through each past day against the free allowance.
+def blacksmith_history_pressures(
+    daily_rows, period, cap, value_key="billable_minutes", divisor=Decimal(2)
+):
+    """Cumulative usage through each past day against the cap or allowance.
 
     Today's glyph already sits on the now line, so samples stop at yesterday.
     """
-    if not daily_rows or allowance is None or allowance <= 0:
+    if not daily_rows or cap is None or cap <= 0:
         return []
     by_day = {}
     for row in daily_rows:
@@ -1836,20 +1909,19 @@ def blacksmith_history_pressures(daily_rows, period, allowance):
             day_date = date.fromisoformat(str(row.get("date") or ""))
         except ValueError:
             continue
-        billable = max(
+        raw = max(
             Decimal(0),
             as_decimal(
-                row.get("billable_minutes", 0), "Blacksmith daily billable minutes"
+                row.get(value_key, 0), f"Blacksmith daily {value_key}"
             ),
         )
-        by_day[day_date] = by_day.get(day_date, Decimal(0)) + billable
+        by_day[day_date] = by_day.get(day_date, Decimal(0)) + (raw / divisor)
     points = []
     cumulative = Decimal(0)
     for offset in range(1, period["day"]):
         day_date = period["periodStart"] + timedelta(days=offset - 1)
         cumulative += by_day.get(day_date, Decimal(0))
-        consumed = cumulative / Decimal(2)
-        points.append({"day": offset, "pressure": rounded(consumed / allowance)})
+        points.append({"day": offset, "pressure": rounded(cumulative / cap)})
     return points
 
 
@@ -1857,6 +1929,62 @@ def blacksmith_provider(period, timeout):
     log_event("Blacksmith: querying CLI usage...")
     payload = blacksmith_usage(period, timeout)
     summary = payload.get("summary") or {}
+    daily_rows = payload.get("daily") or []
+    org = str(
+        ((payload.get("installation") or {}).get("installation_name") or "")
+    ).strip() or os.environ.get("BILLING_BLACKSMITH_ORG", "").strip()
+
+    threshold = fetch_blacksmith_email_alert_threshold(org, timeout)
+    if threshold is not None and threshold > 0:
+        log_event(f"Blacksmith: using spend alert threshold of ${float(threshold):.2f}")
+        cost_raw = summary.get("cost_usd", 0)
+        current_usd = max(Decimal(0), as_decimal(cost_raw, "Blacksmith cost USD"))
+        history_points = blacksmith_history_pressures(
+            daily_rows, period, threshold, value_key="cost_usd", divisor=Decimal(1)
+        )
+        weighted = weighted_month_forecast(
+            current_usd, period, history_points, threshold
+        )
+        if weighted is not None:
+            forecast_usd = max(current_usd, weighted)
+            forecast_source = "weighted-daily-pace"
+        else:
+            forecast_usd = max(
+                current_usd, linear_month_forecast(current_usd, period)
+            )
+            forecast_source = "linear-month-pace"
+
+        provider = {
+            "id": "blacksmith",
+            "code": "BSM",
+            "name": "Blacksmith",
+            "color": BLACKSMITH_COLOR,
+            "kind": "metered",
+            "ok": True,
+            "stale": False,
+            "org": org,
+            "currentUsd": rounded(current_usd, 2),
+            "capUsd": rounded(threshold, 2),
+            "thresholdUsd": rounded(threshold, 2),
+            "forecastUsd": rounded(forecast_usd, 2),
+            "currentPressure": rounded(current_usd / threshold),
+            "forecastPressure": rounded(forecast_usd / threshold),
+            "forecastAvailable": True,
+            "source": "blacksmith-usage",
+            "capSource": "blacksmith-email-alert-threshold",
+            "forecastSource": forecast_source,
+            "history": history_points,
+            "detail": (
+                f"${float(current_usd):.2f} now · "
+                f"${float(forecast_usd):.2f} EOM · "
+                f"${float(threshold):.2f} alert"
+            ),
+        }
+        log_event(
+            f"Blacksmith: fresh fetch succeeded: ${provider['currentUsd']}/${provider['capUsd']} alert (org: {org or 'default'}), forecast ${provider['forecastUsd']}"
+        )
+        return provider
+
     billable = max(
         Decimal(0),
         as_decimal(summary.get("billable_minutes", 0), "Blacksmith billable minutes"),
@@ -1867,7 +1995,7 @@ def blacksmith_provider(period, timeout):
     # free tier is denominated in.
     consumed = billable / Decimal(2)
     history_points = blacksmith_history_pressures(
-        payload.get("daily") or [], period, allowance
+        daily_rows, period, allowance, value_key="billable_minutes", divisor=Decimal(2)
     )
     weighted = weighted_month_forecast(consumed, period, history_points, allowance)
     if weighted is not None:
@@ -1876,9 +2004,6 @@ def blacksmith_provider(period, timeout):
     else:
         forecast = max(consumed, linear_month_forecast(consumed, period))
         forecast_source = "linear-month-pace"
-    org = str(
-        ((payload.get("installation") or {}).get("installation_name") or "")
-    ).strip() or os.environ.get("BILLING_BLACKSMITH_ORG", "").strip()
     provider = {
         "id": "blacksmith",
         "code": "BSM",

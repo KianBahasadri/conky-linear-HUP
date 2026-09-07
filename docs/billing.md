@@ -152,14 +152,17 @@ separate `currentPayableUsd` diagnostic.
 
 ## Blacksmith
 
-Blacksmith is an included-minutes allowance for the GitHub organization that
-the authenticated `blacksmith` CLI is using. Enable it with
-`BILLING_BLACKSMITH_ENABLED`; do not set a cap. `blacksmith usage` returns
-`billable_minutes` as 1-vCPU weighted minutes. The advertised x64 2vCPU
-allowance is 3,000 minutes. The renderer divides billable by two so the current
-point is 2vCPU minutes consumed divided by that allowance, then projects
-calendar pace through the common EOM. Daily CLI totals seed the past trail
-the same way Azure Cost Management rows do.
+Blacksmith tracks usage for the GitHub organization that the authenticated
+`blacksmith` CLI is using. Enable it with `BILLING_BLACKSMITH_ENABLED`; do not
+set a cap.
+
+The fetcher reads Blacksmith's live spend alert limit (`email-alert-threshold`
+API) using the authenticated CLI credentials. When an alert threshold is set,
+Blacksmith plots dollar spend (`cost_usd` from `blacksmith usage`) as metered
+usage against that threshold ceiling, with daily CLI cost totals seeding the
+past observation trail. If no spend alert is configured, it falls back to
+plotting x64 2vCPU minutes (`billable_minutes / 2`) against the advertised
+3,000-minute free allowance.
 
 Org login follows `BILLING_BLACKSMITH_ORG` when set, otherwise the CLI's
 current installation. Auth is `blacksmith auth login`.
@@ -185,9 +188,10 @@ current installation. Auth is `blacksmith auth login`.
   free public-repository behavior follow GitHub's
   [Actions billing rules](https://docs.github.com/en/billing/concepts/product-billing/github-actions).
 - Blacksmith uses the authenticated `blacksmith` CLI `usage` command for the
-  current GitHub organization. Spend comes from that response; the free-minute
-  ceiling is the advertised 3,000 x64 2vCPU minutes. They are not configured
-  in `.env`.
+  current GitHub organization. When an email alert threshold is configured,
+  spend comes from that response and is normalized against that alert limit;
+  otherwise the ceiling is the advertised 3,000 x64 2vCPU minutes. They are
+  not configured in `.env`.
 
 Current spend, current balance, burn rate, and forecasts are always fetched or
 derived. They are never configured in `.env`. The complete setup variables are

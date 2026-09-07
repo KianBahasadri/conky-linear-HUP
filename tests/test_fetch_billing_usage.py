@@ -24,6 +24,7 @@ def isolate_cache(monkeypatch, tmp_path):
     monkeypatch.delenv("BILLING_AZURE_SUBSCRIPTION_ID", raising=False)
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     monkeypatch.setenv("BILLING_GITHUB_ACTIONS_ENABLED", "0")
+    monkeypatch.setenv("BLACKSMITH_CONFIG_DIR", str(tmp_path))
 
 
 def test_month_period_uses_one_inclusive_calendar_eom():
@@ -594,6 +595,9 @@ def test_blacksmith_plots_2vcpu_minutes_against_free_allowance(monkeypatch):
         }
 
     monkeypatch.setattr(billing, "blacksmith_usage", fake_blacksmith_usage)
+    monkeypatch.setattr(
+        billing, "fetch_blacksmith_email_alert_threshold", lambda *_args, **_kwargs: None
+    )
 
     provider = billing.blacksmith_provider(
         billing.month_period(date(2026, 8, 19)), 5
@@ -617,6 +621,90 @@ def test_blacksmith_plots_2vcpu_minutes_against_free_allowance(monkeypatch):
     assert provider["history"][5] == {"day": 6, "pressure": round((8 / 2) / 3000, 4)}
     assert provider["history"][7] == {"day": 8, "pressure": round((108 / 2) / 3000, 4)}
     assert provider["history"][-1]["day"] == 18
+
+
+def test_fetch_blacksmith_email_alert_threshold(monkeypatch, tmp_path):
+    creds_dir = tmp_path / ".blacksmith"
+    creds_dir.mkdir()
+    creds_file = creds_dir / "credentials"
+    creds_file.write_text(
+        json.dumps({
+            "current_org": "test-org",
+            "orgs": {
+                "test-org": {
+                    "token": "tok_123",
+                    "api_url": "https://backend.blacksmith.sh",
+                }
+            }
+        }),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("BLACKSMITH_CONFIG_DIR", str(creds_dir))
+
+    captured = {}
+
+    class FakeResponse:
+        def __init__(self, data):
+            self._data = data
+
+        def read(self):
+            return self._data.encode("utf-8")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+    def fake_urlopen(request, timeout):
+        captured["url"] = request.full_url
+        captured["auth"] = request.headers.get("Authorization")
+        captured["timeout"] = timeout
+        return FakeResponse(json.dumps({"threshold": 20}))
+
+    monkeypatch.setattr(billing.urllib.request, "urlopen", fake_urlopen)
+
+    threshold = billing.fetch_blacksmith_email_alert_threshold("test-org", 8)
+    assert threshold == Decimal("20")
+    assert captured["url"] == "https://backend.blacksmith.sh/api/user/github/orgs/test-org/email-alert-threshold"
+    assert captured["auth"] == "Bearer tok_123"
+    assert captured["timeout"] == 8
+
+
+def test_blacksmith_plots_spend_against_email_alert_threshold(monkeypatch):
+    def fake_blacksmith_usage(_period, _timeout):
+        return {
+            "installation": {"installation_name": "klever-lab"},
+            "summary": {"cost_usd": 7.684, "billable_minutes": 3842},
+            "daily": [
+                {"date": "2026-08-01", "cost_usd": 0.048},
+                {"date": "2026-08-02", "cost_usd": 0.312},
+                {"date": "2026-08-05", "cost_usd": 2.500},
+            ],
+        }
+
+    monkeypatch.setattr(billing, "blacksmith_usage", fake_blacksmith_usage)
+    monkeypatch.setattr(
+        billing, "fetch_blacksmith_email_alert_threshold", lambda *_args, **_kwargs: Decimal("20")
+    )
+
+    provider = billing.blacksmith_provider(
+        billing.month_period(date(2026, 8, 19)), 5
+    )
+
+    assert provider["id"] == "blacksmith"
+    assert provider["kind"] == "metered"
+    assert provider["org"] == "klever-lab"
+    assert provider["currentUsd"] == 7.68
+    assert provider["capUsd"] == 20.0
+    assert provider["currentPressure"] == round(7.684 / 20.0, 4)
+    assert provider["source"] == "blacksmith-usage"
+    assert provider["capSource"] == "blacksmith-email-alert-threshold"
+    assert provider["history"][0] == {"day": 1, "pressure": round(0.048 / 20.0, 4)}
+    assert provider["history"][1] == {"day": 2, "pressure": round((0.048 + 0.312) / 20.0, 4)}
+    assert "$7.68 now" in provider["detail"]
+    assert "$20.00 alert" in provider["detail"]
+
 
 
 def test_collect_live_providers_share_one_period_end(monkeypatch, tmp_path):
