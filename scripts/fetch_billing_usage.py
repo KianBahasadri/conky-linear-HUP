@@ -866,14 +866,21 @@ def iter_azure_usage_details(subscription_id, timeout):
         url = payload.get("nextLink")
 
 
-def fetch_azure_usage_usd(subscription_id, timeout):
+def fetch_azure_usage_usd(subscription_id, timeout, period=None):
     total = Decimal(0)
+    start = period["periodStart"] if period else None
+    end = period["today"] if period else None
     for props in iter_azure_usage_details(subscription_id, timeout):
+        if start and end:
+            day = azure_usage_detail_date(props)
+            if day is None or day < start or day > end:
+                continue
         usd = props.get("costInUSD")
         if usd is None:
             continue
         total += as_decimal(usd, "Azure costInUSD")
     return total
+
 
 
 def azure_query_date(value):
@@ -1022,18 +1029,19 @@ def azure_history_pressures(daily, period, starting):
     return points
 
 
-def fetch_azure_current(timeout):
+def fetch_azure_current(timeout, period=None):
     subscription_id = azure_subscription_id(timeout)
     try:
         total, currency = fetch_azure_cost_management(subscription_id, timeout)
     except ProviderError as error:
         if azure_throttled(error):
             log_event(f"RATE LIMIT / THROTTLED: Azure Cost Management throttled ({clean_error(error)}); falling back to Usage Details")
-            return fetch_azure_usage_usd(subscription_id, timeout)
+            return fetch_azure_usage_usd(subscription_id, timeout, period)
         raise
     if currency == "USD":
         return total
     return total / azure_pricing_to_billing_rate(subscription_id, timeout)
+
 
 
 def azure_resource_list(payload):
@@ -1151,29 +1159,34 @@ def fetch_azure_credit_balance(timeout):
 def azure_provider(period, timeout):
     log_event("Azure: fetching credit balance and usage data...")
     credits = fetch_azure_credit_balance(timeout)
-    spent = credits.get("spent")
-    starting = credits.get("starting")
     remaining = credits.get("remaining")
-    burn_source = "azure-credits"
+    starting = credits.get("starting")
+    spent = None
+    burn_source = "month-to-date-pace"
+
+    try:
+        spent = fetch_azure_current(timeout, period)
+    except ProviderError as error:
+        log_event(
+            f"Azure month-to-date spend unavailable: {clean_error(error)}"
+        )
 
     if spent is None:
-        try:
-            spent = fetch_azure_current(timeout)
-            burn_source = "month-to-date-pace"
-        except ProviderError as error:
-            log_event(
-                f"Azure month-to-date spend unavailable: {clean_error(error)}"
-            )
+        spent = credits.get("spent")
+        burn_source = "azure-credits"
 
-    if starting is None and remaining is not None and spent is not None:
+    if remaining is not None and spent is not None:
         starting = remaining + spent
-    if remaining is None and starting is not None and spent is not None:
+    elif starting is None and remaining is not None and spent is not None:
+        starting = remaining + spent
+    elif remaining is None and starting is not None and spent is not None:
         remaining = max(Decimal(0), starting - spent)
-    if spent is None and starting is not None and remaining is not None:
+    elif spent is None and starting is not None and remaining is not None:
         spent = max(Decimal(0), starting - remaining)
 
     if spent is None or starting is None or starting <= 0:
         raise ProviderError("Azure credit summary omitted starting balance or spend")
+
 
     history = []
     try:

@@ -110,12 +110,17 @@ credit pool the month started with, not as OpenRouter's remaining-balance
 runway:
 
 1. The authenticated Azure CLI reads the Microsoft Customer Agreement
-   [credit balance](https://learn.microsoft.com/en-us/rest/api/consumption/credits/get) for the billing profile. `currentBalance` is the starting
-   pool (posted credit). `estimatedBalance` is that pool after pending
-   eligible charges.
-2. Spent this month is starting credit minus remaining credit (`X − (X − Y)
-   = Y`). That is the current observation.
-3. The forecast uses current calendar pace of that spend through the common
+   [credit balance](https://learn.microsoft.com/en-us/rest/api/consumption/credits/get) for the billing profile. `estimatedBalance` reflects
+   live remaining credit after all pending eligible charges.
+2. Calendar month-to-date spent `Y` is fetched directly from Cost Management
+   (`timeframe: "MonthToDate"`, or Usage Details filtered to the calendar month
+   if Cost Management is throttled). This avoids inflating current month spend
+   with unbilled charges from the prior month when the billing profile's
+   `invoiceDay` falls after the 1st (e.g. on the 9th).
+3. The month's starting credit pool `X` is derived as remaining balance plus
+   calendar month-to-date spend (`estimatedBalance + Y`). If Cost Management is
+   unavailable, the fetcher falls back to the credit summary's pending charges.
+4. The forecast uses current calendar pace of that spend through the common
    EOM, divided by the same starting pool.
 
 The current point therefore sits on the current-day line at `Y / X`, and the hollow
@@ -129,9 +134,6 @@ trail stays left of the now-line; the dashed forecast is the prediction.
 After a daily Cost Management throttle, the fetcher uses Usage Details for six
 hours before retrying Cost Management; the cooldown is persisted per Azure
 subscription, so frequent polls do not keep hammering the throttled endpoint.
-
-If the credit summary omits spend, month-to-date Cost Management (or usage
-`costInUSD` when Cost Management is throttled) fills `Y`.
 
 ## GitHub Actions
 

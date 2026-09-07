@@ -25,6 +25,10 @@ def isolate_cache(monkeypatch, tmp_path):
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     monkeypatch.setenv("BILLING_GITHUB_ACTIONS_ENABLED", "0")
     monkeypatch.setenv("BLACKSMITH_CONFIG_DIR", str(tmp_path))
+    monkeypatch.setattr(
+        billing, "fetch_azure_current", lambda *_args, **_kwargs: Decimal("24.46")
+    )
+
 
 
 def test_month_period_uses_one_inclusive_calendar_eom():
@@ -1196,6 +1200,50 @@ def test_azure_plots_month_spend_against_starting_credits(monkeypatch, tmp_path)
     assert provider["history"][1]["pressure"] == round(4.00 / 98.72, 4)
     assert provider["history"][2] == {"day": 3, "pressure": round(10.00 / 98.72, 4)}
     assert provider["history"][-1]["day"] == 18
+
+
+def test_azure_month_to_date_spend_excludes_previous_month_unbilled_charges(monkeypatch, tmp_path):
+    isolate_cache(monkeypatch, tmp_path)
+    # Credit balance reports $29.08 pending, but $27.78 was from August (unbilled until invoiceDay=9)
+    monkeypatch.setattr(
+        billing,
+        "fetch_azure_credit_balance",
+        lambda *_args: {
+            "remaining": Decimal("69.64"),
+            "starting": Decimal("98.72"),
+            "spent": Decimal("29.08"),
+        },
+    )
+    # Cost Management returns true September month-to-date spend of $1.30
+    monkeypatch.setattr(
+        billing,
+        "fetch_azure_current",
+        lambda *_args, **_kwargs: Decimal("1.30"),
+    )
+    monkeypatch.setattr(
+        billing,
+        "fetch_azure_daily_usd",
+        lambda *_args: {
+            date(2026, 9, 1): Decimal("0.22"),
+            date(2026, 9, 2): Decimal("0.22"),
+            date(2026, 9, 3): Decimal("0.22"),
+            date(2026, 9, 4): Decimal("0.23"),
+            date(2026, 9, 5): Decimal("0.22"),
+        },
+    )
+
+    period = billing.month_period(date(2026, 9, 6))
+    provider = billing.azure_provider(period, 5)
+
+    assert provider["kind"] == "prepaid"
+    assert provider["currentUsd"] == 1.30
+    assert provider["capUsd"] == 70.94  # 69.64 remaining + 1.30 spent this month
+    assert provider["balanceUsd"] == 69.64
+    assert provider["currentPressure"] == round(1.30 / 70.94, 4)
+    assert "$1.30 now" in provider["detail"]
+    assert "$70.94 at month start" in provider["detail"]
+    assert provider["history"][0] == {"day": 1, "pressure": round(0.22 / 70.94, 4)}
+    assert provider["history"][4] == {"day": 5, "pressure": round(1.11 / 70.94, 4)}
 
 
 def test_render_tsv_contains_only_renderer_fields():
