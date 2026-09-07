@@ -72,7 +72,7 @@ no gap is left between panels. The left rail's repository/session composition is
 described in [Sessions](sessions.md), with Minecraft pinned to the foot when enabled.
 The center holds the task grid,
 the contribution calendar, and AI usage rows at the bottom. The quota panel
-shares the task grid's left edge and is 96px narrower, so its bars stop short
+shares the task grid's left edge and is 144px narrower, so its bars stop short
 of the right rail. The right rail
 holds resource readings, the budget map, then weather and training. The
 standard 1920×1080 layout has 316px and 400px side rails and a flexible center.

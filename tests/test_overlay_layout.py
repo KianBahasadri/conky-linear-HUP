@@ -48,7 +48,7 @@ def test_rate_limit_panel_shares_the_task_grid_left_edge_and_is_narrower():
     linear = windows["linear"]
     quota = windows["rate-limit-panel"]
     assert quota[0] == linear[0]
-    assert quota[2] == linear[2] - 96
+    assert quota[2] == linear[2] - 144
 
 
 def test_explicit_position_overrides_keep_their_original_edge_semantics():
