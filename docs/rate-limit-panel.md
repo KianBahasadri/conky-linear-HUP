@@ -8,7 +8,7 @@ column flanking the flat observed-data bars on the right, keeping bar lengths un
 Two-part labels left-align each quantity in a 3-character field so both numbers
 share x-positions across rows (`9h  58m`, `10d 11h`, `17d 1h`) rather than
 staggering with digit count.
-Pool-distinguishing labels (like `Auto`, `API`, `Reserve`, or Gemini model families) flank
+Pool-distinguishing labels (like `Auto`, `API`, or `Reserve`) flank
 on the left. Standard interval windows (`5h`, `7d`, `Month`) omit the leading label so
 bars start directly beside the account name.
 Selected profiles use a neutral raised row and a medium-weight account name.
@@ -67,7 +67,7 @@ profiles live in `~/.local/share/clusterfork-auth/`.
 ## Gemini
 
 - Accounts are discovered from Antigravity's rotation state in `~/.gemini/antigravity-cli/rotate-auth`. The selected profile reads the live GNOME Keyring item `service=gemini username=antigravity`; inactive profiles read `service=rotate-antigravity username=<profile>`.
-- Usage is fetched from Antigravity's Code Assist API (`retrieveUserQuotaSummary`). Pro accounts render four quota bars as a compact 2×2 on a 24px row: Gemini and Other 5-hour stacked in the first column, Gemini and Other weekly stacked in the second, both labelled `Gem` / `Other`. Free accounts render two weekly bars (`Gem` and `Other`) on one 18px row. Paid tiers (such as Google AI Pro) are recognized from the account's `paidTier` subscription.
+- Usage is fetched from Antigravity's Code Assist API (`retrieveUserQuotaSummary`). Pro accounts render two quota bars: 5-hour and weekly on one 18px row. Free accounts render one weekly bar on one 18px row. Paid tiers (such as Google AI Pro) are recognized from the account's `paidTier` subscription.
 - `GEMINI_ANTIGRAVITY_STATE_DIR` overrides the rotation state directory, `GEMINI_CODE_ASSIST_ENDPOINT` overrides the Antigravity API endpoint, `GEMINI_ANTIGRAVITY_CLI` overrides the `agy` executable, and `GEMINI_AUTH_REFRESH_TIMEOUT_SECONDS` controls the refresh timeout.
 
 ## Grok

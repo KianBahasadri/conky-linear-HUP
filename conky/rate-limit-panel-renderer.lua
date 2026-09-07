@@ -686,8 +686,8 @@ return function(shared, repo_root)
       local result = {}
       local seen = {}
       local order = is_free
-        and { 'gemini-weekly', 'gemini', 'other-weekly', 'other', '3p-weekly' }
-        or { 'gemini-5h', 'gemini-weekly', 'other-5h', '3p-5h', 'other-weekly', '3p-weekly', 'gemini', 'other' }
+        and { 'gemini-weekly', 'weekly', 'gemini' }
+        or { 'gemini-5h', '5h', 'gemini-weekly', 'weekly', 'gemini' }
       for _, target in ipairs(order) do
         for _, w in ipairs(windows) do
           if normalized_window_label(w) == target and not seen[w] then
@@ -695,15 +695,6 @@ return function(shared, repo_root)
             seen[w] = true
           end
         end
-      end
-      for _, w in ipairs(windows) do
-        if not seen[w] then
-          table.insert(result, w)
-          seen[w] = true
-        end
-      end
-      if is_free and #result > 2 then
-        return { result[1], result[2] }
       end
       return result
     end
@@ -733,8 +724,8 @@ return function(shared, repo_root)
   local window_labels = {
     ['5h'] = '', weekly = '', monthly = '', month = '',
     reserve = 'Reserve', auto = 'Auto', api = 'API',
-    gemini = 'Gem', other = 'Other',
-    ['gemini-5h'] = 'Gem', ['gemini-weekly'] = 'Gem', ['other-5h'] = 'Other',
+    gemini = '', other = 'Other',
+    ['gemini-5h'] = '', ['gemini-weekly'] = '', ['other-5h'] = 'Other',
     ['other-weekly'] = 'Other', ['3p-weekly'] = 'Other', ['3p-5h'] = 'Other',
   }
 
@@ -752,7 +743,7 @@ return function(shared, repo_root)
         five[#five + 1] = window
       end
     end
-    if #five == 0 or #week == 0 then return nil end
+    if #five == 0 or #week == 0 or (#five <= 1 and #week <= 1) then return nil end
     return {five, week}
   end
 

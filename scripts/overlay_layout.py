@@ -148,10 +148,6 @@ def cache_counts(cache_dir):
                 if not line.startswith("account\t"):
                     continue
                 accounts += 1
-                if provider == "gemini":
-                    fields = line.split("\t")
-                    if len(fields) > 2 and (fields[2] or "").lower() != "free":
-                        gemini_pro += 1
         except OSError:
             pass
     sessions = cache_object("sessions.json", cache_dir)

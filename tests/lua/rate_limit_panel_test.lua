@@ -117,6 +117,10 @@ eq(renderer._test.gemini_duration_columns({{label = 'gemini-weekly'}, {label = '
   'weekly-only Gemini stays a single row')
 eq(renderer._test.account_pitch(1040, {provider = 'Gemini'}, gemini_wins), 24,
   'pro Gemini uses a slightly taller row for the compact 2×2 stack')
+eq(renderer._test.gemini_duration_columns({{label = 'gemini-5h'}, {label = 'gemini-weekly'}}) == nil, true,
+  'unstacked Gemini stays a single row')
+eq(renderer._test.account_pitch(1040, {provider = 'Gemini'}, {{label = 'gemini-5h'}, {label = 'gemini-weekly'}}), 18,
+  'gemini without other stays a single 18px line')
 eq(renderer._test.account_pitch(1040, {provider = 'Gemini'}, {{label = 'gemini-weekly'}}), 18,
   'free Gemini keeps a single line')
 eq(renderer._test.account_pitch(1040, {provider = 'Codex'}, gemini_wins), 18,
