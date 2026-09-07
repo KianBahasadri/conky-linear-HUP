@@ -171,12 +171,27 @@ def plan(width, height, top=40, counts=None, env=None):
     center = width - 2 * margin - left - right - gutter_left - gutter
     center_x, right_x = margin + left + gutter_left, width - margin - right
 
+    # Right rail: arc gauge resource readings, the budget map, then weather and training.
+    # Four arc gauges fit on a single row next to each other.
+    resource_h = 100
+    # The map keeps the guide's projection ratio.
+    map_h = round(2 * 94 * 0.82 * min(right - 32, 720) / 305 + 32)
+    billing_y = top + resource_h + 12
+    billing_h = map_h
+    weather_y = billing_y + billing_h + 12
+    weather_h = 250 if height - margin - weather_y >= 250 else max(100, height - margin - weather_y)
+
     # Center: quota rows sit at the bottom, the calendar above them, and the
-    # task grid takes what is left. Quota rows are 18px wide-layout rows, 40px
-    # two-column rows, or 76px stacks.
+    # task grid takes what is left. On wide displays with many accounts, quota
+    # rows split into two columns side by side across the bottom.
     row = 18 if center >= 880 else 40 if center >= 760 else 76
-    quota_limit = int(available * (0.55 if available >= 900 else 0.44))
-    quota_rows = max(1, min(counts.get("accounts", 0) or 1, quota_limit // row))
+    is_wide = width >= 1600
+    account_count = counts.get("accounts", 0) or 1
+    two_col = is_wide and account_count > 8
+    effective_accounts = (account_count + 1) // 2 if two_col else account_count
+    max_quota_available = height - margin - (weather_y + weather_h + 12) if two_col else available
+    quota_limit = min(int(available * (0.55 if available >= 900 else 0.44)), max_quota_available)
+    quota_rows = max(1, min(effective_accounts, quota_limit // row))
     stacked_extra = 6 * counts.get("gemini_pro", 0) if row <= 18 else 0
     quota_h = max(100, quota_rows * row + stacked_extra)
     github = env.get("GITHUB_OVERLAY_ENABLED", "1") != "0"
@@ -186,10 +201,17 @@ def plan(width, height, top=40, counts=None, env=None):
     # A task row reserves 124px so a three-line title wraps without clipping.
     task_bottom = github_y - 12 if github else quota_y - 12
     task_h = max(124, task_bottom - top)
-    # Centered in the center column; 240px narrower so the bars stay short of
-    # the side rails without dropping below the wide-layout row breakpoints.
-    quota_w = center - 240
-    quota_x = center_x + (center - quota_w) // 2
+    if two_col:
+        # Centered on the monitor: x stays at the center column's left edge and
+        # the width leaves equal margins on both sides. Falls back to the full
+        # bottom span when centering would squeeze the halves below the
+        # wide-layout split threshold.
+        centered_w = width - 2 * center_x
+        quota_w = centered_w if centered_w >= 1200 else width - margin - center_x
+        quota_x = center_x
+    else:
+        quota_w = center - 240
+        quota_x = center_x + (center - quota_w) // 2
 
     # Left rail: sessions join repositories at the top. The standalone sessions
     # rectangle is used only when Git is disabled. Minecraft remains at the foot.
@@ -218,16 +240,6 @@ def plan(width, height, top=40, counts=None, env=None):
     sessions_h = max(100, 16 + session_rows * 44)
     sessions_bottom = height - margin - minecraft_foot
     sessions_y = sessions_bottom - sessions_h
-
-    # Right rail: arc gauge resource readings, the budget map, then weather and training.
-    # Four arc gauges fit on a single row next to each other.
-    resource_h = 100
-    # The map keeps the guide's projection ratio.
-    map_h = round(2 * 94 * 0.82 * min(right - 32, 720) / 305 + 32)
-    billing_y = top + resource_h + 12
-    billing_h = map_h
-    weather_y = billing_y + billing_h + 12
-    weather_h = max(160, height - margin - weather_y)
     windows = {
         "linear": [center_x, top, center, task_h],
         "rate-limit-panel": [quota_x, quota_y, quota_w, quota_h],

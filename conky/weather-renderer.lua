@@ -149,7 +149,7 @@ return function(shared, repo_root)
       local content_height = weather_block + gap + 94
       local compact = height < content_height
       if not compact then
-        local top = height - content_height
+        local top = 0
         draw_weather(cr, weather, width, top)
         draw_training(cr, workouts, width, top + weather_block + gap)
         return

@@ -813,6 +813,26 @@ return function(shared, repo_root)
     end
   end
 
+  local function find_split_point(accounts)
+    local n = #accounts
+    if n <= 1 then return 1 end
+    local target = math.ceil(n / 2)
+    if target < n and accounts[target].provider ~= accounts[target + 1].provider then
+      return target
+    end
+    for offset = 1, 3 do
+      local before = target - offset
+      if before >= 1 and before < n and accounts[before].provider ~= accounts[before + 1].provider then
+        return before
+      end
+      local after = target + offset
+      if after >= 1 and after < n and accounts[after].provider ~= accounts[after + 1].provider then
+        return after
+      end
+    end
+    return target
+  end
+
   local function draw()
     ui.draw(function(cr, width, height)
       local usage = read_ai_usage() or {ok=false, accounts={}, error='Waiting for usage data'}
@@ -821,89 +841,105 @@ return function(shared, repo_root)
         ui.callout(cr, 'Unavailable', usage.error or 'Waiting for usage data', 0, 0, width, 'danger')
         return
       end
-      local rh = row_height(width)
+      local is_two_col = width >= 1200 and #accounts > 4
+      local col_w = is_two_col and math.floor(width / 2) or width
+      local effective_w = is_two_col and col_w or width
+      local rh = row_height(effective_w)
       local windows_for, heights = {}, {}
       for index, account in ipairs(accounts) do
         windows_for[index] = get_row_windows(account)
-        heights[index] = account_pitch(width, account, windows_for[index])
+        heights[index] = is_two_col and 18 or account_pitch(width, account, windows_for[index])
       end
-      local first, last, page = ui.pack(heights, height, 0)
-      local provider_width, name_width = width < 880 and 56 or 64, width < 880 and 48 or 56
-      local y = 0
-      for index = first, last do
-        local account = accounts[index]
-        local pitch = heights[index]
-        local wins = windows_for[index]
-        if account.is_selected then ui.rect(cr, 0, y, width, pitch, ui.raised, 4) end
-        local name_baseline = y + 13 + math.max(0, (pitch - 18) / 2)
-        if index == first or accounts[index - 1].provider ~= account.provider then
-          -- The provider's average pace delta is a derived value; it sits beside
-          -- the group mark rather than in a separate summary row.
-          local delta = calculate_provider_average_pace(accounts, account.provider)
-          local delta_width = ui.text(cr, delta and string.format('%+.0f%%', delta) or '—',
-            provider_width - 6, name_baseline, {size = 11, mono = true, color = ui.derived, align = 'right'})
-          local pkey = provider_name(account)
-          local mark_drawn = ui.mark(cr, pkey, 12, name_baseline - 4, 12, account.is_selected and ui.strong or ui.ink)
-          if not mark_drawn then
-            ui.text(cr, provider_labels[account.provider] or account.provider, 6, name_baseline,
-              {size = 13.5, color = ui.muted, width = provider_width - delta_width - 12})
+
+      local function draw_column(first, last, col_x, col_width)
+        if first > last then return end
+        local provider_width, name_width = col_width < 760 and 56 or 64, col_width < 760 and 48 or 56
+        local y = 0
+        for index = first, last do
+          local account = accounts[index]
+          local pitch = heights[index]
+          local wins = windows_for[index]
+          if account.is_selected then ui.rect(cr, col_x, y, col_width, pitch, ui.raised, 4) end
+          local name_baseline = y + 13 + math.max(0, (pitch - 18) / 2)
+          if index == first or accounts[index - 1].provider ~= account.provider then
+            -- The provider's average pace delta is a derived value; it sits beside
+            -- the group mark rather than in a separate summary row.
+            local delta = calculate_provider_average_pace(accounts, account.provider)
+            local delta_width = ui.text(cr, delta and string.format('%+.0f%%', delta) or '—',
+              col_x + provider_width - 6, name_baseline, {size = 11, mono = true, color = ui.derived, align = 'right'})
+            local pkey = provider_name(account)
+            local mark_drawn = ui.mark(cr, pkey, col_x + 12, name_baseline - 4, 12, account.is_selected and ui.strong or ui.ink)
+            if not mark_drawn then
+              ui.text(cr, provider_labels[account.provider] or account.provider, col_x + 6, name_baseline,
+                {size = 13.5, color = ui.muted, width = provider_width - delta_width - 12})
+            end
           end
-        end
-        local has_filled_bar = account_has_filled_bar(account, wins)
-        local name_color = has_filled_bar and ui.danger
-          or (account.is_selected and ui.strong or ui.ink)
-        ui.text(cr, account.label, provider_width, name_baseline,
-          {size = 13.5, bold = account.is_selected and 'medium' or nil,
-            color = name_color, width = name_width - 4})
-        local x = provider_width + name_width
-        if #wins == 0 then
-          ui.text(cr, 'Retrying: ' .. (account.error ~= '' and account.error or 'No usable windows'),
-            x, name_baseline, {size = 12, color = ui.danger, width = width - x - 8})
-        else
-          local columns = provider_name(account) == 'gemini' and gemini_duration_columns(wins)
-          local show_pace = not is_free_account(account) or provider_is_free_only(accounts, account.provider)
-          if columns then
-            local ww = (width - x) / #columns
-            local lines = 1
-            for _, group in ipairs(columns) do lines = math.max(lines, #group) end
-            local bar_h = 3
-            local gap = (pitch - lines * bar_h) / (lines + 1)
-            for col, group in ipairs(columns) do
-              for row, window in ipairs(group) do
-                local by = y + gap * row + bar_h * (row - 1)
-                draw_window(cr, account, window, x + (col - 1) * ww,
-                  y, ww - 16, show_pace, pitch > 24, by)
+          local has_filled_bar = account_has_filled_bar(account, wins)
+          local name_color = has_filled_bar and ui.danger
+            or (account.is_selected and ui.strong or ui.ink)
+          ui.text(cr, account.label, col_x + provider_width, name_baseline,
+            {size = 13.5, bold = account.is_selected and 'medium' or nil,
+              color = name_color, width = name_width - 4})
+          local x = col_x + provider_width + name_width
+          local bar_area = col_width - (provider_width + name_width)
+          if #wins == 0 then
+            ui.text(cr, 'Retrying: ' .. (account.error ~= '' and account.error or 'No usable windows'),
+              x, name_baseline, {size = 12, color = ui.danger, width = bar_area - 8})
+          else
+            local columns = provider_name(account) == 'gemini' and gemini_duration_columns(wins)
+            local show_pace = not is_free_account(account) or provider_is_free_only(accounts, account.provider)
+            if columns and pitch > 18 then
+              local ww = bar_area / #columns
+              local lines = 1
+              for _, group in ipairs(columns) do lines = math.max(lines, #group) end
+              local bar_h = 3
+              local gap = (pitch - lines * bar_h) / (lines + 1)
+              for col, group in ipairs(columns) do
+                for row, window in ipairs(group) do
+                  local by = y + gap * row + bar_h * (row - 1)
+                  draw_window(cr, account, window, x + (col - 1) * ww,
+                    y, ww - 16, show_pace, pitch > 24, by)
+                end
+              end
+            else
+              local window_columns = #wins
+              local ww = bar_area / window_columns
+              for i, window in ipairs(wins) do
+                draw_window(cr, account, window, x + (i - 1) * ww,
+                  y, ww - 16, show_pace, pitch > 24)
               end
             end
-          else
-            local window_columns = width < 760 and math.min(2, #wins) or #wins
-            local ww = (width - x) / window_columns
-            for i, window in ipairs(wins) do
-              draw_window(cr, account, window, x + ((i - 1) % window_columns) * ww,
-                y + math.floor((i - 1) / window_columns) * 36, ww - 16, show_pace, pitch > 24)
-            end
           end
+          y = y + pitch
         end
-        y = y + pitch
+        -- Faint rounded frames around each provider cluster. Drawn last so the
+        -- stroke sits on top of selected-row fills. Inset 1px so adjacent
+        -- groups do not share an edge.
+        local gy, gstart = 0, first
+        while gstart <= last do
+          local provider = accounts[gstart].provider
+          local gend, gh = gstart, 0
+          while gend <= last and accounts[gend].provider == provider do
+            gh = gh + heights[gend]
+            gend = gend + 1
+          end
+          if gend - gstart > 1 then
+            ui.rect(cr, col_x + 1, gy + 1, col_width - 2, math.max(1, gh - 2), ui.line, 6, 1, 1)
+          end
+          gy = gy + gh
+          gstart = gend
+        end
       end
-      -- Faint rounded frames around each provider cluster. Drawn last so the
-      -- stroke sits on top of selected-row fills. Inset 1px so adjacent
-      -- groups do not share an edge.
-      local gy, gstart = 0, first
-      while gstart <= last do
-        local provider = accounts[gstart].provider
-        local gend, gh = gstart, 0
-        while gend <= last and accounts[gend].provider == provider do
-          gh = gh + heights[gend]
-          gend = gend + 1
-        end
-        if gend - gstart > 1 then
-          ui.rect(cr, 1, gy + 1, width - 2, math.max(1, gh - 2), ui.line, 6, 1, 1)
-        end
-        gy = gy + gh
-        gstart = gend
+
+      if is_two_col then
+        local split = find_split_point(accounts)
+        draw_column(1, split, 0, col_w)
+        draw_column(split + 1, #accounts, col_w, width - col_w)
+      else
+        local first, last, page = ui.pack(heights, height, 0)
+        draw_column(first, last, 0, width)
+        ui.footer(cr, page, width, height)
       end
-      ui.footer(cr, page, width, height)
     end)
   end
 

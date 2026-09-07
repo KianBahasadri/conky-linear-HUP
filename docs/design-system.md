@@ -71,10 +71,9 @@ Each region is sized to its records and the remainder is spent on its rail, so
 no gap is left between panels. The left rail's repository/session composition is
 described in [Sessions](sessions.md), with Minecraft pinned to the foot when enabled.
 The center holds the task grid,
-the contribution calendar, and AI usage rows at the bottom. The quota panel
-is centered horizontally in the center column and is 240px narrower, so its bars stop short
-of the side rails. The right rail
-holds resource readings, the budget map, then weather and training. The
+the contribution calendar, and AI usage rows at the bottom. On wide displays with many accounts,
+the quota panel splits into two columns side by side across the bottom, and the weather panel sits
+compactly directly below billing in the right rail. The
 standard 1920×1080 layout has 316px and 400px side rails and a flexible center.
 The smaller layout uses 260px and 360px rails; 1280×720 and 1366×768 are
 covered by geometry tests and headless renders.
