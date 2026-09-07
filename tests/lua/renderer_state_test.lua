@@ -183,13 +183,13 @@ assert(ram_peak_1 == 80, 'initial peak equals reading: ' .. tostring(ram_peak_1)
 assert(arc_gauge_calls[2].opts.peak == 80 and arc_gauge_calls[2].opts.peak_hold == true, 'passes peak and peak_hold')
 
 -- 10 seconds later, reading drops to 40%.
--- Decay is 0.5% (0.005) of max (100) per second = 0.5 / sec.
--- In 10 seconds, decay is 5. Peak should be 80 - 5 = 75%.
+-- Decay is 0.05% (0.0005) of max (100) per second = 0.05 / sec.
+-- In 10 seconds, decay is 0.5. Peak should be 80 - 0.5 = 79.5%.
 os.time = function() return 1010 end
 files['meminfo'] = 'MemTotal: 100000 kB\nMemAvailable: 60000 kB\n' -- 40% RAM
 res_mod.draw()
 local ram_peak_2 = res_mod._test.peaks['ram']
-assert(math.abs(ram_peak_2 - 75) < 0.01, 'decayed peak after 10s should be 75%: ' .. tostring(ram_peak_2))
+assert(math.abs(ram_peak_2 - 79.5) < 0.01, 'decayed peak after 10s should be 79.5%: ' .. tostring(ram_peak_2))
 
 -- 2 seconds later, reading spikes to 90%. Peak should immediately push up to 90%.
 os.time = function() return 1012 end

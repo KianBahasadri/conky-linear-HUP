@@ -11,9 +11,9 @@ return function(shared, repo_root)
   local last_peak_time = nil
 
   -- Peak hold decay: design guide defaults to 5% (0.05) of channel.max per second.
-  -- "slow down the peak hold decay by a lot": default to 0.5% (0.005) of channel.max per second (10x slower).
+  -- Slowed 100x from that baseline so a spike stays visible for minutes.
   local raw_peak_decay = tonumber(os.getenv('RESOURCE_PEAK_DECAY_RATE'))
-  local peak_decay_fraction = 0.005
+  local peak_decay_fraction = 0.0005
   if raw_peak_decay and raw_peak_decay > 0 then
     peak_decay_fraction = raw_peak_decay > 1 and (raw_peak_decay / 100) or raw_peak_decay
   end

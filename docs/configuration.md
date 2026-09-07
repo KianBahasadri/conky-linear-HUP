@@ -153,7 +153,7 @@ The panel's lower training section summarizes workouts uploaded from the phone (
 | `RESOURCE_MONITOR_GAP_Y` | Optional vertical gap override; when unset, follows Linear’s per-monitor `gap_y` so panels align |
 | `RESOURCE_HISTORY_SAMPLES` | Samples retained per history trace; defaults to `90` |
 | `RESOURCE_NETWORK_MAX_MBPS` | Optional fallback or ceiling override for network plots in MB/s; defaults to `12.5` when no weekly history exists |
-| `RESOURCE_PEAK_DECAY_RATE` | Optional peak hold decay rate as a fraction (or percent) of channel maximum per second; defaults to `0.005` (0.5%/s, slowed down by 10× from the design guide's 5%/s baseline) |
+| `RESOURCE_PEAK_DECAY_RATE` | Optional peak hold decay rate as a fraction (or percent) of channel maximum per second; defaults to `0.0005` (0.05%/s, slowed 100× from the design guide's 5%/s baseline) |
 
 Four readings share one row: CPU, memory, network in, and network out. Each is
 a compact 270° arc gauge with its symbol in the upper dome, centered numeral and
@@ -163,7 +163,7 @@ The network dials use the highest recorded usage on the active network in the la
 (`cache/resource-net-peaks.tsv`) as the scale ceiling / red danger zone, with matching
 caution bands at 80%–95% and danger band above 95%. A reading above its plot maximum
 keeps its real number and is clipped only in the gauge fill. Utilization at or above 80% turns the
-active fill and number caution, and 95% turns them danger. When readings rise, the peak tick indicator is immediately pushed up; when readings fall, it decays back down slowly at 0.5% of channel maximum per second (slowed down by 10× from the design guide's 5%/s baseline; configurable via `RESOURCE_PEAK_DECAY_RATE`), with the active fill arc path terminating under the tick line so its rounded cap hides beneath it.
+active fill and number caution, and 95% turns them danger. When readings rise, the peak tick indicator is immediately pushed up; when readings fall, it decays back down slowly at 0.05% of channel maximum per second (slowed 100× from the design guide's 5%/s baseline; configurable via `RESOURCE_PEAK_DECAY_RATE`), with the active fill arc path terminating under the tick line so its rounded cap hides beneath it.
 
 Positions come from elapsed time rather than sample index, so a delivery gap
 longer than 1.5 update intervals breaks the trace instead of being bridged.
