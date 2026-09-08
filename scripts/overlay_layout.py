@@ -171,15 +171,12 @@ def plan(width, height, top=40, counts=None, env=None):
     center = width - 2 * margin - left - right - gutter_left - gutter
     center_x, right_x = margin + left + gutter_left, width - margin - right
 
-    # Right rail: arc gauge resource readings, the budget map, then weather and training.
+    # Right rail: arc gauge resource readings at the top, then weather and training.
     # Four arc gauges fit on a single row next to each other.
     resource_h = 100
-    # The map keeps the guide's projection ratio.
-    map_h = round(0.34 * min(right - 32, 720) + 32)
-    billing_y = top + resource_h + 12
-    billing_h = map_h
-    weather_y = billing_y + billing_h + 12
-    weather_h = 250 if height - margin - weather_y >= 250 else max(100, height - margin - weather_y)
+    weather_y = top + resource_h + 12
+    weather_limit = height - margin - 100 - 12 - weather_y
+    weather_h = 250 if weather_limit >= 250 else max(100, weather_limit)
 
     # Center: quota rows sit at the bottom, the calendar above them, and the
     # task grid takes what is left. On wide displays with many accounts, quota
@@ -187,7 +184,8 @@ def plan(width, height, top=40, counts=None, env=None):
     row = 16 if center >= 880 else 40 if center >= 760 else 76
     is_wide = width >= 1600
     account_count = counts.get("accounts", 0) or 1
-    two_col = is_wide and account_count > 8
+    centered_w = width - 2 * center_x
+    two_col = is_wide and account_count > 8 and centered_w >= 1200
     effective_accounts = (account_count + 1) // 2 if two_col else account_count
     max_quota_available = height - margin - (weather_y + weather_h + 12) if two_col else available
     quota_limit = min(int(available * (0.55 if available >= 900 else 0.44)), max_quota_available)
@@ -203,15 +201,21 @@ def plan(width, height, top=40, counts=None, env=None):
     task_h = max(124, task_bottom - top)
     if two_col:
         # Centered on the monitor: x stays at the center column's left edge and
-        # the width leaves equal margins on both sides. Falls back to the full
-        # bottom span when centering would squeeze the halves below the
-        # wide-layout split threshold.
-        centered_w = width - 2 * center_x
-        quota_w = centered_w if centered_w >= 1200 else width - margin - center_x
+        # the width leaves equal margins on both sides.
+        quota_w = centered_w
         quota_x = center_x
     else:
         quota_w = center - 240
         quota_x = center_x + (center - quota_w) // 2
+
+    # Bottom right: the budget map is pinned to the bottom right and sized to
+    # fit beside the centered rate limit panel flush with its top and bottom edges.
+    billing_w = left
+    billing_x = width - margin - billing_w
+    billing_h = quota_h
+    billing_y = height - margin - billing_h
+    if weather_y + weather_h + 12 > billing_y:
+        weather_h = max(100, billing_y - 12 - weather_y)
 
     # Left rail: sessions join repositories at the top. The standalone sessions
     # rectangle is used only when Git is disabled. Minecraft remains at the foot.
@@ -248,7 +252,7 @@ def plan(width, height, top=40, counts=None, env=None):
         "sessions": [margin, sessions_y, left, sessions_h],
         "minecraft": [margin, height - margin - minecraft_h, left, minecraft_h],
         "resource-monitor": [right_x, top, right, resource_h],
-        "billing": [right_x, billing_y, right, billing_h],
+        "billing": [billing_x, billing_y, billing_w, billing_h],
         "weather": [right_x, weather_y, right, weather_h],
     }
     # Existing positional overrides retain their edge semantics even though
@@ -256,7 +260,7 @@ def plan(width, height, top=40, counts=None, env=None):
     for key, prefix, right_edge, bottom_edge in (
         ("git", "GIT", False, False), ("sessions", "SESSIONS", False, True),
         ("minecraft", "MINECRAFT", False, True), ("github", "GITHUB", False, True),
-        ("weather", "WEATHER", True, True), ("billing", "BILLING", True, False),
+        ("weather", "WEATHER", True, True), ("billing", "BILLING", True, True),
         ("resource-monitor", "RESOURCE_MONITOR", True, False),
         ("rate-limit-panel", "RATE_LIMIT_PANEL", False, True),
     ):

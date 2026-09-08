@@ -1,6 +1,6 @@
 # Billing forecast panel
 
-Every provider shares one budget map in the right rail: a low perspective
+Every provider shares one budget map in the bottom right: a low perspective
 time-and-limit plane with time running left to right and usage receding from
 the near bottom edge toward the narrower far edge. It uses the design guide's
 camera: visible depth is 34% of the near-edge width and perspective factor 0.4
@@ -236,11 +236,14 @@ refreshes once per day and each Cost Explorer API call incurs a $0.01 fee.
 
 ## Placement and lifecycle
 
-The launcher creates one billing window per monitor in the right rail below
-system resources. Its height follows the projected depth plus 32px clearance,
-rounded to pixels (157px for a 400px-wide window); the weather panel follows
-below it without reserving the old diamond's height.
+The launcher creates one billing window per monitor pinned to the bottom right
+below the weather panel. Its width matches the side margin space (316px on
+standard wide displays, 260px on narrower displays), leaving a 12px gutter
+alongside the centered rate limit panel. Its height matches the rate limit
+panel (`billing_h = quota_h`), with reduced perspective tilt (`depth = height - 8`)
+keeping both panels flush along their top and bottom edges while preserving
+marker boundary clearance.
 Explicit `BILLING_GAP_X`/`BILLING_GAP_Y` overrides retain their
-right-edge/top-edge meaning. The fetch loop is independent of the GitHub
+right-edge/bottom-edge meaning. The fetch loop is independent of the GitHub
 contribution calendar and does not read or write its cache or renderer state.
 Cache and log ownership are documented in [Caches](caches.md).

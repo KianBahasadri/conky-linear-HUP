@@ -127,16 +127,16 @@ return function(shared, repo_root)
   end
 
   -- The guide's camera: time runs right and usage narrows into the distance.
-  local function draw_map(cr, model, state, width, top)
-    local plane_width = math.min(width - 32, 720)
-    local depth = plane_width * 0.34
+  local function draw_map(cr, model, state, width, height)
+    local plane_width = math.min(width - 20, 720)
     local perspective = 0.4
-    local height = depth + 32
+    local baseline_y = height and (height - 1) or math.floor(plane_width * 0.36 + 19.5)
+    local depth = height and (height - 8) or (plane_width * 0.36)
     local function point(t, value)
       local usage = value / model.maximum
       local distance = 1 + perspective * usage
       return {width / 2 + (t - 0.5) * plane_width / distance,
-        top + height - 16 - depth * usage * (1 + perspective) / distance}
+        baseline_y - depth * usage * (1 + perspective) / distance}
     end
     local maximum = model.maximum
     ui.polygon(cr, {point(0, 100), point(1, 100), point(1, maximum), point(0, maximum)}, ui.danger, 0.14 * 0.35)
@@ -227,7 +227,7 @@ return function(shared, repo_root)
       end)
     end
     if not plotted then
-      ui.text(cr, 'Budget data unavailable', width / 2, top + height / 2,
+      ui.text(cr, 'Budget data unavailable', width / 2, height / 2,
         {size = 14, color = ui.muted, align = 'center'})
     end
     return height
@@ -244,7 +244,7 @@ return function(shared, repo_root)
           0, 0, width, 'danger')
         return
       end
-      local top = draw_map(cr, model, state, width, 0)
+      draw_map(cr, model, state, width, height)
     end)
   end
 

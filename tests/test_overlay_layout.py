@@ -51,10 +51,23 @@ def test_rate_limit_panel_is_centered_in_center_column_and_is_narrower():
     assert quota[2] == linear[2] - 240
 
 
+def test_billing_is_pinned_to_bottom_right_and_leaves_gutter_for_rate_limit_panel():
+    windows = overlay_layout.plan(1920, 1080, 40, {"accounts": 15}, {})
+    billing = windows["billing"]
+    quota = windows["rate-limit-panel"]
+    assert billing[0] + billing[2] == 1920 - 8
+    assert billing[1] + billing[3] == 1080 - 8
+    assert billing[2] == 316
+    assert billing[0] - (quota[0] + quota[2]) == 12
+    assert billing[1] == quota[1]
+    assert billing[3] == quota[3]
+
+
 def test_explicit_position_overrides_keep_their_original_edge_semantics():
     windows = overlay_layout.plan(1920, 1080, 40, {}, {
         "WEATHER_GAP_X": "20", "WEATHER_GAP_Y": "24", "GIT_GAP_Y": "48",
         "GITHUB_GAP_X": "320", "GITHUB_GAP_Y": "100", "SESSIONS_GAP_X": "-4",
+        "BILLING_GAP_X": "14", "BILLING_GAP_Y": "18",
     })
     assert windows["weather"][0] + windows["weather"][2] == 1900
     assert windows["weather"][1] + windows["weather"][3] == 1056
@@ -62,6 +75,8 @@ def test_explicit_position_overrides_keep_their_original_edge_semantics():
     assert windows["github"][0] == 320
     assert windows["github"][1] + windows["github"][3] == 980
     assert windows["sessions"][0] == -4
+    assert windows["billing"][0] + windows["billing"][2] == 1920 - 14
+    assert windows["billing"][1] + windows["billing"][3] == 1080 - 18
 
 
 def test_cache_counts_follow_linear_urgency_filter_and_keep_empty_account_rows(tmp_path):
