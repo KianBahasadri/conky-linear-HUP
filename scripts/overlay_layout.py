@@ -175,7 +175,7 @@ def plan(width, height, top=40, counts=None, env=None):
     # Four arc gauges fit on a single row next to each other.
     resource_h = 100
     # The map keeps the guide's projection ratio.
-    map_h = round(2 * 94 * 0.82 * min(right - 32, 720) / 305 + 32)
+    map_h = round(0.34 * min(right - 32, 720) + 32)
     billing_y = top + resource_h + 12
     billing_h = map_h
     weather_y = billing_y + billing_h + 12

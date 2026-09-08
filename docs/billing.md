@@ -1,8 +1,11 @@
 # Billing forecast panel
 
-Every provider shares one budget map in the right rail: an affine time-and-limit
-plane whose near left edge is the start of the month and whose far edge is month
-end. Shared appearance and layout are owned by the [Desktop design system](design-system.md).
+Every provider shares one budget map in the right rail: a low perspective
+time-and-limit plane with time running left to right and usage receding from
+the near bottom edge toward the narrower far edge. It uses the design guide's
+camera: visible depth is 34% of the near-edge width and perspective factor 0.4
+makes the far edge about 71.4% as wide. Shared appearance and layout are owned
+by the [Desktop design system](design-system.md).
 
 ## Reading the map
 
@@ -23,6 +26,15 @@ end. Shared appearance and layout are owned by the [Desktop design system](desig
   passes 100%.
 - The forecast endpoint's shape is its severity: a circle within limit, a
   4px-radius square near the limit, and a sharp square for a projected overrun.
+- The dark cockpit treatment keeps a known forecast at or below 100% at 45%
+  opacity unless current usage already exceeds the limit. This applies to the
+  entire provider group, including its trail, dots, logo, and endpoint. Overruns
+  and missing forecasts retain full opacity; stale data multiplies the resting
+  opacity by 60%. This is a passive overlay, so there is no hover highlight.
+- The reference area remains subdued: the 100% boundary uses the danger color
+  at 40% opacity, and the overrun fill uses the 14% danger tint at 35% opacity
+  (4.9% effective alpha). Actual overrun segments and their sharp endpoints keep
+  full emphasis.
 - Gridlines every 25 points, a faint dotted even-consumption pace line, and the
   dashed now-line are the map's only reference marks. It carries no text.
 - With no providers at all, an explicit `Unavailable` callout replaces the map.
@@ -225,7 +237,10 @@ refreshes once per day and each Cost Explorer API call incurs a $0.01 fee.
 ## Placement and lifecycle
 
 The launcher creates one billing window per monitor in the right rail below
-system resources. Explicit `BILLING_GAP_X`/`BILLING_GAP_Y` overrides retain their
+system resources. Its height follows the projected depth plus 32px clearance,
+rounded to pixels (157px for a 400px-wide window); the weather panel follows
+below it without reserving the old diamond's height.
+Explicit `BILLING_GAP_X`/`BILLING_GAP_Y` overrides retain their
 right-edge/top-edge meaning. The fetch loop is independent of the GitHub
 contribution calendar and does not read or write its cache or renderer state.
 Cache and log ownership are documented in [Caches](caches.md).

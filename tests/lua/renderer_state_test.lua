@@ -3,7 +3,7 @@
 local root = arg[1]
 local shared = dofile(root .. '/conky/renderer-shared.lua')
 local ui = shared.ui
-local files, labels, trails, dashes, rects = {}, {}, {}, {}, {}
+local files, labels, trails, dashes, rects, lines = {}, {}, {}, {}, {}, {}
 local width, height = 1136, 420
 shared.read_file = function(path) return files[path:match('/([^/]+)$')] end
 shared.wrap_title = function(_, value) return {value} end
@@ -13,7 +13,9 @@ ui.text = function(_, value) labels[#labels + 1] = tostring(value); return #tost
 ui.width = function(_, value) return #tostring(value) * 6 end
 ui.rect = function(_, x, y, w, h, color) rects[#rects + 1] = {x = x, y = y, w = w, h = h, color = color} end
 ui.circle = function() end
-ui.line_between = function() end
+ui.line_between = function(_, x1, y1, x2, y2, color)
+  lines[#lines + 1] = {x1 = x1, y1 = y1, x2 = x2, y2 = y2, color = color}
+end
 ui.dash = function(_, x1, y1, x2, y2, color) dashes[#dashes + 1] = {x1 = x1, y1 = y1, x2 = x2, y2 = y2, color = color} end
 ui.polygon = function() end
 ui.polyline = function(_, points, color)
@@ -36,7 +38,7 @@ local original_time = os.time
 os.time = function(date) return date and original_time(date) or 120000 end
 
 local function draw(name)
-  labels, trails, dashes, rects = {}, {}, {}, {}
+  labels, trails, dashes, rects, lines = {}, {}, {}, {}, {}
   dofile(root .. '/conky/' .. name)(shared, '/fixture').draw()
 end
 local function has(value)
@@ -100,13 +102,19 @@ files['billing-usage-render.tsv'] = table.concat({
 }, '\n')
 draw('billing-renderer.lua')
 local found_endpoint = false
+local far_edge
+for _, line in ipairs(lines) do
+  if line.color == ui.line and line.y1 == line.y2 and (not far_edge or line.y1 < far_edge.y1) then
+    far_edge = line
+  end
+end
+assert(far_edge, 'the maximum-usage edge must be horizontal')
 for _, rect in ipairs(rects) do
   if rect.color == ui.danger then
     found_endpoint = true
-    local scale = math.min(width - 32, 720) / 305
-    local origin_x = (width - 15 * scale) / 2
-    local corner_x = origin_x + 160 * scale * 1 - 145 * scale * 1
-    assert(rect.x + 5.5 < corner_x - 10, 'trajectory must hit side instead of corner')
+    assert(math.abs(rect.y + 5.5 - far_edge.y1) < 0.001, 'trajectory must end on the maximum-usage edge')
+    assert(rect.x + 5.5 > far_edge.x1 and rect.x + 5.5 < far_edge.x2 - 10,
+      'trajectory must hit the maximum-usage edge before the month-end corner')
   end
 end
 assert(found_endpoint, 'forecast overage endpoint marker must be drawn')

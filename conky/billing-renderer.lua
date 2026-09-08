@@ -1,4 +1,4 @@
--- Budget map: one affine time/limit plane shared by every provider.
+-- Budget map: one low perspective time/limit plane shared by every provider.
 return function(shared, repo_root)
   local data_path = repo_root .. '/cache/billing-usage-render.tsv'
   local ui = shared.ui
@@ -126,18 +126,20 @@ return function(shared, repo_root)
     return model
   end
 
-  -- The guide's camera: the time-zero edge is near, time recedes up and right.
+  -- The guide's camera: time runs right and usage narrows into the distance.
   local function draw_map(cr, model, state, width, top)
-    local scale = math.min(width - 32, 720) / 305
-    local rise = 94 * 0.82 * scale
-    local height = rise * 2 + 32
-    local origin_x, origin_y = (width - 15 * scale) / 2, top + height - 16
+    local plane_width = math.min(width - 32, 720)
+    local depth = plane_width * 0.34
+    local perspective = 0.4
+    local height = depth + 32
     local function point(t, value)
       local usage = value / model.maximum
-      return {origin_x + 160 * scale * t - 145 * scale * usage, origin_y - rise * t - rise * usage}
+      local distance = 1 + perspective * usage
+      return {width / 2 + (t - 0.5) * plane_width / distance,
+        top + height - 16 - depth * usage * (1 + perspective) / distance}
     end
     local maximum = model.maximum
-    ui.polygon(cr, {point(0, 100), point(1, 100), point(1, maximum), point(0, maximum)}, ui.danger, 0.14)
+    ui.polygon(cr, {point(0, 100), point(1, 100), point(1, maximum), point(0, maximum)}, ui.danger, 0.14 * 0.35)
     for _, t in ipairs({0, 0.25, 0.5, 0.75, 1}) do
       local a, b = point(t, 0), point(t, maximum)
       ui.line_between(cr, a[1], a[2], b[1], b[2], ui.line, 1)
@@ -147,20 +149,22 @@ return function(shared, repo_root)
     if ticks[#ticks] < maximum then ticks[#ticks + 1] = maximum end
     for _, value in ipairs(ticks) do
       local a, b = point(0, value), point(1, value)
-      if value == 100 then ui.line_between(cr, a[1], a[2], b[1], b[2], ui.danger, 1.5)
+      if value == 100 then ui.line_between(cr, a[1], a[2], b[1], b[2], ui.danger, 1.5, 0.4)
       else ui.line_between(cr, a[1], a[2], b[1], b[2], ui.line, 1) end
     end
-    local near_top, near_bottom = point(0, maximum), point(0, 0)
-    ui.line_between(cr, near_top[1], near_top[2], near_bottom[1], near_bottom[2], ui.line_strong, 1.5)
+    local near_left, near_right = point(0, 0), point(1, 0)
+    ui.line_between(cr, near_left[1], near_left[2], near_right[1], near_right[2], ui.line_strong, 1.5)
     local pace_end = point(1, 100)
-    ui.dash(cr, near_bottom[1], near_bottom[2], pace_end[1], pace_end[2], ui.muted, 1, 2, 5, 0.5)
+    ui.dash(cr, near_left[1], near_left[2], pace_end[1], pace_end[2], ui.muted, 1, 2, 5, 0.5)
     local now_a, now_b = point(model.elapsed, 0), point(model.elapsed, maximum)
     ui.dash(cr, now_a[1], now_a[2], now_b[1], now_b[2], ui.ink, 1, 5, 4)
 
     local plotted = false
     for _, item in ipairs(model.items) do
       if item.current or item.forecast then plotted = true end
-      ui.group(cr, item.stale and 0.6 or 1, function()
+      local opacity = (item.severity == 'good' or item.severity == 'caution') and 0.45 or 1
+      if item.stale then opacity = opacity * 0.6 end
+      ui.group(cr, opacity, function()
         local observations = {}
         for _, sample in ipairs(item.history) do observations[#observations + 1] = sample end
         if item.current then
