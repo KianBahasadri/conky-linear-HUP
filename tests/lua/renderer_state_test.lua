@@ -84,17 +84,17 @@ local test_prep = billing_mod._test.prepare
 local model_sub = test_prep({elapsed = 0.2, day = 6, days_in_month = 30, providers = {
   {id = 'aws', code = 'AWS', ok = true, stale = false, current_pressure = 0.3, forecast_pressure = 0.5, forecast_available = true, history = {}}
 }})
-assert(model_sub.maximum == 105, 'under-limit providers keep baseline 105 scale')
+assert(model_sub.maximum == 100, 'under-limit providers keep baseline 100 scale')
 
 local model_mod = test_prep({elapsed = 0.2, day = 6, days_in_month = 30, providers = {
   {id = 'aws', code = 'AWS', ok = true, stale = false, current_pressure = 0.3, forecast_pressure = 1.6, forecast_available = true, history = {}}
 }})
-assert(model_mod.maximum == 160, 'moderate overage expands scale proportionally up to 200%')
+assert(model_mod.maximum == 160, 'overage expands scale to largest supplied percentage')
 
 local model_high = test_prep({elapsed = 0.2, day = 6, days_in_month = 30, providers = {
   {id = 'bsm', code = 'BSM', ok = true, stale = false, current_pressure = 0.5, forecast_pressure = 3.9, forecast_available = true, history = {}}
 }})
-assert(model_high.maximum == 200, 'overage exceeding 100% caps scale at 200%')
+assert(model_high.maximum == 390, 'overage expands scale without capping at 200%')
 
 files['billing-usage-render.tsv'] = table.concat({
   'meta\tok\t1\tday\t6\tdaysInMonth\t30\telapsedFraction\t0.2',
@@ -104,7 +104,7 @@ draw('billing-renderer.lua')
 local found_endpoint = false
 local far_edge
 for _, line in ipairs(lines) do
-  if line.color == ui.line and line.y1 == line.y2 and (not far_edge or line.y1 < far_edge.y1) then
+  if (line.color == ui.line or line.color == ui.danger) and line.y1 == line.y2 and (not far_edge or line.y1 < far_edge.y1) then
     far_edge = line
   end
 end
@@ -112,12 +112,29 @@ assert(far_edge, 'the maximum-usage edge must be horizontal')
 for _, rect in ipairs(rects) do
   if rect.color == ui.danger then
     found_endpoint = true
-    assert(math.abs(rect.y + 5.5 - far_edge.y1) < 0.001, 'trajectory must end on the maximum-usage edge')
-    assert(rect.x + 5.5 > far_edge.x1 and rect.x + 5.5 < far_edge.x2 - 10,
-      'trajectory must hit the maximum-usage edge before the month-end corner')
+    assert(math.abs(rect.y + 3.5 - far_edge.y1) < 0.001, 'trajectory must end on the maximum-usage edge')
+    assert(math.abs(rect.x + 3.5 - far_edge.x2) < 0.001,
+      'trajectory must reach the month-end corner')
   end
 end
 assert(found_endpoint, 'forecast overage endpoint marker must be drawn')
+
+local model_caution = test_prep({elapsed = 0.2, day = 6, days_in_month = 30, providers = {
+  {id = 'aws', code = 'AWS', ok = true, stale = false, current_pressure = 0.1, forecast_pressure = 0.75, forecast_available = true, history = {}}
+}})
+assert(model_caution.items[1].severity == 'caution', 'forecast at 75% triggers caution')
+
+files['billing-usage-render.tsv'] = table.concat({
+  'meta\tok\t1\tday\t6\tdaysInMonth\t30\telapsedFraction\t0.2',
+  'provider\taws\tAWS\tffffff\tmetered\t1\t0\t0.1\t0.45\t1\taws\t$1 now',
+}, '\n')
+draw('billing-renderer.lua')
+assert(#rects == 0, 'trajectories under 50% usage omit the forecast endpoint')
+local has_forecast_connector = false
+for _, dash in ipairs(dashes) do
+  if dash.color == ui.derived then has_forecast_connector = true end
+end
+assert(not has_forecast_connector, 'trajectories under 50% usage omit the predicted line')
 
 files['weather-status.json'] = [[{"ok":true,"temperature":16,"aqi":23}]]
 files['workouts-status.json'] = [[{"ok":true,"weekRuns":4,"lastDistanceText":"2.6 km","weekDistanceText":"12.5 km"}]]

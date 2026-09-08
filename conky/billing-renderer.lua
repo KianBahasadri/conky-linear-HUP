@@ -2,7 +2,7 @@
 return function(shared, repo_root)
   local data_path = repo_root .. '/cache/billing-usage-render.tsv'
   local ui = shared.ui
-  local warning_at = 90
+  local warning_at = 75
 
   local function split_tsv(line)
     local fields = {}
@@ -96,7 +96,7 @@ return function(shared, repo_root)
   -- Normalize every provider to percent of its own limit and classify it the
   -- way the budget map's inspection text does.
   local function prepare(state)
-    local model = {items = {}, elapsed = shared.clamp(state.elapsed, 0, 0.999), maximum = 105}
+    local model = {items = {}, elapsed = shared.clamp(state.elapsed, 0, 0.999), maximum = 100}
     for _, provider in ipairs(state.providers) do
       local item = {id = provider.id, name = names[provider.id] or provider.code,
         logo = logos[provider.id], stale = provider.stale, detail = provider.detail,
@@ -112,7 +112,7 @@ return function(shared, repo_root)
             model.maximum = math.max(model.maximum, sample.pressure * 100)
           end
         end
-        model.maximum = math.max(model.maximum, item.current, item.forecast or 0)
+        model.maximum = math.max(model.maximum, item.current or 0, item.forecast or 0)
       end
       if item.current and item.current > 100 then item.severity, item.status = 'danger', 'Over limit now'
       elseif item.forecast and item.forecast > 100 then item.severity, item.status = 'danger', 'Forecast over limit'
@@ -122,7 +122,6 @@ return function(shared, repo_root)
       else item.severity, item.status = 'danger', 'Unavailable' end
       model.items[#model.items + 1] = item
     end
-    model.maximum = math.min(200, model.maximum)
     return model
   end
 
@@ -139,25 +138,35 @@ return function(shared, repo_root)
         baseline_y - depth * usage * (1 + perspective) / distance}
     end
     local maximum = model.maximum
-    ui.polygon(cr, {point(0, 100), point(1, 100), point(1, maximum), point(0, maximum)}, ui.danger, 0.14 * 0.35)
+    if maximum > 100 then
+      ui.polygon(cr, {point(0, 100), point(1, 100), point(1, maximum), point(0, maximum)}, ui.danger, 0.14 * 0.35)
+    end
     for _, t in ipairs({0, 0.25, 0.5, 0.75, 1}) do
       local a, b = point(t, 0), point(t, maximum)
       ui.line_between(cr, a[1], a[2], b[1], b[2], ui.line, 1)
     end
     local ticks = {}
-    for tick = 0, maximum, 25 do ticks[#ticks + 1] = tick end
+    for tick = 0, maximum, 25 do
+      if tick <= 300 or (tick - 100) % 100 == 0 then
+        ticks[#ticks + 1] = tick
+      end
+    end
     if ticks[#ticks] < maximum then ticks[#ticks + 1] = maximum end
     for _, value in ipairs(ticks) do
       local a, b = point(0, value), point(1, value)
-      if value == 100 then ui.line_between(cr, a[1], a[2], b[1], b[2], ui.danger, 1.5, 0.4)
-      else ui.line_between(cr, a[1], a[2], b[1], b[2], ui.line, 1) end
+      local is_red = value >= 100 and (value - 100) % 100 == 0
+      if is_red then
+        ui.line_between(cr, a[1], a[2], b[1], b[2], ui.danger, 1.5, 0.4)
+      else
+        ui.line_between(cr, a[1], a[2], b[1], b[2], ui.line, 1)
+      end
     end
     local near_left, near_right = point(0, 0), point(1, 0)
     ui.line_between(cr, near_left[1], near_left[2], near_right[1], near_right[2], ui.line_strong, 1.5)
     local pace_end = point(1, 100)
     ui.dash(cr, near_left[1], near_left[2], pace_end[1], pace_end[2], ui.muted, 1, 2, 5, 0.5)
     local now_a, now_b = point(model.elapsed, 0), point(model.elapsed, maximum)
-    ui.dash(cr, now_a[1], now_a[2], now_b[1], now_b[2], ui.ink, 1, 5, 4)
+    ui.dash(cr, now_a[1], now_a[2], now_b[1], now_b[2], ui.ink, 1, 5, 4, 0.25)
 
     local plotted = false
     for _, item in ipairs(model.items) do
@@ -186,26 +195,17 @@ return function(shared, repo_root)
         for _, sample in ipairs(observations) do
           ui.circle(cr, sample.p[1], sample.p[2], 2, ui.accent)
         end
-        local current = item.current and point(model.elapsed, math.min(model.maximum, item.current))
-        local endpoint
-        if item.forecast then
-          if item.forecast > model.maximum and (item.current or 0) < item.forecast then
-            local delta = item.forecast - (item.current or 0)
-            local fraction = shared.clamp((model.maximum - (item.current or 0)) / delta, 0, 1)
-            local t_hit = model.elapsed + (1 - model.elapsed) * fraction
-            endpoint = point(t_hit, model.maximum)
-          else
-            endpoint = point(1, item.forecast)
-          end
-        end
+        local current = item.current and point(model.elapsed, item.current)
+        local show_forecast = item.forecast and item.forecast >= 50
+        local endpoint = show_forecast and point(1, item.forecast) or nil
         if current and endpoint then
           ui.dash(cr, current[1], current[2], endpoint[1], endpoint[2], ui.derived, 2, 5, 5)
-          if item.current > 100 or item.forecast > 100 then
-            local delta = item.forecast - item.current
-            local crossing = delta ~= 0 and (100 - item.current) / delta or 0
+          if (item.current or 0) > 100 or item.forecast > 100 then
+            local delta = item.forecast - (item.current or 0)
+            local crossing = delta ~= 0 and (100 - (item.current or 0)) / delta or 0
             local boundary = point(model.elapsed + (1 - model.elapsed) * shared.clamp(crossing, 0, 1), 100)
-            local from = item.current > 100 and current or boundary
-            local to = endpoint
+            local from = (item.current or 0) > 100 and current or boundary
+            local to = item.forecast > 100 and endpoint or boundary
             ui.dash(cr, from[1], from[2], to[1], to[2], ui.danger, 2, 5, 5)
           end
         end
@@ -216,12 +216,10 @@ return function(shared, repo_root)
         if endpoint then
           local color = ui[item.severity] or ui.muted
           if item.severity == 'good' then
-            ui.circle(cr, endpoint[1], endpoint[2], 5.5, ui.canvas)
-            ui.circle(cr, endpoint[1], endpoint[2], 5.5, color, 1, 2)
+            ui.circle(cr, endpoint[1], endpoint[2], 3.5, color)
           else
-            local radius = item.severity == 'caution' and 4 or 0
-            ui.rect(cr, endpoint[1] - 5.5, endpoint[2] - 5.5, 11, 11, ui.canvas, radius)
-            ui.rect(cr, endpoint[1] - 5.5, endpoint[2] - 5.5, 11, 11, color, radius, 1, 2)
+            local radius = item.severity == 'caution' and 2 or 0
+            ui.rect(cr, endpoint[1] - 3.5, endpoint[2] - 3.5, 7, 7, color, radius)
           end
         end
       end)

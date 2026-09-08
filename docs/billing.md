@@ -12,20 +12,21 @@ by the [Desktop design system](design-system.md).
 - The shared coordinate is percentage of each provider's own limit, never a sum
   of unrelated dollars, minutes, and balances. Prepaid OpenRouter retains the
   distinct runway meaning described below.
-- The scale starts at zero and reaches 105%, leaving a translucent red band
-  above the 100% limit line. Overruns expand the scale up to a maximum of 200%
-  (capping the red overage band at 100%). When a forecast exceeds 200%, the scale
-  does not expand further; the trajectory line terminates at the top boundary at
-  the date it crosses 200%, placing its endpoint square along that side instead
-  of reaching the month-end corner.
+- The scale starts at zero with a 100% maximum when all values fit. Overruns
+  expand the maximum to the largest supplied percentage without rounding up,
+  adding extra headroom, or clamping at 200%, keeping overruns visible past
+  the 100% limit on the period-end edge.
 - A solid cyan trail with sample dots is real stored daily observations, ending
   at the current marker on the dashed now-line. Missing history days break the
   trail instead of being interpolated, and a single stored day stays a point.
-- The current marker is the provider's own vector mark. A dashed violet
-  connector runs from it toward the month-end edge, turning red only where it
-  passes 100%.
-- The forecast endpoint's shape is its severity: a circle within limit, a
-  4px-radius square near the limit, and a sharp square for a projected overrun.
+- The current marker is the provider's own vector mark. For forecasts reaching
+  at least 50% usage by month-end, a dashed violet connector runs from it toward
+  the month-end edge, turning red only where it passes 100%. Trajectories that
+  fall under 50% usage by the end of the month omit the predicted line.
+- The forecast endpoint's shape is its severity: a small solid circle (radius
+  3.5px) for forecasts at or below the warning threshold (75%), a 2px-radius
+  square (7×7px) for near-limit forecasts, and a sharp square for a projected
+  overrun, with no hollow center.
 - The dark cockpit treatment keeps a known forecast at or below 100% at 45%
   opacity unless current usage already exceeds the limit. This applies to the
   entire provider group, including its trail, dots, logo, and endpoint. Overruns
@@ -35,8 +36,11 @@ by the [Desktop design system](design-system.md).
   at 40% opacity, and the overrun fill uses the 14% danger tint at 35% opacity
   (4.9% effective alpha). Actual overrun segments and their sharp endpoints keep
   full emphasis.
-- Gridlines every 25 points, a faint dotted even-consumption pace line, and the
-  dashed now-line are the map's only reference marks. It carries no text.
+- Gridlines every 25 points up through the third red bar (300%, with intermediate
+  25% ticks omitted above 300%), the 100% boundary and each subsequent 100%
+  overage marker repeating the 1.5px danger stroke at 40% opacity, a faint
+  dotted even-consumption pace line, and the dashed now-line at 25% opacity
+  are the map's only reference marks. It carries no text.
 - With no providers at all, an explicit `Unavailable` callout replaces the map.
 
 The earlier affine diamond and Cairo design sources are preserved in the
