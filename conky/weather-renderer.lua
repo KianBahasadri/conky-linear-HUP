@@ -4,7 +4,7 @@ return function(shared, repo_root)
   local weather_path = repo_root .. '/cache/weather-status.json'
   local workouts_path = repo_root .. '/cache/workouts-status.json'
   local ui = shared.ui
-  local weather_block, gap = 140, 16
+  local weather_block, gap = 100, 16
   local function json_string(content, key, fallback)
     local value = shared.json_string(content, key, nil)
     return value ~= nil and value or fallback or ''
@@ -24,7 +24,6 @@ return function(shared, repo_root)
       return { ok = false, error = json_string(content, 'error', 'Weather data unavailable') }
     end
 
-    local best_body = shared.json_field(content, 'bestWindow') or '{}'
     return {
       ok = true,
       stale = shared.json_boolean(content, 'stale', false),
@@ -34,16 +33,8 @@ return function(shared, repo_root)
       apparent_temperature = json_number(content, 'apparentTemperature'),
       condition = json_string(content, 'condition', 'Unknown conditions'),
       aqi = json_number(content, 'aqi'),
-      aqi_label = json_string(content, 'aqiLabel', 'Unknown'),
       uv_index = json_number(content, 'uvIndex'),
-      humidity = json_number(content, 'humidityPercent'),
-      rain = json_number(content, 'precipitationProbability'),
-      wind_gust = json_number(content, 'windGust'),
-      wind_unit = json_string(content, 'windUnit', 'mph'),
       sunset = json_string(content, 'sunset', '--'),
-      run_score = json_number(content, 'runScore'),
-      run_status = json_string(content, 'runStatus', 'WAIT'),
-      best_window = json_string(best_body, 'label', 'Now'),
     }
   end
 
@@ -93,38 +84,28 @@ return function(shared, repo_root)
       return
     end
     local unit = '°' .. weather.temperature_unit
-    local third = (width - 32) / 3
-    ui.metric(cr, 'Temp ' .. unit, string.format('%.0f', weather.temperature), 0, top, third)
-    ui.metric(cr, 'US AQI', string.format('%.0f', weather.aqi), third + 16, top, third)
-    ui.metric(cr, 'Run / 100', string.format('%.0f', weather.run_score), (third + 16) * 2, top, third)
-    local aqi_kind = weather.aqi <= 50 and 'good' or weather.aqi <= 100 and 'caution' or 'danger'
-    local badge_width = ui.badge(cr, 'AQI ' .. weather.aqi_label, width, top + 52, aqi_kind, {right = true})
+    local half = (width - 16) / 2
+    ui.metric(cr, 'Temp ' .. unit, string.format('%.0f', weather.temperature), 0, top, half)
+    ui.metric(cr, 'AQI', string.format('%.0f', weather.aqi), half + 16, top, half)
     local context = join({weather.condition, weather.stale and 'Stale' or weather.location})
     ui.text(cr, context, 0, top + 66, {size = 12, color = weather.stale and ui.caution or ui.muted,
-      width = width - badge_width - 12})
-    local readouts = {{'Feels', string.format('%.0f', weather.apparent_temperature) .. unit},
-      {'Rain', string.format('%.0f%%', weather.rain)},
-      {'Gust', string.format('%.0f %s', weather.wind_gust, weather.wind_unit)},
-      {'Humidity', string.format('%.0f%%', weather.humidity)},
-      {'UV', string.format('%.1f', weather.uv_index)}, {'Sunset', weather.sunset}}
-    -- Every readout value starts at the same offset inside its column, so the
-    -- two rows and the best-run line below them share one value edge.
-    local label_column = ui.width(cr, 'Best run', 12) + 8
+      width = width})
+    local readouts = {
+      {'Feels', string.format('%.0f', weather.apparent_temperature) .. unit},
+      {'UV', string.format('%.1f', weather.uv_index)},
+      {'Sunset', weather.sunset},
+    }
+    local label_column = 0
     for _, pair in ipairs(readouts) do
       label_column = math.max(label_column, ui.width(cr, pair[1], 12) + 8)
     end
     local column = width / 3
     for index, pair in ipairs(readouts) do
-      local x = ((index - 1) % 3) * column
-      local y = top + 88 + math.floor((index - 1) / 3) * 18
+      local x = (index - 1) * column
+      local y = top + 88
       ui.text(cr, pair[1], x, y, {size = 12, color = ui.muted})
       ui.text(cr, pair[2], x + label_column, y, {size = 13, mono = true, width = column - label_column - 8})
     end
-    local run_kind = weather.run_score >= 80 and 'good' or weather.run_score >= 50 and 'caution' or 'danger'
-    local run_width = ui.badge(cr, (weather.run_status:gsub('^RUN ', '')), width, top + 114, run_kind, {right = true})
-    ui.text(cr, 'Best run', 0, top + 128, {size = 12, color = ui.muted})
-    ui.text(cr, weather.best_window, label_column, top + 128,
-      {size = 13.5, bold = 'medium', width = width - label_column - run_width - 12})
   end
 
   local function draw_training(cr, workouts, width, top)

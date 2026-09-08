@@ -119,17 +119,16 @@ for _, rect in ipairs(rects) do
 end
 assert(found_endpoint, 'forecast overage endpoint marker must be drawn')
 
-files['weather-status.json'] = [[{"ok":true,"temperature":16,"aqi":23,"runScore":100,
-  "aqiLabel":"Good","runStatus":"RUN GREAT"}]]
+files['weather-status.json'] = [[{"ok":true,"temperature":16,"aqi":23}]]
 files['workouts-status.json'] = [[{"ok":true,"weekRuns":4,"lastDistanceText":"2.6 km","weekDistanceText":"12.5 km"}]]
-height = 240
+height = 200
 draw('weather-renderer.lua')
-assert(has('AQI Good') and has('1/2'), 'compact weather page must remain bounded and labeled')
+assert(has('AQI') and has('1/2'), 'compact weather page must remain bounded and labeled')
 assert(not has('12.5 km'), 'compact pages must not overlap')
 os.time = function(date) return date and original_time(date) or 120030 end
 draw('weather-renderer.lua')
 assert(has('12.5 km') and has('2/2'), 'compact training page must expose workout data')
-assert(not has('AQI Good'), 'compact pages must not overlap')
+assert(not has('AQI'), 'compact pages must not overlap')
 
 -- A settled repository must collapse to its name: no badge, and no branch
 -- unless it sits somewhere other than the default. Anything unsettled keeps
