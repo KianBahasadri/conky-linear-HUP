@@ -126,6 +126,24 @@ eq(renderer._test.account_pitch(1040, {provider = 'Gemini'}, {{label = 'gemini-w
 eq(renderer._test.account_pitch(1040, {provider = 'Codex'}, gemini_wins), 16,
   'non-Gemini accounts keep a single line')
 
+local mark_test_accounts = {
+  { provider = 'Codex', label = 'ahmad', is_selected = false },
+  { provider = 'Codex', label = 'bashir', is_selected = false },
+  { provider = 'Codex', label = 'kian', is_selected = true },
+  { provider = 'Codex', label = 'sepehr', is_selected = false },
+  { provider = 'Cursor', label = '21kb60', is_selected = false },
+  { provider = 'Cursor', label = 'kian', is_selected = true },
+  { provider = 'Gemini', label = 'baba', is_selected = false },
+  { provider = 'Gemini', label = 'sepehr', is_selected = false },
+}
+local marks = renderer._test.provider_mark_indices(mark_test_accounts, 1, 8)
+eq(marks[3], true, 'Codex mark lands on highlighted account (kian)')
+eq(marks[1], nil, 'Codex first account (ahmad) does not get mark when another is selected')
+eq(marks[6], true, 'Cursor mark lands on highlighted account (kian)')
+eq(marks[5], nil, 'Cursor first account does not get mark when another is selected')
+eq(marks[7], true, 'Gemini mark falls back to first account when none is selected')
+eq(marks[8], nil, 'Gemini second account does not get mark when none selected')
+
 if failures > 0 then
   print(failures .. ' failure(s)')
   os.exit(1)

@@ -834,6 +834,33 @@ return function(shared, repo_root)
     return target
   end
 
+  local function provider_mark_indices(accounts, first, last)
+    local marks = {}
+    if not accounts or not first or not last or first > last then
+      return marks
+    end
+    local gstart = first
+    while gstart <= last do
+      local provider = accounts[gstart].provider
+      local gend = gstart
+      while gend + 1 <= last and accounts[gend + 1].provider == provider do
+        gend = gend + 1
+      end
+
+      local mark_index = gstart
+      for i = gstart, gend do
+        if accounts[i].is_selected then
+          mark_index = i
+          break
+        end
+      end
+      marks[mark_index] = true
+
+      gstart = gend + 1
+    end
+    return marks
+  end
+
   local function draw()
     ui.draw(function(cr, width, height)
       local usage = read_ai_usage() or {ok=false, accounts={}, error='Waiting for usage data'}
@@ -881,13 +908,14 @@ return function(shared, repo_root)
         if first > last then return end
         local provider_width, name_width = col_width < 760 and 56 or 64, col_width < 760 and 48 or 56
         local y = 0
+        local marks = provider_mark_indices(accounts, first, last)
         for index = first, last do
           local account = accounts[index]
           local pitch = heights[index]
           local wins = windows_for[index]
           if account.is_selected then ui.rect(cr, col_x, y, col_width, pitch, ui.raised, 4) end
           local name_baseline = y + 12 + math.max(0, (pitch - 16) / 2)
-          if index == first or accounts[index - 1].provider ~= account.provider then
+          if marks[index] then
             -- The provider's average pace delta is a derived value; it sits beside
             -- the group mark rather than in a separate summary row.
             local delta = calculate_provider_average_pace(accounts, account.provider)
@@ -983,5 +1011,6 @@ return function(shared, repo_root)
     _test = {read_ai_usage = read_ai_usage, sort_accounts = sort_accounts,
              account_has_filled_bar = account_has_filled_bar,
              gemini_duration_columns = gemini_duration_columns,
-             account_pitch = account_pitch}}
+             account_pitch = account_pitch,
+             provider_mark_indices = provider_mark_indices}}
 end

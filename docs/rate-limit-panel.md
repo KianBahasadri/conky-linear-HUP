@@ -2,8 +2,8 @@
 
 ## Display
 
-Each row displays the provider mark (brand logo) on the first row of its group,
-followed by the account name and quota windows. Reset countdowns occupy a fixed-width
+The provider mark (brand logo) sits on the highlighted (selected) row of its group
+(or on the first row when no profile is selected), followed by the account name and quota windows. Reset countdowns occupy a fixed-width
 column flanking the flat observed-data bars on the right, keeping bar lengths uniform.
 Two-part labels left-align each quantity in a 3-character field so both numbers
 share x-positions across rows (`9h  58m`, `10d 11h`, `17d 1h`) rather than
@@ -26,7 +26,7 @@ overflow are owned by the [Desktop design system](design-system.md).
   no pending reset shows its full span (`5h`, `7d`) and no pace tick.
   `wait` means the countdown ended while usage remains.
 - The provider's average pace delta in percent (`%`) sits beside its
-  brand logo on the first row of each group, in derived-data color. There is no
+  brand logo on the highlighted row of each group (falling back to the first row if no account is selected), in derived-data color. There is no
   separate summary row and no combined pace value. The vertical tick on each
   eligible bar uses the same derived color.
 - Cache refreshes do not resize or reload windows. Startup bounds the list and
