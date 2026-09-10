@@ -92,6 +92,7 @@ MINECRAFT_FETCH_PID="$CACHE_DIR/minecraft-fetch-loop.pid"
 GITHUB_FETCH_PID="$CACHE_DIR/github-fetch-loop.pid"
 WEATHER_FETCH_PID="$CACHE_DIR/weather-fetch-loop.pid"
 WORKOUTS_FETCH_PID="$CACHE_DIR/workouts-fetch-loop.pid"
+WEIGHT_FETCH_PID="$CACHE_DIR/weight-fetch-loop.pid"
 BILLING_FETCH_PID="$CACHE_DIR/billing-fetch-loop.pid"
 GIT_FETCH_PID="$CACHE_DIR/git-fetch-loop.pid"
 SESSIONS_FETCH_PID="$CACHE_DIR/sessions-fetch-loop.pid"
@@ -108,6 +109,7 @@ SESSIONS_OVERLAY_ENABLED="${SESSIONS_OVERLAY_ENABLED:-1}"
 WEATHER_REFRESH_SECONDS="${WEATHER_REFRESH_SECONDS:-600}"
 WEATHER_OVERLAY_ENABLED="${WEATHER_OVERLAY_ENABLED:-1}"
 WORKOUTS_REFRESH_SECONDS="${WORKOUTS_REFRESH_SECONDS:-20}"
+WEIGHT_REFRESH_SECONDS="${WEIGHT_REFRESH_SECONDS:-20}"
 RESOURCE_MONITOR_OVERLAY_ENABLED="${RESOURCE_MONITOR_OVERLAY_ENABLED:-1}"
 BILLING_REFRESH_SECONDS="${BILLING_REFRESH_SECONDS:-900}"
 BILLING_OVERLAY_ENABLED="${BILLING_OVERLAY_ENABLED:-1}"
@@ -125,7 +127,7 @@ GENERATED_CONFIG_COUNT=0
 GENERATION_STAGE_DIR=""
 
 overlay_keys=(linear rate-limit-panel minecraft github weather resource-monitor billing git sessions)
-fetch_keys=(linear codex claude cursor gemini grok opencode commandcode minecraft github weather workouts billing git sessions)
+fetch_keys=(linear codex claude cursor gemini grok opencode commandcode minecraft github weather workouts weight billing git sessions)
 
 declare -A overlay_disabled_name=(
   [linear]="linear"
@@ -191,6 +193,7 @@ declare -A fetch_label=(
   [github]="GitHub"
   [weather]="Weather"
   [workouts]="Workouts"
+  [weight]="Weight"
   [billing]="Billing"
   [git]="Git"
   [sessions]="Sessions"
@@ -208,6 +211,7 @@ declare -A fetch_overlay_key=(
   [github]="github"
   [weather]="weather"
   [workouts]="weather"
+  [weight]="weather"
   [billing]="billing"
   [git]="git"
   [sessions]="sessions"
@@ -228,6 +232,7 @@ declare -A fetch_interval=(
   [github]="$GITHUB_REFRESH_SECONDS"
   [weather]="$WEATHER_REFRESH_SECONDS"
   [workouts]="$WORKOUTS_REFRESH_SECONDS"
+  [weight]="$WEIGHT_REFRESH_SECONDS"
   [billing]="$BILLING_REFRESH_SECONDS"
   [git]="$GIT_REFRESH_SECONDS"
   [sessions]="$SESSIONS_REFRESH_SECONDS"
@@ -245,6 +250,7 @@ declare -A fetch_script=(
   [github]="$ROOT/scripts/fetch_github_contributions.py"
   [weather]="$ROOT/scripts/fetch_weather.py"
   [workouts]="$ROOT/scripts/fetch_workouts.py"
+  [weight]="$ROOT/scripts/fetch_weight.py"
   [billing]="$ROOT/scripts/fetch_billing_usage.py"
   [git]="$ROOT/scripts/fetch_git_status.py"
   [sessions]="$ROOT/scripts/fetch_sessions.py"
@@ -262,6 +268,7 @@ declare -A fetch_pid_file=(
   [github]="$GITHUB_FETCH_PID"
   [weather]="$WEATHER_FETCH_PID"
   [workouts]="$WORKOUTS_FETCH_PID"
+  [weight]="$WEIGHT_FETCH_PID"
   [billing]="$BILLING_FETCH_PID"
   [git]="$GIT_FETCH_PID"
   [sessions]="$SESSIONS_FETCH_PID"
@@ -508,6 +515,7 @@ validate_positive_integer MINECRAFT_REFRESH_SECONDS 60 minecraft
 validate_positive_integer GITHUB_REFRESH_SECONDS 1800 github
 validate_positive_integer WEATHER_REFRESH_SECONDS 600 weather
 validate_positive_integer WORKOUTS_REFRESH_SECONDS 20 weather
+validate_positive_integer WEIGHT_REFRESH_SECONDS 20 weather
 validate_positive_integer BILLING_REFRESH_SECONDS 900 billing
 validate_positive_integer GIT_REFRESH_SECONDS 30 git
 validate_positive_integer SESSIONS_REFRESH_SECONDS 20 sessions
@@ -536,6 +544,7 @@ fetch_interval[commandcode]="$RATE_LIMIT_UNCHANGED_INTERVAL"
 fetch_interval[github]="$GITHUB_REFRESH_SECONDS"
 fetch_interval[weather]="$WEATHER_REFRESH_SECONDS"
 fetch_interval[workouts]="$WORKOUTS_REFRESH_SECONDS"
+fetch_interval[weight]="$WEIGHT_REFRESH_SECONDS"
 fetch_interval[billing]="$BILLING_REFRESH_SECONDS"
 fetch_interval[git]="$GIT_REFRESH_SECONDS"
 fetch_interval[sessions]="$SESSIONS_REFRESH_SECONDS"

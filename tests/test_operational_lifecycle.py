@@ -453,6 +453,7 @@ def test_launcher_validates_every_configurable_fetch_interval(tmp_path):
         "GITHUB_REFRESH_SECONDS",
         "WEATHER_REFRESH_SECONDS",
         "WORKOUTS_REFRESH_SECONDS",
+        "WEIGHT_REFRESH_SECONDS",
         "BILLING_REFRESH_SECONDS",
         "GIT_REFRESH_SECONDS",
         "SESSIONS_REFRESH_SECONDS",
