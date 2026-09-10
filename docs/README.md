@@ -12,7 +12,7 @@
 - [Minecraft overlay](minecraft.md) — server status and PebbleHost integration
 - [GitHub overlay](github.md) — daily contribution calendar above AI usage
 - [GitHub rail blob experiments](github-rail-blob-experiments.md) — poured-shape study; reverted to the square calendar
-- [Weather and running overlay](weather.md) — current conditions, air quality, and run guidance
+- [Weather and running overlay](weather.md) — current conditions, air quality, runs, and weight
 - [Workout data source](workout-data-source.md) — how workouts get from the phone to this machine
 - [Billing forecast panel](billing.md) — live provider spend, prepaid runway, and common EOM forecasts
 - [Git status overlay](git.md) — local repo fleet (branch, dirty, ahead/behind, Actions status)

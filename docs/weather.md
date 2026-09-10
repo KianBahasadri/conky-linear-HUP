@@ -2,6 +2,15 @@
 
 The bottom-right panel combines current weather and air quality with a training summary. It shows temperature and apparent temperature, weather, U.S. AQI, UV, and sunset. A training section summarizes workouts uploaded from the phone: last workout (distance, duration, pace, heart rate or cadence when recorded) and rolling 7-day distance/time/runs.
 
+A weight section follows the running stats. It shows the latest weigh-in and
+the signed change from the preceding weigh-in, with the measurement date, age,
+and comparison date underneath. A first reading has no change value. Both
+metrics stay neutral: weight gain and loss do not imply good or bad status.
+The [phone data source](workout-data-source.md#weight-backups-from-openscale)
+describes how openScale backups are read. An unreadable or incomplete upload
+keeps the last successful weight summary and marks it `Stale`; without a
+successful reading, the section shows an explanatory placeholder.
+
 Weather forecasts come from Open-Meteo. Air-quality data comes from the Copernicus Atmosphere Monitoring Service (CAMS) through Open-Meteo. The panel keeps the last successful result and marks it `STALE` when a refresh fails. Partial responses missing valid current weather or air-quality fields are treated as failed refreshes instead of being rendered as zero-valued, reassuring conditions.
 
 ## Location
@@ -26,6 +35,8 @@ Weather and AQI use neutral metrics. The condition and location share one line,
 and a stale cache replaces the location with a caution `Stale`. Feels-like
 temperature, UV, and sunset are aligned label-and-value readouts. Training
 preserves distance, duration, pace, heart rate/cadence, and weekly totals.
-Weather and running numbers sit at the foot of the rail. On shorter displays
-weather and training alternate as pages labeled `1/2` and `2/2`. Shared styling
-and layout belong to the [Desktop design system](design-system.md).
+Weight uses the same metric columns and detail typography beneath training.
+The full stack fits in a 320px window. When less space is available, whole
+sections are packed in order into pages that rotate every 30 seconds, with
+`1/2` or `1/3` style page labels. Shared styling and layout belong to the
+[Desktop design system](design-system.md).

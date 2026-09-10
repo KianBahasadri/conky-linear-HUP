@@ -127,6 +127,38 @@ The system service logs at `INFO`; inspect it with
 upload failed. Check the HTTP response and the HTTPS path as well as service
 status when diagnosing phone uploads.
 
+## Weight backups from openScale
+
+The same WebDAV server exposes `cache/workouts/weight/` at
+`https://kianlaptop.tail3a78b9.ts.net/weight/` for openScale files. Prepare this
+directory through WebDAV when setting up another server so it receives the
+server's upload ownership and access rules described under [Setup](#setup).
+
+In [RSAF](https://github.com/chenxiaolong/RSAF) on Android, add a remote named
+`Weight`, select WebDAV with vendor `rclone`, enter that URL and the existing
+WebDAV credentials, and leave the bearer token empty. RSAF exposes the remote
+through Android's system folder picker, where it can be selected as openScale's
+backup location. Tailscale must be connected and the laptop reachable for
+remote file operations.
+
+`scripts/fetch_weight.py` reads the newest uploaded ZIP by file modification
+time. It supports the openScale 3 database schema, joining measurements and
+values to the `WEIGHT` type by key. Values already use the unit configured in
+openScale (`KG`, `LB`, or `ST`); they must not be converted a second time.
+For directory and user selection, see [Configuration](configuration.md#weather-and-running-overlay).
+
+The verified upload, `openScale.db_auto_backup.zip`, contains the SQLite
+database and its `-wal` and `-shm` sidecars. The fetcher copies those exact
+members into a private temporary directory and opens the copied database in
+read-only mode, so SQLite includes measurements in the write-ahead log while
+the original ZIP remains untouched. Other ZIP members are ignored.
+
+The weight fetcher runs independently of workout parsing. The workout fetcher
+reads only TCX files directly under `cache/workouts/`, so files in the weight
+subdirectory are outside its input. Cache files and polling intervals are
+documented in [Caches](caches.md); displayed metrics belong to the
+[weather and running overlay](weather.md).
+
 ## Tailscale policy
 
 The tailnet (`kianbahasadri@gmail.com`) also contains devices shared in from

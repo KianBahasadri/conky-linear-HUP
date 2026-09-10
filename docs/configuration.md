@@ -139,10 +139,14 @@ archived 3D city and are no longer used.
 | `WEATHER_TIMEOUT_SECONDS` | Timeout for each provider request |
 | `WORKOUTS_UNITS` | `metric` (default) or `imperial`; formats the training section's distances and paces |
 | `WORKOUTS_REFRESH_SECONDS` | TCX re-scan interval (default `20`); local files, no network |
+| `WEIGHT_DIR` | openScale ZIP backup directory; defaults to `weight/` under `WORKOUTS_DIR` (or `cache/workouts/`) |
+| `WEIGHT_USER_ID` | openScale user ID; optional when exactly one user has weight readings, required otherwise |
+| `WEIGHT_REFRESH_SECONDS` | Local openScale backup re-scan interval; see [Caches](caches.md#fetch-intervals) for the default |
 
 Location resolution prefers exact coordinates, then `WEATHER_LOCATION`, then an approximate public-IP location. Exact coordinates are recommended for local conditions.
 
-The panel's lower training section summarizes workouts uploaded from the phone (see [Workout data source](workout-data-source.md)): last workout with distance, duration, pace, and heart rate or cadence when recorded, rolling 7-day totals, and a sparkline of the last 14 workouts' distances. With no workouts uploaded it shows a muted placeholder instead.
+Phone uploads are described in [Workout data source](workout-data-source.md).
+Displayed training and weight metrics belong to the [weather and running overlay](weather.md).
 
 ## System resource monitor
 
