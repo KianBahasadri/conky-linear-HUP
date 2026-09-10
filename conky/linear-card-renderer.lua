@@ -105,15 +105,15 @@ return function(shared, repo_root)
     if card.done then
       tone = 'good'
     elseif card.due_today then
-      parts[#parts + 1] = 'Due today'
+      parts[#parts + 1] = 'Today'
       tone = 'danger'
     elseif card.urgent then
       parts[#parts + 1] = 'Urgent'
       tone = 'caution'
-      if due ~= '' then parts[#parts + 1] = 'Due ' .. due end
+      if due ~= '' then parts[#parts + 1] = due end
     else
       tone = 'neutral'
-      if due ~= '' then parts[#parts + 1] = 'Due ' .. due end
+      if due ~= '' then parts[#parts + 1] = due end
     end
     return table.concat(parts, ' · '), tone
   end
@@ -144,7 +144,7 @@ return function(shared, repo_root)
     ui.group(cr, fade, function()
       local state, tone = describe(card)
       local fill = ui[tone]
-      ui.rect(cr, x, y, width, height, fill or ui.surface, ui.radius(tone), fill and 0.14 or 1)
+      ui.rect(cr, x, y, width, height, fill or ui.surface, ui.radius(tone), fill and 0.07 or 0.5)
       local state_width = 0
       if state ~= '' then
         state_width = ui.text(cr, state, x + width - 12, y + 18,

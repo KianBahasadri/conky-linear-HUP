@@ -1,8 +1,9 @@
 # Linear overlay
 
 - Each card carries the project and issue identifier on the left of the header
-  line, and deadlines or urgency states (`Urgent`, `Due today`) on the right,
-  followed by a left-aligned title. Completed cards have no status text.
+  line, and deadlines or urgency states (`Urgent`, `Today`) on the right,
+  followed by a left-aligned title. Deadlines show `Today`, `Tomorrow`, or a
+  date without a `Due` prefix. Completed cards have no status text.
   Permanent footers and nonessential labels are removed; workflow state labels
   (`In Progress`, `Todo`) are omitted because contrast follows progress:
   `In Progress` titles stay bright, while other titles become muted. Urgency
@@ -11,9 +12,10 @@
   if a title overflows, the renderer retries
   at 14px then 13px, and truncates if 13px still overflows. Cards form a gapless grid.
 - The card's fill and any header text carry the tone together: completed cards
-  are good, `Due today` is danger with square corners, `Urgent` is caution, and
-  every ordinary workflow state is neutral. There is no separate status badge,
-  status dot, or inset rail inside a card.
+  are good, `Today` is danger with square corners, `Urgent` is caution, and
+  every ordinary workflow state is neutral. Neutral fills use 50% opacity and
+  status tints 7%, before the completed-card fade. There is no separate status
+  badge, status dot, or inset rail inside a card.
 - The project name is shown as an acronym: every uppercase letter is kept,
   including camelCase capitals with no preceding space, except that an all-caps
   word contributes only its first letter; digits, dashes, and other non-letters

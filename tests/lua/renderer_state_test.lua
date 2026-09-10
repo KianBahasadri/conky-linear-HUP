@@ -184,8 +184,8 @@ assert(has('Ship emoji') and has('KIAN-100'), 'card title and id must render')
 assert(not has('In Progress'), 'in-progress state label must not render')
 assert(not has('Todo'), 'todo state label must not render')
 assert(not has('Bug'), 'nonessential labels must not render')
-assert(has('Due Sep 09'), 'deadlines must render upstairs')
-assert(has('Urgent · Due Sep 10'), 'urgent cards with deadlines must render both upstairs')
+assert(has('Sep 09'), 'deadlines must render upstairs')
+assert(has('Urgent · Sep 10'), 'urgent cards with deadlines must render both upstairs')
 assert(has('KIAN-102') and has('KIAN-103'), 'all issue identifiers must render')
 
 files['stat'] = 'cpu  1000 200 300 4000 50 10 20 0\n'

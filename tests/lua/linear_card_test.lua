@@ -143,14 +143,14 @@ eq(s2, '', 'todo without deadline has no state text and drops label')
 eq(t2, 'neutral', 'todo has neutral tone')
 
 local s3, t3 = linear_inst.describe({state = 'In Progress', due_date = 'Sep 08'})
-eq(s3, 'Due Sep 08', 'in-progress with deadline shows deadline upstairs')
+eq(s3, 'Sep 08', 'in-progress with deadline shows deadline upstairs')
 eq(t3, 'neutral', 'in-progress with deadline has neutral tone')
 
 local s4, t4 = linear_inst.describe({state = 'Todo', label = 'Bug', due_date = 'Sep 10'})
-eq(s4, 'Due Sep 10', 'todo with deadline shows deadline upstairs and drops label')
+eq(s4, 'Sep 10', 'todo with deadline shows deadline upstairs and drops label')
 
 local s5, t5 = linear_inst.describe({urgent = true, due_date = 'Sep 08'})
-eq(s5, 'Urgent · Due Sep 08', 'urgent card with deadline shows both')
+eq(s5, 'Urgent · Sep 08', 'urgent card with deadline shows both')
 eq(t5, 'caution', 'urgent card has caution tone')
 
 local s6, t6 = linear_inst.describe({urgent = true, due_date = ''})
@@ -158,7 +158,7 @@ eq(s6, 'Urgent', 'urgent card without deadline shows Urgent')
 eq(t6, 'caution', 'urgent card without deadline has caution tone')
 
 local s7, t7 = linear_inst.describe({due_today = true, due_date = 'Sep 06'})
-eq(s7, 'Due today', 'due today card shows Due today')
+eq(s7, 'Today', 'due today card shows Today')
 eq(t7, 'danger', 'due today card has danger tone')
 
 local s8, t8 = linear_inst.describe({done = true, due_date = 'Sep 05'})
