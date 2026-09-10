@@ -1,10 +1,15 @@
 # Linear overlay
 
-- Each card carries the project and issue identifier on the left of the header
-  line, and deadlines or urgency states (`Urgent`, `Today`) on the right,
+- Each card carries the project, issue number, and issue labels on the left of
+  the header line, and deadlines or urgency states (`Urgent`, `Today`) on the right,
   followed by a left-aligned title. Deadlines show `Today`, `Tomorrow`, or a
   date without a `Due` prefix. Completed cards have no status text.
-  Permanent footers and nonessential labels are removed; workflow state labels
+  The `KIAN-` prefix is omitted from displayed issue IDs, including merged
+  issues; other team prefixes remain. Full IDs stay in the cache. All issue
+  labels are joined with commas, and project, ID, and labels are separated by
+  dots. Project names and labels truncate together when space is tight,
+  reserving room for the issue number and deadline.
+  Permanent footers are removed; workflow state labels
   (`In Progress`, `Todo`) are omitted because contrast follows progress:
   `In Progress` titles stay bright, while other titles become muted. Urgency
   colors and the completed-task fade remain.

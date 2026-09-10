@@ -77,11 +77,13 @@ eq(spacer_for([[{"cards":[
 eq(spacer_for('{"cards":[{"identifier":"broken","title":"unterminated}]}'),
   '${voffset 50}', 'malformed cache degrades to an empty panel')
 
-write_cards('{"cards":[{"identifier":"HUP-1","title":"Task with emoji","projectName":"Clusterfork","projectIcon":"🌀"}]}')
+write_cards('{"cards":[{"identifier":"KIAN-123   KIAN-456   HUP-1","title":"Task with emoji","projectName":"Clusterfork","projectIcon":"🌀","labels":["backend","needs review"]}]}')
 local parsed = factory(shared, cache_root).read_cards()
 eq(#parsed.cards, 1, 'one card parsed')
 eq(parsed.cards[1].project_name, 'Clusterfork', 'card retains project name')
 eq(parsed.cards[1].project_icon, '🌀', 'card retains project icon')
+eq(parsed.cards[1].identifier, '123   456   HUP-1', 'merged IDs drop only the KIAN prefix')
+eq(parsed.cards[1].label, 'backend, needs review', 'card retains every issue label')
 
 -- Title font stepping and truncation:
 -- Titles start at 15px and do not wrap: if a title overflows one line, try
@@ -132,14 +134,14 @@ eq(linear_inst.title_color({state = 'In Progress', done = true}), shared.ui.mute
 
 -- Upstairs describe behavior:
 -- In Progress, Todo, and Done labels are dropped.
--- Nonessential labels (e.g. Bug) are dropped.
+-- Issue labels are rendered with the project and ID, separately from status text.
 -- Deadlines move upstairs. Urgency states remain.
 local s, t = linear_inst.describe({state = 'In Progress', due_date = ''})
 eq(s, '', 'in-progress without deadline has no state text')
 eq(t, 'neutral', 'in-progress has neutral tone')
 
 local s2, t2 = linear_inst.describe({state = 'Todo', label = 'Bug', due_date = ''})
-eq(s2, '', 'todo without deadline has no state text and drops label')
+eq(s2, '', 'todo without deadline has no state text')
 eq(t2, 'neutral', 'todo has neutral tone')
 
 local s3, t3 = linear_inst.describe({state = 'In Progress', due_date = 'Sep 08'})
@@ -147,7 +149,7 @@ eq(s3, 'Sep 08', 'in-progress with deadline shows deadline upstairs')
 eq(t3, 'neutral', 'in-progress with deadline has neutral tone')
 
 local s4, t4 = linear_inst.describe({state = 'Todo', label = 'Bug', due_date = 'Sep 10'})
-eq(s4, 'Sep 10', 'todo with deadline shows deadline upstairs and drops label')
+eq(s4, 'Sep 10', 'todo with deadline keeps deadline separate from issue labels')
 
 local s5, t5 = linear_inst.describe({urgent = true, due_date = 'Sep 08'})
 eq(s5, 'Urgent · Sep 08', 'urgent card with deadline shows both')

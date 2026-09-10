@@ -1,5 +1,5 @@
--- Task cards: a gapless grid of soft-filled records with project, issue id,
--- and deadline/urgency on top, followed by a single-line title that steps down
+-- Task cards: a gapless grid of soft-filled records with project, issue number,
+-- labels, and deadline/urgency on top, followed by a single-line title that steps down
 -- in size before truncating.
 return function(shared, repo_root)
   local cards_path = repo_root .. '/cache/linear-cards.json'
@@ -20,8 +20,11 @@ return function(shared, repo_root)
     local done_lookback_seconds = shared.json_number(content, 'doneLookbackSeconds', nil)
     local cards = {}
     for _, object in ipairs(shared.json_array_objects(content, 'cards')) do
-      local identifier = shared.json_string(object, 'identifier', '')
-      local label = shared.json_string(object, 'label', '')
+      local identifier = shared.json_string(object, 'identifier', ''):gsub('%S+', function(id)
+        return (id:gsub('^KIAN%-(%d+)$', '%1'))
+      end)
+      local labels = shared.json_array_strings(object, 'labels')
+      local label = #labels > 0 and table.concat(labels, ', ') or shared.json_string(object, 'label', '')
       local project_name = shared.json_string(object, 'projectName', '')
       local project_icon = shared.json_string(object, 'projectIcon', '')
       local state = shared.json_string(object, 'state', '')
@@ -158,31 +161,34 @@ return function(shared, repo_root)
           project_x = project_x + icon_w + 5
         end
       end
-      local total_available = math.max(0, right_limit - project_x)
-      local id_w = 0
-      if card.identifier ~= '' then
-        ui.font(cr, header_size, true, nil)
-        id_w = ui.width(cr, card.identifier)
-      end
-      local sep_w = 0
-      if card.project_name ~= '' and card.identifier ~= '' then
-        ui.font(cr, header_size, false, nil)
-        sep_w = ui.width(cr, ' · ')
-      end
-      if card.project_name ~= '' then
-        local name_max_w = card.identifier ~= '' and math.max(20, total_available - id_w - sep_w) or total_available
-        local name_w = ui.text(cr, card.project_name, project_x, y + 18,
-          {size = header_size, color = ui.muted, width = name_max_w})
-        project_x = project_x + name_w
-        if card.identifier ~= '' and project_x < right_limit then
-          local drawn_sep_w = ui.text(cr, ' · ', project_x, y + 18, {size = header_size, color = ui.muted})
-          project_x = project_x + drawn_sep_w
+      local fields, id_width, flexible_width = {}, 0, 0
+      for _, field in ipairs({
+        {text = card.project_name}, {text = card.identifier, mono = true}, {text = card.label},
+      }) do
+        if field.text ~= '' then
+          field.width = ui.width(cr, field.text, header_size, field.mono)
+          if field.mono then id_width = field.width
+          else flexible_width = flexible_width + field.width end
+          fields[#fields + 1] = field
         end
       end
-      if card.identifier ~= '' then
-        local id_max_w = math.max(0, right_limit - project_x)
-        ui.text(cr, card.identifier, project_x, y + 18,
-          {size = header_size, mono = true, color = ui.muted, width = id_max_w})
+      local sep_width = ui.width(cr, ' · ', header_size)
+      local available = math.max(0, right_limit - project_x - math.max(0, #fields - 1) * sep_width)
+      -- Keep the issue number readable; project and labels share the remaining width.
+      local flexible_scale = flexible_width > 0 and math.min(1, math.max(0, available - id_width) / flexible_width) or 1
+      local has_field = false
+      for _, field in ipairs(fields) do
+        local field_width = field.mono and math.min(field.width, available) or field.width * flexible_scale
+        local minimum_width = math.min(field.width, ui.width(cr, '...', header_size, field.mono))
+        if field_width >= minimum_width and field_width > 0 then
+          if has_field then
+            project_x = project_x + ui.text(cr, ' · ', project_x, y + 18,
+              {size = header_size, color = ui.muted})
+          end
+          project_x = project_x + ui.text(cr, field.text, project_x, y + 18,
+            {size = header_size, mono = field.mono, color = ui.muted, width = field_width})
+          has_field = true
+        end
       end
       local t_color = title_color(card)
       for index, line in ipairs(layout.lines) do

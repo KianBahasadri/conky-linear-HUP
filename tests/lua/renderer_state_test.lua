@@ -174,19 +174,20 @@ assert(has('Unavailable') and has('gh timed out'), 'an empty fleet must explain 
 files['linear-cards.json'] = [[{"cards":[
   {"identifier":"KIAN-100","title":"Ship emoji","projectName":"Clusterfork","projectIcon":"🌀","state":"In Progress"},
   {"identifier":"KIAN-101","title":"No icon","projectName":"Plain Project","projectIcon":"","state":"Todo"},
-  {"identifier":"KIAN-102","title":"Fix crash","projectName":"WidgetProj","label":"Bug","dueDate":"Sep 09","state":"In Progress"},
-  {"identifier":"KIAN-103","title":"Urgent task","projectName":"UrgProj","dueDate":"Sep 10","urgent":true}
+  {"identifier":"KIAN-102","title":"Fix crash","projectName":"WidgetProj","label":"Bug","labels":["Bug","backend"],"dueDate":"Sep 09","state":"In Progress"},
+  {"identifier":"KIAN-103","title":"Urgent task","projectName":"UrgProj","label":"Follow up","dueDate":"Sep 10","urgent":true}
 ]}]]
 draw('linear-card-renderer.lua')
 assert(has('Clusterfork') and has('🌀'), 'card with project emoji must render both')
 assert(has('Plain Project'), 'card without emoji must render project name')
-assert(has('Ship emoji') and has('KIAN-100'), 'card title and id must render')
+assert(has('Ship emoji') and has('100'), 'card title and issue number must render')
+assert(not has('KIAN-'), 'redundant team prefix must not render')
 assert(not has('In Progress'), 'in-progress state label must not render')
 assert(not has('Todo'), 'todo state label must not render')
-assert(not has('Bug'), 'nonessential labels must not render')
+assert(has('Bug, backend') and has('Follow up'), 'issue labels and legacy single labels must render')
 assert(has('Sep 09'), 'deadlines must render upstairs')
 assert(has('Urgent · Sep 10'), 'urgent cards with deadlines must render both upstairs')
-assert(has('KIAN-102') and has('KIAN-103'), 'all issue identifiers must render')
+assert(has('102') and has('103'), 'all issue numbers must render')
 
 files['stat'] = 'cpu  1000 200 300 4000 50 10 20 0\n'
 files['meminfo'] = 'MemTotal: 16000000 kB\nMemAvailable: 8000000 kB\n'
