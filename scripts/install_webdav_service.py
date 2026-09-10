@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install the rclone WebDAV workout-upload service as a systemd user unit."""
+"""Install workout WebDAV, preserving an externally managed system service."""
 
 import os
 import secrets
@@ -14,6 +14,7 @@ UNIT_SRC = ROOT / "systemd" / "rclone-webdav.service"
 UNIT_NAME = UNIT_SRC.name
 UNIT_DIR = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "systemd" / "user"
 UNIT_LINK = UNIT_DIR / UNIT_NAME
+MANAGED_SYSTEM_UNIT = Path("/etc/systemd/system/rclone-workouts.service")
 WORKOUTS_DIR = ROOT / "cache" / "workouts"
 DEFAULT_PHONE_WEBDAV_URL = "https://kianlaptop.tail3a78b9.ts.net/"
 AUTH_DIR = Path.home() / ".config" / "rclone"
@@ -105,6 +106,26 @@ def install_unit() -> None:
 def main() -> int:
     if shutil.which("systemctl") is None:
         raise RuntimeError("systemctl is not installed")
+    phone_url = os.environ.get("WEBDAV_PUBLIC_URL", DEFAULT_PHONE_WEBDAV_URL)
+    if MANAGED_SYSTEM_UNIT.exists():
+        status = subprocess.run(
+            ("systemctl", "is-active", "--quiet", MANAGED_SYSTEM_UNIT.name),
+            check=False,
+        )
+        if status.returncode != 0:
+            print(
+                f"Managed system service {MANAGED_SYSTEM_UNIT.name} is not active. "
+                f"Start it with: sudo systemctl start {MANAGED_SYSTEM_UNIT.name}",
+                file=sys.stderr,
+            )
+            return 1
+        print(f"Managed system service: {MANAGED_SYSTEM_UNIT.name}")
+        print(f"Workouts directory: configured by {MANAGED_SYSTEM_UNIT}")
+        print("Moving the repo requires an administrator to update the service bind source.")
+        print("Loopback backend:   http://127.0.0.1:9876/")
+        print(f"Phone WebDAV URL:   {phone_url}")
+        print(f"Phone WebDAV login: see {PASSWORD_PATH}")
+        return 0
     if not Path("/usr/bin/rclone").is_file():
         raise RuntimeError("/usr/bin/rclone is not installed")
 
@@ -112,7 +133,6 @@ def main() -> int:
     write_service_environment()
     install_unit()
 
-    phone_url = os.environ.get("WEBDAV_PUBLIC_URL", DEFAULT_PHONE_WEBDAV_URL)
     print(f"Installed {UNIT_LINK} -> {UNIT_SRC}")
     print(f"Workouts directory: {WORKOUTS_DIR}")
     print(f"Loopback backend:   http://127.0.0.1:9876/")

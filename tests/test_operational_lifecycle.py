@@ -680,6 +680,67 @@ def test_aws_bootstrap_preserves_env_selector_symlink(tmp_path):
     assert stat.S_IMODE(env_target.stat().st_mode) == 0o600
 
 
+@pytest.fixture
+def managed_webdav_service(tmp_path, monkeypatch):
+    unit = tmp_path / "rclone-workouts.service"
+    unit.write_text("[Service]\n", encoding="utf-8")
+    monkeypatch.setattr(webdav, "MANAGED_SYSTEM_UNIT", unit)
+    monkeypatch.setattr(webdav.shutil, "which", lambda _name: "/usr/bin/systemctl")
+
+    def unexpected_mutation(*_args, **_kwargs):
+        pytest.fail("managed service must skip every legacy installer mutation")
+
+    for name in ("ensure_auth", "write_private", "write_service_environment", "install_unit", "run"):
+        monkeypatch.setattr(webdav, name, unexpected_mutation)
+    return unit
+
+
+def test_webdav_active_managed_service_preserves_setup(
+    managed_webdav_service, monkeypatch, capsys
+):
+    calls = []
+
+    def systemctl_status(args, **kwargs):
+        calls.append((args, kwargs))
+        return subprocess.CompletedProcess(args, 0)
+
+    monkeypatch.setattr(webdav.subprocess, "run", systemctl_status)
+    monkeypatch.setenv("WEBDAV_PUBLIC_URL", "https://phone.example.test/")
+
+    assert webdav.main() == 0
+    assert calls == [
+        (("systemctl", "is-active", "--quiet", "rclone-workouts.service"), {"check": False})
+    ]
+    captured = capsys.readouterr()
+    assert "Managed system service: rclone-workouts.service" in captured.out
+    assert str(managed_webdav_service) in captured.out
+    assert "https://phone.example.test/" in captured.out
+    assert str(webdav.PASSWORD_PATH) in captured.out
+    assert str(webdav.WORKOUTS_DIR) not in captured.out
+    assert captured.err == ""
+
+
+def test_webdav_inactive_managed_service_requires_administrator(
+    managed_webdav_service, monkeypatch, capsys
+):
+    calls = []
+
+    def systemctl_status(args, **kwargs):
+        calls.append((args, kwargs))
+        return subprocess.CompletedProcess(args, 3)
+
+    monkeypatch.setattr(webdav.subprocess, "run", systemctl_status)
+
+    assert webdav.main() == 1
+    assert calls == [
+        (("systemctl", "is-active", "--quiet", "rclone-workouts.service"), {"check": False})
+    ]
+    captured = capsys.readouterr()
+    assert "not active" in captured.err
+    assert "sudo systemctl start rclone-workouts.service" in captured.err
+    assert captured.out == ""
+
+
 def test_webdav_private_write_is_atomic_and_repairs_permissions(tmp_path):
     path = tmp_path / "secret"
     path.write_text("old", encoding="utf-8")
