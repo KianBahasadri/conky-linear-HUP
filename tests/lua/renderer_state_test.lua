@@ -138,14 +138,34 @@ assert(not has_forecast_connector, 'trajectories under 50% usage omit the predic
 
 files['weather-status.json'] = [[{"ok":true,"temperature":16,"aqi":23}]]
 files['workouts-status.json'] = [[{"ok":true,"weekRuns":4,"lastDistanceText":"2.6 km","weekDistanceText":"12.5 km"}]]
+files['weight-status.json'] = [[{"ok":true,"stale":false,"lastWeightText":"199.1 lb",
+  "lastDateText":"Aug 19","ageText":"22d ago","changeText":"−2.3 lb","previousDateText":"Aug 13"}]]
+height = 320
+draw('weather-renderer.lua')
+assert(has('AQI') and has('12.5 km') and has('199.1 lb') and has('−2.3 lb'),
+  'full widget must show weather, training, and weight together')
+assert(has('Aug 19') and has('22d ago') and has('since Aug 13'),
+  'weight must show measurement age and identify the change comparison')
 height = 200
+os.time = function(date) return date and original_time(date) or 120060 end
 draw('weather-renderer.lua')
-assert(has('AQI') and has('1/2'), 'compact weather page must remain bounded and labeled')
-assert(not has('12.5 km'), 'compact pages must not overlap')
-os.time = function(date) return date and original_time(date) or 120030 end
+assert(has('AQI') and has('1/3'), 'compact weather page must remain bounded and labeled')
+assert(not has('12.5 km') and not has('199.1 lb'), 'compact pages must not overlap')
+os.time = function(date) return date and original_time(date) or 120090 end
 draw('weather-renderer.lua')
-assert(has('12.5 km') and has('2/2'), 'compact training page must expose workout data')
-assert(not has('AQI'), 'compact pages must not overlap')
+assert(has('12.5 km') and has('2/3'), 'compact training page must expose workout data')
+assert(not has('AQI') and not has('199.1 lb'), 'compact pages must not overlap')
+os.time = function(date) return date and original_time(date) or 120120 end
+draw('weather-renderer.lua')
+assert(has('199.1 lb') and has('3/3'), 'compact weight page must expose weight data')
+assert(not has('AQI') and not has('12.5 km'), 'compact pages must not overlap')
+files['weight-status.json'] = [[{"ok":true,"stale":true,"lastWeightText":"199.1 lb"}]]
+draw('weather-renderer.lua')
+assert(has('199.1 lb') and has('Stale'), 'an incomplete upload must keep and mark cached weight')
+files['weight-status.json'] = [[{"ok":false,"error":"No openScale backup uploaded yet"}]]
+draw('weather-renderer.lua')
+assert(has('No openScale backup uploaded yet') and not has('199.1 lb'),
+  'missing weight data must explain itself without inventing a weight')
 
 -- A settled repository must collapse to its name: no badge, and no branch
 -- unless it sits somewhere other than the default. Anything unsettled keeps

@@ -171,12 +171,12 @@ def plan(width, height, top=40, counts=None, env=None):
     center = width - 2 * margin - left - right - gutter_left - gutter
     center_x, right_x = margin + left + gutter_left, width - margin - right
 
-    # Right rail: arc gauge resource readings at the top, then weather and training.
+    # Right rail: arc gauges at the top, then weather, training, and weight.
     # Four arc gauges fit on a single row next to each other.
     resource_h = 100
     weather_y = top + resource_h + 12
     weather_limit = height - margin - 100 - 12 - weather_y
-    weather_h = 250 if weather_limit >= 250 else max(100, weather_limit)
+    weather_h = min(320, max(100, weather_limit))
 
     # Center: quota rows sit at the bottom, the calendar above them, and the
     # task grid takes what is left. On wide displays with many accounts, quota

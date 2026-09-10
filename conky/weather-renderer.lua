@@ -1,8 +1,9 @@
--- Weather, air quality, and run guidance above the training summary, as
+-- Weather, air quality, training, and weight summaries, as
 -- metrics, aligned readouts, and explicit status badges.
 return function(shared, repo_root)
   local weather_path = repo_root .. '/cache/weather-status.json'
   local workouts_path = repo_root .. '/cache/workouts-status.json'
+  local weight_path = repo_root .. '/cache/weight-status.json'
   local ui = shared.ui
   local weather_block, gap = 100, 16
   local function json_string(content, key, fallback)
@@ -77,6 +78,23 @@ return function(shared, repo_root)
     return table.concat(kept, ' · ')
   end
 
+  local function read_weight()
+    local content = shared.read_file(weight_path)
+    if not content or not shared.json_boolean(content, 'ok', false) then
+      return {ok = false, error = content and json_string(content, 'error', 'Weight data unavailable')
+        or 'No openScale backup uploaded yet'}
+    end
+    return {
+      ok = true,
+      stale = shared.json_boolean(content, 'stale', false),
+      last_weight = json_string(content, 'lastWeightText', '--'),
+      last_date = json_string(content, 'lastDateText'),
+      age = json_string(content, 'ageText'),
+      change = json_string(content, 'changeText', '--'),
+      previous_date = json_string(content, 'previousDateText'),
+    }
+  end
+
   local function draw_weather(cr, weather, width, top)
     top = top or 0
     if not weather.ok then
@@ -124,22 +142,48 @@ return function(shared, repo_root)
     ui.text(cr, workouts.week_runs .. ' runs', half + 16, top + 80, detail)
   end
 
+  local function draw_weight(cr, weight, width, top)
+    if not weight.ok then
+      ui.text(cr, weight.error, 0, top + 16, {size = 13.5, color = ui.muted, width = width}); return
+    end
+    local half = (width - 16) / 2
+    ui.metric(cr, 'Last weight', weight.last_weight, 0, top, half)
+    ui.metric(cr, 'Change', weight.change, half + 16, top, half)
+    local detail = {size = 11, mono = true, color = ui.muted, width = half}
+    ui.text(cr, join({weight.last_date, weight.age}), 0, top + 64, detail)
+    ui.text(cr, weight.previous_date ~= '' and 'since ' .. weight.previous_date or 'First weigh-in',
+      half + 16, top + 64, detail)
+    if weight.stale then
+      ui.text(cr, 'Stale', 0, top + 80, {size = 11, mono = true, color = ui.caution, width = half})
+    end
+  end
+
   local function draw()
     ui.draw(function(cr, width, height)
-      local weather, workouts = read_status(), read_workouts()
-      local content_height = weather_block + gap + 94
-      local compact = height < content_height
-      if not compact then
-        local top = 0
-        draw_weather(cr, weather, width, top)
-        draw_training(cr, workouts, width, top + weather_block + gap)
-        return
+      local sections = {
+        {height = weather_block, draw = draw_weather, data = read_status()},
+        {height = 94, draw = draw_training, data = read_workouts()},
+        {height = 94, draw = draw_weight, data = read_weight()},
+      }
+      local content_height = weather_block + gap + 94 + gap + 94
+      local available = height < content_height and height - 16 or height
+      -- Keep whole sections together, in order, with a footer only when paging.
+      local pages, used = {{}}, 0
+      for _, section in ipairs(sections) do
+        if used > 0 and used + gap + section.height > available then
+          pages[#pages + 1], used = {}, 0
+        end
+        local page = pages[#pages]
+        page[#page + 1] = section
+        used = used + (used > 0 and gap or 0) + section.height
       end
-      -- Short displays alternate the two blocks as labeled pages.
-      local training_page = math.floor(os.time() / 30) % 2 == 1
-      if training_page then draw_training(cr, workouts, width, 0)
-      else draw_weather(cr, weather, width, 0) end
-      ui.footer(cr, training_page and '2/2' or '1/2', width, height)
+      local page_index = math.floor(os.time() / 30) % #pages + 1
+      local top = 0
+      for _, section in ipairs(pages[page_index]) do
+        section.draw(cr, section.data, width, top)
+        top = top + section.height + gap
+      end
+      if #pages > 1 then ui.footer(cr, page_index .. '/' .. #pages, width, height) end
     end)
   end
   return {draw = draw}
