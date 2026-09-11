@@ -523,12 +523,20 @@ function shared.create_surface()
     return nil, false
   end
 
-  if conky_surface then
-    return conky_surface(), false
+  -- Conky 1.24 can retain a surface for an old X11 drawable during startup.
+  -- Bind each live frame to the current buffer; ui.draw destroys this surface.
+  -- Headless rendering and native Wayland have no X11 handles and borrow the
+  -- surface supplied by their host instead.
+  if conky_window.display and conky_window.drawable and conky_window.visual
+      and cairo_xlib_surface_create then
+    return cairo_xlib_surface_create(
+      conky_window.display, conky_window.drawable, conky_window.visual,
+      conky_window.width, conky_window.height
+    ), true
   end
 
-  if cairo_xlib_surface_create then
-    return cairo_xlib_surface_create(conky_window.display, conky_window.drawable, conky_window.visual, conky_window.width, conky_window.height), true
+  if conky_surface then
+    return conky_surface(), false
   end
 
   return nil, false

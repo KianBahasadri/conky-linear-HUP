@@ -118,6 +118,49 @@ surface, owns_surface = shared.create_surface()
 eq(surface, surface_token, 'create_surface uses Conky surface for valid frame')
 eq(owns_surface, false, 'Conky surface is borrowed')
 eq(surface_calls, 1, 'create_surface called once for valid frame')
+
+-- Conky can keep a cached surface after its X11 double buffer changes. A live
+-- frame must draw into the current buffer even while that stale API exists.
+local xlib_calls = 0
+local display, visual, first_buffer, next_buffer = {}, {}, {}, {}
+cairo_xlib_surface_create = function(actual_display, drawable, actual_visual, width, height)
+  xlib_calls = xlib_calls + 1
+  eq(actual_display, display, 'live surface uses its X11 display')
+  eq(actual_visual, visual, 'live surface uses its X11 visual')
+  return { drawable = drawable, width = width, height = height }
+end
+conky_window = {
+  display = display, visual = visual, drawable = first_buffer,
+  width = 400, height = 100,
+}
+surface, owns_surface = shared.create_surface()
+eq(surface.drawable, first_buffer, 'first frame targets the current X11 buffer')
+eq(owns_surface, true, 'per-frame X11 surface must be destroyed after drawing')
+conky_window.drawable = next_buffer
+conky_window.width = 360
+surface, owns_surface = shared.create_surface()
+eq(surface.drawable, next_buffer, 'next frame follows a changed X11 buffer')
+eq(surface.width, 360, 'next frame follows resized window dimensions')
+eq(surface.height, 100, 'live surface keeps the window height')
+eq(surface_calls, 1, 'live X11 never borrows the stale Conky surface')
+
+conky_window.width = 0
+surface, owns_surface = shared.create_surface()
+eq(surface, nil, 'incomplete live frame has no surface')
+eq(xlib_calls, 2, 'incomplete live frame does not create an X11 surface')
+conky_window = { width = 400, height = 100 }
+surface, owns_surface = shared.create_surface()
+eq(surface, surface_token, 'headless rendering borrows the host surface')
+eq(owns_surface, false, 'headless rendering does not own the host surface')
+eq(xlib_calls, 2, 'headless rendering never calls the Xlib binding')
+cairo_xlib_surface_create = nil
+conky_window = {
+  display = display, visual = visual, drawable = next_buffer,
+  width = 400, height = 100,
+}
+surface, owns_surface = shared.create_surface()
+eq(surface, surface_token, 'missing Xlib binding falls back to the host surface')
+eq(owns_surface, false, 'fallback host surface remains borrowed')
 conky_window = nil
 conky_surface = nil
 

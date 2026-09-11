@@ -69,11 +69,17 @@ the cache atomically so an interrupted write cannot leave a partial layout.
 
 ## Renderer contract
 
-A renderer must take its surface from `shared.create_surface()`, which prefers
-the `conky_surface()` global that both Conky and this tool provide. Building an
-Xlib surface directly works only under a real Conky and segfaults here on the
-nil display, so the worker replaces `cairo_xlib_surface_create` with a stub that
-raises instead.
+A renderer must take its surface from `shared.create_surface()`. When X11
+display, drawable, and visual handles are available, it creates a surface for
+the current drawable on every frame; `ui.draw()` destroys that owned surface
+after drawing. This works around Conky 1.24 retaining a stale X11 surface,
+which left the resource gauges transparent after suite startup.
+
+Without X11 handles, or when the Xlib binding is unavailable, the helper
+borrows the host's `conky_surface()` instead. This is the headless and native
+Wayland path. Renderers must not build Xlib surfaces themselves: doing so
+segfaults here on the nil display, so the worker replaces
+`cairo_xlib_surface_create` with a stub that raises instead.
 
 The generated configs are gitignored. On a fresh clone, run
 `./scripts/start_conky_overlays.sh --generate-only` before the first render.

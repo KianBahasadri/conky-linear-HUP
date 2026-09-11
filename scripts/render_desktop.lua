@@ -2,8 +2,8 @@
 --
 -- Loads the shipped Conky renderers with an in-memory image surface standing in
 -- for the X drawable, so overlays render without a display, a compositor, or a
--- running Conky. Renderers reach the surface through shared.create_surface(),
--- which prefers the conky_surface() global that this file installs.
+-- running Conky. With no X11 handles, shared.create_surface() uses the
+-- conky_surface() global that this file installs.
 --
 -- Driven by a tab-separated spec file rather than argv so the Python side can
 -- describe every window in one call. Two modes:
@@ -34,8 +34,8 @@ end
 
 -- Keep the X binding out of a headless render. The entrypoints pcall-require
 -- cairo_xlib; handing them a stub means the real one never defines
--- cairo_xlib_surface_create, so shared.create_surface() cannot fall through to
--- a path that needs a live display.
+-- cairo_xlib_surface_create, so shared.create_surface() cannot accidentally
+-- take a path that needs a live display.
 package.preload['cairo_xlib'] = function()
   return {}
 end
