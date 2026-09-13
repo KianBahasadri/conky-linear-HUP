@@ -116,7 +116,7 @@ cairo_set_line_width = function() end
 cairo_set_line_cap = function(_, cap) caps[#caps + 1] = cap end
 cairo_set_line_join = function() end
 cairo_set_source_rgba = function() end
-cairo_text_extents_t = { create = function() return { x_advance = 10 } end }
+cairo_text_extents_t = { create = function() return { width = 10, x_advance = 10 } end }
 cairo_text_extents = function() end
 cairo_select_font_face, cairo_set_font_size, cairo_show_text = function() end, function() end, function() end
 
@@ -136,5 +136,26 @@ assert(has_square_cap(caps), 'arc gauge with peak hold must draw a square-capped
 caps = {}
 ui.arc_gauge({}, 'cpu', '—', '', 0, 0, 100, {measured = false, max = 100, peak = 80, peak_hold = true})
 assert(not has_square_cap(caps), 'unmeasured arc gauge must not draw a square-capped tick line')
+
+-- IBM Plex Sans at 11px draws PT one pixel wider than its cursor advance.
+-- A label given its measured width must survive ui.text's ink-based truncation.
+local metrics = {
+  PT = {width = 14, x_advance = 13},
+  ['PT '] = {width = 14, x_advance = 16},
+  ['P...'] = {width = 15, x_advance = 15},
+  ['...'] = {width = 9, x_advance = 9},
+}
+local drawn_text
+cairo_text_extents = function(_, value, extents)
+  local measured = assert(metrics[value], 'unexpected text measurement: ' .. value)
+  extents.width, extents.x_advance = measured.width, measured.x_advance
+end
+cairo_show_text = function(_, value) drawn_text = value end
+local advance = ui.text({}, 'PT', 0, 18, {size = 11, width = ui.width({}, 'PT', 11)})
+assert(drawn_text == 'PT', 'a fitting project acronym must not become an ellipsis')
+assert(advance == 13, 'drawing keeps the font advance for following text')
+assert(ui.width({}, 'PT ', 11) == 16, 'measurement must also preserve trailing spacing')
+ui.text({}, 'PT', 0, 18, {size = 11, width = 12})
+assert(drawn_text == '...', 'a genuinely constrained project acronym still truncates')
 
 print('design-system components OK')

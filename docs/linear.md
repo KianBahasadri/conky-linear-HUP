@@ -31,6 +31,11 @@
   using built-in icon names or no icon show the acronym alone. Metadata
   truncates at the available width. Shared styling and paging belong to the
   [Desktop design system](design-system.md).
+- The compound shortcode `:male-police-officer:` resolves to `👮‍♂️`. Cairo's
+  simple text API cannot join its characters, so the icon uses the matching
+  [Noto PNG](https://github.com/googlefonts/noto-emoji/blob/8998f5dd683424a73e2314a8c1f1e359c19e8742/png/128/emoji_u1f46e_200d_2642.png)
+  in `assets/emoji/`, aligned to the base emoji's font metrics. Its Apache 2.0
+  notice and license are included in `assets/emoji/LICENSE.txt`.
 - If any unfinished card is overdue or due today, non-due unfinished cards are hidden so urgent work dominates the overlay. The cache's `dueToday` flag covers both overdue and due-today urgency; its `dueDate` text distinguishes their labels.
 - Unfinished issues in the `Competitions` project due in the next 3 days are always shown, with their due date in the card header.
 - Issues in the `Backlog` state with a due date in the next 3 days are also shown (including when urgent due-today filtering is active).

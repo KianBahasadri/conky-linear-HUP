@@ -12,6 +12,9 @@ and bounded list paging.
   record text 13.5px, metadata 12px, and chart annotations 11px. Metric labels
   are uppercase 12px mono with 0.08em tracking; values are 26px bold in the
   muted color.
+- Text measurement reserves the greater of the glyphs' ink width and cursor
+  advance, so glyph overhangs do not cause fitting labels to truncate and
+  trailing spaces retain their width.
 - The dark tokens are canvas `#080b0d`, surface `#11171b`, raised surface
   `#151d21`, ink `#dbe3e6`, strong ink `#f3f6f5`, muted `#849094`, faint
   `#566166`, border `#263137`, and strong border `#3a4a51`.

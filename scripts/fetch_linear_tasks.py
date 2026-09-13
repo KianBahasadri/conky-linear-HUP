@@ -120,6 +120,7 @@ EMOJI_SHORTCODE_ALIASES = {
     "point_right": "👉", "poop": "💩", "pray": "🙏", "recycle": "♻", "rotating_light": "🚨",
     "smile": "😄", "smiley": "😃", "sob": "😭", "star": "⭐", "sunny": "☀", "tada": "🎉", "tv": "📺",
     "warning": "⚠", "wave": "👋", "white_check_mark": "✅", "x": "❌", "zap": "⚡",
+    "male-police-officer": "👮‍♂️",
 }
 
 

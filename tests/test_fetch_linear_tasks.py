@@ -351,9 +351,16 @@ def test_render_cards_uses_project_acronym():
     assert cards_by_id["ABC-3"]["projectName"] == ""
 
 
-def test_render_cards_carries_project_icon():
+@pytest.mark.parametrize(
+    "project, project_icon, expected_icon",
+    [
+        ("Competitions", ":trophy:", "🏆"),
+        ("Parking Ticket", ":male-police-officer:", "👮‍♂️"),
+    ],
+)
+def test_render_cards_carries_project_icon(project, project_icon, expected_icon):
     tasks = [
-        _issue("ABC-1", "Comp work", "Todo", project="Competitions", project_icon=":trophy:"),
+        _issue("ABC-1", "Project work", "Todo", project=project, project_icon=project_icon),
         _issue("ABC-2", "Icon-less", "Todo", project="Hangout Automator", project_icon="Users"),
         _issue("ABC-3", "No project", "Todo"),
     ]
@@ -361,7 +368,7 @@ def test_render_cards_carries_project_icon():
     payload = linear.render_cards(tasks, {"Todo", "In Progress"}, lookback_hours=18)
     cards_by_id = {card["identifier"]: card for card in payload["cards"]}
 
-    assert cards_by_id["ABC-1"]["projectIcon"] == "🏆"
+    assert cards_by_id["ABC-1"]["projectIcon"] == expected_icon
     assert cards_by_id["ABC-2"]["projectIcon"] == ""
     assert cards_by_id["ABC-3"]["projectIcon"] == ""
 

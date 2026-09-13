@@ -39,7 +39,9 @@ return function(shared)
     ui.font(cr, size, mono, bold)
     local ext = cairo_text_extents_t:create()
     cairo_text_extents(cr, tostring(value or ''), ext)
-    return ext.x_advance
+    -- Reserve both ink and spacing: some glyphs overhang their advance, and
+    -- ui.text's truncation checks ink width against this measurement.
+    return math.max(ext.x_advance, ext.width)
   end
 
   function ui.text(cr, value, x, y, opts)
@@ -82,12 +84,35 @@ return function(shared)
 
   -- Color glyphs (Noto Color Emoji) alongside UI text; Cairo toy API does not
   -- fall back per glyph, so emoji characters require their own font selection.
+  -- Joined emoji need precomposed artwork: the toy API cannot shape a ZWJ sequence.
+  local emoji_artwork = {
+    ['👮‍♂️'] = {file = 'emoji_u1f46e_200d_2642.png', base = '👮'},
+  }
   function ui.emoji(cr, glyph, x, y, size)
     if not glyph or glyph == '' then return 0 end
+    local artwork = emoji_artwork[glyph]
     cairo_select_font_face(cr, 'Noto Color Emoji', CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL)
     cairo_set_font_size(cr, size or 11)
     local ext = cairo_text_extents_t:create()
-    cairo_text_extents(cr, glyph, ext)
+    cairo_text_extents(cr, artwork and artwork.base or glyph, ext)
+    if artwork then
+      local surface = cairo_image_surface_create_from_png(module_dir .. '/../assets/emoji/' .. artwork.file)
+      if cairo_surface_status(surface) ~= CAIRO_STATUS_SUCCESS then
+        cairo_surface_destroy(surface)
+        return 0
+      end
+      -- Use the base glyph's baseline and advance to match adjacent font emoji.
+      local width, height = cairo_image_surface_get_width(surface), cairo_image_surface_get_height(surface)
+      local scale = ext.height / height
+      cairo_save(cr)
+      cairo_translate(cr, x + (ext.x_advance - width * scale) / 2, y + ext.y_bearing)
+      cairo_scale(cr, scale, scale)
+      cairo_set_source_surface(cr, surface, 0, 0)
+      cairo_paint_with_alpha(cr, 0.95)
+      cairo_restore(cr)
+      cairo_surface_destroy(surface)
+      return ext.x_advance
+    end
     shared.set_hex(cr, ui.strong, 0.95)
     cairo_move_to(cr, x, y)
     cairo_show_text(cr, glyph)
