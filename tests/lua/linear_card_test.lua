@@ -159,11 +159,24 @@ local s6, t6 = linear_inst.describe({urgent = true, due_date = ''})
 eq(s6, 'Urgent', 'urgent card without deadline shows Urgent')
 eq(t6, 'caution', 'urgent card without deadline has caution tone')
 
-local s7, t7 = linear_inst.describe({due_today = true, due_date = 'Sep 06'})
+local s7, t7 = linear_inst.describe({due_today = true, due_date = 'Today'})
 eq(s7, 'Today', 'due today card shows Today')
 eq(t7, 'danger', 'due today card has danger tone')
 
-local s8, t8 = linear_inst.describe({done = true, due_date = 'Sep 05'})
+-- dueToday flags overdue cards too; the formatted deadline must reach the header.
+write_cards([[{"cards":[
+  {"identifier":"KIAN-1","title":"Late","dueToday":true,"dueDate":"Overdue · Sep 10","urgent":true}
+]}]])
+local overdue = linear_inst.read_cards().cards[1]
+local overdue_text, overdue_tone = linear_inst.describe(overdue)
+eq(overdue_text, 'Overdue · Sep 10', 'overdue cache deadline is not overwritten with Today')
+eq(overdue_tone, 'danger', 'overdue deadline takes precedence over urgent tone')
+
+local cached_text, cached_tone = linear_inst.describe({due_today = true, due_date = 'Sep 10'})
+eq(cached_text, 'Sep 10', 'older cache keeps its actual deadline until refreshed')
+eq(cached_tone, 'danger', 'older cache retains deadline urgency')
+
+local s8, t8 = linear_inst.describe({done = true, due_today = true, due_date = 'Overdue · Sep 05'})
 eq(s8, '', 'done card has no state text')
 eq(t8, 'good', 'done card has good tone')
 

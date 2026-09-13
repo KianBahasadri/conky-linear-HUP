@@ -108,7 +108,8 @@ return function(shared, repo_root)
     if card.done then
       tone = 'good'
     elseif card.due_today then
-      parts[#parts + 1] = 'Today'
+      -- dueToday also flags overdue cards; keep the fetcher's deadline text.
+      parts[#parts + 1] = due ~= '' and due or 'Today'
       tone = 'danger'
     elseif card.urgent then
       parts[#parts + 1] = 'Urgent'

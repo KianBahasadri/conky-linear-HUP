@@ -3,7 +3,9 @@
 - Each card carries the project, issue number, and issue labels on the left of
   the header line, and deadlines or urgency states (`Urgent`, `Today`) on the right,
   followed by a left-aligned title. Deadlines show `Today`, `Tomorrow`, or a
-  date without a `Due` prefix. Completed cards have no status text.
+  date without a `Due` prefix. Past deadlines show `Overdue · Sep 10`, using
+  the local calendar date to distinguish overdue from due today. Merged cards
+  use their earliest deadline. Completed cards have no status text.
   The `KIAN-` prefix is omitted from displayed issue IDs, including merged
   issues; other team prefixes remain. Full IDs stay in the cache. All issue
   labels are joined with commas, and project, ID, and labels are separated by
@@ -17,7 +19,7 @@
   if a title overflows, the renderer retries
   at 14px then 13px, and truncates if 13px still overflows. Cards form a gapless grid.
 - The card's fill and any header text carry the tone together: completed cards
-  are good, `Today` is danger with square corners, `Urgent` is caution, and
+  are good, `Today` and overdue deadlines are danger with square corners, `Urgent` is caution, and
   every ordinary workflow state is neutral. Neutral fills use 50% opacity and
   status tints 7%, before the completed-card fade. There is no separate status
   badge, status dot, or inset rail inside a card.
@@ -29,14 +31,14 @@
   using built-in icon names or no icon show the acronym alone. Metadata
   truncates at the available width. Shared styling and paging belong to the
   [Desktop design system](design-system.md).
-- If any unfinished card is due today, non-due unfinished cards are hidden so urgent work dominates the overlay.
+- If any unfinished card is overdue or due today, non-due unfinished cards are hidden so urgent work dominates the overlay. The cache's `dueToday` flag covers both overdue and due-today urgency; its `dueDate` text distinguishes their labels.
 - Unfinished issues in the `Competitions` project due in the next 3 days are always shown, with their due date in the card header.
 - Issues in the `Backlog` state with a due date in the next 3 days are also shown (including when urgent due-today filtering is active).
 - Cancelled and duplicate issues are never shown.
 - Recently completed cards remain visible for `LINEAR_DONE_LOOKBACK_HOURS`, fading linearly from full opacity when completed to fully transparent as the lookback window expires; the fetcher stamps each card with `completedAtEpoch` and the payload with `doneLookbackSeconds` so the renderer can compute the fade locally on every tick. Done cards are ordered most-recently-completed first, so they read newest-to-oldest top-down and left-to-right.
 - Card width is fluid with a 252px minimum and no gaps. A card is 50px tall;
   a grid row is as tall as its tallest card. Default desktop pages have four
-  columns and up to three rows. The renderer applies the due-today
+  columns and up to three rows. The renderer applies the overdue/due-today
   visibility filter before allocating page slots.
 - Window bounds are established at startup. Cache refreshes update cards
   without rewriting configs or reloading Conky; extra cards rotate in place.

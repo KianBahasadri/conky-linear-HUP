@@ -3,6 +3,8 @@ import json
 import urllib.error
 from datetime import date, datetime, timedelta, timezone
 
+import pytest
+
 import fetch_linear_tasks as linear
 
 
@@ -163,6 +165,47 @@ def test_render_cards_includes_backlog_due_soon_flag():
     assert cards_by_id["ABC-2"]["projectName"] == "C"
     assert cards_by_id["ABC-3"]["backlogDueSoon"] is True
     assert cards_by_id["ABC-3"]["dueToday"] is True
+
+
+@pytest.mark.parametrize(
+    "due_date, expected_label, due_now",
+    [
+        ("2025-12-31", "Overdue · Dec 31", True),
+        ("2026-09-12", "Overdue · Sep 12", True),
+        ("2026-09-13", "Today", True),
+        ("2026-09-14", "Tomorrow", False),
+        ("2026-09-15", "Sep 15", False),
+        (None, "", False),
+    ],
+)
+def test_render_cards_distinguishes_overdue_from_today(due_date, expected_label, due_now):
+    now = datetime(2026, 9, 13, 12).astimezone()
+    task = _issue("ABC-1", "Deadline", "Todo", due_date=due_date)
+
+    card = linear.render_cards([task], {"Todo"}, lookback_hours=18, now=now)["cards"][0]
+
+    assert card["dueDate"] == expected_label
+    # This urgency flag keeps both overdue and due-today cards visible and red.
+    assert card["dueToday"] is due_now
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_render_cards_merged_deadline_keeps_earliest_overdue_date(reverse):
+    now = datetime(2026, 9, 13, 12).astimezone()
+    tasks = [
+        _issue("ABC-1", "Shared", "Todo", due_date="2026-09-13"),
+        _issue("ABC-2", "Shared", "Todo", due_date="2026-09-12"),
+        _issue("ABC-3", "Shared", "Todo", due_date="2026-09-10"),
+    ]
+    if reverse:
+        tasks.reverse()
+
+    cards = linear.render_cards(tasks, {"Todo"}, lookback_hours=18, now=now)["cards"]
+
+    assert len(cards) == 1
+    assert cards[0]["dueIso"] == "2026-09-10"
+    assert cards[0]["dueDate"] == "Overdue · Sep 10"
+    assert cards[0]["dueToday"] is True
 
 
 def test_render_cards_flags_urgent_issues():

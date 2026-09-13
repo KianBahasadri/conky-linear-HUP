@@ -271,6 +271,8 @@ def format_due_date(value, now_date=None):
         return ""
 
     today = now_date or datetime.now().astimezone().date()
+    if due_date < today:
+        return f"Overdue · {due_date:%b %d}"
     if due_date == today:
         return "Today"
     if due_date == today + timedelta(days=1):
