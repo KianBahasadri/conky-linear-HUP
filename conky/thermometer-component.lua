@@ -81,12 +81,18 @@ return function(shared, repo_root, options)
       rain_chance_percent = optional_number(content, 'precipitationProbability', 100)}
   end
 
+  local function sun_time(value)
+    if value == nil then return '—' end
+    local hour = math.floor(value / 60)
+    return string.format('%d:%02d %s', hour % 12 == 0 and 12 or hour % 12,
+      value % 60, hour < 12 and 'AM' or 'PM')
+  end
+
   local function detail_rows(data)
     local rows = {}
     if show_sun then
       for _, event in ipairs({{'sunrise', data.sunrise}, {'sunset', data.sunset}}) do
-        rows[#rows + 1] = {icon = event[1], value = event[2]
-          and string.format('%02d:%02d', math.floor(event[2] / 60), event[2] % 60) or '—'}
+        rows[#rows + 1] = {icon = event[1], value = sun_time(event[2])}
       end
     end
     if show_uv then
@@ -155,18 +161,18 @@ return function(shared, repo_root, options)
       ui.rect(cr, 35, fill_top, 6, 160 - fill_top, ui.accent, 3)
       ui.circle(cr, 38, 160, 11, ui.accent)
       cairo_restore(cr)
-      ui.icon(cr, data.glyph, x + layout.glyph.x, y + layout.glyph.y, glyph_size, ui.ink)
+      ui.icon(cr, data.glyph, x + layout.glyph.x, y + layout.glyph.y, glyph_size, ui.muted)
       for index, row in ipairs(layout.rows) do
         local row_x = x + layout.details.x
         local row_y = y + layout.details.y + (index - 1) * (row_height + row_gap)
         ui.icon(cr, row.icon, row_x, row_y + (row_height - detail_icon) / 2, detail_icon, ui.muted)
         ui.text(cr, row.value, row_x + detail_icon + detail_gap, row_y + row_height / 2 + text_size * 0.32,
-          {size = text_size, mono = true})
+          {size = text_size, mono = true, color = ui.muted})
       end
     end)
     if data.stale then
       ui.text(cr, 'Stale', x + layout.width / 2, y + component.height - 4,
-        {size = 11, color = ui.caution, align = 'center'})
+        {size = 11, color = ui.muted, align = 'center'})
     end
   end
   return component

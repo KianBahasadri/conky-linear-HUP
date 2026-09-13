@@ -44,7 +44,7 @@ for _, sample in ipairs({{15, 1, 160}, {15.1, 2, 114}, {18.9, 2, 114}, {19, 3, 8
   component.draw({}, state, 0, 0)
   assert(fills[1].y == sample[3] and fills[1].h == 160 - sample[3], 'wrong quantitative tube fill')
   assert(fills[1].w == 6 and bulbs[1].r == 11, 'reference tube and bulb dimensions changed')
-  assert(#labels == 4 and labels[1] == '06:30' and labels[2] == '19:00'
+  assert(#labels == 4 and labels[1] == '6:30 AM' and labels[2] == '7:00 PM'
     and labels[3] == 'UV 4' and labels[4] == '35%',
     'details must show sun times, UV, and rain chance, with no temperature text')
 end

@@ -27,9 +27,10 @@ valid current weather or air-quality fields are treated as failed refreshes.
 `conky/thermometer-component.lua` implements the design-guide weather summary in
 a transparent 120px-wide, 124px-high window. A 92px thermometer sits beside a
 16px Lucide weather glyph above four detail rows: sunrise, sunset, UV index,
-and rain chance. Detail rows use 12px glyphs and 11px IBM Plex Mono text, with
-sun times formatted as `HH:mm`. There are no persistent temperature numbers,
-ticks, average markers, or enclosing panel. The shipped overlay uses half-size
+and rain chance. Detail rows use 12px glyphs and 11px IBM Plex Mono text.
+All thermometer text and glyphs use the muted color. Sun times use 12-hour time with
+AM/PM, such as `6:30 AM` and `7:00 PM`. There are no persistent temperature
+numbers, ticks, average markers, or enclosing panel. The shipped overlay uses half-size
 graphics and spacing, with minimum text and detail-glyph sizes for readability.
 
 The component measures the visible detail rows to size its content and centers
