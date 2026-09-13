@@ -72,7 +72,8 @@ def test_thermometer_is_bottom_left_with_personal_metrics_still_top_right(size, 
     })
     weather = windows["weather"]
     assert weather[0] + weather[2] == width - 8
-    assert weather[1] == 152
+    resources = windows["resource-monitor"]
+    assert weather[1] == resources[1] + resources[3] + 12
     assert weather[3] == 204  # training and weight remain visible together
     thermometer = windows["thermometer"]
     assert thermometer[0] == 8

@@ -172,8 +172,8 @@ def plan(width, height, top=40, counts=None, env=None):
     center_x, right_x = margin + left + gutter_left, width - margin - right
 
     # Right rail: gauges, then the training and weight metrics.
-    # Four arc gauges fit on a single row next to each other.
-    resource_h = 100
+    # Two rows of compact arc gauges, with four column positions per row.
+    resource_h = 176
     weather_y = top + resource_h + 12
     weather_h = 204
 

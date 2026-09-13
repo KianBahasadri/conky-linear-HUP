@@ -44,7 +44,7 @@ and bounded list paging.
 - **The budget map** is the shared time-and-limit plane behind the billing
   panel. See [Billing forecast panel](billing.md).
 - **Resource readings** place compact 270° arc gauges with qualitative
-  threshold bands and active zone fills in a single row. See
+  threshold bands and active zone fills. See
   [Configuration](configuration.md#system-resource-monitor).
 - **Record lists** (repositories, sessions, quota accounts, budget summaries)
   are aligned text rows on a fixed pitch, with a status badge or status text at

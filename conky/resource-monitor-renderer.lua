@@ -1,11 +1,13 @@
--- Realtime resource readings: 132x132 270° arc gauges with peak hold indicators
--- on a fixed zero-based scale.
+-- Realtime resource readings: two rows of compact 270° arc gauges with peak
+-- hold indicators on zero-based scales.
 return function(shared, repo_root)
   local ui = shared.ui
   local interval = 2
   local history_limit = math.floor(shared.clamp(tonumber(os.getenv('RESOURCE_HISTORY_SAMPLES')) or 90, 30, 180))
   local network_max = (tonumber(os.getenv('RESOURCE_NETWORK_MAX_MBPS')) or 12.5) * 1048576
   if network_max <= 0 then network_max = 12.5 * 1048576 end
+  local disk_max = (tonumber(os.getenv('RESOURCE_DISK_MAX_MBPS')) or 500) * 1048576
+  if disk_max <= 0 then disk_max = 500 * 1048576 end
   local history = {}
   local peaks = {}
   local last_peak_time = nil
@@ -244,6 +246,122 @@ return function(shared, repo_root)
     return { percent = total > 0 and (used / total) * 100 or 0 }
   end
 
+  local last_gpu_check, gpu_snapshot = nil, nil
+  local cached_gpus = {}
+  local function shell_quote(value)
+    return "'" .. value:gsub("'", "'\\''") .. "'"
+  end
+  local gpu_command = 'timeout 2s uv run --project ' .. shell_quote(repo_root)
+    .. ' python ' .. shell_quote(repo_root .. '/scripts/sample_gpu_usage.py') .. ' 2>/dev/null'
+
+  local function parse_gpus(now)
+    if last_gpu_check and now >= last_gpu_check and now - last_gpu_check < interval then
+      return cached_gpus
+    end
+    last_gpu_check = now
+    -- Keep device identities visible through probe failures without retaining
+    -- their last readings. History and peaks are keyed by PCI address.
+    for _, gpu in ipairs(cached_gpus) do gpu.percent = nil end
+    local ok, pipe = false, nil
+    if io.popen then ok, pipe = pcall(io.popen, gpu_command) end
+    local output, success = '', false
+    if ok and pipe then
+      output = pipe:read('*a') or ''
+      success = pipe:close()
+    end
+    if not success then
+      gpu_snapshot = nil
+      return cached_gpus
+    end
+    local snapshot = {timestamp = tonumber(output:match('^sample\t([^\n]+)')), clients = {}}
+    if not snapshot.timestamp then
+      gpu_snapshot = nil
+      return cached_gpus
+    end
+    local gpus = {}
+    for line in output:gmatch('[^\r\n]+') do
+      local id, label, value = line:match('^gpu\t([^\t]+)\t([^\t]+)\t([^\t]*)$')
+      if id then
+        local percent = tonumber(value)
+        if not percent or percent < 0 or percent > 100 then percent = nil end
+        gpus[#gpus + 1] = {id = id, label = label, percent = percent}
+      end
+      local device, client, engine, counter, capacity = line:match('^engine\t(%S+)\t(%d+)\t(%S+)\t(%d+)\t(%d+)$')
+      if device and tonumber(capacity) > 0 then
+        snapshot.clients[device] = snapshot.clients[device] or {}
+        snapshot.clients[device][client] = snapshot.clients[device][client] or {}
+        snapshot.clients[device][client][engine] = {counter = tonumber(counter), capacity = tonumber(capacity)}
+      end
+    end
+    local elapsed = gpu_snapshot and snapshot.timestamp - gpu_snapshot.timestamp or 0
+    if elapsed > 0 and elapsed <= 30 then
+      for _, gpu in ipairs(gpus) do
+        local totals = {}
+        local previous_clients = gpu_snapshot.clients[gpu.id] or {}
+        for client, engines in pairs(snapshot.clients[gpu.id] or {}) do
+          for engine, current in pairs(engines) do
+            local before = previous_clients[client] and previous_clients[client][engine]
+            if before and current.capacity == before.capacity then
+              -- DRM counters can momentarily go backwards; preserve the high
+              -- water mark until the counter catches up, per the kernel ABI.
+              current.counter = math.max(current.counter, before.counter)
+              local delta = (current.counter - before.counter) / current.capacity
+              totals[engine] = (totals[engine] or 0) + delta
+            end
+          end
+        end
+        if gpu.percent == nil then
+          for _, busy_ns in pairs(totals) do
+            gpu.percent = math.max(gpu.percent or 0, shared.clamp(busy_ns / (elapsed * 1e9) * 100, 0, 100))
+          end
+        end
+      end
+    end
+    gpu_snapshot, cached_gpus = snapshot, gpus
+    return cached_gpus
+  end
+
+  local function parse_disks()
+    local disks = {}
+    for line in read_proc('/proc/diskstats'):gmatch('[^\r\n]+') do
+      local major, minor, name, data = line:match('^%s*(%d+)%s+(%d+)%s+(%S+)%s+(.+)$')
+      -- Whole disks with a backing device only: exclude partitions and the
+      -- virtual block layer (dm, md, loop, RAM) so I/O is counted once.
+      if name and shared.read_file('/sys/block/' .. name .. '/device/uevent') then
+        local fields = {}
+        for value in data:gmatch('%S+') do fields[#fields + 1] = value end
+        local read_sectors, write_sectors = tonumber(fields[3]), tonumber(fields[7])
+        if read_sectors and write_sectors and read_sectors >= 0 and write_sectors >= 0 then
+          -- Diskstats sectors are always 512 bytes, even on 4K-sector disks.
+          disks[major .. ':' .. minor .. ':' .. name] = {
+            read_bytes = read_sectors * 512,
+            write_bytes = write_sectors * 512,
+          }
+        end
+      end
+    end
+    return disks
+  end
+
+  local function disk_rates(disks, previous, elapsed)
+    if not previous or elapsed < 0 or elapsed > 30 then return nil, nil end
+    if elapsed == 0 then return previous.disk_read_rate, previous.disk_write_rate end
+    local read_rate, write_rate = nil, nil
+    for id, counters in pairs(disks) do
+      local before = previous.disks and previous.disks[id]
+      if before then
+        local read_delta = counters.read_bytes - before.read_bytes
+        local write_delta = counters.write_bytes - before.write_bytes
+        -- A newly attached disk needs a baseline; a reset needs a fresh one.
+        if read_delta >= 0 and write_delta >= 0 then
+          read_rate = (read_rate or 0) + read_delta / elapsed
+          write_rate = (write_rate or 0) + write_delta / elapsed
+        end
+      end
+    end
+    return read_rate, write_rate
+  end
+
   local function default_network_route()
     local best_interface, best_gateway, best_metric = nil, nil, nil
     for line in read_proc('/proc/net/route'):gmatch('[^\r\n]+') do
@@ -360,7 +478,9 @@ return function(shared, repo_root)
     local cpu = parse_cpu()
     local memory = parse_memory()
     local network = parse_network()
+    local disks = parse_disks()
     local delta_seconds = previous and now - previous.timestamp or 0
+    local disk_read_rate, disk_write_rate = disk_rates(disks, previous, delta_seconds)
     local cpu_percent = 0
     local rx_rate, tx_rate = 0, 0
     local same_network = previous and previous.interface == network.interface and previous.network_id == network.network_id
@@ -395,6 +515,9 @@ return function(shared, repo_root)
       cpu_total = cpu.total,
       cpu_idle = cpu.idle,
       ram = memory.percent,
+      disks = disks,
+      disk_read_rate = disk_read_rate,
+      disk_write_rate = disk_write_rate,
       rx_rate = rx_rate,
       tx_rate = tx_rate,
       rx_bytes = network.rx_bytes,
@@ -416,9 +539,17 @@ return function(shared, repo_root)
   end
 
   local function rate(bytes)
-    if bytes >= 1048576 then return string.format('%.1f', bytes / 1048576), 'MB/s' end
+    if bytes >= 1073741824 then return string.format('%.1f', bytes / 1073741824), 'GB/s' end
+    if bytes >= 1048576 then
+      local mb = bytes / 1048576
+      return string.format(mb < 10 and '%.1f' or '%.0f', mb), 'MB/s'
+    end
     if bytes >= 1024 then return string.format('%.0f', bytes / 1024), 'KB/s' end
     return string.format('%.0f', bytes), 'B/s'
+  end
+
+  local function reading_available(sample, channel)
+    return sample[channel.field] ~= nil and (not channel.needs_delta or sample.measured)
   end
 
   -- Positions come from elapsed time inside the fixed window; a delivery gap
@@ -459,7 +590,7 @@ return function(shared, repo_root)
       segment = {}
     end
     for _, sample in ipairs(history) do
-      local available = channel.field ~= 'cpu' or sample.measured
+      local available = reading_available(sample, channel)
       if not available or (previous and sample.timestamp - previous > interval * 1.5) then flush() end
       if available then segment[#segment + 1] = {sx(sample.timestamp), sy(sample[channel.field])} end
       previous = sample.timestamp
@@ -470,6 +601,8 @@ return function(shared, repo_root)
   local function draw()
     ui.draw(function(cr, width, height)
       local status = collect_status(history[#history])
+      local gpus = parse_gpus(status.timestamp)
+      for _, gpu in ipairs(gpus) do status['gpu:' .. gpu.id] = gpu.percent end
       record_status(status)
       record_net_week_peaks(status)
 
@@ -479,7 +612,7 @@ return function(shared, repo_root)
       local tx_max = math.max((tx_week_peak and tx_week_peak > 0) and tx_week_peak or default_ceiling, status.tx_rate or 0, 1024)
 
       local channels = {
-        {field = 'cpu', icon = 'cpu', max = 100, warning = 80, critical = 95},
+        {field = 'cpu', icon = 'cpu', max = 100, warning = 80, critical = 95, needs_delta = true},
         {field = 'ram', icon = 'memory-stick', max = 100, warning = 80, critical = 95},
         {
           field = 'rx_rate',
@@ -488,6 +621,7 @@ return function(shared, repo_root)
           warning = rx_max * 0.80,
           critical = rx_max * 0.95,
           bytes = true,
+          needs_delta = true,
         },
         {
           field = 'tx_rate',
@@ -496,35 +630,54 @@ return function(shared, repo_root)
           warning = tx_max * 0.80,
           critical = tx_max * 0.95,
           bytes = true,
+          needs_delta = true,
         },
       }
+      for _, gpu in ipairs(gpus) do
+        channels[#channels + 1] = {
+          field = 'gpu:' .. gpu.id, icon = 'gpu', label = gpu.label,
+          max = 100, warning = 80, critical = 95,
+        }
+      end
+      if #gpus == 0 then
+        channels[#channels + 1] = {field = 'gpu', icon = 'gpu', max = 100, warning = 80, critical = 95}
+      end
+      for _, channel in ipairs({
+        {
+          field = 'disk_read_rate', icon = 'hard-drive-upload', bytes = true,
+          max = disk_max, warning = disk_max * 0.80, critical = disk_max * 0.95,
+        },
+        {
+          field = 'disk_write_rate', icon = 'hard-drive-download', bytes = true,
+          max = disk_max, warning = disk_max * 0.80, critical = disk_max * 0.95,
+        },
+      }) do channels[#channels + 1] = channel end
 
-      local columns = #channels
-      local gap = 6
+      local columns, rows = 4, math.ceil(#channels / 4)
+      local gap, row_gap = 6, 8
       local column_width = math.floor((width - (columns - 1) * gap) / columns)
-      local dial_size = math.min(column_width, 88)
-      local show_sparkline = height >= dial_size + 24
-      local y = show_sparkline and 0 or math.max(0, math.floor((height - dial_size) / 2))
+      local row_height = math.floor((height - (rows - 1) * row_gap) / rows)
+      local dial_size = math.min(math.floor(column_width * 0.9), 80, row_height)
+      local show_sparkline = row_height >= dial_size + 24
+      local top = show_sparkline and 0 or math.max(0, math.floor((row_height - dial_size) / 2))
 
       local now = status.timestamp or os.time()
       local dt = last_peak_time and math.max(0, math.min(30, now - last_peak_time)) or 0
       last_peak_time = now
 
       for index, channel in ipairs(channels) do
-        local x = (index - 1) * (column_width + gap)
+        local x = ((index - 1) % columns) * (column_width + gap)
+        local y = top + math.floor((index - 1) / columns) * (row_height + row_gap)
         local value, unit, color = '—', '', ui.muted
         local reading = nil
-        local measured = false
-        if channel.bytes then
-          if status.measured then
-            measured = true
-            reading = status[channel.field]
-            value, unit = rate(reading)
-          end
-        elseif channel.field ~= 'cpu' or status.measured then
-          measured = true
+        local measured = reading_available(status, channel)
+        if measured then
           reading = status[channel.field]
-          value, unit = string.format('%.0f', reading), '%'
+          if channel.bytes then
+            value, unit = rate(reading)
+          else
+            value, unit = string.format('%.0f', reading), '%'
+          end
         end
 
         if measured and reading then
@@ -553,6 +706,7 @@ return function(shared, repo_root)
 
         ui.arc_gauge(cr, channel.icon, value, unit, x, y, column_width, {
           size = dial_size,
+          label = channel.label,
           max = channel.max,
           warning = channel.warning,
           critical = channel.critical,

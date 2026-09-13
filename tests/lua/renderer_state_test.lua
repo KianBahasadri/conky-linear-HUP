@@ -210,6 +210,8 @@ assert(has('Sep 09'), 'deadlines must render upstairs')
 assert(has('Urgent · Sep 10'), 'urgent cards with deadlines must render both upstairs')
 assert(has('102') and has('103'), 'all issue numbers must render')
 
+local original_popen = io.popen
+io.popen = function() return nil end
 files['stat'] = 'cpu  1000 200 300 4000 50 10 20 0\n'
 files['meminfo'] = 'MemTotal: 16000000 kB\nMemAvailable: 8000000 kB\n'
 files['route'] = 'eth0\t00000000\t0102A8C0\t0003\t0\t0\t100\t00000000\t0\t0\t0\n'
@@ -245,4 +247,5 @@ local ram_peak_3 = res_mod._test.peaks['ram']
 assert(ram_peak_3 == 90, 'spike immediately pushes peak to 90%: ' .. tostring(ram_peak_3))
 
 os.time = original_time
+io.popen = original_popen
 print('renderer data and state semantics OK')

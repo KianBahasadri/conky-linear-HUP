@@ -532,6 +532,13 @@ return function(shared)
     if unit_str ~= '' then
       ui.text(cr, unit_str, left + val_w + gap_val, baseline, {size = unit_size, mono = true, color = num_color})
     end
+    if opts.label then
+      local label_size = math.max(9, math.floor(12 * s + 0.5))
+      local label = tostring(opts.label)
+      local label_width = ui.width(cr, label, label_size, true)
+      ui.text(cr, label, cx - label_width / 2, dial_y + math.floor(108 * s + 0.5),
+        {size = label_size, mono = true, color = ui.muted})
+    end
   end
 
   -- Inline callout: a semibold status label followed by its message, borderless.

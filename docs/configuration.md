@@ -157,11 +157,18 @@ Displayed training and weight metrics belong to the [weather and running overlay
 | `RESOURCE_MONITOR_GAP_Y` | Optional vertical gap override; when unset, follows Linear’s per-monitor `gap_y` so panels align |
 | `RESOURCE_HISTORY_SAMPLES` | Samples retained per history trace; defaults to `90` |
 | `RESOURCE_NETWORK_MAX_MBPS` | Optional fallback or ceiling override for network plots in MB/s; defaults to `12.5` when no weekly history exists |
+| `RESOURCE_DISK_MAX_MBPS` | Fixed ceiling for both disk read/write gauges in MB/s; defaults to `500` |
 | `RESOURCE_PEAK_DECAY_RATE` | Optional peak hold decay rate as a fraction (or percent) of channel maximum per second; defaults to `0.0005` (0.05%/s, slowed 100× from the design guide's 5%/s baseline) |
 
-Four readings share one row: CPU, memory, network in, and network out. Each is
+CPU, memory, network in, and network out share the first row. Each GPU gets its
+own labeled gauge, followed by disk read and disk write. On the Intel UHD / RTX
+4060 machine, the second row is Intel, NVIDIA, disk read, and disk write,
+aligned to the same four-column grid. GPU order follows PCI addresses; readings,
+history, and peaks remain separate for each device.
+Dials are at most 80px across (about 10% smaller than the original row), in a
+176px-tall region with the personal metrics below. Each is
 a compact 270° arc gauge with its symbol in the upper dome, centered numeral and
-unit at the midline, qualitative threshold bands, and a 2px square-capped peak hold tick indicator decaying back down slowly when readings fall. The gauges do not rescale on every update: CPU and memory are fixed at 0–100%
+unit at the midline, qualitative threshold bands, and a 2px square-capped peak hold tick indicator decaying back down slowly when readings fall. CPU, memory, and GPU are fixed at 0–100%
 with qualitative caution bands from 80% to 95%, and a danger band above 95%.
 The network dials use the highest recorded usage on the active network in the last week
 (`cache/resource-net-peaks.tsv`) as the scale ceiling / red danger zone, with matching
@@ -169,10 +176,33 @@ caution bands at 80%–95% and danger band above 95%. A reading above its plot m
 keeps its real number and is clipped only in the gauge fill. Utilization at or above 80% turns the
 active fill and number caution, and 95% turns them danger. When readings rise, the peak tick indicator is immediately pushed up; when readings fall, it decays back down slowly at 0.05% of channel maximum per second (slowed 100× from the design guide's 5%/s baseline; configurable via `RESOURCE_PEAK_DECAY_RATE`), with the active fill arc path terminating under the tick line so its rounded cap hides beneath it.
 
+`scripts/sample_gpu_usage.py` discovers GPUs through DRM and emits a snapshot
+at most once per two-second update per monitor. NVIDIA utilization comes from
+`nvidia-smi`, matched by PCI address, with a one-second query timeout. Intel
+uses the busiest engine's elapsed busy time across readable DRM client handles
+in `/proc/*/fdinfo`. Shared handles are deduplicated by device and client ID;
+new clients need two samples, engine groups are normalized by capacity, and
+temporarily regressing counters retain their previous high value until they
+catch up. See the [kernel's DRM usage counter specification](https://docs.kernel.org/gpu/drm-usage-stats.html).
+Intel readings cover accessible desktop processes; protected processes owned
+by other users are not included. No privileged service or permission change
+is required. Missing or unsupported readings show an em dash. The helper has
+a two-second timeout; NVIDIA query failures leave Intel sampling available.
+
+Disk rates sum read/write byte deltas from whole disks in
+`/proc/diskstats` that have a backing device in `/sys/block`; partitions and
+virtual devices such as encrypted mappings are excluded to avoid double counting.
+New or reset devices wait for a fresh pair of samples. Reads use an arrow out
+of the drive; writes use an arrow into it. Both share the configured fixed
+ceiling and 80%/95% bands, which represent throughput relative to that scale,
+not the drive's busy-time percentage. Rates use B/s, KB/s, MB/s, or GB/s with
+1024-based units and compact precision to fit the smaller dials.
+
 Positions come from elapsed time rather than sample index, so a delivery gap
 longer than 1.5 update intervals breaks the trace instead of being bridged.
-Until two samples exist, CPU and network show an em dash with no unit rather
-than an invented zero. Each monitor retains its own samples for the active
+Until two samples exist, CPU, Intel GPU, network, and disk rates show an em dash with no unit rather
+than an invented zero. GPU and disk availability are independent of the network.
+Each monitor retains its own samples for the active
 Conky session.
 
 Load average, the interface name, and uptime are no longer drawn. The design
