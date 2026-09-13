@@ -2,8 +2,8 @@
 
 The right rail keeps training and weight below the resource gauges. A separate
 thermometer window sits at the bottom left of each monitor.
-The former temperature, apparent-temperature, AQI, UV, condition, and location
-readouts are removed. Training summarizes workouts uploaded from the phone:
+The former top-right temperature, apparent-temperature, AQI, UV, condition, and
+location readouts are removed. Training summarizes workouts uploaded from the phone:
 last workout (distance, duration, pace, heart rate or cadence when recorded)
 and rolling 7-day distance/time/runs.
 
@@ -24,14 +24,22 @@ valid current weather or air-quality fields are treated as failed refreshes.
 
 ## Thermometer
 
-`conky/thermometer-component.lua` implements a compact design-guide weather
-summary: a transparent 96px-wide, 181px-high component, a 92px thermometer,
-a 16px Lucide weather glyph close to the tube's right side, and two centered
-rows of 12px sunrise/sunset glyphs with 11px IBM Plex Mono `HH:mm` times. There are no
-persistent temperature numbers, ticks, average markers, or enclosing panel.
-The component also accepts the reference's six glyph placements and 16–64px
-glyph sizes at its original scale. The shipped overlay uses half-size graphics
-and spacing, with minimum text and sun-glyph sizes to keep the times readable.
+`conky/thermometer-component.lua` implements the design-guide weather summary in
+a transparent 120px-wide, 124px-high window. A 92px thermometer sits beside a
+16px Lucide weather glyph above four detail rows: sunrise, sunset, UV index,
+and rain chance. Detail rows use 12px glyphs and 11px IBM Plex Mono text, with
+sun times formatted as `HH:mm`. There are no persistent temperature numbers,
+ticks, average markers, or enclosing panel. The shipped overlay uses half-size
+graphics and spacing, with minimum text and detail-glyph sizes for readability.
+
+The component measures the visible detail rows to size its content and centers
+the weather glyph over the full detail group. Its default placement is
+`right-icon-above`; alternatives are `left-icon-above`, `right-icon-below`,
+`left-icon-below`, `stack-above`, and `stack-below`. Side placements center the
+whole information stack against the thermometer; vertical placements share a
+center axis. Glyph sizes accept 16–64px before scaling. The independent boolean
+options `show_sun_times`, `show_uv_index`, and `show_rain_chance` default to
+`true`; hiding rows removes their space and recenters the remaining content.
 
 The cyan fill compares the unrounded current Celsius reading with the mean of
 the previous seven complete local days' daily mean temperatures, excluding
@@ -57,6 +65,13 @@ Sun events are selected by today's date because the daily response includes
 historical events too. The renderer uses location time on every draw, switching
 clear/cloudy Sun glyphs to Moon glyphs at sunset and back at sunrise. Rain and
 snow use `CloudRain` and `Snowflake`. The passive overlay has no hover controls.
+
+UV and rain chance use the cache's top-level `uvIndex` and
+`precipitationProbability` fields. UV uses at most one decimal place, such as
+`UV 4.2`; rain chance rounds to a whole percentage. Missing or invalid optional
+readings show `UV —` or `—` without removing the thermometer. UV must be finite
+and nonnegative, and rain chance must be finite and between 0 and 100. Zero is
+a valid reading for both.
 
 ## Location
 

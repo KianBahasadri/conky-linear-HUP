@@ -222,7 +222,7 @@ def plan(width, height, top=40, counts=None, env=None):
     minecraft = env.get("MINECRAFT_OVERLAY_ENABLED", "1") != "0"
     minecraft_h = 100
     minecraft_foot = minecraft_h + gutter if minecraft else 0
-    thermometer_h = 181
+    thermometer_h = 124
     thermometer_y = height - margin - minecraft_foot - thermometer_h
     thermometer_foot = thermometer_h + gutter if enabled(env, "WEATHER_OVERLAY_ENABLED") else 0
     left_foot = minecraft_foot + thermometer_foot
@@ -256,7 +256,7 @@ def plan(width, height, top=40, counts=None, env=None):
         "resource-monitor": [right_x, top, right, resource_h],
         "billing": [billing_x, billing_y, billing_w, billing_h],
         "weather": [right_x, weather_y, right, weather_h],
-        "thermometer": [margin, thermometer_y, 96, thermometer_h],
+        "thermometer": [margin, thermometer_y, 120, thermometer_h],
     }
     # Existing positional overrides retain their edge semantics even though
     # every generated window now uses explicit top-left coordinates.

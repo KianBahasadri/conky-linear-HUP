@@ -29,7 +29,7 @@ def test_planned_windows_fit_without_overlap_under_changing_record_counts(size, 
     if not github:
         windows.pop("github")
     for name, (x, y, w, h) in windows.items():
-        assert w >= (96 if name == "thermometer" else 240) and h >= 100, name
+        assert w >= (120 if name == "thermometer" else 240) and h >= 100, name
         assert 0 <= x <= width - w, name
         assert 0 <= y <= height - h, name
     for (name_a, a), (name_b, b) in itertools.combinations(windows.items(), 2):
@@ -76,7 +76,7 @@ def test_thermometer_is_bottom_left_with_personal_metrics_still_top_right(size, 
     assert weather[3] == 204  # training and weight remain visible together
     thermometer = windows["thermometer"]
     assert thermometer[0] == 8
-    assert thermometer[2:] == [96, 181]
+    assert thermometer[2:] == [120, 124]
     assert thermometer[1] + thermometer[3] == height - 8 - (124 if minecraft else 0)
 
 
