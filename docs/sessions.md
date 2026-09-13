@@ -117,8 +117,9 @@ even when they are attached to a session already shown in a repository row.
 
 When Git and sessions are enabled, the launcher creates one Git window per
 monitor and removes the previous standalone sessions configs. It allocates that
-window from the joined cache records, with the left rail available down to
-Minecraft when enabled. Cairo measures the actual rows and rotates whole records
+window from the joined cache records, with the left rail available down to its
+reserved bottom panels; see [thermometer placement](weather.md#display).
+Cairo measures the actual rows and rotates whole records
 in 30-second pages if the fixed allocation fills. Session data is reread each
 draw and fetching remains on its independent 20-second timer.
 

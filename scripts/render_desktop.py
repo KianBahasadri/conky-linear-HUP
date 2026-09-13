@@ -51,6 +51,7 @@ OVERLAY_Z_ORDER = [
     "minecraft",
     "github",
     "weather",
+    "thermometer",
     "resource-monitor",
     "billing",
     "git",

@@ -51,7 +51,7 @@ BILLING_FETCH_PID="$CACHE_DIR/billing-fetch-loop.pid"
 GIT_FETCH_PID="$CACHE_DIR/git-fetch-loop.pid"
 SESSIONS_FETCH_PID="$CACHE_DIR/sessions-fetch-loop.pid"
 
-overlay_keys=(linear rate-limit-panel minecraft github weather resource-monitor billing git sessions)
+overlay_keys=(linear rate-limit-panel minecraft github weather thermometer resource-monitor billing git sessions)
 fetch_keys=(linear codex claude cursor gemini grok opencode commandcode minecraft github weather workouts weight billing git sessions)
 
 declare -A overlay_config=(
@@ -60,6 +60,7 @@ declare -A overlay_config=(
   [minecraft]="$ROOT/conky/minecraft-overlay.conkyrc"
   [github]="$ROOT/conky/github-overlay.conkyrc"
   [weather]="$ROOT/conky/weather-overlay.conkyrc"
+  [thermometer]="$ROOT/conky/thermometer-overlay.conkyrc"
   [resource-monitor]="$ROOT/conky/resource-monitor-overlay.conkyrc"
   [billing]="$ROOT/conky/billing-overlay.conkyrc"
   [git]="$ROOT/conky/git-overlay.conkyrc"
@@ -71,6 +72,7 @@ declare -A overlay_log_path=(
   [minecraft]="$MINECRAFT_LOG_PATH"
   [github]="$GITHUB_LOG_PATH"
   [weather]="$WEATHER_LOG_PATH"
+  [thermometer]="$CACHE_DIR/conky-thermometer.log"
   [resource-monitor]="$RESOURCE_MONITOR_LOG_PATH"
   [billing]="$BILLING_LOG_PATH"
   [git]="$GIT_LOG_PATH"

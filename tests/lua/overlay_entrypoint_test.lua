@@ -38,6 +38,7 @@ eq(type(conky_draw_rate_limit_panel), 'function', 'rate limit draw hook is regis
 eq(type(conky_draw_minecraft_status), 'function', 'minecraft draw hook is registered')
 eq(type(conky_draw_github_tracker), 'function', 'github draw hook is registered')
 eq(type(conky_draw_weather), 'function', 'weather draw hook is registered')
+eq(type(conky_draw_thermometer), 'function', 'thermometer draw hook is registered')
 eq(type(conky_draw_resource_monitor), 'function', 'resource draw hook is registered')
 eq(type(conky_draw_sessions), 'function', 'sessions draw hook is registered')
 eq(type(conky_draw_git_status), 'function', 'git draw hook is registered')

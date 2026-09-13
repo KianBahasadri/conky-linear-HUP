@@ -48,6 +48,10 @@ function conky_draw_weather()
   renderer('weather-renderer.lua').draw()
 end
 
+function conky_draw_thermometer()
+  renderer('thermometer-renderer.lua').draw()
+end
+
 function conky_draw_resource_monitor()
   renderer('resource-monitor-renderer.lua').draw()
 end

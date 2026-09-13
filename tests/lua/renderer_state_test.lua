@@ -140,25 +140,26 @@ files['weather-status.json'] = [[{"ok":true,"temperature":16,"aqi":23}]]
 files['workouts-status.json'] = [[{"ok":true,"weekRuns":4,"lastDistanceText":"2.6 km","weekDistanceText":"12.5 km"}]]
 files['weight-status.json'] = [[{"ok":true,"stale":false,"lastWeightText":"199.1 lb",
   "lastDateText":"Aug 19","ageText":"22d ago","changeText":"−2.3 lb","previousDateText":"Aug 13"}]]
-height = 320
+height = 204
 draw('weather-renderer.lua')
-assert(has('AQI') and has('12.5 km') and has('199.1 lb') and has('−2.3 lb'),
-  'full widget must show weather, training, and weight together')
+assert(not has('AQI') and not has('Temp') and has('12.5 km') and has('199.1 lb') and has('−2.3 lb'),
+  'replace the old weather metrics while preserving training and weight')
+assert(not has('Weather unavailable'), 'the thermometer belongs to its own window')
 assert(has('Aug 19') and has('22d ago') and has('since Aug 13'),
   'weight must show measurement age and identify the change comparison')
-height = 200
-os.time = function(date) return date and original_time(date) or 120060 end
+draw('thermometer-renderer.lua')
+assert(has('Weather') and has('unavailable') and not has('199.1 lb'), 'a legacy cache cannot invent a weekly comparison')
+height = 110
+os.time = function(date) return date and original_time(date) or 120000 end
 draw('weather-renderer.lua')
-assert(has('AQI') and has('1/3'), 'compact weather page must remain bounded and labeled')
-assert(not has('12.5 km') and not has('199.1 lb'), 'compact pages must not overlap')
-os.time = function(date) return date and original_time(date) or 120090 end
+assert(has('12.5 km') and not has('199.1 lb') and has('1/2'),
+  'training must remain bounded on a manually shortened panel')
+assert(not has('Weather unavailable'), 'compact pages must not overlap')
+os.time = function(date) return date and original_time(date) or 120030 end
 draw('weather-renderer.lua')
-assert(has('12.5 km') and has('2/3'), 'compact training page must expose workout data')
-assert(not has('AQI') and not has('199.1 lb'), 'compact pages must not overlap')
-os.time = function(date) return date and original_time(date) or 120120 end
-draw('weather-renderer.lua')
-assert(has('199.1 lb') and has('3/3'), 'compact weight page must expose weight data')
-assert(not has('AQI') and not has('12.5 km'), 'compact pages must not overlap')
+assert(has('199.1 lb') and has('2/2'), 'compact weight page must remain bounded and labeled')
+assert(not has('12.5 km') and not has('Weather unavailable'), 'compact pages must not overlap')
+height = 204
 files['weight-status.json'] = [[{"ok":true,"stale":true,"lastWeightText":"199.1 lb"}]]
 draw('weather-renderer.lua')
 assert(has('199.1 lb') and has('Stale'), 'an incomplete upload must keep and mark cached weight')

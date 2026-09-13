@@ -20,6 +20,7 @@ OVERLAY_KEYS = (
     "minecraft",
     "github",
     "weather",
+    "thermometer",
     "resource-monitor",
     "billing",
     "git",
@@ -307,7 +308,7 @@ def test_generate_only_preserves_processes_logs_and_pid_files_and_honors_env(
         env=env,
     )
 
-    assert "Generated 16 overlay config(s) for 2 monitor(s)" in result.stdout
+    assert "Generated 18 overlay config(s) for 2 monitor(s)" in result.stdout
     assert pid_file.read_text(encoding="utf-8") == "99999999\n"
     assert not Path(env["PROCESS_CALLS"]).exists()
     assert not (repo / "cache" / "conky-linear.log.1").exists()

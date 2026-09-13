@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-KEYS = ("linear", "rate-limit-panel", "minecraft", "github", "weather",
+KEYS = ("linear", "rate-limit-panel", "minecraft", "github", "weather", "thermometer",
         "resource-monitor", "billing", "git", "sessions")
 
 
@@ -171,12 +171,11 @@ def plan(width, height, top=40, counts=None, env=None):
     center = width - 2 * margin - left - right - gutter_left - gutter
     center_x, right_x = margin + left + gutter_left, width - margin - right
 
-    # Right rail: arc gauges at the top, then weather, training, and weight.
+    # Right rail: gauges, then the training and weight metrics.
     # Four arc gauges fit on a single row next to each other.
     resource_h = 100
     weather_y = top + resource_h + 12
-    weather_limit = height - margin - 100 - 12 - weather_y
-    weather_h = min(320, max(100, weather_limit))
+    weather_h = 204
 
     # Center: quota rows sit at the bottom, the calendar above them, and the
     # task grid takes what is left. On wide displays with many accounts, quota
@@ -187,7 +186,7 @@ def plan(width, height, top=40, counts=None, env=None):
     centered_w = width - 2 * center_x
     two_col = is_wide and account_count > 8 and centered_w >= 1200
     effective_accounts = (account_count + 1) // 2 if two_col else account_count
-    max_quota_available = height - margin - (weather_y + weather_h + 12) if two_col else available
+    max_quota_available = height - margin - (weather_y + weather_h + 12)
     quota_limit = min(int(available * (0.55 if available >= 900 else 0.44)), max_quota_available)
     quota_rows = max(1, min(effective_accounts, quota_limit // row))
     stacked_extra = 6 * counts.get("gemini_pro", 0) if row <= 16 else 0
@@ -214,18 +213,21 @@ def plan(width, height, top=40, counts=None, env=None):
     billing_x = width - margin - billing_w
     billing_h = quota_h
     billing_y = height - margin - billing_h
-    if weather_y + weather_h + 12 > billing_y:
-        weather_h = max(100, billing_y - 12 - weather_y)
 
     # Left rail: sessions join repositories at the top. The standalone sessions
-    # rectangle is used only when Git is disabled. Minecraft remains at the foot.
+    # rectangle is used only when Git is disabled. The thermometer sits at the
+    # bottom left, above Minecraft when enabled, with room reserved in the list.
     # A disabled Minecraft panel keeps a valid rectangle; only its reservation
     # in the rail collapses, so the launcher can enable it without replanning.
     minecraft = env.get("MINECRAFT_OVERLAY_ENABLED", "1") != "0"
     minecraft_h = 100
     minecraft_foot = minecraft_h + gutter if minecraft else 0
+    thermometer_h = 181
+    thermometer_y = height - margin - minecraft_foot - thermometer_h
+    thermometer_foot = thermometer_h + gutter if enabled(env, "WEATHER_OVERLAY_ENABLED") else 0
+    left_foot = minecraft_foot + thermometer_foot
     merged = enabled(env, "GIT_OVERLAY_ENABLED") and enabled(env, "SESSIONS_OVERLAY_ENABLED")
-    git_limit = available - minecraft_foot
+    git_limit = available - left_foot
     repo_heights = counts.get("repo_heights") or [36] * (counts.get("repos", 0) or 1)
     if merged:
         if "repo_records" in counts:
@@ -238,11 +240,11 @@ def plan(width, height, top=40, counts=None, env=None):
             break
         git_used += pitch
     git_h = max(100, 16 + git_used)
-    max_sessions_available = available - minecraft_foot
+    max_sessions_available = available - left_foot
     sessions_limit = min(456, max(100, max_sessions_available))
     session_rows = max(1, min(counts.get("sessions", 0) or 1, int((sessions_limit - 16) // 44)))
     sessions_h = max(100, 16 + session_rows * 44)
-    sessions_bottom = height - margin - minecraft_foot
+    sessions_bottom = height - margin - left_foot
     sessions_y = sessions_bottom - sessions_h
     windows = {
         "linear": [center_x, top, center, task_h],
@@ -254,6 +256,7 @@ def plan(width, height, top=40, counts=None, env=None):
         "resource-monitor": [right_x, top, right, resource_h],
         "billing": [billing_x, billing_y, billing_w, billing_h],
         "weather": [right_x, weather_y, right, weather_h],
+        "thermometer": [margin, thermometer_y, 96, thermometer_h],
     }
     # Existing positional overrides retain their edge semantics even though
     # every generated window now uses explicit top-left coordinates.

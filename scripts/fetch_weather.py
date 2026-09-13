@@ -4,7 +4,7 @@ import math
 import os
 import urllib.parse
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import fetch_common as common
@@ -205,7 +205,8 @@ def fetch_forecasts(location, units, timeout):
     }
     weather_params = {
         **base_params,
-        "temperature_unit": units["temperature"],
+        # Compare unrounded Celsius readings before formatting legacy readouts.
+        "temperature_unit": "celsius",
         "wind_speed_unit": units["wind"],
         "precipitation_unit": units["precipitation"],
         "current": ",".join(
@@ -235,7 +236,8 @@ def fetch_forecasts(location, units, timeout):
                 "visibility",
             ]
         ),
-        "daily": "sunrise,sunset",
+        "daily": "temperature_2m_mean,sunrise,sunset",
+        "past_days": 7,
         "forecast_days": 1,
     }
     air_params = {
@@ -529,7 +531,86 @@ def require_current_numbers(payload, source, fields):
         )
 
 
+def normalize_thermometer(weather):
+    """Keep seven complete local daily means and today's events in Celsius."""
+    def finite(value):
+        return type(value) in (int, float) and math.isfinite(value)
+
+    try:
+        current = weather["current"]
+        daily = weather["daily"]
+        today = datetime.fromisoformat(current["time"]).date()
+        dates = daily["time"]
+        if (weather["current_units"]["temperature_2m"] != "°C"
+                or weather["daily_units"]["temperature_2m_mean"] != "°C"
+                or not finite(current["temperature_2m"])):
+            raise ValueError("Current temperature unavailable")
+        if len(set(dates)) != len(dates) or today.isoformat() not in dates:
+            raise ValueError("Today's weather unavailable")
+        previous_days = []
+        for days_ago in range(7, 0, -1):
+            day = (today - timedelta(days=days_ago)).isoformat()
+            value = list_value(daily, "temperature_2m_mean", dates.index(day))
+            if not finite(value):
+                raise ValueError("Previous week unavailable")
+            previous_days.append({"date": day, "temperatureCelsius": value})
+        index = dates.index(today.isoformat())
+        sunrise = datetime.fromisoformat(list_value(daily, "sunrise", index))
+        sunset = datetime.fromisoformat(list_value(daily, "sunset", index))
+        sunrise_minute, sunset_minute = sunrise.hour * 60 + sunrise.minute, sunset.hour * 60 + sunset.minute
+        offset = weather["utc_offset_seconds"]
+        if (sunrise.date() != today or sunset.date() != today
+                or sunrise_minute >= sunset_minute or not finite(offset)
+                or int(offset) != offset or abs(offset) > 86400):
+            raise ValueError("Local sun times unavailable")
+        code = current["weather_code"]
+        if code in (0, 1):
+            condition = "clear"
+        elif code in (2, 3, 45, 48):
+            condition = "cloudy"
+        elif code in (71, 73, 75, 77, 85, 86):
+            condition = "snow"
+        elif code in (51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82, 95, 96, 99):
+            condition = "rain"
+        else:
+            raise ValueError("Weather condition unavailable")
+        return {
+            "ok": True,
+            "date": today.isoformat(),
+            "temperatureCelsius": current["temperature_2m"],
+            "previousDays": previous_days,
+            "condition": condition,
+            "sunriseMinute": sunrise_minute,
+            "sunsetMinute": sunset_minute,
+            "utcOffsetSeconds": offset,
+        }
+    except (KeyError, TypeError, ValueError, AttributeError, IndexError):
+        # A partial week must never produce a plausible comparison against zero.
+        return {"ok": False, "error": "Temperature comparison unavailable"}
+
+
+def weather_for_display(weather, units):
+    """Convert only temperature fields used by the existing cached run guidance."""
+    if (units["name"] != "imperial"
+            or (weather.get("current_units") or {}).get("temperature_2m") != "°C"):
+        return weather
+    converted = dict(weather)
+    for section in ("current", "hourly"):
+        values = dict(weather.get(section) or {})
+        for key in ("temperature_2m", "apparent_temperature"):
+            def fahrenheit(value):
+                return float(value) * 9 / 5 + 32 if is_finite_number(value) else value
+            if section == "current":
+                values[key] = fahrenheit(values.get(key))
+            else:
+                values[key] = [fahrenheit(value) for value in values.get(key) or []]
+        converted[section] = values
+    return converted
+
+
 def normalize_status(location, units, weather, air):
+    thermometer = normalize_thermometer(weather)
+    weather = weather_for_display(weather, units)
     require_current_numbers(
         weather,
         "weather",
@@ -568,11 +649,15 @@ def normalize_status(location, units, weather, air):
     daily = weather.get("daily") or {}
     sunrise_values = daily.get("sunrise") or []
     sunset_values = daily.get("sunset") or []
+    date = str(current.get("time") or "")[:10]
+    dates = daily.get("time") or []
+    today_index = dates.index(date) if date in dates else 0
 
     return {
         "ok": True,
         "stale": False,
         "updatedAt": datetime.now(timezone.utc).isoformat(),
+        "thermometer": thermometer,
         "location": location["label"],
         "locationSource": location["source"],
         "temperature": rounded(current.get("temperature_2m")),
@@ -595,8 +680,8 @@ def normalize_status(location, units, weather, air):
         "windUnit": units["windSymbol"],
         "visibility": round(visibility, 1),
         "visibilityUnit": units["visibilitySymbol"],
-        "sunrise": format_sun_time(sunrise_values[0] if sunrise_values else ""),
-        "sunset": format_sun_time(sunset_values[0] if sunset_values else ""),
+        "sunrise": format_sun_time(sunrise_values[today_index] if today_index < len(sunrise_values) else ""),
+        "sunset": format_sun_time(sunset_values[today_index] if today_index < len(sunset_values) else ""),
         "runScore": run["score"],
         "runStatus": run["status"],
         "runColor": run["color"],

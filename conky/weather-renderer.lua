@@ -1,11 +1,9 @@
--- Weather, air quality, training, and weight summaries, as
--- metrics, aligned readouts, and explicit status badges.
+-- Training and weight below the resource gauges in the right rail.
 return function(shared, repo_root)
-  local weather_path = repo_root .. '/cache/weather-status.json'
   local workouts_path = repo_root .. '/cache/workouts-status.json'
   local weight_path = repo_root .. '/cache/weight-status.json'
   local ui = shared.ui
-  local weather_block, gap = 100, 16
+  local gap = 16
   local function json_string(content, key, fallback)
     local value = shared.json_string(content, key, nil)
     return value ~= nil and value or fallback or ''
@@ -14,29 +12,6 @@ return function(shared, repo_root)
   local function json_number(content, key, fallback)
     local value = shared.json_number(content, key, nil)
     return value ~= nil and value or fallback or 0
-  end
-
-  local function read_status()
-    local content = shared.read_file(weather_path)
-    if not content then
-      return { ok = false, error = 'Waiting for the first weather update' }
-    end
-    if not shared.json_boolean(content, 'ok', false) then
-      return { ok = false, error = json_string(content, 'error', 'Weather data unavailable') }
-    end
-
-    return {
-      ok = true,
-      stale = shared.json_boolean(content, 'stale', false),
-      location = json_string(content, 'location', 'Local weather'),
-      temperature = json_number(content, 'temperature'),
-      temperature_unit = json_string(content, 'temperatureUnit', 'F'),
-      apparent_temperature = json_number(content, 'apparentTemperature'),
-      condition = json_string(content, 'condition', 'Unknown conditions'),
-      aqi = json_number(content, 'aqi'),
-      uv_index = json_number(content, 'uvIndex'),
-      sunset = json_string(content, 'sunset', '--'),
-    }
   end
 
   local function read_workouts()
@@ -95,37 +70,6 @@ return function(shared, repo_root)
     }
   end
 
-  local function draw_weather(cr, weather, width, top)
-    top = top or 0
-    if not weather.ok then
-      ui.callout(cr, 'Unavailable', weather.error, 0, top, width, 'danger')
-      return
-    end
-    local unit = '°' .. weather.temperature_unit
-    local half = (width - 16) / 2
-    ui.metric(cr, 'Temp ' .. unit, string.format('%.0f', weather.temperature), 0, top, half)
-    ui.metric(cr, 'AQI', string.format('%.0f', weather.aqi), half + 16, top, half)
-    local context = join({weather.condition, weather.stale and 'Stale' or weather.location})
-    ui.text(cr, context, 0, top + 66, {size = 12, color = weather.stale and ui.caution or ui.muted,
-      width = width})
-    local readouts = {
-      {'Feels', string.format('%.0f', weather.apparent_temperature) .. unit},
-      {'UV', string.format('%.1f', weather.uv_index)},
-      {'Sunset', weather.sunset},
-    }
-    local label_column = 0
-    for _, pair in ipairs(readouts) do
-      label_column = math.max(label_column, ui.width(cr, pair[1], 12) + 8)
-    end
-    local column = width / 3
-    for index, pair in ipairs(readouts) do
-      local x = (index - 1) * column
-      local y = top + 88
-      ui.text(cr, pair[1], x, y, {size = 12, color = ui.muted})
-      ui.text(cr, pair[2], x + label_column, y, {size = 13, mono = true, width = column - label_column - 8})
-    end
-  end
-
   local function draw_training(cr, workouts, width, top)
     top = top or 0
     if not workouts.ok then
@@ -161,11 +105,10 @@ return function(shared, repo_root)
   local function draw()
     ui.draw(function(cr, width, height)
       local sections = {
-        {height = weather_block, draw = draw_weather, data = read_status()},
         {height = 94, draw = draw_training, data = read_workouts()},
         {height = 94, draw = draw_weight, data = read_weight()},
       }
-      local content_height = weather_block + gap + 94 + gap + 94
+      local content_height = 94 + gap + 94
       local available = height < content_height and height - 16 or height
       -- Keep whole sections together, in order, with a footer only when paging.
       local pages, used = {{}}, 0
