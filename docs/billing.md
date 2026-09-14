@@ -1,11 +1,18 @@
 # Billing forecast panel
 
-Every provider shares one budget map in the bottom right: a low perspective
-time-and-limit plane with time running left to right and usage receding from
-the near bottom edge toward the narrower far edge. It uses the design guide's
-camera: visible depth is 34% of the near-edge width and perspective factor 0.4
-makes the far edge about 71.4% as wide. Shared appearance and layout are owned
-by the [Desktop design system](design-system.md).
+Every provider shares one budget map in the bottom right, with time running
+left to right and usage increasing from the near bottom edge toward the far
+edge. It uses the design guide catalog's dynamic projection defaults: 20%
+overage tilt, 0% baseline bar compression, and 80% overage severity.
+`compressNonOverage` and `dynamicCamera` remain off. Shared appearance and
+layout are owned by the [Desktop design system](design-system.md).
+
+The plane is rectangular when every value fits within 100%. Above that limit,
+the fitted maximum drives perspective tilt and compression of the upper
+overage intervals, following the guide's `budget-map-plot.js` mapping. Usage
+through 100% remains linear before perspective projection, and the visible
+base stays at zero. Marker clearance is 8px below 480px window width and 16px
+otherwise; the compact dimensions are described under placement below.
 
 ## Reading the map
 
@@ -243,10 +250,11 @@ refreshes once per day and each Cost Explorer API call incurs a $0.01 fee.
 The launcher creates one billing window per monitor pinned to the bottom right
 below the weather panel. Its width matches the side margin space (316px on
 standard wide displays, 260px on narrower displays), leaving a 12px gutter
-alongside the centered rate limit panel. Its height matches the rate limit
-panel (`billing_h = quota_h`), with reduced perspective tilt (`depth = height - 8`)
-keeping both panels flush along their top and bottom edges while preserving
-marker boundary clearance.
+alongside the centered rate limit panel. The visible map is 128px deep, inside
+a 144px-tall window at these widths. Its visible bottom edge is flush with
+the rate limit panel's bottom edge, with marker clearance extending below it.
+This alignment follows rate limit panel position overrides unless billing
+has its own explicit vertical position.
 Explicit `BILLING_GAP_X`/`BILLING_GAP_Y` overrides retain their
 right-edge/bottom-edge meaning. The fetch loop is independent of the GitHub
 contribution calendar and does not read or write its cache or renderer state.

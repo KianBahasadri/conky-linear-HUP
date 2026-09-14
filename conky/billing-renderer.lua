@@ -1,8 +1,11 @@
--- Budget map: one low perspective time/limit plane shared by every provider.
+-- Budget map: the design guide's dynamic time/limit plane shared by every provider.
 return function(shared, repo_root)
   local data_path = repo_root .. '/cache/billing-usage-render.tsv'
   local ui = shared.ui
   local warning_at = 75
+  local tilt_intensity = 0.2
+  local compression_intensity = 0
+  local severity_intensity = 0.8
 
   local function split_tsv(line)
     local fields = {}
@@ -125,19 +128,38 @@ return function(shared, repo_root)
     return model
   end
 
-  -- The guide's camera: time runs right and usage narrows into the distance.
+  -- Catalog defaults: overages drive tilt and compression, while the camera
+  -- stays at zero and the at-or-below-limit usage mapping remains linear.
   local function draw_map(cr, model, state, width, height)
-    local plane_width = math.min(width - 20, 720)
-    local perspective = 0.4
-    local baseline_y = height and (height - 1) or math.floor(plane_width * 0.36 + 19.5)
-    local depth = height and (height - 8) or (plane_width * 0.36)
+    local clearance = width < 480 and 8 or 16
+    local plane_width = width - 2 * clearance
+    local depth = height - 2 * clearance
+    local baseline_y = height - clearance
+    local maximum = model.maximum
+    local overage = math.max(0, maximum - 100)
+    local perspective = 0
+    if maximum > 132 then
+      perspective = (0.4 + 0.21 * math.min(5, (maximum - 132) / 100)) * tilt_intensity
+    elseif maximum > 100 then
+      perspective = (maximum - 100) / 32 * 0.4 * tilt_intensity
+    end
+    local compression = compression_intensity + severity_intensity * 0.6 * math.min(5, overage / 100)
+    local limit_usage = 100 * (1 + compression) / (overage + 100 * (1 + compression))
     local function point(t, value)
-      local usage = value / model.maximum
+      local usage = value / maximum
+      if overage > 0 then
+        if value <= 100 then
+          usage = limit_usage * value / 100
+        else
+          local progress = (value - 100) / overage
+          local compressed = progress * (1 + compression) / (1 + compression * progress)
+          usage = limit_usage + (1 - limit_usage) * compressed
+        end
+      end
       local distance = 1 + perspective * usage
       return {width / 2 + (t - 0.5) * plane_width / distance,
         baseline_y - depth * usage * (1 + perspective) / distance}
     end
-    local maximum = model.maximum
     if maximum > 100 then
       ui.polygon(cr, {point(0, 100), point(1, 100), point(1, maximum), point(0, maximum)}, ui.danger, 0.14 * 0.35)
     end

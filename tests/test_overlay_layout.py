@@ -56,11 +56,10 @@ def test_billing_is_pinned_to_bottom_right_and_leaves_gutter_for_rate_limit_pane
     billing = windows["billing"]
     quota = windows["rate-limit-panel"]
     assert billing[0] + billing[2] == 1920 - 8
-    assert billing[1] + billing[3] == 1080 - 8
+    assert billing[1] + billing[3] - 8 == quota[1] + quota[3]
     assert billing[2] == 316
     assert billing[0] - (quota[0] + quota[2]) == 12
-    assert billing[1] == quota[1]
-    assert billing[3] == quota[3]
+    assert billing[3] == 144
 
 
 @pytest.mark.parametrize("size", [(1280, 720), (1366, 768), (1920, 1080), (2560, 1440)])

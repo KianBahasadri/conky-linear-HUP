@@ -207,11 +207,11 @@ def plan(width, height, top=40, counts=None, env=None):
         quota_w = center - 240
         quota_x = center_x + (center - quota_w) // 2
 
-    # Bottom right: the budget map is pinned to the bottom right and sized to
-    # fit beside the centered rate limit panel flush with its top and bottom edges.
+    # Bottom right: a compact 128px-deep map with clearance for its markers.
     billing_w = left
     billing_x = width - margin - billing_w
-    billing_h = quota_h
+    billing_clearance = 8 if billing_w < 480 else 16
+    billing_h = 128 + 2 * billing_clearance
     billing_y = height - margin - billing_h
 
     # Left rail: sessions join repositories at the top. The standalone sessions
@@ -273,6 +273,10 @@ def plan(width, height, top=40, counts=None, env=None):
             if raw.strip():
                 offset = int(raw)
                 rect[axis] = dimension - offset - rect[axis + 2] if edge else offset
+    # Align the visible near edge; the marker clearance extends below it.
+    if not env.get("BILLING_GAP_Y", "").strip():
+        quota = windows["rate-limit-panel"]
+        windows["billing"][1] = quota[1] + quota[3] + billing_clearance - billing_h
     return windows
 
 
