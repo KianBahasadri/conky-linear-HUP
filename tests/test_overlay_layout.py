@@ -51,6 +51,27 @@ def test_rate_limit_panel_is_centered_in_center_column_and_is_narrower():
     assert quota[2] == linear[2] - 240
 
 
+def test_narrow_rate_limit_panel_uses_center_width_without_moving_other_panels():
+    windows = overlay_layout.plan(1280, 1024, 8, {"accounts": 15}, {
+        "GITHUB_OVERLAY_ENABLED": "0",
+        "MINECRAFT_OVERLAY_ENABLED": "0",
+    })
+    quota = windows.pop("rate-limit-panel")
+    assert quota == [280, 484, 608, 532]
+    assert quota[1] + quota[3] == 1016
+    assert windows == {
+        "linear": [280, 8, 608, 464],
+        "github": [280, 344, 608, 128],
+        "git": [8, 8, 260, 100],
+        "sessions": [8, 768, 260, 100],
+        "minecraft": [8, 916, 260, 100],
+        "resource-monitor": [912, 8, 360, 176],
+        "billing": [1012, 880, 260, 144],
+        "weather": [912, 196, 360, 204],
+        "thermometer": [8, 892, 120, 124],
+    }
+
+
 def test_billing_is_pinned_to_bottom_right_and_leaves_gutter_for_rate_limit_panel():
     windows = overlay_layout.plan(1920, 1080, 40, {"accounts": 15}, {})
     billing = windows["billing"]

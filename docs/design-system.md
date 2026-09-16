@@ -89,7 +89,7 @@ visible range, then rotates in 30-second pages so every record appears once per
 complete cycle. Where records differ in height, whole records are packed into
 each page rather than counted against a fixed pitch. The weather panel's
 section paging is described in [Weather and running overlay](weather.md).
-Narrow quota rows place up to four windows in a two-column arrangement.
+Narrow quota layout is described in [Rate limit panel](rate-limit-panel.md).
 Rerunning the launcher reallocates space using the latest cache counts.
 
 `*_GAP_X` and `*_GAP_Y` overrides still use their documented original edges;

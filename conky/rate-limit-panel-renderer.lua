@@ -729,7 +729,7 @@ return function(shared, repo_root)
     ['other-weekly'] = 'Other', ['3p-weekly'] = 'Other', ['3p-5h'] = 'Other',
   }
 
-  local function row_height(width) return width < 760 and 76 or width < 880 and 40 or 16 end
+  local function row_height(width) return width < 880 and 24 or 16 end
 
   -- Pro Gemini has both 5h and weekly pools: stack Gem/Other within each
   -- duration column on a 24px row. Free Gemini is weekly-only and stays on
@@ -748,6 +748,9 @@ return function(shared, repo_root)
   end
 
   local function account_pitch(width, account, wins)
+    if width < 560 then
+      return math.max(24, #wins * 16 + 4)
+    end
     local rh = row_height(width)
     if rh > 16 then return rh end
     if provider_name(account) == 'gemini' and gemini_duration_columns(wins) then
@@ -871,8 +874,6 @@ return function(shared, repo_root)
       end
       local is_two_col = width >= 1200 and #accounts > 4
       local col_w = is_two_col and math.floor(width / 2) or width
-      local effective_w = is_two_col and col_w or width
-      local rh = row_height(effective_w)
       local windows_for, heights = {}, {}
       for index, account in ipairs(accounts) do
         windows_for[index] = get_row_windows(account)
@@ -904,10 +905,13 @@ return function(shared, repo_root)
         end
       end
 
-      local function draw_column(first, last, col_x, col_width)
+      local function draw_column(first, last, col_x, col_width, top)
         if first > last then return end
+        local narrow = not is_two_col and col_width < 880
+        local stacked = narrow and col_width < 560
         local provider_width, name_width = col_width < 760 and 56 or 64, col_width < 760 and 48 or 56
-        local y = 0
+        if narrow then name_width = 64 end
+        local y = top or 0
         local marks = provider_mark_indices(accounts, first, last)
         for index = first, last do
           local account = accounts[index]
@@ -942,7 +946,12 @@ return function(shared, repo_root)
           else
             local columns = provider_name(account) == 'gemini' and gemini_duration_columns(wins)
             local show_pace = not is_free_account(account) or provider_is_free_only(accounts, account.provider)
-            if columns and pitch > 18 then
+            if stacked then
+              for i, window in ipairs(wins) do
+                draw_window(cr, account, window, x, y + 2 + (i - 1) * 16,
+                  bar_area - 16, show_pace, false, nil, 16)
+              end
+            elseif columns and pitch > 18 then
               local ww = bar_area / #columns
               local lines = 1
               for _, group in ipairs(columns) do lines = math.max(lines, #group) end
@@ -972,7 +981,7 @@ return function(shared, repo_root)
         -- that side, omit the frame.
         local is_only_provider = accounts[first].provider == accounts[last].provider
         if not is_only_provider then
-          local gy, gstart = 0, first
+          local gy, gstart = top or 0, first
           while gstart <= last do
             local provider = accounts[gstart].provider
             local gend, gh = gstart, 0
@@ -995,7 +1004,15 @@ return function(shared, repo_root)
         draw_column(split + 1, #accounts, col_w, width - col_w)
       else
         local first, last, page = ui.pack(heights, height, 0)
-        draw_column(first, last, 0, width)
+        -- Keep compact narrow rows at the bottom of their allocated region.
+        -- The surrounding overlays retain their existing space and positions.
+        local top = 0
+        if width < 880 and page == '' then
+          local used = 0
+          for _, pitch in ipairs(heights) do used = used + pitch end
+          top = math.max(0, height - used)
+        end
+        draw_column(first, last, 0, width, top)
         ui.footer(cr, page, width, height)
       end
     end)

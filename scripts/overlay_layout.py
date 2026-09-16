@@ -203,6 +203,12 @@ def plan(width, height, top=40, counts=None, env=None):
         # the width leaves equal margins on both sides.
         quota_w = centered_w
         quota_x = center_x
+    elif not is_wide:
+        # Narrow monitors need the full center width for quota windows and
+        # countdowns. Keep the vertical reservation so neighboring panels stay
+        # put; the renderer anchors its compact rows within this region.
+        quota_w = center
+        quota_x = center_x
     else:
         quota_w = center - 240
         quota_x = center_x + (center - quota_w) // 2

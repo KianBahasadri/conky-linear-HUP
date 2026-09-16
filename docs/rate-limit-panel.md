@@ -16,6 +16,13 @@ Providers with more than one visible account sit inside a faint rounded outline
 so those clusters read as a group, unless that provider is the only section in its column (such as Codex filling the left side alone). Single-account providers stay unframed. In two-column mode, whichever column has fewer accounts automatically expands its row pitch to fit the taller side so top and bottom edges are flush. Provider identity does not determine bar color. Shared typography, colors, and
 overflow are owned by the [Desktop design system](design-system.md).
 
+On monitors narrower than 1600px, the panel uses the full center column width.
+Single-column panels below 880px use compact 24px account rows; below 560px,
+quota windows stack beside the account name with enough height for each bar.
+When all accounts fit, these narrow lists sit at the bottom of their allocated
+region. The allocation for neighboring overlays stays unchanged. At 1280×1024,
+the 608px-wide panel shows the current 15 accounts together without paging.
+
 - Accounts sort alphabetically within each provider, regardless of plan tier.
 - A row without usable windows remains visible with `Retrying:` and its error.
 - Full windows do not display a `full` text label; the 100% bar fill and danger color indicate capacity exhaustion, and the account name turns danger color if any of its displayed bars are filled.
