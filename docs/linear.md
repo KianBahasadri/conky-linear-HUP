@@ -20,9 +20,11 @@
   at 14px then 13px, and truncates if 13px still overflows. Cards form a gapless grid.
 - The card's fill and any header text carry the tone together: completed cards
   are good, `Today` and overdue deadlines are danger with square corners, `Urgent` is caution, and
-  every ordinary workflow state is neutral. Neutral fills use 50% opacity and
-  status tints 7%, before the completed-card fade. There is no separate status
-  badge, status dot, or inset rail inside a card.
+  every ordinary workflow state is neutral. Neutral fills use 50% opacity,
+  completed green fills 18%, and urgency tints 7%, before the completed-card
+  fade. The stronger green fill distinguishes completed cards from the dark
+  blue-gray unfinished cards. There is no separate status badge,
+  status dot, or inset rail inside a card.
 - The project name is shown as an acronym: every uppercase letter is kept,
   including camelCase capitals with no preceding space, except that an all-caps
   word contributes only its first letter; digits, dashes, and other non-letters

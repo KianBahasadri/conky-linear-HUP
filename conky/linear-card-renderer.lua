@@ -148,7 +148,9 @@ return function(shared, repo_root)
     ui.group(cr, fade, function()
       local state, tone = describe(card)
       local fill = ui[tone]
-      ui.rect(cr, x, y, width, height, fill or ui.surface, ui.radius(tone), fill and 0.07 or 0.5)
+      -- A 7% green tint nearly matches the neutral blue-gray on a dark desktop.
+      local fill_alpha = card.done and 0.18 or (fill and 0.07 or 0.5)
+      ui.rect(cr, x, y, width, height, fill or ui.surface, ui.radius(tone), fill_alpha)
       local state_width = 0
       if state ~= '' then
         state_width = ui.text(cr, state, x + width - 12, y + 18,
