@@ -140,6 +140,34 @@ def test_collect_tasks_includes_due_soon_backlog():
     assert identifiers == {"ABC-1", "ABC-3", "ABC-4"}
 
 
+@pytest.mark.parametrize("source", ["workflowStates", "dueIssues"])
+def test_overdue_and_due_today_issues_reach_cards_outside_active_states(source):
+    now = datetime(2026, 9, 17, 12).astimezone()
+    tasks = [
+        _issue("ABC-1", "Overdue reading", "Backlog", due_date="2026-09-10"),
+        _issue("ABC-2", "Due today", "Triage", due_date="2026-09-17"),
+        _issue("ABC-3", "Future triage", "Triage", due_date="2026-09-18"),
+        _issue("ABC-4", "No deadline", "Backlog"),
+        _issue("ABC-5", "Duplicate", "Duplicate", due_date="2026-09-10", state_type="duplicate"),
+        _issue("ABC-6", "Canceled", "Canceled", due_date="2026-09-10", state_type="canceled"),
+        _issue("ABC-7", "Completed", "Done", due_date="2026-09-10", state_type="completed"),
+    ]
+    response = {"data": {"workflowStates": {"nodes": []}}}
+    if source == "workflowStates":
+        response["data"][source]["nodes"] = [
+            {**task["state"], "issues": {"nodes": [task]}} for task in tasks
+        ]
+    else:
+        response["data"][source] = {"nodes": tasks}
+
+    collected = linear.collect_tasks(response, {"Todo", "In Progress"}, now.date())
+    cards = linear.render_cards(collected, {"Todo", "In Progress"}, 18, now)["cards"]
+
+    assert {card["identifier"] for card in cards} == {"ABC-1", "ABC-2"}
+    assert all(card["dueToday"] and not card["done"] for card in cards)
+    assert next(card for card in cards if card["identifier"] == "ABC-1")["dueDate"] == "Overdue · Sep 10"
+
+
 def test_render_cards_includes_backlog_due_soon_flag():
     today = date(2026, 8, 7)
     now = datetime(2026, 8, 7, 16, tzinfo=timezone.utc)
@@ -474,9 +502,12 @@ def test_write_error_without_cache_writes_empty(monkeypatch, tmp_path):
 
 
 def test_linear_request_sends_configured_query_depths(monkeypatch):
-    captured = {}
+    captured = []
 
     class Response:
+        def __init__(self, payload):
+            self.payload = payload
+
         def __enter__(self):
             return self
 
@@ -484,23 +515,98 @@ def test_linear_request_sends_configured_query_depths(monkeypatch):
             return False
 
         def read(self):
-            return b'{"data": {}}'
+            return json.dumps(self.payload).encode("utf-8")
 
     def fake_urlopen(request, timeout):
-        captured["payload"] = json.loads(request.data.decode("utf-8"))
-        captured["timeout"] = timeout
-        return Response()
+        captured.append(json.loads(request.data.decode("utf-8")))
+        assert timeout == 20
+        if len(captured) == 1:
+            return Response({"data": {}})
+        return Response({"data": {"dueIssues": {
+            "nodes": [], "pageInfo": {"hasNextPage": False, "endCursor": None},
+        }}})
 
     monkeypatch.setattr(linear.urllib.request, "urlopen", fake_urlopen)
 
-    linear.linear_request("secret", 73, 84, 95)
+    linear.linear_request("secret", 73, 84, 95, date(2026, 9, 17))
 
-    assert captured["payload"]["variables"] == {
+    assert captured[0]["variables"] == {
         "first": 73,
         "competitionFirst": 84,
         "backlogFirst": 95,
     }
-    assert captured["timeout"] == 20
+    assert captured[1]["variables"] == {
+        "first": 25, "after": None, "today": "2026-09-17",
+    }
+
+
+def test_linear_request_includes_overdue_issues_beyond_the_first_page(monkeypatch):
+    now = datetime(2026, 9, 17, 12).astimezone()
+    overdue = [
+        _issue(f"ABC-{i}", f"Reading {i}", "Backlog", due_date="2026-09-10")
+        for i in range(26)
+    ]
+    cursors = []
+
+    def fake_request(_api_key, query, variables):
+        if query == linear.QUERY:
+            # The workflow connection overlaps the supplemental deadline query.
+            return {"data": {"workflowStates": {"nodes": [
+                {"name": "Backlog", "type": "backlog", "issues": {"nodes": overdue[:1]}},
+            ]}}}
+        cursors.append(variables["after"])
+        assert variables["first"] == 25
+        assert variables["today"] == "2026-09-17"
+        first_page = variables["after"] is None
+        return {"data": {"dueIssues": {
+            "nodes": overdue[:25] if first_page else overdue[25:],
+            "pageInfo": {"hasNextPage": first_page, "endCursor": "page-1" if first_page else "page-2"},
+        }}}
+
+    monkeypatch.setattr(linear, "linear_graphql_request", fake_request)
+
+    response = linear.linear_request("secret", 25, 25, 25, now.date())
+    tasks = linear.collect_tasks(response, {"Todo", "In Progress"}, now.date())
+    cards = linear.render_cards(tasks, {"Todo", "In Progress"}, 18, now)["cards"]
+
+    assert cursors == [None, "page-1"]
+    assert len(cards) == 26
+    assert {card["identifier"] for card in cards} == {task["identifier"] for task in overdue}
+    assert all(card["dueDate"] == "Overdue · Sep 10" and card["dueToday"] for card in cards)
+
+
+@pytest.mark.parametrize("failure", ["graphql", "http", "stuck_cursor"])
+def test_due_issue_page_failure_keeps_last_successful_cards(monkeypatch, tmp_path, failure):
+    cards_path = tmp_path / "linear-cards.json"
+    previous_cards = [{"identifier": "ABC-1", "title": "Keep me"}]
+    cards_path.write_text(json.dumps({"cards": previous_cards}), encoding="utf-8")
+    monkeypatch.setattr(linear.sys, "argv", ["fetch_linear_tasks.py"])
+    monkeypatch.setattr(linear, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(linear, "OUTPUT_PATH", tmp_path / "linear-tasks.txt")
+    monkeypatch.setattr(linear, "CARDS_PATH", cards_path)
+    monkeypatch.setattr(linear, "log_event", lambda _message: None)
+    monkeypatch.setattr(linear.common, "load_env", lambda: None)
+    monkeypatch.setenv("LINEAR_API_KEY", "secret")
+
+    def fake_request(_api_key, query, variables):
+        if query == linear.QUERY:
+            return {"data": {"workflowStates": {"nodes": []}}}
+        if variables["after"] and failure == "graphql":
+            return {"errors": [{"message": "Query failed"}]}
+        if variables["after"] and failure == "http":
+            raise urllib.error.HTTPError(linear.API_URL, 503, "Unavailable", {}, None)
+        return {"data": {"dueIssues": {
+            "nodes": [_issue("ABC-2", "Partial page", "Backlog", due_date="2026-09-10")],
+            "pageInfo": {"hasNextPage": True, "endCursor": "page-1"},
+        }}}
+
+    monkeypatch.setattr(linear, "linear_graphql_request", fake_request)
+
+    assert linear.main() == 1
+    cached = json.loads(cards_path.read_text(encoding="utf-8"))
+    assert cached["cards"] == previous_cards
+    assert cached["stale"] is True
+    assert cached["error"]
 
 
 def test_main_caps_configured_depths_to_the_live_query_complexity_limit(
@@ -518,7 +624,7 @@ def test_main_caps_configured_depths_to_the_live_query_complexity_limit(
     monkeypatch.setenv("LINEAR_COMPETITION_TASK_LIMIT", "84")
     monkeypatch.setenv("LINEAR_BACKLOG_DUE_SOON_LIMIT", "95")
 
-    def fake_request(_api_key, limit, competition_limit, backlog_limit):
+    def fake_request(_api_key, limit, competition_limit, backlog_limit, _today):
         captured["limits"] = (limit, competition_limit, backlog_limit)
         return {
             "data": {

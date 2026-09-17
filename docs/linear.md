@@ -38,6 +38,12 @@
   [Noto PNG](https://github.com/googlefonts/noto-emoji/blob/8998f5dd683424a73e2314a8c1f1e359c19e8742/png/128/emoji_u1f46e_200d_2642.png)
   in `assets/emoji/`, aligned to the base emoji's font metrics. Its Apache 2.0
   notice and license are included in `assets/emoji/LICENSE.txt`.
+- Unfinished overdue and due-today issues are included regardless of workflow
+  state, including `Backlog`. A separate deadline query uses the local calendar
+  date and fetches every page, so older issues outside the recent per-state
+  results remain visible. It runs separately from the combined workflow query
+  to stay within Linear's query complexity limit; if any page fails, the last
+  successful cache is kept.
 - If any unfinished card is overdue or due today, non-due unfinished cards are hidden so urgent work dominates the overlay. The cache's `dueToday` flag covers both overdue and due-today urgency; its `dueDate` text distinguishes their labels.
 - Unfinished issues in the `Competitions` project due in the next 3 days are always shown, with their due date in the card header.
 - Issues in the `Backlog` state with a due date in the next 3 days are also shown (including when urgent due-today filtering is active).

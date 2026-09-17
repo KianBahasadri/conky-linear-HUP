@@ -37,6 +37,32 @@ DEFAULT_COMPETITION_LIMIT = 25
 DEFAULT_BACKLOG_LIMIT = 25
 
 
+ISSUE_FIELDS = """
+fragment IssueFields on Issue {
+  identifier
+  title
+  completedAt
+  dueDate
+  priorityLabel
+  url
+  project {
+    name
+    icon
+  }
+  state {
+    name
+    type
+  }
+  labels {
+    nodes {
+      name
+      color
+    }
+  }
+}
+"""
+
+
 QUERY = """
 query IssuesByWorkflowState($first: Int!, $competitionFirst: Int!, $backlogFirst: Int!) {
   workflowStates {
@@ -77,30 +103,33 @@ query IssuesByWorkflowState($first: Int!, $competitionFirst: Int!, $backlogFirst
     }
   }
 }
+""" + ISSUE_FIELDS
 
-fragment IssueFields on Issue {
-  identifier
-  title
-  completedAt
-  dueDate
-  priorityLabel
-  url
-  project {
-    name
-    icon
-  }
-  state {
-    name
-    type
-  }
-  labels {
+
+# Separate from the workflow query to stay below its complexity limit and page
+# through deadlines independently of how recently an issue was updated.
+DUE_ISSUES_QUERY = """
+query DueIssues($first: Int!, $after: String, $today: TimelessDateOrDuration!) {
+  dueIssues: issues(
+    first: $first,
+    after: $after,
+    orderBy: createdAt,
+    filter: {
+      dueDate: { lte: $today }
+      completedAt: { null: true }
+      state: { type: { nin: ["completed", "canceled", "duplicate"] } }
+    }
+  ) {
     nodes {
-      name
-      color
+      ...IssueFields
+    }
+    pageInfo {
+      hasNextPage
+      endCursor
     }
   }
 }
-"""
+""" + ISSUE_FIELDS
 
 
 # A Linear project icon is either an emoji shortcode (":trophy:") or the name of a
@@ -190,17 +219,8 @@ atomic_write_text = common.atomic_write_text
 atomic_write_json = common.atomic_write_json
 
 
-def linear_request(api_key, limit, competition_limit, backlog_limit):
-    payload = json.dumps(
-        {
-            "query": QUERY,
-            "variables": {
-                "first": limit,
-                "competitionFirst": competition_limit,
-                "backlogFirst": backlog_limit,
-            },
-        }
-    ).encode("utf-8")
+def linear_graphql_request(api_key, query, variables):
+    payload = json.dumps({"query": query, "variables": variables}).encode("utf-8")
     request = urllib.request.Request(
         API_URL,
         data=payload,
@@ -213,6 +233,42 @@ def linear_request(api_key, limit, competition_limit, backlog_limit):
 
     with urllib.request.urlopen(request, timeout=20) as response:
         return json.loads(response.read().decode("utf-8"))
+
+
+def linear_request(api_key, limit, competition_limit, backlog_limit, now_date=None):
+    today = now_date or datetime.now().astimezone().date()
+    response = linear_graphql_request(api_key, QUERY, {
+        "first": limit,
+        "competitionFirst": competition_limit,
+        "backlogFirst": backlog_limit,
+    })
+    if response.get("errors"):
+        return response
+
+    due_issues = []
+    cursor = None
+    seen_cursors = set()
+    while True:
+        page = linear_graphql_request(api_key, DUE_ISSUES_QUERY, {
+            "first": MAX_QUERY_DEPTH,
+            "after": cursor,
+            "today": today.isoformat(),
+        })
+        # A failed page must preserve the last good cache, not publish a subset.
+        if page.get("errors"):
+            return page
+        connection = page["data"]["dueIssues"]
+        due_issues.extend(connection["nodes"])
+        page_info = connection["pageInfo"]
+        if not page_info["hasNextPage"]:
+            break
+        cursor = page_info["endCursor"]
+        if not cursor or cursor in seen_cursors:
+            raise ValueError("Linear due-issue pagination did not advance")
+        seen_cursors.add(cursor)
+
+    response["data"]["dueIssues"] = {"nodes": due_issues}
+    return response
 
 
 def linear_http_error_message(error):
@@ -248,12 +304,12 @@ def is_recently_done(task, now, lookback_hours):
 
 
 def is_due_now(task, now_date=None):
-    due_date = task.get("dueDate")
+    due_date = parse_linear_date(task.get("dueDate"))
     if not due_date:
         return False
 
     today = now_date or datetime.now().astimezone().date()
-    return due_date <= today.isoformat()
+    return due_date <= today
 
 
 def parse_linear_date(value):
@@ -295,6 +351,14 @@ def is_cancelled_or_duplicate(task):
         "cancelled",
         "duplicate",
     }
+
+
+def is_unfinished_due(task, now_date=None):
+    return (
+        not is_completed(task)
+        and not is_cancelled_or_duplicate(task)
+        and is_due_now(task, now_date)
+    )
 
 
 def is_due_within_days(task, days=3, now_date=None):
@@ -392,7 +456,11 @@ def render_cards(tasks, state_names, lookback_hours, now=None):
     active = [
         task
         for task in tasks
-        if task.get("state", {}).get("name") in state_names and not is_cancelled_or_duplicate(task)
+        if not is_cancelled_or_duplicate(task)
+        and (
+            task.get("state", {}).get("name") in state_names
+            or is_unfinished_due(task, today)
+        )
     ]
     recently_done = [
         task
@@ -530,6 +598,7 @@ def collect_tasks(response, state_names, now_date=None):
             if is_cancelled_or_duplicate(task) or (
                 state.get("name") not in state_names
                 and state.get("type") != "completed"
+                and not is_unfinished_due(task, today)
                 and not is_upcoming_competition(task, today)
                 and not is_due_soon_backlog(task, today)
             ):
@@ -543,6 +612,10 @@ def collect_tasks(response, state_names, now_date=None):
 
     for task in response["data"].get("backlogDueSoon", {}).get("nodes", []):
         if not is_cancelled_or_duplicate(task) and is_due_soon_backlog(task, today):
+            tasks_by_identifier[task["identifier"]] = task
+
+    for task in response["data"].get("dueIssues", {}).get("nodes", []):
+        if is_unfinished_due(task, today):
             tasks_by_identifier[task["identifier"]] = task
 
     return sorted(
@@ -673,8 +746,10 @@ def main():
         f"active_states={state_list} done_lookback_hours={lookback_hours}"
     )
 
+    now = datetime.now(timezone.utc)
+    today = now.astimezone().date()
     try:
-        response = linear_request(api_key, limit, competition_limit, backlog_limit)
+        response = linear_request(api_key, limit, competition_limit, backlog_limit, today)
     except urllib.error.HTTPError as error:
         write_error(f"Linear API error: {linear_http_error_message(error)}")
         return 1
@@ -687,8 +762,6 @@ def main():
         print(json.dumps(response["errors"], indent=2), file=sys.stderr)
         return 1
 
-    now = datetime.now(timezone.utc)
-    today = now.astimezone().date()
     tasks = collect_tasks(response, state_names, today)
     active_count = sum(
         1
