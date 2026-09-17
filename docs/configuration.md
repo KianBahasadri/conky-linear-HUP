@@ -259,7 +259,7 @@ balances, and ceilings do not have environment-variable overrides. See
 | `GIT_MAX_REPOS` | Max rows after severity / last-modified sort (empty uses coordinated layout) |
 | `GIT_HIDE_CLEAN` | `1` hides clean repos |
 | `GIT_INCLUDE_STASH` | `0` skips stash list |
-| `GIT_DEFAULT_BRANCHES` | Default branch names for muted styling and idle-row hiding |
+| `GIT_DEFAULT_BRANCHES` | Default branch names for [settled-row labels](git.md#reading-the-panel) |
 | `GIT_ACTIONS_ENABLED` | `0` disables the per-row GitHub Actions status |
 | `GIT_ACTIONS_TTL_SECONDS` | Cache TTL for completed Actions states (default `180`) |
 | `GIT_ACTIONS_RUNNING_TTL_SECONDS` | Cache TTL while a workflow is running (default `20`) |

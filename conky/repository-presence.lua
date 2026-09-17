@@ -130,8 +130,7 @@ return function(shared, repo_root)
       return a.name < b.name
     end)
     for _, row in ipairs(residual) do extra[#extra + 1] = row end
-    for index, row in ipairs(extra) do
-      row.gap = index == 1 and #rows > 0 and 8 or 0
+    for _, row in ipairs(extra) do
       rows[#rows + 1] = row
     end
     return rows

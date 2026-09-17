@@ -109,9 +109,10 @@ counts and presence; counts wrap as complete tokens when necessary. Repository
 health badges retain the ordering described in [Git status](git.md).
 
 Logins driving no session, sessions outside the visible Git fleet, and orphan
-dashboards follow the repositories after an 8px gap. Session names remain on
-these unmatched rows. Unknown remote logins retain their square danger badge,
-even when they are attached to a session already shown in a repository row.
+dashboards share one continuous list with the repositories, using the same row
+spacing. Session names remain on these unmatched rows. Unknown remote logins
+retain their square danger badge, even when they are attached to a session
+already shown in a repository row.
 
 ## Placement
 

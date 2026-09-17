@@ -30,19 +30,13 @@ SEVERITY_STASH = 25
 SEVERITY_AHEAD = 15
 SEVERITY_CLEAN = 0
 
-DEFAULT_BRANCHES = ("main", "master")
+DEFAULT_MAX_REPOS = 8
 DEFAULT_SCAN_DAYS = 14
 DEFAULT_SCAN_MAX_DEPTH = 3
 DEFAULT_SCAN_TTL_SECONDS = 300
 DEFAULT_ACTIONS_TTL_SECONDS = 180
 DEFAULT_ACTIONS_RUNNING_TTL_SECONDS = 20
 DEFAULT_ACTIONS_EMPTY_TTL_SECONDS = 300
-
-# A clean repo is only hidden once we know it has no Actions run, so pips have to
-# be resolved for more rows than the panel shows. Probe this multiple of
-# GIT_MAX_REPOS instead of the whole fleet so a large $HOME scan cannot fan out
-# into dozens of `gh` calls per refresh.
-ACTIONS_PROBE_ROWS_MULTIPLIER = 3
 
 GITHUB_REMOTE_RE = re.compile(
     r"^(?:(?:https?|ssh|git)://(?:[^@/\s]+@)?|[^@/\s]+@)?"
@@ -207,13 +201,6 @@ def apply_blacklist(paths, rules=None):
     if not rules:
         return list(paths)
     return [path for path in paths if not is_blacklisted(path, rules)]
-
-
-def parse_default_branches(raw=None):
-    if raw is None:
-        raw = os.environ.get("GIT_DEFAULT_BRANCHES", "")
-    branches = [part.strip() for part in re.split(r"[,\s]+", raw) if part.strip()]
-    return tuple(branches) if branches else DEFAULT_BRANCHES
 
 
 def run_git(repo_path, args, timeout):
@@ -1087,9 +1074,9 @@ def collect_status(repo_paths=None, timeout=None, hide_clean=None, max_repos=Non
     if hide_clean is None:
         hide_clean = env_flag("GIT_HIDE_CLEAN", False)
     if max_repos is None:
-        max_repos = env_int("GIT_MAX_REPOS", 6)
+        max_repos = env_int("GIT_MAX_REPOS", DEFAULT_MAX_REPOS)
     if max_repos < 1:
-        max_repos = 6
+        max_repos = DEFAULT_MAX_REPOS
 
     include_stash = env_flag("GIT_INCLUDE_STASH", True)
 
@@ -1120,12 +1107,6 @@ def collect_status(repo_paths=None, timeout=None, hide_clean=None, max_repos=Non
     repos = sort_repos(repos)
     if hide_clean:
         repos = [repo for repo in repos if repo.get("state") != "clean"]
-    # Keep a pool wider than the panel: limit_repos() drops idle rows once the
-    # Actions pips land, and the survivors below the cut backfill the panel.
-    pool = max_repos * ACTIONS_PROBE_ROWS_MULTIPLIER
-    if len(repos) > pool:
-        repos = repos[:pool]
-
     summary = build_summary(repos)
     now = datetime.now(timezone.utc)
     return {
@@ -1139,47 +1120,13 @@ def collect_status(repo_paths=None, timeout=None, hide_clean=None, max_repos=Non
     }
 
 
-def is_idle_row(repo, default_branches=None):
-    """A default-branch clean repo with no Actions run isn't worth a panel row.
-
-    Feature / non-default branches stay even when clean: being off main is the
-    signal. Default names come from GIT_DEFAULT_BRANCHES (main, master).
-    """
-    if repo.get("state") != "clean":
-        return False
-    if repo.get("actions"):
-        return False
-    branches = default_branches if default_branches is not None else parse_default_branches()
-    branch = (repo.get("branch") or "").strip()
-    return branch in branches
-
-
-def limit_repos(status, max_repos=None, actions_ready=True):
-    """
-    Trim the fleet down to the rows the panel actually shows.
-
-    Runs after attach_actions(): idle repos (clean on a default branch *and*
-    without an Actions pip) drop out first so the GIT_MAX_REPOS cap is spent
-    on rows that say something. Off-default branches stay even when clean.
-    When the pips are unavailable — Actions disabled, or the whole enrichment
-    pass failed — nothing is hidden, since every row would look idle.
-    """
+def limit_repos(status, max_repos=None):
+    """Cap the sorted fleet before Actions enrichment; CI does not select rows."""
     repos = status.get("repos") or []
     if max_repos is None:
-        max_repos = int(status.get("maxRepos") or 0) or env_int("GIT_MAX_REPOS", 6)
+        max_repos = int(status.get("maxRepos") or 0) or env_int("GIT_MAX_REPOS", DEFAULT_MAX_REPOS)
     if max_repos < 1:
-        max_repos = 6
-
-    if actions_ready and env_flag("GIT_ACTIONS_ENABLED", True):
-        default_branches = parse_default_branches()
-        kept = [repo for repo in repos if not is_idle_row(repo, default_branches)]
-        hidden = len(repos) - len(kept)
-        if hidden:
-            log_event(f"hid idle rows without actions hidden={hidden}")
-        if hidden and not kept and status.get("ok"):
-            # Otherwise the empty panel blames discovery ("set GIT_REPO_PATHS").
-            status["error"] = "Every repo is clean with no Actions runs"
-        repos = kept
+        max_repos = DEFAULT_MAX_REPOS
 
     status["repos"] = repos[:max_repos]
     status["summary"] = build_summary(status["repos"])
@@ -1217,21 +1164,18 @@ def main():
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     common.load_env()
     try:
-        status = collect_status()
+        status = limit_repos(collect_status())
     except Exception as error:
         write_error(f"Git status fetch failed: {error}")
         return 1
 
-    actions_ready = True
     try:
         status = attach_actions(status)
     except Exception as error:
         log_event(f"actions attach failed: {error}")
-        actions_ready = False
         for repo in status.get("repos") or []:
             repo.setdefault("actions", "")
 
-    status = limit_repos(status, actions_ready=actions_ready)
     atomic_write_json(STATUS_PATH, status)
     summary = status.get("summary") or {}
     log_event(

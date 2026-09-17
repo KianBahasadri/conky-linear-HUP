@@ -127,8 +127,6 @@ def merged_heights(repos, state, width, env):
               and (d.get("state") == "alert" or not names(d.get("session")) & active)] if state.get("ok") else []
     extra = [18 if d.get("state") == "alert" else 36 for d in logins]
     extra += [group_height(group) for group in residual]
-    if heights and extra:
-        extra[0] += 8
     if not state.get("ok"):
         extra.append(36)
     return heights + extra

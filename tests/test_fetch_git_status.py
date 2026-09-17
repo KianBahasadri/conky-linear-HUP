@@ -3,6 +3,8 @@ import os
 import subprocess
 from pathlib import Path
 
+import pytest
+
 import fetch_git_status as git_status
 
 
@@ -668,7 +670,7 @@ def _row(name, state, actions="", severity=0, branch="main"):
     }
 
 
-def test_limit_repos_hides_clean_rows_without_actions(monkeypatch):
+def test_limit_repos_keeps_clean_rows_without_actions(monkeypatch):
     monkeypatch.setenv("GIT_ACTIONS_ENABLED", "1")
     monkeypatch.setattr(git_status, "log_event", lambda _message: None)
     status = {
@@ -685,13 +687,12 @@ def test_limit_repos_hides_clean_rows_without_actions(monkeypatch):
 
     limited = git_status.limit_repos(status)
     names = [repo["name"] for repo in limited["repos"]]
-    # Idle rows drop out, and the rows below the cap move up to take their slots.
-    assert names == ["dirty", "built", "broken-ci"]
+    assert names == ["dirty", "idle", "built"]
     assert limited["summary"]["total"] == 3
     assert limited["summary"]["clean"] == 2
 
 
-def test_limit_repos_keeps_clean_rows_off_the_default_branch(monkeypatch):
+def test_limit_repos_keeps_clean_rows_on_all_branches(monkeypatch):
     monkeypatch.setenv("GIT_ACTIONS_ENABLED", "1")
     monkeypatch.setattr(git_status, "log_event", lambda _message: None)
     status = {
@@ -707,10 +708,10 @@ def test_limit_repos_keeps_clean_rows_off_the_default_branch(monkeypatch):
 
     limited = git_status.limit_repos(status)
     names = [repo["name"] for repo in limited["repos"]]
-    assert names == ["feature", "topic"]
+    assert names == ["on-main", "on-master", "feature", "topic"]
 
 
-def test_limit_repos_default_branches_override_idle_hide(monkeypatch):
+def test_limit_repos_default_branches_do_not_change_selection(monkeypatch):
     monkeypatch.setenv("GIT_ACTIONS_ENABLED", "1")
     monkeypatch.setenv("GIT_DEFAULT_BRANCHES", "develop")
     monkeypatch.setattr(git_status, "log_event", lambda _message: None)
@@ -725,20 +726,20 @@ def test_limit_repos_default_branches_override_idle_hide(monkeypatch):
 
     limited = git_status.limit_repos(status)
     names = [repo["name"] for repo in limited["repos"]]
-    assert names == ["on-main"]
+    assert names == ["on-main", "on-develop"]
 
 
-def test_limit_repos_explains_an_entirely_hidden_fleet(monkeypatch):
+def test_limit_repos_keeps_an_entirely_clean_fleet(monkeypatch):
     monkeypatch.setenv("GIT_ACTIONS_ENABLED", "1")
     monkeypatch.setattr(git_status, "log_event", lambda _message: None)
     status = {"ok": True, "error": "", "maxRepos": 6, "repos": [_row("idle", "clean")]}
 
     limited = git_status.limit_repos(status)
-    assert limited["repos"] == []
-    assert "Actions" in limited["error"]
+    assert [repo["name"] for repo in limited["repos"]] == ["idle"]
+    assert limited["error"] == ""
 
 
-def test_limit_repos_keeps_clean_rows_when_actions_unavailable(monkeypatch):
+def test_limit_repos_keeps_clean_rows_when_actions_disabled(monkeypatch):
     monkeypatch.setattr(git_status, "log_event", lambda _message: None)
     repos = [_row("dirty", "dirty", severity=40), _row("idle", "clean")]
 
@@ -748,15 +749,45 @@ def test_limit_repos_keeps_clean_rows_when_actions_unavailable(monkeypatch):
     )
     assert [repo["name"] for repo in disabled["repos"]] == ["dirty", "idle"]
 
+
+@pytest.mark.parametrize("actions_fail", [False, True])
+def test_main_caps_before_actions_and_keeps_rows_without_runs(tmp_path, monkeypatch, actions_fail):
+    monkeypatch.setattr(git_status, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(git_status, "STATUS_PATH", tmp_path / "git-status.json")
+    monkeypatch.setattr(git_status.common, "load_env", lambda: None)
+    monkeypatch.setattr(git_status, "log_event", lambda _message: None)
     monkeypatch.setenv("GIT_ACTIONS_ENABLED", "1")
-    failed = git_status.limit_repos(
-        {"ok": True, "maxRepos": 6, "repos": [dict(repo) for repo in repos]},
-        actions_ready=False,
-    )
-    assert [repo["name"] for repo in failed["repos"]] == ["dirty", "idle"]
+    monkeypatch.setattr(git_status, "collect_status", lambda: {
+        "ok": True,
+        "error": "",
+        "maxRepos": 2,
+        "repos": [
+            _row("dirty", "dirty", severity=40),
+            _row("no-workflows", "clean"),
+            _row("past-cap", "clean", actions="ok"),
+        ],
+    })
+
+    actions_rows = []
+
+    def attach_actions(status):
+        actions_rows.extend(repo["name"] for repo in status["repos"])
+        if actions_fail:
+            raise RuntimeError("GitHub unavailable")
+        return status
+
+    monkeypatch.setattr(git_status, "attach_actions", attach_actions)
+
+    assert git_status.main() == 0
+    assert actions_rows == ["dirty", "no-workflows"]
+    saved = json.loads(git_status.STATUS_PATH.read_text(encoding="utf-8"))
+    assert [repo["name"] for repo in saved["repos"]] == ["dirty", "no-workflows"]
+    assert saved["summary"]["total"] == 2
+    assert saved["summary"]["clean"] == 1
+    assert saved["error"] == ""
 
 
-def test_collect_status_keeps_a_pool_wider_than_the_cap(tmp_path, monkeypatch):
+def test_limit_repos_caps_the_sorted_candidates(tmp_path, monkeypatch):
     monkeypatch.setenv("GIT_INCLUDE_STASH", "0")
     paths = [init_repo(tmp_path / f"repo-{index}") for index in range(5)]
 
@@ -764,8 +795,8 @@ def test_collect_status_keeps_a_pool_wider_than_the_cap(tmp_path, monkeypatch):
         repo_paths=paths, timeout=5, hide_clean=False, max_repos=2
     )
 
-    # Rows past GIT_MAX_REPOS survive so limit_repos() can backfill with them.
     assert status["maxRepos"] == 2
     assert len(status["repos"]) == 5
-    capped = git_status.limit_repos(status, actions_ready=False)
+    capped = git_status.limit_repos(status)
     assert len(capped["repos"]) == 2
+    assert capped["summary"]["total"] == 2

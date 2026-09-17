@@ -5,8 +5,7 @@ return function(shared, repo_root)
   local presence = dofile(module_dir .. '/repository-presence.lua')(shared, repo_root)
   local ui = shared.ui
   local settled_pitch, busy_pitch = 18, 36
-  -- Matches the fetcher's GIT_DEFAULT_BRANCHES: a settled repository names its
-  -- branch only when being off the default is the reason to look.
+  -- A settled repository names its branch only when off a default branch.
   local default_branches = {}
   for name in (os.getenv('GIT_DEFAULT_BRANCHES') or 'main,master'):gmatch('[^,:%s]+') do
     default_branches[name] = true
@@ -284,12 +283,12 @@ return function(shared, repo_root)
       local heights, layouts = {}, {}
       for index, row in ipairs(rows) do
         layouts[index] = layout_row(cr, row, width)
-        heights[index] = layouts[index].pitch + (row.gap or 0)
+        heights[index] = layouts[index].pitch
       end
       local first, last, page = ui.stack(heights, height, 0, state.stale)
       local y = 0
       for index = first, last do
-        draw_row(cr, rows[index], layouts[index], width, y + (rows[index].gap or 0))
+        draw_row(cr, rows[index], layouts[index], width, y)
         y = y + heights[index]
       end
       local notes = {}
