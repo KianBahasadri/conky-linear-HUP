@@ -24,10 +24,11 @@ otherwise; the compact dimensions are described under placement below.
   adding extra headroom, or clamping at 200%, keeping overruns visible past
   the 100% limit on the period-end edge.
 - A solid cyan trail with sample dots is real stored daily observations, ending
-  at the current marker on the dashed now-line. Missing history days break the
+  at the current marker at today's position. Missing history days break the
   trail instead of being interpolated, and a single stored day stays a point.
-- The current marker is the provider's own vector mark. For forecasts reaching
-  at least 50% usage by month-end, a dashed violet connector runs from it toward
+- The current marker is the provider's own vector mark, with no vertical line
+  connecting the markers. For forecasts reaching at least 50% usage by
+  month-end, a dashed violet connector runs from it toward
   the month-end edge, turning red only where it passes 100%. Trajectories that
   fall under 50% usage by the end of the month omit the predicted line.
 - The forecast endpoint's shape is its severity: a small solid circle (radius
@@ -45,9 +46,9 @@ otherwise; the compact dimensions are described under placement below.
   full emphasis.
 - Gridlines every 25 points up through the third red bar (300%, with intermediate
   25% ticks omitted above 300%), the 100% boundary and each subsequent 100%
-  overage marker repeating the 1.5px danger stroke at 40% opacity, a faint
-  dotted even-consumption pace line, and the dashed now-line at 25% opacity
-  are the map's only reference marks. It carries no text.
+  overage marker repeating the 1.5px danger stroke at 40% opacity, and a faint
+  dotted even-consumption pace line are the map's only reference marks. It
+  carries no text.
 - With no providers at all, an explicit `Unavailable` callout replaces the map.
 
 The earlier affine diamond and Cairo design sources are preserved in the
@@ -97,7 +98,7 @@ ran. Azure still seeds the same store from Cost Management daily rows when
 those are available, and Blacksmith seeds it from `blacksmith usage` daily
 totals, so those trails can be complete even if the overlay was not running on
 those days. OpenRouter's plotted pressure is remaining-runway
-future draw (the current point stays on the now-line at zero), so its stored trail sits
+future draw (the current point stays at today's position at zero), so its stored trail sits
 on the baseline; the same file still keeps dated total-usage samples for the
 burn-rate fallback.
 
@@ -117,8 +118,8 @@ while sharing the same visual EOM edge:
 3. Expected future draw is average daily burn multiplied by the number of days
    remaining through the common calendar EOM.
 4. The plotted pressure is expected future draw divided by today's available
-   balance. The current point therefore starts at zero future draw on the current-day
-   line.
+   balance. The current point therefore starts at zero future draw at today's
+   position.
 
 If the analytics endpoint is unavailable, the fetcher derives burn from its
 own dated total-usage observations. It does not invent history: until two dates
@@ -146,14 +147,14 @@ runway:
 4. The forecast uses current calendar pace of that spend through the common
    EOM, divided by the same starting pool.
 
-The current point therefore sits on the current-day line at `Y / X`, and the hollow
+The current point therefore sits at today's position at `Y / X`, and the hollow
 square is the EOM landing against that same `X`. Remaining credit is kept
 as a diagnostic, not as the plot's 100% ceiling.
 
 Daily Cost Management rows (usage-detail `costInUSD` if that query is
 throttled) are written into the shared observation store as cumulative
 `Y_d / X` for each past day of the month, alongside today's collect. That
-trail stays left of the now-line; the dashed forecast is the prediction.
+trail stays left of today's position; the dashed forecast is the prediction.
 After a daily Cost Management throttle, the fetcher uses Usage Details for six
 hours before retrying Cost Management; the cooldown is persisted per Azure
 subscription, so frequent polls do not keep hammering the throttled endpoint.

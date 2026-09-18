@@ -187,8 +187,6 @@ return function(shared, repo_root)
     ui.line_between(cr, near_left[1], near_left[2], near_right[1], near_right[2], ui.line_strong, 1.5)
     local pace_end = point(1, 100)
     ui.dash(cr, near_left[1], near_left[2], pace_end[1], pace_end[2], ui.muted, 1, 2, 5, 0.5)
-    local now_a, now_b = point(model.elapsed, 0), point(model.elapsed, maximum)
-    ui.dash(cr, now_a[1], now_a[2], now_b[1], now_b[2], ui.ink, 1, 5, 4, 0.25)
 
     local plotted = false
     for _, item in ipairs(model.items) do
