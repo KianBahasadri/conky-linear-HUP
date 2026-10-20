@@ -200,12 +200,8 @@ RATE_LIMIT_PANEL_BOTTOM_INSET = 0
 RATE_LIMIT_PANEL_WINDOW_FLOOR = 112
 RATE_LIMIT_PANEL_RENDER_TSVS = (
     "codex-usage-render.tsv",
-    "claude-usage-render.tsv",
     "cursor-usage-render.tsv",
     "gemini-usage-render.tsv",
-    "grok-usage-render.tsv",
-    "opencode-usage-render.tsv",
-    "commandcode-usage-render.tsv",
 )
 
 

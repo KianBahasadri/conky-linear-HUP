@@ -21,7 +21,7 @@ Single-column panels below 880px use compact 24px account rows; below 560px,
 quota windows stack beside the account name with enough height for each bar.
 When all accounts fit, these narrow lists sit at the bottom of their allocated
 region. The allocation for neighboring overlays stays unchanged. At 1280×1024,
-the 608px-wide panel shows the current 14 accounts together without paging.
+the 608px-wide panel shows the current 13 accounts together without paging.
 
 - Accounts sort alphabetically within each provider, regardless of plan tier.
 - A row without usable windows remains visible with `Retrying:` and its error.
@@ -41,7 +41,7 @@ the 608px-wide panel shows the current 14 accounts together without paging.
 
 Selected profiles are resolved by the existing fetchers: shared `current`
 profiles for Codex/Cursor, the active Claude credential file or matching access
-token, Antigravity's current profile, and active Grok/Command Code auth.
+token, and Antigravity's current profile.
 Claude requires token comparison because its
 CLI replaces the credential file during refresh.
 
@@ -94,7 +94,7 @@ profiles live in `~/.local/share/clusterfork-auth/`.
 
 ## Command Code
 
-- Multiple accounts are discovered from `~/.commandcode/auth.json.*`; `COMMAND_CODE_AUTH_PATH` forces a single auth file. `COMMAND_CODE_API_KEY` takes precedence over local auth files, matching the CLI.
+- Command Code was removed from active display. Multiple accounts are discovered from `~/.commandcode/auth.json.*`; `COMMAND_CODE_AUTH_PATH` forces a single auth file. `COMMAND_CODE_API_KEY` takes precedence over local auth files, matching the CLI.
 - Usage is fetched from Command Code's Studio API: `GET /alpha/whoami`, `GET /alpha/billing/credits`, `GET /alpha/billing/subscriptions`, and `GET /alpha/usage/summary`. Auth is a bearer API key from `~/.commandcode/auth.json` (written by `cmd login`) or `COMMAND_CODE_API_KEY`.
 - It renders the rolling 5-hour and weekly credit windows plus the monthly included-credit pool as three bars. Window caps and remaining monthly credits come from `/alpha/billing/credits`; the monthly reset comes from the subscription period. The `CMD` pace summary's delta uses the monthly window.
 - `COMMAND_CODE_HOME` overrides the config directory, `COMMANDCODE_API_URL` overrides the API base URL (`https://api.commandcode.ai`), and `COMMAND_CODE_USAGE_LABEL` labels the env-key account.
@@ -102,14 +102,15 @@ profiles live in `~/.local/share/clusterfork-auth/`.
 
 ## Removed providers
 
-- **Claude** account was removed from the rate limit panel because the Claude subscription expired.
-- **Grok** was removed from the rate limit panel.
-- **OpenCode Go** was removed from the rate limit panel.
+- **Claude** account was removed from the rate limit panel because the Claude subscription expired. Its background fetch loop is stopped and disabled.
+- **Grok** was removed from the rate limit panel. Its background fetch loop is stopped and disabled.
+- **OpenCode Go** was removed from the rate limit panel. Its background fetch loop is stopped and disabled.
+- **Command Code** was removed from the rate limit panel. Its background fetch loop is stopped and disabled.
 - **Pioneer** was removed from the rate limit panel. The Pioneer fetch script, cache files, env vars, and panel chip are no longer used.
 
 ## Adaptive polling
 
-- Each rate-limit fetcher (Codex, Claude, Cursor, Gemini, Grok, OpenCode Go, Command Code) repolls adaptively instead of on a fixed cadence.
+- Each active rate-limit fetcher (Codex, Cursor, Gemini) repolls adaptively instead of on a fixed cadence.
 - After every fetch the loop fingerprints the meaningful usage state in that fetcher's `cache/*-usage-render.tsv`: the `meta`/`updatedAt` row is dropped, and time-derived bar columns (`resetsAt`, `resetAtEpoch`, `resetAfterSeconds`) are blanked so the fingerprint only changes when actual usage numbers or account/window structure change.
 - When the fingerprint changes, the loop records the change time in `cache/*-usage-render.tsv.last_change` and uses `RATE_LIMIT_CHANGED_INTERVAL` (default `60`s). It keeps that short interval for any subsequent poll whose last change is still within `RATE_LIMIT_RECENT_CHANGE_WINDOW` (default `600`s / 10 minutes), even if the latest poll itself was unchanged. After the window expires with no further changes, it backs off to `RATE_LIMIT_UNCHANGED_INTERVAL` (default `300`s).
 - The fingerprint is stored as `cache/*-usage-render.tsv.fingerprint`. Both the fingerprint and last-change files persist across overlay restarts; a restart does not force a short interval unless usage actually changed or a prior change is still inside the recent-change window.

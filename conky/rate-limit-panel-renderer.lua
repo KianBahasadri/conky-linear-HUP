@@ -362,10 +362,8 @@ return function(shared, repo_root)
 
   local function read_ai_usage()
     local codex_usage = read_codex_usage_tsv() or read_codex_usage_json()
-    local claude_usage = read_claude_usage_tsv()
     local cursor_usage = read_cursor_usage_tsv()
     local gemini_usage = read_gemini_usage_tsv()
-    local commandcode_usage = read_commandcode_usage_tsv()
     local usage = {
       ok = false,
       error = '',
@@ -377,17 +375,6 @@ return function(shared, repo_root)
       usage.error = codex_usage.error or ''
       for _, account in ipairs(codex_usage.accounts or {}) do
         account.provider = account.provider or 'Codex'
-        table.insert(usage.accounts, account)
-      end
-    end
-
-    if claude_usage then
-      usage.ok = usage.ok or claude_usage.ok
-      if usage.error == '' then
-        usage.error = claude_usage.error or ''
-      end
-      for _, account in ipairs(claude_usage.accounts or {}) do
-        account.provider = account.provider or 'Claude'
         table.insert(usage.accounts, account)
       end
     end
@@ -410,17 +397,6 @@ return function(shared, repo_root)
       end
       for _, account in ipairs(gemini_usage.accounts or {}) do
         account.provider = account.provider or 'Gemini'
-        table.insert(usage.accounts, account)
-      end
-    end
-
-    if commandcode_usage then
-      usage.ok = usage.ok or commandcode_usage.ok
-      if usage.error == '' then
-        usage.error = commandcode_usage.error or ''
-      end
-      for _, account in ipairs(commandcode_usage.accounts or {}) do
-        account.provider = account.provider or 'CommandCode'
         table.insert(usage.accounts, account)
       end
     end

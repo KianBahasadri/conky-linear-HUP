@@ -884,3 +884,51 @@ def test_aws_apply_secures_state_even_when_terraform_fails(tmp_path):
     assert result.returncode != 0
     state_path = repo / "terraform" / "aws-billing" / "terraform.tfstate"
     assert stat.S_IMODE(state_path.stat().st_mode) == 0o600
+
+
+def test_stop_and_start_launchers_clean_up_retired_rate_limit_fetch_loops(tmp_path):
+    repo = tmp_path / "repo"
+    (repo / "scripts").mkdir(parents=True)
+    (repo / "cache").mkdir()
+    (repo / "conky" / "generated").mkdir(parents=True)
+    shutil.copy2(ROOT / "scripts" / "stop_conky_overlays.sh", repo / "scripts")
+    shutil.copy2(ROOT / "scripts" / "start_conky_overlays.sh", repo / "scripts")
+    shutil.copy2(LIFECYCLE_HELPER, repo / "scripts")
+
+    script = repo / "scripts" / "fetch_grok_usage.py"
+    pid_file = repo / "cache" / "grok-fetch-loop.pid"
+    body = 'project_root="$8"; while true; do sleep 10; done'
+    process = subprocess.Popen(
+        [
+            "bash",
+            "-c",
+            body,
+            "bash",
+            str(script),
+            str(repo / "cache" / "conky-rate-limit-panel.log"),
+            "300",
+            str(repo / "cache" / "grok-usage-render.tsv"),
+            "60",
+            "300",
+            "600",
+            str(repo),
+        ],
+        start_new_session=True,
+    )
+    pid_file.write_text(f"{process.pid}\n", encoding="utf-8")
+    try:
+        subprocess.run(
+            [str(repo / "scripts" / "stop_conky_overlays.sh")],
+            check=True,
+            env={**os.environ, "CONKY_LIFECYCLE_LOCKED": "0"},
+            timeout=20,
+        )
+        process.wait(timeout=5)
+        log = (repo / "cache" / "conky-rate-limit-panel.log").read_text(encoding="utf-8")
+        assert f"stopped Grok fetch loop pid={process.pid}" in log
+        assert not pid_file.exists()
+    finally:
+        if process.poll() is None:
+            os.killpg(process.pid, signal.SIGTERM)
+            process.wait(timeout=5)
+

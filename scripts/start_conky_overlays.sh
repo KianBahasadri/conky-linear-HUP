@@ -127,7 +127,8 @@ GENERATED_CONFIG_COUNT=0
 GENERATION_STAGE_DIR=""
 
 overlay_keys=(linear rate-limit-panel minecraft github weather thermometer resource-monitor billing git sessions)
-fetch_keys=(linear codex claude cursor gemini grok opencode commandcode minecraft github weather workouts weight billing git sessions)
+fetch_keys=(linear codex cursor gemini minecraft github weather workouts weight billing git sessions)
+retired_fetch_keys=(claude grok opencode commandcode)
 
 declare -A overlay_disabled_name=(
   [linear]="linear"
@@ -846,7 +847,7 @@ else
     terminate_matching_conky_processes "${overlay_config[$key]}" exact
   done
   terminate_matching_conky_processes "$ROOT/conky/codex-overlay.conkyrc" exact
-  for fetch_key in "${fetch_keys[@]}"; do
+  for fetch_key in "${fetch_keys[@]}" "${retired_fetch_keys[@]}"; do
     stop_fetch_loop "$fetch_key"
   done
   log_overlay linear "stopped existing matching Conky processes"

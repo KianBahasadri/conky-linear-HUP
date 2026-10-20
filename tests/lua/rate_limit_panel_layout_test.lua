@@ -29,10 +29,9 @@ for index = 1, 8 do
 end
 for index = 1, 3 do add_account('cursor', 'cur' .. index, index == 2, {'auto', 'api'}) end
 for index = 1, 2 do
-  add_account('gemini', 'gem' .. index, index == 1,
+  add_account('gemini', 'gem' .. index, index == 2,
     index == 1 and {'gemini-5h', 'gemini-weekly', 'argon'} or {'gemini-5h', 'gemini-weekly'})
 end
-add_account('commandcode', 'cmd', true, {'5h', 'weekly', 'monthly'})
 for name, rows in pairs(files) do files[name] = table.concat(rows, '\n') end
 
 shared.read_file = function(path) return files[path:match('/([^/]+)$')] end
@@ -84,8 +83,8 @@ end
 
 local complete = draw()
 assert_all_accounts(complete)
-assert(not complete.footer, '14 accounts must fit without pagination on the left monitor')
-assert(#complete.selected == 4, 'selected accounts must retain their highlighted rows')
+assert(not complete.footer, '13 accounts must fit without pagination on the left monitor')
+assert(#complete.selected == 3, 'selected accounts must retain their highlighted rows')
 local last_bottom = 0
 for _, rect in ipairs(complete.selected) do
   assert(rect.h <= 24, 'selected rows must remain compact on the left monitor')
@@ -112,7 +111,7 @@ for _, bars in pairs(complete.bars) do
 end
 
 -- A manually narrower panel must use vertical space for windows, including
--- the reserve and Command Code's third window, without clipping any bars.
+-- the reserve third window, without clipping any bars.
 width, height = 368, 700
 local stacked = draw()
 assert_all_accounts(stacked)
