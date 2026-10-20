@@ -28,8 +28,10 @@ for index = 1, 8 do
     index == 3 and {'5h', 'weekly', 'reserve'} or {'5h', 'weekly'})
 end
 for index = 1, 3 do add_account('cursor', 'cur' .. index, index == 2, {'auto', 'api'}) end
-for index = 1, 2 do add_account('gemini', 'gem' .. index, index == 1, {'5h', 'weekly'}) end
-add_account('grok', 'grok', true, {'weekly'})
+for index = 1, 2 do
+  add_account('gemini', 'gem' .. index, index == 1,
+    index == 1 and {'gemini-5h', 'gemini-weekly', 'argon'} or {'gemini-5h', 'gemini-weekly'})
+end
 add_account('commandcode', 'cmd', true, {'5h', 'weekly', 'monthly'})
 for name, rows in pairs(files) do files[name] = table.concat(rows, '\n') end
 
@@ -82,8 +84,8 @@ end
 
 local complete = draw()
 assert_all_accounts(complete)
-assert(not complete.footer, '15 accounts must fit without pagination on the left monitor')
-assert(#complete.selected == 5, 'selected accounts must retain their highlighted rows')
+assert(not complete.footer, '14 accounts must fit without pagination on the left monitor')
+assert(#complete.selected == 4, 'selected accounts must retain their highlighted rows')
 local last_bottom = 0
 for _, rect in ipairs(complete.selected) do
   assert(rect.h <= 24, 'selected rows must remain compact on the left monitor')
@@ -91,11 +93,13 @@ for _, rect in ipairs(complete.selected) do
 end
 assert(last_bottom == height, 'the last selected account must end at the panel bottom')
 assert(complete.labels[1].y > 100, 'fitting compact content must move down inside its reserved region')
-local found_reserve = false
+local found_reserve, found_argon = false, false
 for _, label in ipairs(complete.labels) do
   if label.value == 'Reserve' then found_reserve = true end
+  if label.value == 'Argon' then found_argon = true end
 end
 assert(found_reserve, 'the reserve pool must retain its distinguishing label')
+assert(found_argon, 'the argon pool must retain its distinguishing label')
 for _, bars in pairs(complete.bars) do
   for index, bar in ipairs(bars) do
     assert(bar.w >= 30, 'every horizontal quota bar needs usable width, including Reserve')

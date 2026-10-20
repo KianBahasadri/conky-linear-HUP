@@ -20,6 +20,7 @@ conky.config = {
   minimum_width = 120,
   maximum_width = 120,
   no_buffers = true,
+  output_backend = 'x11',
   own_window = true,
   own_window_argb_visual = true,
   own_window_argb_value = 0,

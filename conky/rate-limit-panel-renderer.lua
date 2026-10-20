@@ -18,8 +18,9 @@ return function(shared, repo_root)
 
   local function normalized_window_label(window)
     local label = string.lower(window.label or '')
-    if label == 'auto' or label == 'api' or label == 'reserve'
-       or label:find('^gemini%-') or label:find('^other%-') or label:find('^3p%-') then
+    if label == 'auto' or label == 'api' or label == 'reserve' or label == 'argon'
+       or label:find('^gemini%-') or label:find('^other%-') or label:find('^3p%-')
+       or label:find('^argon%-') then
       return label
     end
 
@@ -43,7 +44,7 @@ return function(shared, repo_root)
       return window.window_seconds
     end
     local norm = normalized_window_label(window)
-    if norm == 'weekly' or norm == 'reserve' then
+    if norm == 'weekly' or norm == 'reserve' or norm == 'argon' or norm == 'argon-weekly' then
       return weekly_window_seconds
     end
     if norm == 'monthly' then
@@ -364,7 +365,6 @@ return function(shared, repo_root)
     local claude_usage = read_claude_usage_tsv()
     local cursor_usage = read_cursor_usage_tsv()
     local gemini_usage = read_gemini_usage_tsv()
-    local grok_usage = read_grok_usage_tsv()
     local commandcode_usage = read_commandcode_usage_tsv()
     local usage = {
       ok = false,
@@ -410,17 +410,6 @@ return function(shared, repo_root)
       end
       for _, account in ipairs(gemini_usage.accounts or {}) do
         account.provider = account.provider or 'Gemini'
-        table.insert(usage.accounts, account)
-      end
-    end
-
-    if grok_usage then
-      usage.ok = usage.ok or grok_usage.ok
-      if usage.error == '' then
-        usage.error = grok_usage.error or ''
-      end
-      for _, account in ipairs(grok_usage.accounts or {}) do
-        account.provider = account.provider or 'Grok'
         table.insert(usage.accounts, account)
       end
     end
@@ -557,66 +546,6 @@ return function(shared, repo_root)
     }
   end
 
-  local function calculate_provider_average_pace(accounts, provider)
-    local provider_lower = string.lower(provider)
-    local include_free = provider_is_free_only(accounts, provider_lower)
-    local delta_total = 0
-    local delta_count = 0
-
-    for _, account in ipairs(accounts or {}) do
-      if string.lower(account.provider or '') == provider_lower then
-        if include_free or not is_free_account(account) then
-          if provider_lower == 'cursor' or provider_lower == 'gemini' or provider_lower == 'grok' then
-            for _, window in ipairs(account.windows or {}) do
-              local pace = calculate_window_pace(window, window_duration(window))
-              if pace then
-                delta_total = delta_total + pace.delta
-                delta_count = delta_count + 1
-              end
-            end
-          elseif provider_lower == 'codex' then
-            -- Prefer the weekly bar when both windows exist. Some accounts only
-            -- expose the 5h bar, so keep it as the fallback. Pro accounts carry
-            -- 20x the capacity weight of a standard Plus account in the chip average.
-            local window = find_weekly_window(account) or find_five_hour_window(account)
-            if window then
-              local pace = calculate_window_pace(window, window_duration(window))
-              if pace then
-                local weight = string.lower(account.plan_type or '') == 'pro' and 20 or 1
-                delta_total = delta_total + pace.delta * weight
-                delta_count = delta_count + weight
-              end
-            end
-          elseif provider_lower == 'opencode' or provider_lower == 'commandcode' then
-            local monthly = find_monthly_window(account)
-            if monthly then
-              local pace = calculate_window_pace(monthly, window_duration(monthly))
-              if pace then
-                delta_total = delta_total + pace.delta
-                delta_count = delta_count + 1
-              end
-            end
-          else
-            local weekly = find_weekly_window(account)
-            if weekly then
-              local pace = calculate_window_pace(weekly, window_duration(weekly))
-              if pace then
-                delta_total = delta_total + pace.delta
-                delta_count = delta_count + 1
-              end
-            end
-          end
-        end
-      end
-    end
-
-    if delta_count == 0 then
-      return nil
-    end
-
-    return delta_total / delta_count
-  end
-
   local function provider_name(account)
     return string.lower(account.provider or 'codex')
   end
@@ -687,7 +616,7 @@ return function(shared, repo_root)
       local seen = {}
       local order = is_free
         and { 'gemini-weekly', 'weekly', 'gemini' }
-        or { 'gemini-5h', '5h', 'gemini-weekly', 'weekly', 'gemini' }
+        or { 'gemini-5h', '5h', 'gemini-weekly', 'weekly', 'gemini', 'argon', 'argon-weekly', 'argon-5h' }
       for _, target in ipairs(order) do
         for _, w in ipairs(windows) do
           if normalized_window_label(w) == target and not seen[w] then
@@ -719,11 +648,80 @@ return function(shared, repo_root)
     return result
   end
 
+  local function calculate_provider_average_pace(accounts, provider)
+    local provider_lower = string.lower(provider)
+    local include_free = provider_is_free_only(accounts, provider_lower)
+    local delta_total = 0
+    local delta_count = 0
+
+    for _, account in ipairs(accounts or {}) do
+      if string.lower(account.provider or '') == provider_lower then
+        if include_free or not is_free_account(account) then
+          if provider_lower == 'gemini' then
+            for _, window in ipairs(get_row_windows(account)) do
+              local pace = calculate_window_pace(window, window_duration(window))
+              if pace then
+                delta_total = delta_total + pace.delta
+                delta_count = delta_count + 1
+              end
+            end
+          elseif provider_lower == 'cursor' or provider_lower == 'grok' then
+            for _, window in ipairs(account.windows or {}) do
+              local pace = calculate_window_pace(window, window_duration(window))
+              if pace then
+                delta_total = delta_total + pace.delta
+                delta_count = delta_count + 1
+              end
+            end
+          elseif provider_lower == 'codex' then
+            -- Prefer the weekly bar when both windows exist. Some accounts only
+            -- expose the 5h bar, so keep it as the fallback. Pro accounts carry
+            -- 20x the capacity weight of a standard Plus account in the chip average.
+            local window = find_weekly_window(account) or find_five_hour_window(account)
+            if window then
+              local pace = calculate_window_pace(window, window_duration(window))
+              if pace then
+                local weight = string.lower(account.plan_type or '') == 'pro' and 20 or 1
+                delta_total = delta_total + pace.delta * weight
+                delta_count = delta_count + weight
+              end
+            end
+          elseif provider_lower == 'opencode' or provider_lower == 'commandcode' then
+            local monthly = find_monthly_window(account)
+            if monthly then
+              local pace = calculate_window_pace(monthly, window_duration(monthly))
+              if pace then
+                delta_total = delta_total + pace.delta
+                delta_count = delta_count + 1
+              end
+            end
+          else
+            local weekly = find_weekly_window(account)
+            if weekly then
+              local pace = calculate_window_pace(weekly, window_duration(weekly))
+              if pace then
+                delta_total = delta_total + pace.delta
+                delta_count = delta_count + 1
+              end
+            end
+          end
+        end
+      end
+    end
+
+    if delta_count == 0 then
+      return nil
+    end
+
+    return delta_total / delta_count
+  end
+
   local provider_labels = {Codex='Codex', Claude='Claude', Cursor='Cursor',
     Gemini='Antigravity', Grok='Grok', OpenCode='OpenCode', CommandCode='Cmd'}
   local window_labels = {
     ['5h'] = '', weekly = '', monthly = '', month = '',
-    reserve = 'Reserve', auto = 'Auto', api = 'API',
+    reserve = 'Reserve', argon = 'Argon', ['argon-weekly'] = 'Argon', ['argon-5h'] = 'Argon',
+    auto = 'Auto', api = 'API',
     gemini = '', other = 'Other',
     ['gemini-5h'] = '', ['gemini-weekly'] = '', ['other-5h'] = 'Other',
     ['other-weekly'] = 'Other', ['3p-weekly'] = 'Other', ['3p-5h'] = 'Other',
@@ -732,18 +730,19 @@ return function(shared, repo_root)
   local function row_height(width) return width < 880 and 24 or 16 end
 
   -- Pro Gemini has both 5h and weekly pools: stack Gem/Other within each
-  -- duration column on a 24px row. Free Gemini is weekly-only and stays on
-  -- the 16px grid.
+  -- duration column on a 24px row when both durations have multiple pools.
+  -- Free Gemini and single-row horizontal layouts stay on the 16px grid.
   local function gemini_duration_columns(wins)
     local five, week = {}, {}
     for _, window in ipairs(wins or {}) do
-      if normalized_window_label(window):find('weekly', 1, true) then
+      local norm = normalized_window_label(window)
+      if norm == 'argon' or norm:find('weekly', 1, true) then
         week[#week + 1] = window
       else
         five[#five + 1] = window
       end
     end
-    if #five == 0 or #week == 0 or (#five <= 1 and #week <= 1) then return nil end
+    if #five <= 1 or #week <= 1 then return nil end
     return {five, week}
   end
 

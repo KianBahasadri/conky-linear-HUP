@@ -8,7 +8,7 @@ column flanking the flat observed-data bars on the right, keeping bar lengths un
 Two-part labels left-align each quantity in a 3-character field so both numbers
 share x-positions across rows (`9h  58m`, `10d 11h`, `17d 1h`) rather than
 staggering with digit count.
-Pool-distinguishing labels (like `Auto`, `API`, or `Reserve`) flank
+Pool-distinguishing labels (like `Auto`, `API`, `Reserve`, or `Argon`) flank
 on the left. Standard interval windows (`5h`, `7d`, `Month`) omit the leading label so
 bars start directly beside the account name.
 Selected profiles use a neutral raised row and a medium-weight account name.
@@ -21,7 +21,7 @@ Single-column panels below 880px use compact 24px account rows; below 560px,
 quota windows stack beside the account name with enough height for each bar.
 When all accounts fit, these narrow lists sit at the bottom of their allocated
 region. The allocation for neighboring overlays stays unchanged. At 1280×1024,
-the 608px-wide panel shows the current 15 accounts together without paging.
+the 608px-wide panel shows the current 14 accounts together without paging.
 
 - Accounts sort alphabetically within each provider, regardless of plan tier.
 - A row without usable windows remains visible with `Retrying:` and its error.
@@ -74,12 +74,12 @@ profiles live in `~/.local/share/clusterfork-auth/`.
 ## Gemini
 
 - Accounts are discovered from Antigravity's rotation state in `~/.gemini/antigravity-cli/rotate-auth`. The selected profile reads the live GNOME Keyring item `service=gemini username=antigravity`; inactive profiles read `service=rotate-antigravity username=<profile>`.
-- Usage is fetched from Antigravity's Code Assist API (`retrieveUserQuotaSummary`). Pro accounts render two quota bars: 5-hour and weekly on one 16px row. Free accounts render one weekly bar on one 16px row. Paid tiers (such as Google AI Pro) are recognized from the account's `paidTier` subscription.
+- Usage is fetched from Antigravity's Code Assist API (`retrieveUserQuotaSummary` with `User-Agent: antigravity/cli/...` so the server includes the `Gemini Models` and `Gemini 4 Argon` quota groups). Pro accounts render 5-hour and weekly Gemini quota bars plus a third `Argon` weekly bar (when the separate Gemini 4 Argon pool is present) on one 16px row. Free accounts render one weekly bar on one 16px row. Paid tiers (such as Google AI Pro) are recognized from the account's `paidTier` subscription.
 - `GEMINI_ANTIGRAVITY_STATE_DIR` overrides the rotation state directory, `GEMINI_CODE_ASSIST_ENDPOINT` overrides the Antigravity API endpoint, `GEMINI_ANTIGRAVITY_CLI` overrides the `agy` executable, and `GEMINI_AUTH_REFRESH_TIMEOUT_SECONDS` controls the refresh timeout.
 
 ## Grok
 
-- Multiple accounts are discovered from `~/.grok/auth.json.*`; `GROK_AUTH_PATH` forces a single auth file.
+- Grok was removed from active display. Multiple accounts are discovered from `~/.grok/auth.json.*`; `GROK_AUTH_PATH` forces a single auth file.
 - Usage is fetched from Grok Build's billing API at `cli-chat-proxy.grok.com/v1/billing?format=credits`. It renders the included-credit pool as one bar per account (7-day cycle labelled `7d` on Build subscriptions, or monthly cycle labelled `Month` on Tier 1).
 - `GROK_HOME` overrides the Grok config directory and `GROK_CLI_CHAT_PROXY_BASE_URL` overrides the billing API base URL.
 
@@ -103,6 +103,7 @@ profiles live in `~/.local/share/clusterfork-auth/`.
 ## Removed providers
 
 - **Claude** account was removed from the rate limit panel because the Claude subscription expired.
+- **Grok** was removed from the rate limit panel.
 - **OpenCode Go** was removed from the rate limit panel.
 - **Pioneer** was removed from the rate limit panel. The Pioneer fetch script, cache files, env vars, and panel chip are no longer used.
 

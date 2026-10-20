@@ -90,6 +90,19 @@ def test_normalize_windows_with_retrieve_user_quota_summary_pro():
                     },
                 ],
             },
+            {
+                "displayName": "Gemini 4 Argon",
+                "description": "For paid Pro plans, Argon quota is separate.",
+                "buckets": [
+                    {
+                        "bucketId": "gemini-argon-wtu-weekly",
+                        "displayName": "Gemini 4 Argon Weekly Limit",
+                        "window": "weekly",
+                        "resetTime": "2026-06-19T20:00:00Z",
+                        "remainingFraction": 0.863,
+                    },
+                ],
+            },
         ]
     }
 
@@ -100,6 +113,7 @@ def test_normalize_windows_with_retrieve_user_quota_summary_pro():
         "gemini-weekly",
         "other-5h",
         "other-weekly",
+        "argon",
     ]
     assert windows[0]["usedPercent"] == 7.0
     assert windows[0]["windowSeconds"] == gemini.FIVE_HOUR_SECONDS
@@ -107,6 +121,8 @@ def test_normalize_windows_with_retrieve_user_quota_summary_pro():
     assert windows[1]["windowSeconds"] == gemini.WEEK_SECONDS
     assert windows[2]["usedPercent"] == 0.0
     assert windows[3]["usedPercent"] == 0.0
+    assert windows[4]["usedPercent"] == 13.7
+    assert windows[4]["windowSeconds"] == gemini.WEEK_SECONDS
 
 
 def test_normalize_windows_with_retrieve_user_quota_summary_free():

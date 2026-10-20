@@ -8,6 +8,13 @@ non-overlapping regions per the [Desktop design system](design-system.md).
 The usual window type is `desktop`, with
 `undecorated,below,sticky,skip_taskbar,skip_pager` hints.
 
+Every template explicitly selects `output_backend = 'x11'`, so GNOME Wayland
+sessions use Xwayland. Conky 1.25 otherwise selects native Wayland automatically;
+the 1.25.2 build crashes here in `display_output_wayland::set_font`, and GNOME
+lacks the layer-shell protocol needed for native desktop overlay placement.
+Keep the backend explicit when adding templates. See Conky's
+[output backend settings](https://conky.cc/config_settings#output_backend).
+
 The git overlay retains `own_window_type = 'normal'` plus `below`: under
 GNOME/Xwayland the desktop layer previously failed to composite that window
 at the leftmost monitor edge. Its placement is therefore owned by the window

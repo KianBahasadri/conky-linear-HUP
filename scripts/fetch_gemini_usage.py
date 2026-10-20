@@ -19,6 +19,7 @@ RENDER_PATH = CACHE_DIR / "gemini-usage-render.tsv"
 LOG_PATH = CACHE_DIR / "conky-rate-limit-panel.log"
 DEFAULT_STATE_DIR = Path.home() / ".gemini" / "antigravity-cli" / "rotate-auth"
 DEFAULT_ENDPOINT = "https://daily-cloudcode-pa.googleapis.com"
+DEFAULT_USER_AGENT = "antigravity/cli/1.4.2"
 DEFAULT_AUTH_REFRESH_TIMEOUT_SECONDS = 30
 API_VERSION = "v1internal"
 DAY_SECONDS = 24 * 60 * 60
@@ -150,7 +151,7 @@ def request_json(access_token, method, body):
     )
     request.add_header("Authorization", f"Bearer {access_token}")
     request.add_header("Content-Type", "application/json")
-    request.add_header("User-Agent", "antigravity-cli")
+    request.add_header("User-Agent", DEFAULT_USER_AGENT)
 
     try:
         with urllib.request.urlopen(request, timeout=20) as response:
@@ -231,8 +232,9 @@ def normalize_windows(payload, fetched_at=None, is_pro=True):
             if not isinstance(group, dict):
                 continue
             group_name = str(group.get("displayName", "")).lower()
-            is_gemini_group = "gemini" in group_name
-            prefix = "gemini" if is_gemini_group else "other"
+            is_argon_group = "argon" in group_name
+            is_gemini_group = "gemini" in group_name and not is_argon_group
+            prefix = "argon" if is_argon_group else ("gemini" if is_gemini_group else "other")
 
             def bucket_sort_key(b):
                 w = str(b.get("window", "")).lower()
@@ -258,7 +260,10 @@ def normalize_windows(payload, fetched_at=None, is_pro=True):
                 reset_after_seconds = max(0, reset_at - now)
                 used_percent = round((1 - remaining_fraction) * 100, 1)
 
-                label = f"{prefix}-5h" if is_5h else f"{prefix}-weekly"
+                if prefix == "argon" or "argon" in bucket_id:
+                    label = "argon-5h" if is_5h else "argon"
+                else:
+                    label = f"{prefix}-5h" if is_5h else f"{prefix}-weekly"
 
                 windows.append(
                     {
