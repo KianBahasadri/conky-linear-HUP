@@ -22,6 +22,7 @@
 - `cache/commandcode-usage.json`: normalized Command Code account/window usage for inspection.
 - `cache/commandcode-usage-render.tsv`: renderer-friendly Command Code usage consumed by the Cairo renderer.
 - `cache/commandcode-usage-cache-*.json`: last successful Command Code usage per account.
+- `cache/rate-limit-usage-history.tsv`: latest pre-05:00 usage sample and the latest later sample for each rate-limit window. The panel uses it to mute fill from before local 05:00. See [Rate limit panel](rate-limit-panel.md).
 - `cache/*-usage-render.tsv.fingerprint`: SHA-256 of the meaningful usage state from the matching render TSV, used by the adaptive rate-limit fetch loops to detect usage changes.
 - `cache/*-usage-render.tsv.last_change`: Unix epoch of the last fingerprint change for that fetcher; keeps the short poll interval active for `RATE_LIMIT_RECENT_CHANGE_WINDOW` seconds after any change.
 - `cache/minecraft-status.json`: Minecraft Java server status consumed by the Cairo renderer. Includes `lastPlayerSeenAt` / `lastPlayerSeenAtEpoch` and `lastSuccessfulAt` / `lastSuccessfulAtEpoch` for empty-server idle display; last-seen is only trusted across continuous successful polls.

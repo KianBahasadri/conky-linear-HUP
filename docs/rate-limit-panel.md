@@ -12,8 +12,7 @@ Pool-distinguishing labels (like `Auto`, `API`, `Reserve`, or `Argon`) flank
 on the left. Standard interval windows (`5h`, `7d`, `Month`) omit the leading label so
 bars start directly beside the account name.
 Selected profiles use a neutral raised row and a medium-weight account name.
-Providers with more than one visible account sit inside a faint rounded outline
-so those clusters read as a group, unless that provider is the only section in its column (such as Codex filling the left side alone). Single-account providers stay unframed. In two-column mode, whichever column has fewer accounts automatically expands its row pitch to fit the taller side so top and bottom edges are flush. Provider identity does not determine bar color. Shared typography, colors, and
+A single horizontal rule separates provider sections in a column. A column with only one provider has no rule. In two-column mode, whichever column has fewer accounts automatically expands its row pitch to fit the taller side so top and bottom edges are flush. Provider identity does not determine bar color. Shared typography, colors, and
 overflow are owned by the [Desktop design system](design-system.md).
 
 On monitors narrower than 1600px, the panel uses the full center column width.
@@ -26,6 +25,7 @@ the 608px-wide panel shows the current 13 accounts together without paging.
 - Accounts sort alphabetically within each provider, regardless of plan tier.
 - A row without usable windows remains visible with `Retrying:` and its error.
 - Full windows do not display a `full` text label; the 100% bar fill and danger color indicate capacity exhaustion, and the account name turns danger color if any of its displayed bars are filled.
+- Fill already recorded at local 05:00 is muted. Usage added since then keeps the bar's accent, or danger when the window is full. A window that opened at or after 05:00 is entirely current usage. The split reads `cache/rate-limit-usage-history.tsv`: the latest sample at or before 05:00 for that same account, window, and reset, clamped to the current fill. Until that sample exists, the whole fill stays the current color. Fetchers record a sample only when the used percent or reset changes, so an unchanged reading keeps the timestamp that was already in effect at 05:00. The first history file is seeded from Codex `stage=final` lines in the rate-limit panel log.
 - Expired/stale accounts keep their cached fill and reset time until that
   window's absolute reset passes, then show `Refresh`. See
   [Expired credentials and stale cache](expired-credentials.md).

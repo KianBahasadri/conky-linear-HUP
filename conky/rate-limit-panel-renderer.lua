@@ -9,6 +9,9 @@ return function(shared, repo_root)
   local grok_usage_tsv_path = repo_root .. '/cache/grok-usage-render.tsv'
   local opencode_usage_tsv_path = repo_root .. '/cache/opencode-usage-render.tsv'
   local commandcode_usage_tsv_path = repo_root .. '/cache/commandcode-usage-render.tsv'
+  local usage_history_path = repo_root .. '/cache/rate-limit-usage-history.tsv'
+  -- Local day boundary for the bar split. Must match scripts/fetch_common.py.
+  local day_start_hour = 5
   local function seconds_until_reset(window)
     if window.reset_at_epoch and window.reset_at_epoch > 0 then
       return math.max(0, window.reset_at_epoch - os.time())
@@ -150,12 +153,14 @@ return function(shared, repo_root)
             table.insert(usage.accounts, account_index[label])
           end
 
+          local raw_label = fields[5] or ''
           table.insert(account_index[label].windows, {
             label = normalized_window_label({
-              label = fields[5] or '',
+              label = raw_label,
               reset_at_epoch = tonumber(fields[9]) or 0,
               reset_after_seconds = tonumber(fields[10]) or 0,
             }),
+            raw_label = raw_label,
             used_percent = tonumber(fields[6]) or 0,
             remaining_percent = tonumber(fields[7]) or 0,
             resets_at = fields[8] or '',
@@ -223,6 +228,7 @@ return function(shared, repo_root)
           reset_at_epoch = reset_at_epoch,
           reset_after_seconds = reset_after_seconds,
         }),
+        raw_label = label,
         used_percent = used_percent,
         remaining_percent = shared.json_number(
           object,
@@ -734,9 +740,92 @@ return function(shared, repo_root)
     return rh
   end
 
+  -- Most recent local 05:00 at or before `now`. Today for the bar split starts then.
+  local function day_start_epoch(now)
+    now = now or os.time()
+    local parts = os.date('*t', now)
+    local start = os.time({
+      year = parts.year, month = parts.month, day = parts.day,
+      hour = day_start_hour, min = 0, sec = 0,
+    })
+    if now < start then
+      local yesterday = os.date('*t', start - 12 * 3600)
+      start = os.time({
+        year = yesterday.year, month = yesterday.month, day = yesterday.day,
+        hour = day_start_hour, min = 0, sec = 0,
+      })
+    end
+    return start
+  end
+
+  local function read_usage_history()
+    local content = shared.read_file(usage_history_path)
+    if not content or content == '' then
+      return {}
+    end
+    local rows = {}
+    for line in content:gmatch('[^\r\n]+') do
+      local fields = split_tsv(line)
+      if #fields >= 6 then
+        rows[#rows + 1] = {
+          t = tonumber(fields[1]) or 0,
+          provider = fields[2] or '',
+          account = fields[3] or '',
+          window = fields[4] or '',
+          reset = tonumber(fields[5]) or 0,
+          used = tonumber(fields[6]) or 0,
+        }
+      end
+    end
+    return rows
+  end
+
+  -- Used percent already on this same quota window at local 05:00.
+  -- A window that opened at or after 05:00 has none. Missing history leaves
+  -- the whole fill in the current color.
+  local function used_before_today(account, window, history, now)
+    local used = shared.clamp(window.used_percent or 0, 0, 100)
+    if used <= 0 then
+      return 0
+    end
+    now = now or os.time()
+    local day_start = day_start_epoch(now)
+    local window_seconds = tonumber(window.window_seconds) or 0
+    local reset = tonumber(window.reset_at_epoch) or 0
+    if reset > 0 and window_seconds > 0 and (reset - window_seconds) >= day_start then
+      return 0
+    end
+    local provider = provider_name(account)
+    local label = window.raw_label or window.label or ''
+    local account_label = account.label or ''
+    local best_t, best_used = nil, 0
+    for _, sample in ipairs(history or {}) do
+      if sample.provider == provider
+          and sample.account == account_label
+          and sample.window == label
+          and sample.reset == reset
+          and sample.t <= day_start
+          and (not best_t or sample.t > best_t) then
+        best_t = sample.t
+        best_used = sample.used or 0
+      end
+    end
+    if not best_t then
+      return 0
+    end
+    if best_used < 0 then
+      best_used = 0
+    end
+    if best_used > used then
+      return used
+    end
+    return best_used
+  end
+
   -- One quota window: label and countdown on the sides of a flat observed bar
   -- with a derived-color tick at the expected on-pace position.
-  local function draw_window(cr, account, window, x, y, width, show_pace, tall, by, pitch)
+  -- Fill already consumed at local 05:00 is muted; fill since then keeps the bar color.
+  local function draw_window(cr, account, window, x, y, width, show_pace, tall, by, pitch, history)
     local compact = by ~= nil
     local size = compact and 9 or 11
     local refresh = window_needs_refresh(account, window)
@@ -780,7 +869,17 @@ return function(shared, repo_root)
     end
 
     ui.rect(cr, bx, by, bw, bar_h, ui.line, 0)
-    if not refresh then ui.rect(cr, bx, by, bw * used / 100, bar_h, color, 0) end
+    if not refresh and used > 0 then
+      local prior = used_before_today(account, window, history)
+      local prior_w = bw * prior / 100
+      local today_w = bw * (used - prior) / 100
+      if prior_w > 0 then
+        ui.rect(cr, bx, by, prior_w, bar_h, ui.muted, 0)
+      end
+      if today_w > 0 then
+        ui.rect(cr, bx + prior_w, by, today_w, bar_h, color, 0)
+      end
+    end
     if show_pace and not refresh then
       local pace = calculate_window_pace(window, window_duration(window))
       if pace and pace.expected > 0 then
@@ -841,6 +940,7 @@ return function(shared, repo_root)
 
   local function draw()
     ui.draw(function(cr, width, height)
+      local history = read_usage_history()
       local usage = read_ai_usage() or {ok=false, accounts={}, error='Waiting for usage data'}
       local accounts = usage.accounts or {}
       if #accounts == 0 then
@@ -924,7 +1024,7 @@ return function(shared, repo_root)
             if stacked then
               for i, window in ipairs(wins) do
                 draw_window(cr, account, window, x, y + 2 + (i - 1) * 16,
-                  bar_area - 16, show_pace, false, nil, 16)
+                  bar_area - 16, show_pace, false, nil, 16, history)
               end
             elseif columns and pitch > 18 then
               local ww = bar_area / #columns
@@ -936,7 +1036,7 @@ return function(shared, repo_root)
                 for row, window in ipairs(group) do
                   local by = y + gap * row + bar_h * (row - 1)
                   draw_window(cr, account, window, x + (col - 1) * ww,
-                    y, ww - 16, show_pace, pitch > 24, by, pitch)
+                    y, ww - 16, show_pace, pitch > 24, by, pitch, history)
                 end
               end
             else
@@ -944,16 +1044,14 @@ return function(shared, repo_root)
               local ww = bar_area / window_columns
               for i, window in ipairs(wins) do
                 draw_window(cr, account, window, x + (i - 1) * ww,
-                  y, ww - 16, show_pace, pitch > 24, nil, pitch)
+                  y, ww - 16, show_pace, pitch > 24, nil, pitch, history)
               end
             end
           end
           y = y + pitch
         end
-        -- Faint rounded frames around each provider cluster. Drawn last so the
-        -- stroke sits on top of selected-row fills. Inset 1px so adjacent
-        -- groups do not share an edge. If a provider is the only provider on
-        -- that side, omit the frame.
+        -- One horizontal rule between provider sections. Drawn last so it sits
+        -- on top of selected-row fills. A column with a single provider has none.
         local is_only_provider = accounts[first].provider == accounts[last].provider
         if not is_only_provider then
           local gy, gstart = top or 0, first
@@ -964,10 +1062,10 @@ return function(shared, repo_root)
               gh = gh + heights[gend]
               gend = gend + 1
             end
-            if gend - gstart > 1 then
-              ui.rect(cr, col_x + 1, gy + 1, col_width - 2, math.max(1, gh - 2), ui.line, 6, 1, 1)
-            end
             gy = gy + gh
+            if gend <= last then
+              ui.line_between(cr, col_x, gy + 0.5, col_x + col_width, gy + 0.5, ui.line, 1)
+            end
             gstart = gend
           end
         end
@@ -1004,5 +1102,8 @@ return function(shared, repo_root)
              account_has_filled_bar = account_has_filled_bar,
              gemini_duration_columns = gemini_duration_columns,
              account_pitch = account_pitch,
-             provider_mark_indices = provider_mark_indices}}
+             provider_mark_indices = provider_mark_indices,
+             day_start_epoch = day_start_epoch,
+             used_before_today = used_before_today,
+             read_usage_history = read_usage_history}}
 end

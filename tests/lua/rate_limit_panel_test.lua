@@ -148,6 +148,56 @@ eq(marks[5], nil, 'Cursor first account does not get mark when another is select
 eq(marks[7], true, 'Gemini mark falls back to first account when none is selected')
 eq(marks[8], nil, 'Gemini second account does not get mark when none selected')
 
+local noon = os.time({year = 2026, month = 10, day = 21, hour = 12, min = 0, sec = 0})
+local noon_start = renderer._test.day_start_epoch(noon)
+local noon_parts = os.date('*t', noon_start)
+eq(noon_parts.year, 2026, 'day start keeps the year')
+eq(noon_parts.month, 10, 'day start keeps the month')
+eq(noon_parts.day, 21, 'afternoon belongs to the same local day')
+eq(noon_parts.hour, 5, 'day start is 05:00')
+eq(noon_parts.min, 0, 'day start is on the hour')
+
+local early = os.time({year = 2026, month = 10, day = 21, hour = 4, min = 30, sec = 0})
+local early_parts = os.date('*t', renderer._test.day_start_epoch(early))
+eq(early_parts.day, 20, 'before 05:00 still belongs to the previous local day')
+eq(early_parts.hour, 5, 'previous day also starts at 05:00')
+
+local day_start = noon_start
+local reset = day_start + 500000
+local history = {
+  {t = day_start - 60, provider = 'codex', account = 'ahmad', window = 'weekly', reset = reset, used = 16},
+  {t = day_start + 60, provider = 'codex', account = 'ahmad', window = 'weekly', reset = reset, used = 31},
+  {t = day_start - 10, provider = 'cursor', account = 'ahmad', window = 'weekly', reset = reset, used = 90},
+}
+local weekly = {
+  label = 'weekly', raw_label = 'weekly', used_percent = 31,
+  reset_at_epoch = reset, window_seconds = 604800,
+}
+eq(renderer._test.used_before_today({provider = 'Codex', label = 'ahmad'}, weekly, history, noon), 16,
+  'usage already recorded at 05:00 stays the prior portion')
+eq(renderer._test.used_before_today(
+  {provider = 'Codex', label = 'ahmad'},
+  {label = 'weekly', raw_label = 'weekly', used_percent = 10, reset_at_epoch = reset, window_seconds = 604800},
+  history, noon), 10,
+  'a later drop does not draw prior usage past the current fill')
+local opened_today = {
+  label = '5h', raw_label = '5h', used_percent = 13,
+  reset_at_epoch = noon + 18000, window_seconds = 18000,
+}
+eq(renderer._test.used_before_today({provider = 'Codex', label = 'sepehr'}, opened_today, history, noon), 0,
+  'a window that opened after 05:00 is all current usage')
+eq(renderer._test.used_before_today({provider = 'Codex', label = 'ryan'}, weekly, {}, noon), 0,
+  'missing history leaves the whole fill in the current color')
+
+local history_path = cache_root .. '/cache/rate-limit-usage-history.tsv'
+local history_file = io.open(history_path, 'w')
+history_file:write(string.format('%d\tcodex\tahmad\tweekly\t%d\t16.0\n', day_start - 60, reset))
+history_file:close()
+local loaded = renderer._test.read_usage_history()
+eq(#loaded, 1, 'history file yields one sample')
+eq(loaded[1].used, 16, 'history file keeps the used percent')
+eq(loaded[1].account, 'ahmad', 'history file keeps the account')
+
 if failures > 0 then
   print(failures .. ' failure(s)')
   os.exit(1)

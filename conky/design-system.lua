@@ -417,8 +417,7 @@ return function(shared)
 
   -- Arc gauge: a scalable 270° dial (opening at bottom) centered in `width`,
   -- with a Lucide symbol in the upper dome and a bold number at midline.
-  -- Has an unread nominal track stopping where threshold bands begin,
-  -- qualitative threshold bands, an active zone fill, and an optional 2px
+  -- Has an unread nominal track, an active zone fill, and an optional 2px
   -- square-capped peak hold tick indicator at the peak reading.
   function ui.arc_gauge(cr, icon, value, unit, x, y, width, opts)
     opts = opts or {}
@@ -452,17 +451,14 @@ return function(shared)
     local num_val = tonumber(opts.reading)
     local has_fill = measured and num_val ~= nil and num_val > 0
     local has_bands = warning ~= nil or critical ~= nil
-    local warn = warning or (critical or max)
-    local crit = critical or max
     local peak_val = measured and tonumber(opts.peak) or nil
     local is_peak_gauge = opts.peak_hold == true or (peak_val ~= nil)
 
-    -- 1. Track for the unread nominal sweep (stopping where threshold bands begin)
+    -- 1. Unread nominal track, including the rounded end cap.
     local track_start = has_fill and to_rad(num_val) or start_rad
-    local track_end = has_bands and to_rad(warn) or end_rad
-    if track_end - track_start >= 0.007 then
+    if end_rad - track_start >= 0.007 then
       cairo_new_path(cr)
-      cairo_arc(cr, cx, cy, r, track_start, track_end)
+      cairo_arc(cr, cx, cy, r, track_start, end_rad)
       shared.set_hex(cr, ui.line, 1)
       cairo_set_line_width(cr, band_w)
       cairo_set_line_cap(cr, CAIRO_LINE_CAP_BUTT or 0)
@@ -471,34 +467,9 @@ return function(shared)
     if not has_fill then
       ui.circle(cr, cx + r * math.cos(start_rad), cy + r * math.sin(start_rad), band_w / 2, ui.line, 1)
     end
-    if not has_bands then
-      ui.circle(cr, cx + r * math.cos(end_rad), cy + r * math.sin(end_rad), band_w / 2, ui.line, 1)
-    end
+    ui.circle(cr, cx + r * math.cos(end_rad), cy + r * math.sin(end_rad), band_w / 2, ui.line, 1)
 
-    -- 2. Threshold bands with butt caps; terminal band caps with rounded tip
-    if has_bands then
-      cairo_set_line_width(cr, band_w)
-      cairo_set_line_cap(cr, CAIRO_LINE_CAP_BUTT or 0)
-      if crit > warn then
-        cairo_new_path(cr)
-        cairo_arc(cr, cx, cy, r, to_rad(warn), to_rad(crit))
-        shared.set_hex(cr, ui.caution, 0.6)
-        cairo_stroke(cr)
-      end
-      if max > crit then
-        cairo_new_path(cr)
-        cairo_arc(cr, cx, cy, r, to_rad(crit), to_rad(max))
-        shared.set_hex(cr, ui.danger, 0.8)
-        cairo_stroke(cr)
-      end
-      local term_color = max > crit and ui.danger or (crit > warn and ui.caution or nil)
-      local term_alpha = max > crit and 0.8 or 0.6
-      if term_color then
-        ui.circle(cr, cx + r * math.cos(end_rad), cy + r * math.sin(end_rad), band_w / 2, term_color, term_alpha)
-      end
-    end
-
-    -- 3. Active zone arc fill
+    -- 2. Active zone arc fill
     if has_fill then
       local cap_angle = (band_w / 2) / r
       local fill_rad = is_peak_gauge and math.max(start_rad, to_rad(num_val) - cap_angle) or to_rad(num_val)
@@ -525,7 +496,7 @@ return function(shared)
       end
     end
 
-    -- 4. Peak hold tick line across radius 45px to 59px (r - 7*s to r + 7*s)
+    -- 3. Peak hold tick line across radius 45px to 59px (r - 7*s to r + 7*s)
     if is_peak_gauge and peak_val ~= nil and peak_val > 0 then
       local peak_rad = to_rad(peak_val)
       local cos_t, sin_t = math.cos(peak_rad), math.sin(peak_rad)
@@ -538,12 +509,12 @@ return function(shared)
       cairo_stroke(cr)
     end
 
-    -- 5. Lucide symbol in upper dome
+    -- 4. Lucide symbol in upper dome
     local icon_size = math.max(14, math.floor(24 * s + 0.5))
     local icon_top = dial_y + math.floor(22 * s + 0.5)
     ui.icon(cr, icon, cx - icon_size / 2, icon_top, icon_size, ui.muted)
 
-    -- 6. Value and unit centered at dial midline (cy)
+    -- 5. Value and unit centered at dial midline (cy)
     local num_size = math.max(14, math.floor(26 * s + 0.5))
     local unit_size = math.max(9, math.floor(12 * s + 0.5))
     local gap_val = math.max(2, math.floor(5 * s + 0.5))

@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
+import fcntl
 import json
 import math
 import os
+import re
 import stat
 import sys
 import tempfile
-from contextlib import suppress
-from datetime import datetime
+from contextlib import contextmanager, suppress
+from datetime import datetime, timedelta
 from pathlib import Path
 
 
@@ -85,6 +87,27 @@ def atomic_write_json(path, data, *, mode=None):
 
 def escape_tsv(value):
     return str(value).replace("\\", "\\\\").replace("\t", "\\t").replace("\n", "\\n")
+
+
+def unescape_tsv(value):
+    output = []
+    index = 0
+    while index < len(value):
+        if value[index] == "\\" and index + 1 < len(value):
+            nxt = value[index + 1]
+            if nxt == "t":
+                output.append("\t")
+            elif nxt == "n":
+                output.append("\n")
+            elif nxt == "\\":
+                output.append("\\")
+            else:
+                output.append(nxt)
+            index += 2
+        else:
+            output.append(value[index])
+            index += 1
+    return "".join(output)
 
 
 def as_float(value, default=0.0):
@@ -189,6 +212,291 @@ def flatten_bars(accounts):
 def write_usage_outputs(output_path, render_path, output):
     atomic_write_json(output_path, output)
     atomic_write_text(render_path, usage_render_tsv(output))
+    try:
+        record_rate_limit_usage_history(render_path, output)
+    except Exception as error:
+        print(f"rate-limit usage history: {error}", file=sys.stderr)
+
+
+# Local day boundary for the rate-limit bar split. Must match
+# conky/rate-limit-panel-renderer.lua.
+RATE_LIMIT_DAY_START_HOUR = 5
+RATE_LIMIT_USAGE_HISTORY_NAME = "rate-limit-usage-history.tsv"
+RATE_LIMIT_USAGE_HISTORY_RETENTION_SECONDS = 40 * 86400
+_CODEX_FINAL_RE = re.compile(
+    r"^\[(?P<ts>[^\]]+)\] fetch_codex_usage: account=(?P<account>\S+) stage=final\b"
+)
+_CODEX_VALUES_RE = re.compile(r"\bvalues=(?P<values>\S+)")
+_CODEX_WINDOW_RE = re.compile(
+    r"(?P<label>[A-Za-z0-9_-]+)\(used=(?P<used>\d+(?:\.\d+)?)%,"
+    r"(?:[^;]*?),reset=(?P<reset>[^,]*),[^;]*?window=(?P<window>\d+)s\)"
+)
+
+
+def local_day_start(now=None, tz=None):
+    """Most recent local 05:00 at or before `now`.
+
+    "Today" for the rate-limit bars starts at 05:00 in the machine timezone.
+    """
+    if now is not None and tz is None and now.tzinfo is not None:
+        tz = now.tzinfo
+    if tz is None:
+        tz = datetime.now().astimezone().tzinfo
+    if now is None:
+        now = datetime.now(tz)
+    elif now.tzinfo is None:
+        now = now.replace(tzinfo=tz)
+    else:
+        now = now.astimezone(tz)
+    start = now.replace(
+        hour=RATE_LIMIT_DAY_START_HOUR, minute=0, second=0, microsecond=0
+    )
+    if now < start:
+        # Subtracting a day can land off 05:00 across a DST transition.
+        yesterday = (start - timedelta(hours=12)).date()
+        start = datetime(
+            yesterday.year,
+            yesterday.month,
+            yesterday.day,
+            RATE_LIMIT_DAY_START_HOUR,
+            0,
+            tzinfo=tz,
+        )
+    return start
+
+
+def provider_from_render_path(render_path):
+    name = Path(render_path).name
+    marker = "-usage-render.tsv"
+    if not name.endswith(marker):
+        return ""
+    return name[: -len(marker)]
+
+
+def _history_key(sample):
+    return (sample["provider"], sample["account"], sample["window"], sample["reset"])
+
+
+def collapse_usage_history(samples, now):
+    """Keep the latest pre-05:00 sample and the latest later sample per window.
+
+    Finished windows are dropped. An unchanged used percent keeps its original
+    timestamp, so a flat reading from before 05:00 is still the baseline after
+    later polls.
+    """
+    day_start = int(local_day_start(now).timestamp())
+    now_epoch = int(now.timestamp())
+    grouped = {}
+    for sample in samples:
+        grouped.setdefault(_history_key(sample), []).append(sample)
+
+    kept = []
+    for key, group in grouped.items():
+        reset = key[3]
+        if reset > 0 and reset < now_epoch - 3600:
+            continue
+        before = [sample for sample in group if sample["t"] <= day_start]
+        after = [sample for sample in group if sample["t"] > day_start]
+        chosen = []
+        if before:
+            chosen.append(max(before, key=lambda sample: sample["t"]))
+        if after:
+            chosen.append(max(after, key=lambda sample: sample["t"]))
+        if not chosen:
+            continue
+        if chosen[-1]["t"] < now_epoch - RATE_LIMIT_USAGE_HISTORY_RETENTION_SECONDS:
+            continue
+        kept.extend(chosen)
+    kept.sort(key=lambda sample: (*_history_key(sample), sample["t"]))
+    return kept
+
+
+def format_usage_history(samples):
+    lines = []
+    for sample in samples:
+        used = round(float(sample["used"]), 1)
+        lines.append(
+            "\t".join(
+                [
+                    str(int(sample["t"])),
+                    escape_tsv(sample["provider"]),
+                    escape_tsv(sample["account"]),
+                    escape_tsv(sample["window"]),
+                    str(int(sample["reset"])),
+                    f"{used:.1f}",
+                ]
+            )
+        )
+    return ("\n".join(lines) + "\n") if lines else ""
+
+
+def load_usage_history(path):
+    path = Path(path)
+    if not path.is_file():
+        return []
+    samples = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        fields = line.split("\t")
+        if len(fields) < 6:
+            continue
+        samples.append(
+            {
+                "t": as_int(fields[0]),
+                "provider": unescape_tsv(fields[1]),
+                "account": unescape_tsv(fields[2]),
+                "window": unescape_tsv(fields[3]),
+                "reset": as_int(fields[4]),
+                "used": round(as_float(fields[5]), 1),
+            }
+        )
+    return samples
+
+
+def _usage_observations(provider, output, observed_at, existing):
+    latest = {}
+    for sample in existing:
+        key = _history_key(sample)
+        current = latest.get(key)
+        if current is None or sample["t"] >= current["t"]:
+            latest[key] = sample
+
+    observations = []
+    for account in output.get("accounts") or []:
+        if not account.get("ok") or account.get("staleCache"):
+            continue
+        label = str(account.get("label") or "")
+        if not label:
+            continue
+        for window in account.get("windows") or []:
+            window_label = str(window.get("label") or "")
+            if not window_label:
+                continue
+            reset = as_int(window.get("resetAtEpoch"))
+            used = round(as_float(window.get("usedPercent")), 1)
+            sample = {
+                "t": observed_at,
+                "provider": provider,
+                "account": label,
+                "window": window_label,
+                "reset": reset,
+                "used": used,
+            }
+            key = _history_key(sample)
+            current = latest.get(key)
+            if used == 0 and (current is None or current["used"] == 0):
+                continue
+            if current is not None and current["used"] == used:
+                continue
+            observations.append(sample)
+            latest[key] = sample
+    return observations
+
+
+def parse_codex_history_line(line):
+    """One Codex stage=final log line, or None when it is not a fresh API sample."""
+    if " stage=final " not in line or " ok=1 " not in line:
+        return None
+    if " endpoint_fresh=1 " not in line or " source=api " not in line:
+        return None
+    header = _CODEX_FINAL_RE.match(line)
+    values = _CODEX_VALUES_RE.search(line)
+    if not header or not values:
+        return None
+    try:
+        observed_at = int(datetime.fromisoformat(header.group("ts")).timestamp())
+    except ValueError:
+        return None
+    samples = []
+    for window in _CODEX_WINDOW_RE.finditer(values.group("values")):
+        used = round(as_float(window.group("used")), 1)
+        if used == 0:
+            continue
+        reset = parse_iso_epoch(window.group("reset"))
+        if reset <= 0:
+            continue
+        samples.append(
+            {
+                "t": observed_at,
+                "provider": "codex",
+                "account": header.group("account"),
+                "window": window.group("label"),
+                "reset": reset,
+                "used": used,
+            }
+        )
+    return samples
+
+
+def backfill_codex_usage_history(log_paths):
+    samples = []
+    for path in log_paths:
+        try:
+            lines = Path(path).read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError:
+            continue
+        for line in lines:
+            parsed = parse_codex_history_line(line)
+            if parsed:
+                samples.extend(parsed)
+    return samples
+
+
+def rate_limit_log_paths(cache_dir=CACHE_DIR):
+    paths = []
+    cache_dir = Path(cache_dir)
+    for name in (
+        "conky-rate-limit-panel.log",
+        "conky-rate-limit-panel.log.1",
+        "conky-rate-limit-panel.log.2",
+    ):
+        path = cache_dir / name
+        if path.is_file():
+            paths.append(path)
+    return paths
+
+
+@contextmanager
+def _exclusive_file_lock(path):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = path.with_name(f".{path.name}.lock")
+    with open(lock_path, "a", encoding="utf-8") as handle:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+def record_rate_limit_usage_history(render_path, output, now=None, cache_dir=CACHE_DIR):
+    """Append changed window samples and fold them to the 05:00 baseline.
+
+    The first history file under the live cache is seeded from Codex
+    `stage=final` lines so the current day can split before the next morning.
+    """
+    provider = provider_from_render_path(render_path)
+    if not provider:
+        return
+    history_path = Path(render_path).parent / RATE_LIMIT_USAGE_HISTORY_NAME
+    now = now or datetime.now().astimezone()
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=datetime.now().astimezone().tzinfo)
+    observed_at = int(now.timestamp())
+
+    with _exclusive_file_lock(history_path):
+        if history_path.is_file():
+            samples = load_usage_history(history_path)
+        elif history_path.parent.resolve() == Path(cache_dir).resolve():
+            try:
+                samples = backfill_codex_usage_history(rate_limit_log_paths(cache_dir))
+            except Exception as error:
+                print(f"rate-limit usage history backfill: {error}", file=sys.stderr)
+                samples = []
+        else:
+            samples = []
+        samples.extend(_usage_observations(provider, output, observed_at, samples))
+        atomic_write_text(history_path, format_usage_history(collapse_usage_history(samples, now)))
 
 
 # Must match conky/rate-limit-panel-renderer.lua.

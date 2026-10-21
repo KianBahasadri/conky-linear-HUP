@@ -168,11 +168,9 @@ history, and peaks remain separate for each device.
 Dials are at most 80px across (about 10% smaller than the original row), in a
 176px-tall region with the personal metrics below. Each is
 a compact 270° arc gauge with its symbol in the upper dome, centered numeral and
-unit at the midline, qualitative threshold bands, and a 2px square-capped peak hold tick indicator decaying back down slowly when readings fall. CPU, memory, and GPU are fixed at 0–100%
-with qualitative caution bands from 80% to 95%, and a danger band above 95%.
+unit at the midline, and a 2px square-capped peak hold tick indicator decaying back down slowly when readings fall. CPU, memory, and GPU are fixed at 0–100%.
 The network dials use the highest recorded usage on the active network in the last week
-(`cache/resource-net-peaks.tsv`) as the scale ceiling / red danger zone, with matching
-caution bands at 80%–95% and danger band above 95%. A reading above its plot maximum
+(`cache/resource-net-peaks.tsv`) as the scale ceiling. A reading above its plot maximum
 keeps its real number and is clipped only in the gauge fill. Utilization at or above 80% turns the
 active fill and number caution, and 95% turns them danger. When readings rise, the peak tick indicator is immediately pushed up; when readings fall, it decays back down slowly at 0.05% of channel maximum per second (slowed 100× from the design guide's 5%/s baseline; configurable via `RESOURCE_PEAK_DECAY_RATE`), with the active fill arc path terminating under the tick line so its rounded cap hides beneath it.
 
