@@ -108,11 +108,12 @@ can add lines. Branches truncate first, preserving the Git
 counts and presence; counts wrap as complete tokens when necessary. Repository
 health badges retain the ordering described in [Git status](git.md).
 
-Logins driving no session, sessions outside the visible Git fleet, and orphan
-dashboards share one continuous list with the repositories, using the same row
-spacing. Session names remain on these unmatched rows. Unknown remote logins
-retain their square danger badge, even when they are attached to a session
-already shown in a repository row.
+Sessions outside the visible Git fleet and orphan dashboards share one
+continuous list with the repositories, using the same row spacing. Session
+names remain on these unmatched rows. Logins that are not driving a session
+are left off that list. Unknown remote logins retain their square danger
+badge, even when they are attached to a session already shown in a repository
+row.
 
 ## Placement
 

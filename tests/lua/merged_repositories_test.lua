@@ -109,7 +109,7 @@ files['sessions.json'] = [[{"ok":true,"devices":[
   {"name":"extra-dashboard","repo":"not-in-fleet","path":"/work/not-in-fleet","windows":0,"codeviewPresent":true,"codeviewRunning":false}]}]]
 draw()
 assert(count('Unknown remote') == 1, 'unknown remote must remain loud even when attached')
-assert(count('spare-host') == 1 and count('login 8m') == 1, 'a login without a session must survive')
+assert(count('spare-host') == 0 and count('login 8m') == 0, 'a login without a session stays off the list')
 assert(count('unrelated-copy') == 1 and count('scratch') == 1, 'orphan sessions and equal basenames must survive')
 assert(count('extra-dashboard') == 1 and mark_count('eye-closed') == 1, 'dashboards outside the visible fleet must survive')
 assert(count('0s') == 0 and count('5m') == 0 and count('unknown') == 0, 'session idle is not drawn')

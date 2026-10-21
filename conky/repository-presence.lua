@@ -118,9 +118,9 @@ return function(shared, repo_root)
     end
     local extra = {}
     for _, device in ipairs(state.devices) do
-      local attached = false
-      for _, name in ipairs(names(device.session)) do if active[name] then attached = true end end
-      if device.state == 'alert' or not attached then
+      -- Idle who rows (pts/N, "login 3h") stay off the list for now.
+      -- An unknown remote still gets its own row.
+      if device.state == 'alert' then
         extra[#extra + 1] = {name = device.name, devices = {device}, login = device,
           session_count = 0, idle = -1}
       end

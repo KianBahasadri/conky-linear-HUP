@@ -37,12 +37,10 @@ def merged_heights(repos, state, width, env):
     """Conservative natural heights; Cairo measures and packs the actual rows.
 
     Count only real sessions, resolve all attached device names, and keep
-    unmatched sessions and inbound logins in the allocation. The mono estimate
-    rounds up so a width-dependent extra line has room at launch.
+    unmatched sessions in the allocation. Idle who logins are omitted; an
+    unknown remote still takes a row. The mono estimate rounds up so a
+    width-dependent extra line has room at launch.
     """
-    def names(value):
-        return {name.strip() for name in (value or "").split(",") if name.strip()}
-
     def name_list(value):
         return [name.strip() for name in (value or "").split(",") if name.strip()]
 
@@ -122,10 +120,9 @@ def merged_heights(repos, state, width, env):
         return pitch
 
     heights = [group_height(group) for group in groups]
-    active = {s.get("name") for s in sessions if s.get("windows", 0) > 0}
     logins = [d for d in state.get("devices") or [] if isinstance(d, dict)
-              and (d.get("state") == "alert" or not names(d.get("session")) & active)] if state.get("ok") else []
-    extra = [18 if d.get("state") == "alert" else 36 for d in logins]
+              and d.get("state") == "alert"] if state.get("ok") else []
+    extra = [18 for _ in logins]
     extra += [group_height(group) for group in residual]
     if not state.get("ok"):
         extra.append(36)
