@@ -7,8 +7,8 @@ return function(shared, repo_root)
     glyph_size = 38,
     stack_gap = 8,
     row_gap = 6.5,
-    tube_scale = 0.662,
-    tube_offset_y = -14.5,
+    tube_scale = 0.628,
+    tube_offset_y = -13.76,
   })
   return {draw = function()
     shared.ui.draw(function(cr, _, height)

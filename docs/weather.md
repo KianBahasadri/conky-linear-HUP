@@ -19,8 +19,10 @@ rather than explicit section headers or status chips:
   weight, red when moving away), and measurement age (or `Stale`). The second
   line shows the step change and previous weigh-in date on the left and the
   target weight (`→ 183 lb`) on the right. Underneath, a 12-weigh-in trajectory
-  sparkline plots a shaded area and semantic curve against the dashed 30-day
-  average baseline. The [phone data source](workout-data-source.md#weight-backups-from-openscale)
+  sparkline plots shaded segment areas and curve segments colored by direction
+  (green when weight decreased, red when it increased) above a grounded
+  baseline against the dashed 30-day average baseline, ending with a matching
+  endpoint marker flush with the adjacent panels' bottom rail. The [phone data source](workout-data-source.md#weight-backups-from-openscale)
   describes how openScale backups are read. An unreadable or incomplete upload
   keeps the last successful weight summary and marks it `Stale`; without a
   successful reading, the section shows an explanatory placeholder.

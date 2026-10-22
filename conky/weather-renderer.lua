@@ -220,19 +220,43 @@ return function(shared, repo_root)
       end
     end
     local span = math.max(1.0, max_v - min_v)
-    local color = semantic_color(kind)
 
     local pts = {}
-    local area = {{x + 2, y + h}}
     for idx = 1, n do
       local v = recent[start_idx + idx - 1].value
       local px = x + 2 + ((idx - 1) / (n - 1)) * (w - 5)
       local py = y + h - 2 - ((v - min_v) / span) * (h - 4)
       pts[#pts + 1] = {px, py}
-      area[#area + 1] = {px, py}
     end
-    area[#area + 1] = {pts[#pts][1], y + h}
-    ui.polygon(cr, area, color, 0.10)
+
+    local runs = {}
+    local current_run = nil
+    for idx = 1, n - 1 do
+      local v1 = recent[start_idx + idx - 1].value
+      local v2 = recent[start_idx + idx].value
+      local seg_color = ui.muted
+      local seg_kind = 'neutral'
+      if v2 > v1 then
+        seg_color = ui.danger
+        seg_kind = 'danger'
+      elseif v2 < v1 then
+        seg_color = ui.good
+        seg_kind = 'good'
+      end
+      if not current_run or current_run.color ~= seg_color then
+        current_run = {color = seg_color, kind = seg_kind, pts = {pts[idx], pts[idx + 1]}}
+        runs[#runs + 1] = current_run
+      else
+        current_run.pts[#current_run.pts + 1] = pts[idx + 1]
+      end
+    end
+
+    for _, run in ipairs(runs) do
+      local area = {{run.pts[1][1], y + h}}
+      for _, pt in ipairs(run.pts) do area[#area + 1] = pt end
+      area[#area + 1] = {run.pts[#run.pts][1], y + h}
+      ui.polygon(cr, area, run.color, 0.08)
+    end
 
     if count_prior > 0 then
       local avg_v = sum_prior / count_prior
@@ -240,9 +264,17 @@ return function(shared, repo_root)
       ui.dash(cr, x, avg_y, x + w, avg_y, ui.line_strong, 1, 2, 2, 0.75)
     end
 
-    ui.polyline(cr, pts, color, 1.5, 0.95, true)
+    ui.line_between(cr, x, y + h - 0.5, x + w, y + h - 0.5, ui.line_strong, 1, 0.75)
+
+    for _, run in ipairs(runs) do
+      ui.polyline(cr, run.pts, run.color, 1.5, 0.95, true)
+    end
+
     local last_pt = pts[#pts]
-    draw_endpoint(cr, last_pt[1], last_pt[2], kind, color)
+    local last_run = runs[#runs]
+    local end_kind = last_run and last_run.kind or kind
+    local end_color = last_run and last_run.color or semantic_color(kind)
+    draw_endpoint(cr, last_pt[1], last_pt[2], end_kind, end_color)
   end
 
   local function draw_training(cr, workouts, width, top)
