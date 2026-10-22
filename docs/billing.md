@@ -45,10 +45,9 @@ otherwise; the compact dimensions are described under placement below.
   (4.9% effective alpha). Actual overrun segments and their sharp endpoints keep
   full emphasis.
 - Gridlines every 25 points up through the third red bar (300%, with intermediate
-  25% ticks omitted above 300%), the 100% boundary and each subsequent 100%
-  overage marker repeating the 1.5px danger stroke at 40% opacity, and a faint
-  dotted even-consumption pace line are the map's only reference marks. It
-  carries no text.
+  25% ticks omitted above 300%), and the 100% boundary and each subsequent 100%
+  overage marker repeating the 1.5px danger stroke at 40% opacity, are the map's
+  only reference marks. It carries no text.
 - With no providers at all, an explicit `Unavailable` callout replaces the map.
 
 The earlier affine diamond and Cairo design sources are preserved in the
