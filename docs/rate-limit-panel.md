@@ -55,7 +55,7 @@ profiles live in `~/.local/share/clusterfork-auth/`.
 - When the account-level limit is reached (`limit_reached` / `allowed`), only the blocking window is pinned to 100%: the one whose reset matches the response's `rate_limit_upsell.reset_at`, or the fullest window when the banner is missing (rollout samples always use the fullest window, since they carry no banner). Other windows keep their reported percentages, so an exhausted 5h window no longer pegs the weekly bar.
 - A third `reserve` bar is rendered when `/wham/usage` includes `additional_rate_limits` whose `limit_name` contains `reserve` (today `gpt-reserve`, Luna Reserve). That bucket is a fallback weekly pool, not a refill of the main 5h/weekly windows, so account-level reached/allowed flags never pin it. The bar is labelled `RESERVE` on the bar. Accounts without that extra limit keep two bars.
 - Recent Codex rollout samples are still logged per session for diagnostics, including their values and matching account candidates. They never override a fresh endpoint response, so an older local sample cannot make a bar move backward. Local samples only carry 5h and weekly; an existing reserve window is kept beside them rather than dropped.
-- The `CODEX` summary's pace percentage uses the weekly window when available and falls back to the 5h window only when weekly is absent (Pro accounts are weighted 20x relative to Plus accounts in the average). Reserve is never the summary's pace source. Free accounts have a single 30-day window.
+- The `CODEX` summary's pace percentage uses the weekly window when available, falling back to 5h and monthly (for Free accounts). Pro accounts are weighted 20x relative to Plus accounts (400x relative to Free accounts), while Plus accounts are weighted 20x relative to Free accounts (weight 1) in the average. Reserve is never the summary's pace source. Free accounts have a single 30-day window.
 
 ## Claude
 
@@ -69,7 +69,7 @@ profiles live in `~/.local/share/clusterfork-auth/`.
 - Multiple accounts are discovered from `~/.local/share/clusterfork-auth/cursor/auth.json.*`; `CURSOR_AUTH_PATH` forces a single auth file and `CURSOR_HOME` overrides the config directory. The legacy path `~/.config/cursor/auth.json.*` is used as a fallback when the shared store directory does not exist.
 - `CURSOR_AUTH_STORE_DIR` overrides the shared auth store directory.
 - Usage is fetched from Cursor's DashboardService. It renders Cursor's monthly `Auto + Composer` and `API` usage pools as the two bars for each account.
-- Free and paid accounts share the same `Auto` and `API` window labels; plan tier still controls pace eligibility.
+- Free and paid accounts share the same `Auto` and `API` window labels. Both Pro and Free accounts display on-pace ticks and participate in the `CURSOR` average pace summary, with Pro accounts weighted 20x relative to Free accounts (weight 1).
 
 ## Gemini
 
@@ -118,10 +118,10 @@ profiles live in `~/.local/share/clusterfork-auth/`.
 
 ## Pace markers
 
-- Weekly and 5h pace markers are per paid account: each bar uses that window's own reset time.
+- Pace markers render across all accounts (both paid and free): each bar uses that window's own reset time.
 - The derived-color tick is **expected** usage for on-pace spend: `expected = (windowSeconds - remainingSeconds) / windowSeconds * 100` (elapsed time through the reset window, not `usedPercent`). Ticks render on top of the bar fill with full opacity (`1.0`) when positioned within the filled progress region (`expected <= usedPercent`), and quieter opacity (`0.7`) when ahead on the empty track.
 - **Visibility:** hide the tick while none of the reset window has elapsed (`expected <= 0`). Unused sliding resets report remaining equal to the full duration at fetch time; treat those as not elapsed even after later wall-clock countdown. Show the tick as soon as any of the window has elapsed (`expected > 0`), even at 0% fill or the left edge. Do not gate on `usedPercent`, and do not hide based on pixel/rounded display position. A window that has not started has its whole span ahead of it, not behind it: treat its zero countdown as fully remaining so the tick stays hidden instead of pinning to the right edge.
-- Per-provider summary deltas and per-bar ticks also cover paid accounts only, except for Gemini where free accounts carry pace ticks, and when a provider has no paid account at all (free accounts carry pace instead). Pro Gemini accounts carry 20x the capacity weight of a Free account in the pace summary.
+- Per-provider summary deltas include all accounts, properly capacity-weighted by tier: Pro accounts carry 20x the weight of Free accounts on Cursor and Gemini. On Codex, Pro carries 400x, Plus carries 20x, and Free carries 1x (maintaining a 20x ratio between each tier).
 - Each provider group shows one pace value, its average delta, beside the group name.
 
 ## Disable

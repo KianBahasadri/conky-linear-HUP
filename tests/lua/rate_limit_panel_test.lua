@@ -225,14 +225,62 @@ eq(math.floor(gemini_delta + 0.5), 14, 'Gemini Pro carries 20x the weight of Gem
 
 local shows_pace = renderer._test.account_shows_pace
 eq(shows_pace(gemini_mixed_accounts, gemini_mixed_accounts[1]), true, 'Gemini Pro shows pace')
-eq(shows_pace(gemini_mixed_accounts, gemini_mixed_accounts[2]), true, 'Gemini Free (baba) shows pace even with Pro account present')
+eq(shows_pace(gemini_mixed_accounts, gemini_mixed_accounts[2]), true, 'Gemini Free (baba) shows pace')
 
 local cursor_mixed_accounts = {
-  { provider = 'Cursor', label = 'sepehr', plan_type = 'pro' },
-  { provider = 'Cursor', label = 'kian', plan_type = 'free' },
+  {
+    provider = 'Cursor', label = 'sepehr', plan_type = 'pro',
+    windows = {
+      { label = 'auto', used_percent = 65, reset_after_seconds = 1296000, window_seconds = 2592000 },
+      { label = 'api', used_percent = 65, reset_after_seconds = 1296000, window_seconds = 2592000 },
+    }
+  },
+  {
+    provider = 'Cursor', label = 'kian', plan_type = 'free',
+    windows = {
+      { label = 'auto', used_percent = 44, reset_after_seconds = 1296000, window_seconds = 2592000 },
+      { label = 'api', used_percent = 44, reset_after_seconds = 1296000, window_seconds = 2592000 },
+    }
+  },
 }
 eq(shows_pace(cursor_mixed_accounts, cursor_mixed_accounts[1]), true, 'Cursor Pro shows pace')
-eq(shows_pace(cursor_mixed_accounts, cursor_mixed_accounts[2]), false, 'Cursor Free does not show pace when Pro account present')
+eq(shows_pace(cursor_mixed_accounts, cursor_mixed_accounts[2]), true, 'Cursor Free shows pace')
+
+-- Cursor pace calculation: sepehr delta = +15 (weight 20), kian delta = -6 (weight 1)
+-- (20 * 15 + 1 * -6) / 21 = 14%
+local cursor_delta = calc_pace(cursor_mixed_accounts, 'Cursor')
+eq(cursor_delta ~= nil, true, 'Cursor pace calculation produces a value with mixed free/pro')
+eq(math.floor(cursor_delta + 0.5), 14, 'Cursor Pro carries 20x the weight of Cursor Free in pace delta')
+
+local codex_mixed_accounts = {
+  {
+    provider = 'Codex', label = 'kian', plan_type = 'pro',
+    windows = {
+      { label = 'weekly', used_percent = 65, reset_after_seconds = 302400, window_seconds = 604800 },
+    }
+  },
+  {
+    provider = 'Codex', label = 'ahmad', plan_type = 'plus',
+    windows = {
+      { label = 'weekly', used_percent = 55, reset_after_seconds = 302400, window_seconds = 604800 },
+    }
+  },
+  {
+    provider = 'Codex', label = 'bashir', plan_type = 'free',
+    windows = {
+      { label = 'monthly', used_percent = 50, reset_after_seconds = 1296000, window_seconds = 2592000 },
+    }
+  },
+}
+eq(shows_pace(codex_mixed_accounts, codex_mixed_accounts[1]), true, 'Codex Pro shows pace')
+eq(shows_pace(codex_mixed_accounts, codex_mixed_accounts[2]), true, 'Codex Plus shows pace')
+eq(shows_pace(codex_mixed_accounts, codex_mixed_accounts[3]), true, 'Codex Free shows pace')
+
+-- Codex pace calculation: kian (pro, weight 400) delta = +15, ahmad (plus, weight 20) delta = +5, bashir (free, weight 1) delta = 0
+-- (400 * 15 + 20 * 5 + 1 * 0) / 421 = (6000 + 100) / 421 = 6100 / 421 = 14.489% -> 14%
+local codex_delta = calc_pace(codex_mixed_accounts, 'Codex')
+eq(codex_delta ~= nil, true, 'Codex pace calculation produces a value with mixed free/plus/pro')
+eq(math.floor(codex_delta + 0.5), 14, 'Codex Pro (400x) and Plus (20x) properly weight against Free (1x) in pace delta')
 
 if failures > 0 then
   print(failures .. ' failure(s)')

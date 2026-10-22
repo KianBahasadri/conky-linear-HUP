@@ -327,24 +327,6 @@ return function(shared, repo_root)
     return string.lower(account.plan_type or '') == 'free'
   end
 
-  -- Pace is normally a paid-account signal, but a provider with no paid plan at
-  -- all (Antigravity today) would lose its chip percentage and bar ticks
-  -- permanently. Keep pace for the free accounts of such a provider.
-  local function provider_is_free_only(accounts, provider)
-    local provider_lower = string.lower(provider or '')
-    local seen = false
-
-    for _, account in ipairs(accounts or {}) do
-      if string.lower(account.provider or '') == provider_lower then
-        seen = true
-        if not is_free_account(account) then
-          return false
-        end
-      end
-    end
-
-    return seen
-  end
 
   local function sort_accounts(accounts)
     for index, account in ipairs(accounts or {}) do
@@ -533,7 +515,7 @@ return function(shared, repo_root)
   end
 
   local function account_shows_pace(accounts, account)
-    return not is_free_account(account) or provider_is_free_only(accounts, account.provider) or provider_name(account) == 'gemini'
+    return true
   end
 
   local function window_reset_has_passed(window)
@@ -636,69 +618,74 @@ return function(shared, repo_root)
 
   local function calculate_provider_average_pace(accounts, provider)
     local provider_lower = string.lower(provider or '')
-    local include_free = provider_is_free_only(accounts, provider_lower) or provider_lower == 'gemini'
     local delta_total = 0
     local delta_count = 0
 
     for _, account in ipairs(accounts or {}) do
       if string.lower(account.provider or '') == provider_lower then
-        if include_free or not is_free_account(account) then
-          if provider_lower == 'gemini' then
-            local acct_delta_total = 0
-            local acct_delta_count = 0
-            for _, window in ipairs(get_row_windows(account)) do
-              local pace = calculate_window_pace(window, window_duration(window))
-              if pace then
-                acct_delta_total = acct_delta_total + pace.delta
-                acct_delta_count = acct_delta_count + 1
-              end
+        if provider_lower == 'gemini' then
+          local acct_delta_total = 0
+          local acct_delta_count = 0
+          for _, window in ipairs(get_row_windows(account)) do
+            local pace = calculate_window_pace(window, window_duration(window))
+            if pace then
+              acct_delta_total = acct_delta_total + pace.delta
+              acct_delta_count = acct_delta_count + 1
             end
-            if acct_delta_count > 0 then
-              local acct_avg_delta = acct_delta_total / acct_delta_count
-              -- Pro Gemini accounts carry 20x the capacity weight of a standard Free account
-              -- in the pace average, matching Codex Pro weighting.
-              local weight = string.lower(account.plan_type or '') == 'pro' and 20 or 1
-              delta_total = delta_total + acct_avg_delta * weight
+          end
+          if acct_delta_count > 0 then
+            local acct_avg_delta = acct_delta_total / acct_delta_count
+            -- Pro Gemini accounts carry 20x the capacity weight of a Free account.
+            local weight = string.lower(account.plan_type or '') == 'pro' and 20 or 1
+            delta_total = delta_total + acct_avg_delta * weight
+            delta_count = delta_count + weight
+          end
+        elseif provider_lower == 'cursor' or provider_lower == 'grok' then
+          local acct_delta_total = 0
+          local acct_delta_count = 0
+          for _, window in ipairs(account.windows or {}) do
+            local pace = calculate_window_pace(window, window_duration(window))
+            if pace then
+              acct_delta_total = acct_delta_total + pace.delta
+              acct_delta_count = acct_delta_count + 1
+            end
+          end
+          if acct_delta_count > 0 then
+            local acct_avg_delta = acct_delta_total / acct_delta_count
+            -- Pro Cursor accounts carry 20x the capacity weight of a Free account.
+            local weight = string.lower(account.plan_type or '') == 'pro' and 20 or 1
+            delta_total = delta_total + acct_avg_delta * weight
+            delta_count = delta_count + weight
+          end
+        elseif provider_lower == 'codex' then
+          -- Prefer weekly, then 5h, then monthly (for free accounts).
+          -- Capacity weights: Pro is 400x Free (20x Plus), Plus is 20x Free, Free is 1x.
+          local window = find_weekly_window(account) or find_five_hour_window(account) or find_monthly_window(account)
+          if window then
+            local pace = calculate_window_pace(window, window_duration(window))
+            if pace then
+              local plan = string.lower(account.plan_type or '')
+              local weight = plan == 'pro' and 400 or (plan == 'plus' and 20 or 1)
+              delta_total = delta_total + pace.delta * weight
               delta_count = delta_count + weight
             end
-          elseif provider_lower == 'cursor' or provider_lower == 'grok' then
-            for _, window in ipairs(account.windows or {}) do
-              local pace = calculate_window_pace(window, window_duration(window))
-              if pace then
-                delta_total = delta_total + pace.delta
-                delta_count = delta_count + 1
-              end
+          end
+        elseif provider_lower == 'opencode' or provider_lower == 'commandcode' then
+          local monthly = find_monthly_window(account)
+          if monthly then
+            local pace = calculate_window_pace(monthly, window_duration(monthly))
+            if pace then
+              delta_total = delta_total + pace.delta
+              delta_count = delta_count + 1
             end
-          elseif provider_lower == 'codex' then
-            -- Prefer the weekly bar when both windows exist. Some accounts only
-            -- expose the 5h bar, so keep it as the fallback. Pro accounts carry
-            -- 20x the capacity weight of a standard Plus account in the chip average.
-            local window = find_weekly_window(account) or find_five_hour_window(account)
-            if window then
-              local pace = calculate_window_pace(window, window_duration(window))
-              if pace then
-                local weight = string.lower(account.plan_type or '') == 'pro' and 20 or 1
-                delta_total = delta_total + pace.delta * weight
-                delta_count = delta_count + weight
-              end
-            end
-          elseif provider_lower == 'opencode' or provider_lower == 'commandcode' then
-            local monthly = find_monthly_window(account)
-            if monthly then
-              local pace = calculate_window_pace(monthly, window_duration(monthly))
-              if pace then
-                delta_total = delta_total + pace.delta
-                delta_count = delta_count + 1
-              end
-            end
-          else
-            local weekly = find_weekly_window(account)
-            if weekly then
-              local pace = calculate_window_pace(weekly, window_duration(weekly))
-              if pace then
-                delta_total = delta_total + pace.delta
-                delta_count = delta_count + 1
-              end
+          end
+        else
+          local weekly = find_weekly_window(account) or find_monthly_window(account)
+          if weekly then
+            local pace = calculate_window_pace(weekly, window_duration(weekly))
+            if pace then
+              delta_total = delta_total + pace.delta
+              delta_count = delta_count + 1
             end
           end
         end
