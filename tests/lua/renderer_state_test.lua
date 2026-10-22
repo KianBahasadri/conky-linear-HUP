@@ -74,8 +74,8 @@ for _, rect in ipairs(rects) do
   end
 end
 assert(#bar_fills == 2, 'full split bar must draw both prior and today segments')
-assert(bar_fills[1].color == ui.danger, 'before-today segment on a full bar must be red')
-assert(bar_fills[2].color == ui.accent, 'today segment on a full bar must stay turquoise')
+assert(bar_fills[1].color == ui.muted, 'before-today segment on a full bar must stay muted')
+assert(bar_fills[2].color == ui.danger, 'today segment on a full bar must be red')
 files['rate-limit-usage-history.tsv'] = nil
 
 files['github-contributions.json'] = [[{"ok":true,"contributions":[

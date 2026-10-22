@@ -824,7 +824,7 @@ return function(shared, repo_root)
 
   -- One quota window: label and countdown on the sides of a flat observed bar
   -- with a derived-color tick at the expected on-pace position.
-  -- Fill already consumed at local 05:00 is muted (or danger when full); fill since then keeps the bar accent.
+  -- Fill already consumed at local 05:00 is muted; fill since then keeps the bar color.
   local function draw_window(cr, account, window, x, y, width, show_pace, tall, by, pitch, history)
     local compact = by ~= nil
     local size = compact and 9 or 11
@@ -839,7 +839,7 @@ return function(shared, repo_root)
       name = window.label or ''
     end
     local count = refresh and 'Refresh' or format_window_countdown(window)
-    local prior_color = used >= 100 and ui.danger or ui.muted
+    local color = refresh and ui.caution or used >= 100 and ui.danger or ui.accent
     local bar_h = 3
     local offset = math.max(0, math.floor(((pitch or 16) - 16) / 2))
     by = by or (y + 7 + offset)
@@ -874,10 +874,10 @@ return function(shared, repo_root)
       local prior_w = bw * prior / 100
       local today_w = bw * (used - prior) / 100
       if prior_w > 0 then
-        ui.rect(cr, bx, by, prior_w, bar_h, prior_color, 0)
+        ui.rect(cr, bx, by, prior_w, bar_h, ui.muted, 0)
       end
       if today_w > 0 then
-        ui.rect(cr, bx + prior_w, by, today_w, bar_h, ui.accent, 0)
+        ui.rect(cr, bx + prior_w, by, today_w, bar_h, color, 0)
       end
     end
     if show_pace and not refresh then
