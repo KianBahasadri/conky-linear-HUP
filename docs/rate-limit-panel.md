@@ -75,6 +75,7 @@ profiles live in `~/.local/share/clusterfork-auth/`.
 
 - Accounts are discovered from Antigravity's rotation state in `~/.gemini/antigravity-cli/rotate-auth`. The selected profile reads the live GNOME Keyring item `service=gemini username=antigravity`; inactive profiles read `service=rotate-antigravity username=<profile>`.
 - Usage is fetched from Antigravity's Code Assist API (`retrieveUserQuotaSummary` with `User-Agent: antigravity/cli/...` so the server includes the `Gemini Models` and `Gemini 4 Argon` quota groups). Pro accounts render 5-hour and weekly Gemini quota bars plus a third `Argon` weekly bar (when the separate Gemini 4 Argon pool is present) on one 16px row. Free accounts render one weekly bar on one 16px row. Paid tiers (such as Google AI Pro) are recognized from the account's `paidTier` subscription.
+- The `ANTIGRAVITY` pace summary's delta includes both Pro and Free accounts, weighting Pro accounts 20x relative to Free accounts (weight 1) in the average. Free Gemini accounts display on-pace ticks on their weekly bar.
 - `GEMINI_ANTIGRAVITY_STATE_DIR` overrides the rotation state directory, `GEMINI_CODE_ASSIST_ENDPOINT` overrides the Antigravity API endpoint, `GEMINI_ANTIGRAVITY_CLI` overrides the `agy` executable, and `GEMINI_AUTH_REFRESH_TIMEOUT_SECONDS` controls the refresh timeout.
 
 ## Grok
@@ -120,7 +121,7 @@ profiles live in `~/.local/share/clusterfork-auth/`.
 - Weekly and 5h pace markers are per paid account: each bar uses that window's own reset time.
 - The derived-color tick is **expected** usage for on-pace spend: `expected = (windowSeconds - remainingSeconds) / windowSeconds * 100` (elapsed time through the reset window, not `usedPercent`). Ticks render on top of the bar fill with full opacity (`1.0`) when positioned within the filled progress region (`expected <= usedPercent`), and quieter opacity (`0.7`) when ahead on the empty track.
 - **Visibility:** hide the tick while none of the reset window has elapsed (`expected <= 0`). Unused sliding resets report remaining equal to the full duration at fetch time; treat those as not elapsed even after later wall-clock countdown. Show the tick as soon as any of the window has elapsed (`expected > 0`), even at 0% fill or the left edge. Do not gate on `usedPercent`, and do not hide based on pixel/rounded display position. A window that has not started has its whole span ahead of it, not behind it: treat its zero countdown as fully remaining so the tick stays hidden instead of pinning to the right edge.
-- Per-provider summary deltas and per-bar ticks also cover paid accounts only, except when a provider has no paid account at all (Antigravity today): then its free accounts carry the pace instead, so the summary delta and ticks stay live.
+- Per-provider summary deltas and per-bar ticks also cover paid accounts only, except for Gemini where free accounts carry pace ticks, and when a provider has no paid account at all (free accounts carry pace instead). Pro Gemini accounts carry 20x the capacity weight of a Free account in the pace summary.
 - Each provider group shows one pace value, its average delta, beside the group name.
 
 ## Disable

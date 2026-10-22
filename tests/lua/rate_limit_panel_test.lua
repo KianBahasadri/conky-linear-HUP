@@ -198,6 +198,42 @@ eq(#loaded, 1, 'history file yields one sample')
 eq(loaded[1].used, 16, 'history file keeps the used percent')
 eq(loaded[1].account, 'ahmad', 'history file keeps the account')
 
+-- Gemini pace calculation weights Pro accounts 20x relative to Free accounts.
+local calc_pace = renderer._test.calculate_provider_average_pace
+local gemini_mixed_accounts = {
+  {
+    provider = 'Gemini', label = 'kian', plan_type = 'pro',
+    windows = {
+      { label = 'gemini-weekly', used_percent = 65, reset_after_seconds = 302400, window_seconds = 604800 },
+      { label = 'gemini-5h', used_percent = 65, reset_after_seconds = 9000, window_seconds = 18000 },
+    }
+  },
+  {
+    provider = 'Gemini', label = 'baba', plan_type = 'free',
+    windows = {
+      { label = 'gemini-weekly', used_percent = 44, reset_after_seconds = 302400, window_seconds = 604800 },
+    }
+  },
+}
+-- Window pace: elapsed = 302400 / 604800 = 50%, expected = 50%
+-- kian windows: used = 65%, expected = 50% -> delta = +15%
+-- baba window: used = 44%, expected = 50% -> delta = -6%
+-- Weighted avg: (20 * 15 + 1 * -6) / 21 = (300 - 6) / 21 = 14%
+local gemini_delta = calc_pace(gemini_mixed_accounts, 'Gemini')
+eq(gemini_delta ~= nil, true, 'Gemini pace calculation produces a value with mixed free/pro')
+eq(math.floor(gemini_delta + 0.5), 14, 'Gemini Pro carries 20x the weight of Gemini Free in pace delta')
+
+local shows_pace = renderer._test.account_shows_pace
+eq(shows_pace(gemini_mixed_accounts, gemini_mixed_accounts[1]), true, 'Gemini Pro shows pace')
+eq(shows_pace(gemini_mixed_accounts, gemini_mixed_accounts[2]), true, 'Gemini Free (baba) shows pace even with Pro account present')
+
+local cursor_mixed_accounts = {
+  { provider = 'Cursor', label = 'sepehr', plan_type = 'pro' },
+  { provider = 'Cursor', label = 'kian', plan_type = 'free' },
+}
+eq(shows_pace(cursor_mixed_accounts, cursor_mixed_accounts[1]), true, 'Cursor Pro shows pace')
+eq(shows_pace(cursor_mixed_accounts, cursor_mixed_accounts[2]), false, 'Cursor Free does not show pace when Pro account present')
+
 if failures > 0 then
   print(failures .. ' failure(s)')
   os.exit(1)

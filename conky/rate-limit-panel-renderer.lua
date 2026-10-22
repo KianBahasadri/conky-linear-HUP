@@ -532,6 +532,10 @@ return function(shared, repo_root)
     return string.lower(account.provider or 'codex')
   end
 
+  local function account_shows_pace(accounts, account)
+    return not is_free_account(account) or provider_is_free_only(accounts, account.provider) or provider_name(account) == 'gemini'
+  end
+
   local function window_reset_has_passed(window)
     -- Only absolute reset timestamps can prove a cached window is over.
     if window.reset_at_epoch and window.reset_at_epoch > 0 then
@@ -631,8 +635,8 @@ return function(shared, repo_root)
   end
 
   local function calculate_provider_average_pace(accounts, provider)
-    local provider_lower = string.lower(provider)
-    local include_free = provider_is_free_only(accounts, provider_lower)
+    local provider_lower = string.lower(provider or '')
+    local include_free = provider_is_free_only(accounts, provider_lower) or provider_lower == 'gemini'
     local delta_total = 0
     local delta_count = 0
 
@@ -640,12 +644,22 @@ return function(shared, repo_root)
       if string.lower(account.provider or '') == provider_lower then
         if include_free or not is_free_account(account) then
           if provider_lower == 'gemini' then
+            local acct_delta_total = 0
+            local acct_delta_count = 0
             for _, window in ipairs(get_row_windows(account)) do
               local pace = calculate_window_pace(window, window_duration(window))
               if pace then
-                delta_total = delta_total + pace.delta
-                delta_count = delta_count + 1
+                acct_delta_total = acct_delta_total + pace.delta
+                acct_delta_count = acct_delta_count + 1
               end
+            end
+            if acct_delta_count > 0 then
+              local acct_avg_delta = acct_delta_total / acct_delta_count
+              -- Pro Gemini accounts carry 20x the capacity weight of a standard Free account
+              -- in the pace average, matching Codex Pro weighting.
+              local weight = string.lower(account.plan_type or '') == 'pro' and 20 or 1
+              delta_total = delta_total + acct_avg_delta * weight
+              delta_count = delta_count + weight
             end
           elseif provider_lower == 'cursor' or provider_lower == 'grok' then
             for _, window in ipairs(account.windows or {}) do
@@ -1020,7 +1034,7 @@ return function(shared, repo_root)
               x, name_baseline, {size = 12, color = ui.danger, width = bar_area - 8})
           else
             local columns = provider_name(account) == 'gemini' and gemini_duration_columns(wins)
-            local show_pace = not is_free_account(account) or provider_is_free_only(accounts, account.provider)
+            local show_pace = account_shows_pace(accounts, account)
             if stacked then
               for i, window in ipairs(wins) do
                 draw_window(cr, account, window, x, y + 2 + (i - 1) * 16,
@@ -1105,5 +1119,7 @@ return function(shared, repo_root)
              provider_mark_indices = provider_mark_indices,
              day_start_epoch = day_start_epoch,
              used_before_today = used_before_today,
-             read_usage_history = read_usage_history}}
+             read_usage_history = read_usage_history,
+             calculate_provider_average_pace = calculate_provider_average_pace,
+             account_shows_pace = account_shows_pace}}
 end
