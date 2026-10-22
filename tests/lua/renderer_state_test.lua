@@ -60,6 +60,24 @@ files['codex-usage-render.tsv'] = 'meta\tok\t0\naccount\tbroken\tplus\t0\t0\tUna
 draw('rate-limit-panel-renderer.lua')
 assert(has('Retrying: Unauthorized'), 'failed account must not disappear')
 
+files['rate-limit-usage-history.tsv'] = '1\tcodex\tfullacct\tweekly\t600000\t40.0\n'
+files['codex-usage-render.tsv'] = table.concat({
+  'meta\tok\t1',
+  'account\tfullacct\tplus\t0\t1\t\t0',
+  'bar\tfullacct\tplus\t0\tweekly\t100\t0\t\t600000\t480000\t604800',
+}, '\n')
+draw('rate-limit-panel-renderer.lua')
+local bar_fills = {}
+for _, rect in ipairs(rects) do
+  if rect.h == 3 and rect.color ~= ui.line then
+    bar_fills[#bar_fills + 1] = rect
+  end
+end
+assert(#bar_fills == 2, 'full split bar must draw both prior and today segments')
+assert(bar_fills[1].color == ui.danger, 'before-today segment on a full bar must be red')
+assert(bar_fills[2].color == ui.accent, 'today segment on a full bar must stay turquoise')
+files['rate-limit-usage-history.tsv'] = nil
+
 files['github-contributions.json'] = [[{"ok":true,"contributions":[
   {"date":"2026-09-01","level":2}]}]]
 draw('github-tracker-renderer.lua')
