@@ -422,7 +422,7 @@ return function(shared)
   function ui.arc_gauge(cr, icon, value, unit, x, y, width, opts)
     opts = opts or {}
     local size = opts.size or 132
-    local s = size / 132
+    local s = size / 112
     local max = opts.max or 100
     local warning = opts.warning
     local critical = opts.critical
@@ -432,7 +432,7 @@ return function(shared)
     local dial_x = x + math.floor((width - size) / 2)
     local dial_y = y
     local cx = dial_x + size / 2
-    local cy = dial_y + size / 2
+    local cy = dial_y + 58 * s
     local r = 52 * s
     local band_w = math.max(2, math.floor(8 * s + 0.5))
     local tick_len = 7 * s
@@ -511,7 +511,7 @@ return function(shared)
 
     -- 4. Lucide symbol in upper dome
     local icon_size = math.max(14, math.floor(24 * s + 0.5))
-    local icon_top = dial_y + math.floor(22 * s + 0.5)
+    local icon_top = math.floor(cy - 44 * s + 0.5)
     ui.icon(cr, icon, cx - icon_size / 2, icon_top, icon_size, ui.muted)
 
     -- 5. Value and unit centered at dial midline (cy)
@@ -523,7 +523,7 @@ return function(shared)
     local val_w = ui.width(cr, val_str, num_size, false, 'bold')
     local unit_w = unit_str ~= '' and (ui.width(cr, unit_str, unit_size, true) + gap_val) or 0
     local left = cx - (val_w + unit_w) / 2
-    local baseline = cy + math.floor(9 * s + 0.5)
+    local baseline = math.floor(cy + 9 * s + 0.5)
     ui.text(cr, val_str, left, baseline, {size = num_size, bold = 'bold', color = num_color})
     if unit_str ~= '' then
       ui.text(cr, unit_str, left + val_w + gap_val, baseline, {size = unit_size, mono = true, color = num_color})
@@ -532,7 +532,7 @@ return function(shared)
       local label_size = math.max(9, math.floor(12 * s + 0.5))
       local label = tostring(opts.label)
       local label_width = ui.width(cr, label, label_size, true)
-      ui.text(cr, label, cx - label_width / 2, dial_y + math.floor(108 * s + 0.5),
+      ui.text(cr, label, cx - label_width / 2, math.floor(cy + 42 * s + 0.5),
         {size = label_size, mono = true, color = ui.muted})
     end
   end

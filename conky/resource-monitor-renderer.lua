@@ -654,20 +654,23 @@ return function(shared, repo_root)
       }) do channels[#channels + 1] = channel end
 
       local columns, rows = 4, math.ceil(#channels / 4)
-      local gap, row_gap = 6, 8
-      local column_width = math.floor((width - (columns - 1) * gap) / columns)
-      local row_height = math.floor((height - (rows - 1) * row_gap) / rows)
-      local dial_size = math.min(math.floor(column_width * 0.9), 80, row_height)
-      local show_sparkline = row_height >= dial_size + 24
-      local top = show_sparkline and 0 or math.max(0, math.floor((row_height - dial_size) / 2))
+      local gap, row_gap = 4, 4
+      local max_col_width = math.floor((width - (columns - 1) * gap) / columns)
+      local column_width = math.min(76, max_col_width)
+      local full_row_height = math.floor((height - (rows - 1) * 8) / rows)
+      local dial_size = math.min(column_width, 68, full_row_height)
+      local show_sparkline = full_row_height >= dial_size + 36
+      local row_pitch = show_sparkline and (full_row_height + 8) or (dial_size + row_gap)
+      local left_x = math.max(0, width - (columns * column_width + (columns - 1) * gap))
+      local top = 0
 
       local now = status.timestamp or os.time()
       local dt = last_peak_time and math.max(0, math.min(30, now - last_peak_time)) or 0
       last_peak_time = now
 
       for index, channel in ipairs(channels) do
-        local x = ((index - 1) % columns) * (column_width + gap)
-        local y = top + math.floor((index - 1) / columns) * (row_height + row_gap)
+        local x = left_x + ((index - 1) % columns) * (column_width + gap)
+        local y = top + math.floor((index - 1) / columns) * row_pitch
         local value, unit, color = '—', '', ui.muted
         local reading = nil
         local measured = reading_available(status, channel)

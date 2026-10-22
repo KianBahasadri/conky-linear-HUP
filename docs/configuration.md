@@ -165,8 +165,8 @@ own labeled gauge, followed by disk read and disk write. On the Intel UHD / RTX
 4060 machine, the second row is Intel, NVIDIA, disk read, and disk write,
 aligned to the same four-column grid. GPU order follows PCI addresses; readings,
 history, and peaks remain separate for each device.
-Dials are at most 80px across (about 10% smaller than the original row), in a
-176px-tall region with the personal metrics below. Each is
+Dials are at most 68px across in a compact right-aligned 4×2 grid inside a
+176px-tall region at the top right. Each is
 a compact 270° arc gauge with its symbol in the upper dome, centered numeral and
 unit at the midline, and a 2px square-capped peak hold tick indicator decaying back down slowly when readings fall. CPU, memory, and GPU are fixed at 0–100%.
 The network dials use the highest recorded usage on the active network in the last week
