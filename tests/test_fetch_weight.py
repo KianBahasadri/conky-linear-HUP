@@ -165,3 +165,34 @@ def test_old_readings_keep_the_year_in_the_date(tmp_path):
     status = weight.build_status(weight.read_backup(archive), stamp(20) + timedelta(days=365))
     assert status["lastDateText"] == "Aug 19, 2026"
     assert status["previousDateText"] == "Aug 13, 2026"
+
+
+def test_supports_builtin_weight_identity_and_user_goals_progress(tmp_path):
+    database = tmp_path / "modern.sqlite"
+    connection = sqlite3.connect(database)
+    connection.executescript("""
+        CREATE TABLE Measurement (id INTEGER PRIMARY KEY, userId INTEGER, timestamp INTEGER);
+        CREATE TABLE MeasurementType (id INTEGER PRIMARY KEY, "identity" TEXT NOT NULL, unit TEXT NOT NULL);
+        CREATE TABLE MeasurementValue (measurementId INTEGER, typeId INTEGER, floatValue REAL, intValue INTEGER);
+        CREATE TABLE user_goals (userId INTEGER NOT NULL, measurementTypeId INTEGER NOT NULL, goalValue REAL NOT NULL);
+        INSERT INTO MeasurementType VALUES (1, 'builtin.weight', 'LB');
+        INSERT INTO user_goals VALUES (1, 1, 83.0);
+    """)
+    for mid, day, val in ((1, 10, 201.0), (2, 14, 202.0), (3, 19, 207.8)):
+        connection.execute("INSERT INTO Measurement VALUES (?, 1, ?)", (mid, int(stamp(day).timestamp() * 1000)))
+        connection.execute("INSERT INTO MeasurementValue VALUES (?, 1, ?, NULL)", (mid, val))
+    connection.commit()
+    archive = tmp_path / "modern.zip"
+    with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.write(database, "openScale.db")
+    connection.close()
+
+    readings = weight.read_backup(archive)
+    status = weight.build_status(readings, stamp(20))
+    assert status["lastWeightText"] == "207.8 lb"
+    assert status["goalWeight"] == pytest.approx(183.0, abs=0.1)
+    assert status["progressVerdict"] == "Worse"
+    assert status["progressKind"] == "danger"
+    assert "above 183 lb goal" in status["goalText"]
+    assert "vs 30d avg" in status["trendDetailText"]
+    assert len(status["recent"]) == 3

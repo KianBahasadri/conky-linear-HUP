@@ -1,20 +1,29 @@
 # Weather and running overlay
 
-The right rail keeps training and weight below the resource gauges. A separate
-thermometer window sits at the bottom left of each monitor.
-The former top-right temperature, apparent-temperature, AQI, UV, condition, and
-location readouts are removed. Training summarizes workouts uploaded from the phone:
-last workout (distance, duration, pace, heart rate or cadence when recorded)
-and rolling 7-day distance/time/runs.
+The thermometer and compact personal-metrics (running and weight) windows sit
+side-by-side at the bottom left of each monitor, between the left monitor edge
+and the rate-limit panel. The former top-right temperature, apparent-temperature,
+AQI, UV, condition, and location readouts are removed. Both personal-metrics
+bands communicate progress implicitly through semantic color and micro-charts
+rather than explicit section headers or status chips:
 
-A weight section follows the running stats. It shows the latest weigh-in and
-the signed change from the preceding weigh-in, with the measurement date, age,
-and comparison date underneath. A first reading has no change value. Both
-metrics stay neutral: weight gain and loss do not imply good or bad status.
-The [phone data source](workout-data-source.md#weight-backups-from-openscale)
-describes how openScale backups are read. An unreadable or incomplete upload
-keeps the last successful weight summary and marks it `Stale`; without a
-successful reading, the section shows an explanatory placeholder.
+- **Running (top 49px band):** The first line shows the last run's distance,
+  pace, signed pace delta against the recent 6-run baseline (colored green when
+  faster, red when slower), and measurement age (colored amber when ≥10 days).
+  The second line shows duration, average heart rate, and cadence. Underneath, a
+  12-run sparkline layers distance bars (brightened for runs within the last 28
+  days), a dashed average-pace baseline, and the semantic-colored pace
+  trajectory curve.
+- **Weight (bottom 49px band):** The first line shows the latest weigh-in, the
+  signed 30-day trend delta (colored green when moving toward the openScale goal
+  weight, red when moving away), and measurement age (or `Stale`). The second
+  line shows the step change and previous weigh-in date on the left and the
+  target weight (`→ 183 lb`) on the right. Underneath, a 12-weigh-in trajectory
+  sparkline plots a shaded area and semantic curve against the dashed 30-day
+  average baseline. The [phone data source](workout-data-source.md#weight-backups-from-openscale)
+  describes how openScale backups are read. An unreadable or incomplete upload
+  keeps the last successful weight summary and marks it `Stale`; without a
+  successful reading, the section shows an explanatory placeholder.
 
 Weather forecasts come from Open-Meteo. Air-quality data from the Copernicus
 Atmosphere Monitoring Service (CAMS) through Open-Meteo remains in the cache
@@ -94,17 +103,16 @@ position overrides are documented in [Configuration](configuration.md).
 
 ## Display
 
-Training preserves distance, duration, pace, heart rate/cadence, and weekly
-totals. Weight uses the same neutral metric columns and detail typography
-beneath training. Their 204px-high window remains below the resource gauges at
-the top right. The separate thermometer window is pinned 8px from the
-left and bottom monitor edges. When Minecraft is enabled, the thermometer sits
-24px above it. Repository and standalone session lists reserve room above the
-thermometer and page their records when needed.
+The 120×124px thermometer window is pinned 8px from the left and bottom monitor
+edges, and the 124px-high personal-metrics window (`188px` wide on standard
+displays, `132px` on narrow displays) sits 8px to its right, filling the space
+between the thermometer and the rate-limit panel. When Minecraft is enabled,
+both sit 24px above it. Repository and standalone session lists reserve room
+above them and page their records when needed.
 
 All three components stay visible at the supported monitor sizes, including
 1280×720. Training and weight retain whole-section paging every 30 seconds if
-their window is manually shortened below 204px. Both windows use
+their window is manually shortened below 111px. Both windows use
 `WEATHER_OVERLAY_ENABLED`; `WEATHER_GAP_X` and `WEATHER_GAP_Y` continue to move
-only the right-side personal metrics. Shared styling belongs to the
+only the personal-metrics window. Shared styling belongs to the
 [Desktop design system](design-system.md).

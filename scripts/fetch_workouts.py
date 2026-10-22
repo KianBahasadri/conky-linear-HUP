@@ -205,10 +205,14 @@ def build_status(workouts, units, now=None):
     last = workouts[-1]
     last_duration = last["durationSeconds"]
     last_distance = last["distanceMeters"]
+    last_stamp = (last["startTime"] or now).astimezone()
+    last_age_days = max(0, (now.date() - last_stamp.date()).days)
     status.update(
         {
             "lastSport": short_sport(last["sport"]),
             "lastDateText": format_date_text(last["startTime"] or now, now),
+            "lastAgeDays": last_age_days,
+            "lastAgeText": f"{last_age_days}d ago" if last_age_days > 1 else "",
             "lastDistanceText": format_distance(last_distance, units),
             "lastDistanceMeters": round(last_distance, 1),
             "lastDurationText": format_duration(last_duration),
@@ -219,8 +223,14 @@ def build_status(workouts, units, now=None):
                 if last["avgHeartRate"]
                 else ""
             ),
+            "lastHeartRateShortText": (
+                f"{last['avgHeartRate']} bpm" if last["avgHeartRate"] else ""
+            ),
             "lastCadenceText": (
                 f"{last['avgCadence']} spm avg" if last["avgCadence"] else ""
+            ),
+            "lastCadenceShortText": (
+                f"{last['avgCadence']} spm" if last["avgCadence"] else ""
             ),
         }
     )
@@ -243,6 +253,85 @@ def build_status(workouts, units, now=None):
         }
     )
 
+    # Progress over time: combine pace progression vs recent baseline with 28-day consistency.
+    month_window = timedelta(days=28)
+    month_start = now - month_window
+    prev_month_start = now - (month_window * 2)
+    month_workouts = [
+        w for w in workouts if w["startTime"] and w["startTime"].astimezone() >= month_start
+    ]
+    prev_month_workouts = [
+        w
+        for w in workouts
+        if w["startTime"] and prev_month_start <= w["startTime"].astimezone() < month_start
+    ]
+    month_distance = sum(w["distanceMeters"] for w in month_workouts)
+    prev_month_distance = sum(w["distanceMeters"] for w in prev_month_workouts)
+    month_runs = len(month_workouts)
+    month_distance_text = format_distance(month_distance, units)
+    month_summary_text = f"{month_distance_text} · {month_runs} {'run' if month_runs == 1 else 'runs'} / 28d"
+
+    comparable = [
+        w
+        for w in workouts
+        if w["sport"].strip().lower() == last["sport"].strip().lower()
+        and w["distanceMeters"] >= 1000
+        and w["durationSeconds"] > 0
+    ]
+    pace_delta_sec = None
+    pace_delta_text = "--"
+    pace_detail_text = "Building baseline"
+    if len(comparable) >= 2 and last in comparable:
+        prior_runs = [w for w in comparable if w is not last][-6:]
+        if prior_runs:
+            last_pace_sec = last["durationSeconds"] / (last["distanceMeters"] / units["distanceDivisor"])
+            avg_pace_sec = sum(
+                w["durationSeconds"] / (w["distanceMeters"] / units["distanceDivisor"])
+                for w in prior_runs
+            ) / len(prior_runs)
+            pace_delta_sec = round(last_pace_sec - avg_pace_sec)
+            sign = "−" if pace_delta_sec < 0 else "+" if pace_delta_sec > 0 else ""
+            abs_sec = abs(int(pace_delta_sec))
+            dm, ds = divmod(abs_sec, 60)
+            pace_delta_text = f"{sign}{dm}:{ds:02d} {units['paceSymbol']}"
+            pace_detail_text = f"Pace {pace_delta_text} vs avg"
+
+    perf_score = 0
+    if pace_delta_sec is not None:
+        if pace_delta_sec <= -8:
+            perf_score = 1
+        elif pace_delta_sec >= 8:
+            perf_score = -1
+
+    cons_score = 0
+    if last_age_days >= 14 or (month_runs == 0 and len(workouts) > 1):
+        cons_score = -1
+    elif last_age_days <= 7 and (month_distance >= prev_month_distance * 0.9 or month_runs >= 3):
+        cons_score = 1
+    elif month_distance > prev_month_distance and month_runs >= 3:
+        cons_score = 1
+
+    total_score = perf_score + cons_score
+    if total_score >= 1:
+        verdict, kind = "Better", "good"
+    elif total_score <= -1:
+        verdict, kind = "Worse", "danger"
+    else:
+        verdict, kind = "Steady", "caution" if last_age_days >= 10 else "neutral"
+
+    status.update(
+        {
+            "monthRuns": month_runs,
+            "monthDistanceText": month_distance_text,
+            "monthSummaryText": month_summary_text,
+            "paceDeltaSeconds": pace_delta_sec,
+            "paceDeltaText": pace_delta_text,
+            "paceDetailText": pace_detail_text,
+            "progressVerdict": verdict,
+            "progressKind": kind,
+        }
+    )
+
     recent = workouts[-RECENT_LIMIT:]
     status["recent"] = [
         {
@@ -251,6 +340,17 @@ def build_status(workouts, units, now=None):
             "distanceText": format_distance(workout["distanceMeters"], units),
             "distanceUnits": round(
                 workout["distanceMeters"] / units["distanceDivisor"], 2
+            ),
+            "paceSeconds": (
+                round(
+                    workout["durationSeconds"]
+                    / (workout["distanceMeters"] / units["distanceDivisor"])
+                )
+                if workout["distanceMeters"] >= 200 and workout["durationSeconds"] > 0
+                else 0
+            ),
+            "inMonth": bool(
+                workout["startTime"] and workout["startTime"].astimezone() >= month_start
             ),
             "isLast": workout is last,
         }

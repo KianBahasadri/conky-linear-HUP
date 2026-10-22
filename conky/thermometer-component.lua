@@ -19,12 +19,16 @@ return function(shared, repo_root, options)
   local show_sun = visible('show_sun_times')
   local show_uv = visible('show_uv_index')
   local show_rain = visible('show_rain_chance')
-  local padding_x, padding_y, stack_gap = 20 * scale, 24 * scale, 12 * scale
+  local padding_x = options.padding_x or (20 * scale)
+  local padding_y = options.padding_y or (24 * scale)
+  local stack_gap = options.stack_gap or (12 * scale)
   local text_size, detail_icon, detail_gap = math.max(11, 14 * scale), math.max(12, 16 * scale), math.max(4, 8 * scale)
-  local row_height, row_gap = text_size * 1.5, math.max(4, 8 * scale)
+  local row_height, row_gap = text_size * 1.5, options.row_gap or math.max(4, 8 * scale)
   local count = (show_sun and 2 or 0) + (show_uv and 1 or 0) + (show_rain and 1 or 0)
   local details_height = count > 0 and count * row_height + (count - 1) * row_gap or 0
-  local glyph_size, tube_width, tube_height = size * scale, 48 * scale, 184 * scale
+  local tube_scale = options.tube_scale or scale
+  local tube_offset_y = options.tube_offset_y or 0
+  local glyph_size, tube_width, tube_height = size * scale, 48 * tube_scale, 184 * scale
   local info_height = glyph_size + (count > 0 and stack_gap + details_height or 0)
   local vertical = placement == 'stack-above' or placement == 'stack-below'
   local icon_above = placement == 'right-icon-above' or placement == 'left-icon-above' or placement == 'stack-above'
@@ -148,8 +152,8 @@ return function(shared, repo_root, options)
     end
     ui.group(cr, data.stale and 0.55 or 1, function()
       cairo_save(cr)
-      cairo_translate(cr, x + layout.tube.x - 14 * scale, y + layout.tube.y)
-      cairo_scale(cr, scale, scale)
+      cairo_translate(cr, x + layout.tube.x - 14 * tube_scale, y + layout.tube.y + tube_offset_y)
+      cairo_scale(cr, tube_scale, tube_scale)
       cairo_new_path(cr)
       ui.path(cr, outline)
       shared.set_hex(cr, ui.raised)

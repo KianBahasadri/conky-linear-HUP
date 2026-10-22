@@ -142,10 +142,12 @@ backup location. Tailscale must be connected and the laptop reachable for
 remote file operations.
 
 `scripts/fetch_weight.py` reads the newest uploaded ZIP by file modification
-time. It supports the openScale 3 database schema, joining measurements and
-values to the `WEIGHT` type by key. Values already use the unit configured in
-openScale (`KG`, `LB`, or `ST`); they must not be converted a second time.
-For directory and user selection, see [Configuration](configuration.md#weather-and-running-overlay).
+time. It supports both openScale 3 `MeasurementType` schemas (`key = 'WEIGHT'`
+and `identity = 'builtin.weight'`), plus `user_goals` target weights when
+present. Measurement values already use the unit configured in openScale (`KG`,
+`LB`, or `ST`) and are not converted a second time; unmigrated `user_goals`
+values stored in kilograms while measurements use pounds are converted to
+pounds. For directory and user selection, see [Configuration](configuration.md#weather-and-running-overlay).
 
 The verified upload, `openScale.db_auto_backup.zip`, contains the SQLite
 database and its `-wal` and `-shm` sidecars. The fetcher copies those exact

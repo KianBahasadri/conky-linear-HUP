@@ -155,29 +155,45 @@ end
 assert(not has_forecast_connector, 'trajectories under 50% usage omit the predicted line')
 
 files['weather-status.json'] = [[{"ok":true,"temperature":16,"aqi":23}]]
-files['workouts-status.json'] = [[{"ok":true,"weekRuns":4,"lastDistanceText":"2.6 km","weekDistanceText":"12.5 km"}]]
-files['weight-status.json'] = [[{"ok":true,"stale":false,"lastWeightText":"199.1 lb",
-  "lastDateText":"Aug 19","ageText":"22d ago","changeText":"−2.3 lb","previousDateText":"Aug 13"}]]
-height = 204
+files['workouts-status.json'] = [[{"ok":true,"weekRuns":4,"lastDistanceText":"2.6 km","lastPaceText":"5:53 /km",
+  "lastDurationText":"29:25","lastHeartRateShortText":"168 bpm","lastCadenceShortText":"80 spm",
+  "lastAgeText":"2d ago","lastAgeDays":2,
+  "progressVerdict":"Better","progressKind":"good","paceDeltaText":"−1:32 /km",
+  "recent":[{"distanceUnits":3.0,"paceSeconds":400,"inMonth":true,"isLast":false},{"distanceUnits":5.0,"paceSeconds":353,"inMonth":true,"isLast":true}]}]]
+files['weight-status.json'] = [[{"ok":true,"stale":false,"lastWeight":199.1,"lastWeightText":"199.1 lb",
+  "lastDateText":"Aug 19","ageText":"22d ago","ageDays":22,"changeText":"−2.3 lb","previousDateText":"Aug 13",
+  "progressVerdict":"Better","progressKind":"good","trendDeltaText":"−2.3 lb",
+  "goalWeight":183.0,"unit":"lb",
+  "recent":[{"value":201.4,"isLast":false},{"value":199.1,"isLast":true}]}]]
+width, height = 188, 124
 draw('weather-renderer.lua')
-assert(not has('AQI') and not has('Temp') and has('12.5 km') and has('199.1 lb') and has('−2.3 lb'),
-  'replace the old weather metrics while preserving training and weight')
+assert(not has('AQI') and not has('Temp') and has('2.6 km') and has('199.1 lb') and has('−2.3'),
+  'replace the old weather metrics while preserving compact training and weight')
+assert(not has('Better') and not has('Worse') and #trails >= 2,
+  'progress is communicated implicitly through semantic sparklines and deltas without text chips')
 assert(not has('Weather unavailable'), 'the thermometer belongs to its own window')
-assert(has('Aug 19') and has('22d ago') and has('since Aug 13'),
-  'weight must show measurement age and identify the change comparison')
+assert(has('22d') and has('Aug 13') and has('→ 183 lb'),
+  'weight must show compact measurement age, previous comparison date, and goal target')
+local max_trail_y = 0
+for _, trail in ipairs(trails) do
+  for _, pt in ipairs(trail.points) do
+    if pt[2] > max_trail_y then max_trail_y = pt[2] end
+  end
+end
+assert(max_trail_y >= 120, 'personal-metrics bands must anchor flush to the bottom of the 124px window')
 draw('thermometer-renderer.lua')
 assert(has('Weather') and has('unavailable') and not has('199.1 lb'), 'a legacy cache cannot invent a weekly comparison')
-height = 110
+height = 70
 os.time = function(date) return date and original_time(date) or 120000 end
 draw('weather-renderer.lua')
-assert(has('12.5 km') and not has('199.1 lb') and has('1/2'),
+assert(has('2.6 km') and not has('199.1 lb') and has('1/2'),
   'training must remain bounded on a manually shortened panel')
 assert(not has('Weather unavailable'), 'compact pages must not overlap')
 os.time = function(date) return date and original_time(date) or 120030 end
 draw('weather-renderer.lua')
 assert(has('199.1 lb') and has('2/2'), 'compact weight page must remain bounded and labeled')
-assert(not has('12.5 km') and not has('Weather unavailable'), 'compact pages must not overlap')
-height = 204
+assert(not has('2.6 km') and not has('Weather unavailable'), 'compact pages must not overlap')
+width, height = 1136, 124
 files['weight-status.json'] = [[{"ok":true,"stale":true,"lastWeightText":"199.1 lb"}]]
 draw('weather-renderer.lua')
 assert(has('199.1 lb') and has('Stale'), 'an incomplete upload must keep and mark cached weight')

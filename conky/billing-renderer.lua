@@ -133,8 +133,8 @@ return function(shared, repo_root)
   local function draw_map(cr, model, state, width, height)
     local clearance = width < 480 and 8 or 16
     local plane_width = width - 2 * clearance
-    local depth = height - 2 * clearance
-    local baseline_y = height - clearance
+    local depth = height - 2 * clearance - 5
+    local baseline_y = height - clearance - 2
     local maximum = model.maximum
     local overage = math.max(0, maximum - 100)
     local perspective = 0

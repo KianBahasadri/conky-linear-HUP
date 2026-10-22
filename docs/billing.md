@@ -248,11 +248,12 @@ refreshes once per day and each Cost Explorer API call incurs a $0.01 fee.
 ## Placement and lifecycle
 
 The launcher creates one billing window per monitor pinned to the bottom right
-below the weather panel. Its width matches the side margin space (316px on
+below the resource monitor. Its width matches the side margin space (316px on
 standard wide displays, 260px on narrower displays), leaving a 12px gutter
-alongside the centered rate limit panel. The visible map is 128px deep, inside
-a 144px-tall window at these widths. Its visible bottom edge is flush with
-the rate limit panel's bottom edge, with marker clearance extending below it.
+alongside the centered rate limit panel. The visible map is 112px deep, inside
+a 128px-tall window at these widths, so its visible top and bottom edges sit
+flush with the rate limit panel's top and bottom edges while marker clearance
+extends outside the grid.
 This alignment follows rate limit panel position overrides unless billing
 has its own explicit vertical position.
 Explicit `BILLING_GAP_X`/`BILLING_GAP_Y` overrides retain their

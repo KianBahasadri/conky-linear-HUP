@@ -189,6 +189,9 @@ def test_build_status_last_and_week(monkeypatch):
     assert status["weekRuns"] == 2
     assert status["weekDistanceText"] == "12.5 km"
     assert status["weekDurationText"] == "1:13:49"
+    assert status["monthRuns"] == 3
+    assert status["progressVerdict"] in {"Better", "Steady", "Worse"}
+    assert "runs / 28d" in status["monthSummaryText"]
     assert [entry["distanceUnits"] for entry in status["recent"]] == [30.0, 10.0, 2.48]
     assert status["recent"][-1]["isLast"] is True
     assert status["recent"][0]["isLast"] is False

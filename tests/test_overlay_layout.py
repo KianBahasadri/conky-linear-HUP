@@ -29,7 +29,7 @@ def test_planned_windows_fit_without_overlap_under_changing_record_counts(size, 
     if not github:
         windows.pop("github")
     for name, (x, y, w, h) in windows.items():
-        assert w >= (120 if name == "thermometer" else 240) and h >= 100, name
+        assert w >= (120 if name in {"thermometer", "weather"} else 240) and h >= 100, name
         assert 0 <= x <= width - w, name
         assert 0 <= y <= height - h, name
     for (name_a, a), (name_b, b) in itertools.combinations(windows.items(), 2):
@@ -66,8 +66,8 @@ def test_narrow_rate_limit_panel_uses_center_width_without_moving_other_panels()
         "sessions": [8, 768, 260, 100],
         "minecraft": [8, 916, 260, 100],
         "resource-monitor": [912, 8, 360, 176],
-        "billing": [1012, 880, 260, 144],
-        "weather": [912, 196, 360, 204],
+        "billing": [1012, 896, 260, 128],
+        "weather": [136, 892, 132, 124],
         "thermometer": [8, 892, 120, 124],
     }
 
@@ -80,25 +80,26 @@ def test_billing_is_pinned_to_bottom_right_and_leaves_gutter_for_rate_limit_pane
     assert billing[1] + billing[3] - 8 == quota[1] + quota[3]
     assert billing[2] == 316
     assert billing[0] - (quota[0] + quota[2]) == 12
-    assert billing[3] == 144
+    assert billing[3] == 128
 
 
 @pytest.mark.parametrize("size", [(1280, 720), (1366, 768), (1920, 1080), (2560, 1440)])
 @pytest.mark.parametrize("minecraft", [False, True])
-def test_thermometer_is_bottom_left_with_personal_metrics_still_top_right(size, minecraft):
+def test_thermometer_and_personal_metrics_sit_between_left_edge_and_rate_limit_panel(size, minecraft):
     width, height = size
     windows = overlay_layout.plan(width, height, 40, {"accounts": 150}, {
         "MINECRAFT_OVERLAY_ENABLED": str(int(minecraft)),
     })
-    weather = windows["weather"]
-    assert weather[0] + weather[2] == width - 8
-    resources = windows["resource-monitor"]
-    assert weather[1] == resources[1] + resources[3] + 12
-    assert weather[3] == 204  # training and weight remain visible together
     thermometer = windows["thermometer"]
+    weather = windows["weather"]
+    quota = windows["rate-limit-panel"]
     assert thermometer[0] == 8
     assert thermometer[2:] == [120, 124]
     assert thermometer[1] + thermometer[3] == height - 8 - (124 if minecraft else 0)
+    assert weather[0] == thermometer[0] + thermometer[2] + 8
+    assert weather[1] == thermometer[1]
+    assert weather[3] == 124
+    assert weather[0] + weather[2] + 12 <= quota[0]
 
 
 def test_explicit_position_overrides_keep_their_original_edge_semantics():

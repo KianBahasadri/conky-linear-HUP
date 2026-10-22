@@ -166,11 +166,9 @@ def plan(width, height, top=40, counts=None, env=None):
     center = width - 2 * margin - left - right - gutter_left - gutter
     center_x, right_x = margin + left + gutter_left, width - margin - right
 
-    # Right rail: gauges, then the training and weight metrics.
-    # Two rows of compact arc gauges, with four column positions per row.
+    # Right rail: two rows of compact arc gauges, with four column positions per row.
     resource_h = 176
-    weather_y = top + resource_h + 12
-    weather_h = 204
+    right_top_clearance = top + resource_h + 12 + 204 + 12
 
     # Center: quota rows sit at the bottom, the calendar above them, and the
     # task grid takes what is left. On wide displays with many accounts, quota
@@ -181,7 +179,7 @@ def plan(width, height, top=40, counts=None, env=None):
     centered_w = width - 2 * center_x
     two_col = is_wide and account_count > 8 and centered_w >= 1200
     effective_accounts = (account_count + 1) // 2 if two_col else account_count
-    max_quota_available = height - margin - (weather_y + weather_h + 12)
+    max_quota_available = height - margin - right_top_clearance
     quota_limit = min(int(available * (0.55 if available >= 900 else 0.44)), max_quota_available)
     quota_rows = max(1, min(effective_accounts, quota_limit // row))
     stacked_extra = 6 * counts.get("gemini_pro", 0) if row <= 16 else 0
@@ -208,25 +206,32 @@ def plan(width, height, top=40, counts=None, env=None):
         quota_w = center - 240
         quota_x = center_x + (center - quota_w) // 2
 
-    # Bottom right: a compact 128px-deep map with clearance for its markers.
+    # Bottom right: a compact 112px-deep map with clearance for its markers.
     billing_w = left
     billing_x = width - margin - billing_w
     billing_clearance = 8 if billing_w < 480 else 16
-    billing_h = 128 + 2 * billing_clearance
+    billing_h = 112 + 2 * billing_clearance
     billing_y = height - margin - billing_h
 
     # Left rail: sessions join repositories at the top. The standalone sessions
-    # rectangle is used only when Git is disabled. The thermometer sits at the
-    # bottom left, above Minecraft when enabled, with room reserved in the list.
+    # rectangle is used only when Git is disabled. The thermometer and compact
+    # personal-metrics (running + weight) sit side-by-side at the bottom left,
+    # between the left monitor edge and the rate-limit panel, above Minecraft
+    # when enabled, with room reserved in the list.
     # A disabled Minecraft panel keeps a valid rectangle; only its reservation
     # in the rail collapses, so the launcher can enable it without replanning.
     minecraft = env.get("MINECRAFT_OVERLAY_ENABLED", "1") != "0"
     minecraft_h = 100
     minecraft_foot = minecraft_h + gutter if minecraft else 0
+    thermometer_w = 120
     thermometer_h = 124
     thermometer_y = height - margin - minecraft_foot - thermometer_h
     thermometer_foot = thermometer_h + gutter if enabled(env, "WEATHER_OVERLAY_ENABLED") else 0
     left_foot = minecraft_foot + thermometer_foot
+    weather_x = margin + thermometer_w + 8
+    weather_y = thermometer_y
+    weather_w = left - thermometer_w - 8
+    weather_h = thermometer_h
     merged = enabled(env, "GIT_OVERLAY_ENABLED") and enabled(env, "SESSIONS_OVERLAY_ENABLED")
     git_limit = available - left_foot
     repo_heights = counts.get("repo_heights") or [36] * (counts.get("repos", 0) or 1)
@@ -256,8 +261,8 @@ def plan(width, height, top=40, counts=None, env=None):
         "minecraft": [margin, height - margin - minecraft_h, left, minecraft_h],
         "resource-monitor": [right_x, top, right, resource_h],
         "billing": [billing_x, billing_y, billing_w, billing_h],
-        "weather": [right_x, weather_y, right, weather_h],
-        "thermometer": [margin, thermometer_y, 120, thermometer_h],
+        "weather": [weather_x, weather_y, weather_w, weather_h],
+        "thermometer": [margin, thermometer_y, thermometer_w, thermometer_h],
     }
     # Existing positional overrides retain their edge semantics even though
     # every generated window now uses explicit top-left coordinates.
