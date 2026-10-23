@@ -29,7 +29,14 @@
 - `cache/github-contributions.json`: GitHub contribution days consumed by the Cairo renderer. Each entry carries the `level` (0-4) that GitHub puts on the cell and the real `count` scraped from its tooltip; the skyline extrudes the count.
 - `cache/sessions.json`: inbound logins joined to tmux sessions, consumed by the Cairo renderer. Device names and OS strings come from `tailscale status`; no tailnet account identity is stored.
 - `cache/weather-status.json`: normalized weather, air quality, and running guidance consumed by the Cairo renderer.
-- `cache/workouts-status.json`: workout summaries parsed from the TCX files in `cache/workouts/` (uploaded from the phone; see [Workout data source](workout-data-source.md)). Consumed by the weather panel's training section: last workout, rolling 7-day totals, and the last 14 workouts' distances for the sparkline bars. Heart rate and cadence are per-workout optionals.
+- `cache/workouts-status.json`: run summaries from the TCX files in `cache/workouts/` (uploaded from the phone; see [Workout data source](workout-data-source.md)), consumed by the weather panel's training section. It holds:
+  - the last run's totals, walk-excluded pace, and 5K-equivalent effort;
+  - rolling 7- and 28-day run totals;
+  - the fitness level, 28-day trend, and verdict;
+  - the last 14 runs' total and running distance, score, and fitness level for the sparkline.
+
+  Rides and untyped workouts without running are excluded; see [Run analysis](run-analysis.md). Heart rate and cadence are per-workout optionals.
+- `cache/workouts-analysis.json`: per-file parse and gait analysis keyed by file size, modification time, and a format version, so each refresh re-reads only new or changed TCX files. Unparseable files are remembered too. Deleting it only costs one full re-analysis.
 - `cache/weight-status.json`: the selected openScale user's latest weight, measurement dates, and change from the preceding reading, consumed by the weather panel. See [Weight backups](workout-data-source.md#weight-backups-from-openscale) for parsing.
 - `cache/git-status.json`: local git fleet status consumed by the Cairo renderer. Each repo may include `actions` (`run` / `fail` / `ok` / empty) for the name-line pip.
 - `cache/git-repo-discovery.json`: auto-discovered home repos with recent commits (TTL `GIT_SCAN_TTL_SECONDS`).
@@ -71,7 +78,7 @@ settings are in [Configuration](configuration.md#launcher-lifecycle).
 - Minecraft: `60s`
 - GitHub: `1800s`
 - Weather and air quality: `600s`
-- Workouts: `20s` (override with `WORKOUTS_REFRESH_SECONDS`); local TCX parse, no network
+- Workouts: `20s` (override with `WORKOUTS_REFRESH_SECONDS`); local parse of new or changed TCX files only, no network
 - Weight: `20s` (override with `WEIGHT_REFRESH_SECONDS`); local openScale ZIP parse, no network
 - Billing: `900s` (override with `BILLING_REFRESH_SECONDS`); AWS Cost Explorer is cached daily (`86400s` / `BILLING_AWS_CACHE_TTL_SECONDS`) to avoid per-query API fees on daily-refreshed backend data
 - Sessions: `20s` (override with `SESSIONS_REFRESH_SECONDS`)

@@ -156,10 +156,12 @@ assert(not has_forecast_connector, 'trajectories under 50% usage omit the predic
 
 files['weather-status.json'] = [[{"ok":true,"temperature":16,"aqi":23}]]
 files['workouts-status.json'] = [[{"ok":true,"weekRuns":4,"lastDistanceText":"2.6 km","lastPaceText":"5:53 /km",
+  "lastRunPaceText":"5:12 /km","lastScoreText":"26:10",
   "lastDurationText":"29:25","lastHeartRateShortText":"168 bpm","lastCadenceShortText":"80 spm",
   "lastAgeText":"2d ago","lastAgeDays":2,
-  "progressVerdict":"Better","progressKind":"good","paceDeltaText":"−1:32 /km",
-  "recent":[{"distanceUnits":3.0,"paceSeconds":400,"inMonth":true,"isLast":false},{"distanceUnits":5.0,"paceSeconds":353,"inMonth":true,"isLast":true}]}]]
+  "progressVerdict":"Better","progressKind":"good","trendText":"−0:42","fitnessBaselineScore":34.0,
+  "recent":[{"distanceUnits":3.0,"runUnits":null,"score":null,"fitness":34.2,"inWindow":true,"isLast":false},
+    {"distanceUnits":5.0,"runUnits":4.1,"score":36.4,"fitness":35.0,"inWindow":true,"isLast":true}]}]]
 files['weight-status.json'] = [[{"ok":true,"stale":false,"lastWeight":199.1,"lastWeightText":"199.1 lb",
   "lastDateText":"Aug 19","ageText":"22d ago","ageDays":22,"changeText":"−2.3 lb","previousDateText":"Aug 13",
   "progressVerdict":"Better","progressKind":"good","trendDeltaText":"−2.3 lb",
@@ -181,6 +183,17 @@ for _, trail in ipairs(trails) do
   end
 end
 assert(max_trail_y >= 120, 'personal-metrics bands must anchor flush to the bottom of the 124px window')
+assert(has('5:12/km') and not has('5:53') and has('−0:42') and has('5K 26:10 · 29:25 · 168 bpm'),
+  'training shows the walk-excluded running pace, the fitness trend, and the run as a 5K equivalent')
+width = 132
+draw('weather-renderer.lua')
+assert(has('5:12') and not has('5:12/km') and has('5K 26:10 · 29:25') and not has('168'),
+  'narrow training drops units, then the lowest-priority telemetry, instead of clipping')
+width = 120
+draw('weather-renderer.lua')
+assert(has('−0:42') and has('5:12/km · 5K 26:10') and not has('29:25'),
+  'the fitness trend keeps its place on the headline and the pace moves to the telemetry line')
+width = 188
 draw('thermometer-renderer.lua')
 assert(has('Weather') and has('unavailable') and not has('199.1 lb'), 'a legacy cache cannot invent a weekly comparison')
 height = 70

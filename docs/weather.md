@@ -7,13 +7,22 @@ AQI, UV, condition, and location readouts are removed. Both personal-metrics
 bands communicate progress implicitly through semantic color and micro-charts
 rather than explicit section headers or status chips:
 
-- **Running (top 49px band):** The first line shows the last run's distance,
-  pace, signed pace delta against the recent 6-run baseline (colored green when
-  faster, red when slower), and measurement age (colored amber when ≥10 days).
-  The second line shows duration, average heart rate, and cadence. Underneath, a
-  12-run sparkline layers distance bars (brightened for runs within the last 28
-  days), a dashed average-pace baseline, and the semantic-colored pace
-  trajectory curve.
+- **Running (top 49px band):** The first line shows the last run's total
+  distance (walking included), its running pace (walking and stops excluded),
+  the signed 28-day fitness change as a 5K-equivalent time, and run age (amber
+  when ≥10 days). The change is green for `Better`, red for `Worse`, and muted
+  while `Steady`, or amber if the last run is ≥10 days old. When the pace and
+  change do not both fit, the pace moves to the start of the second line. The
+  second line shows the run's effort as an equivalent 5K time (`5K 29:23`),
+  duration, and average heart rate, dropping trailing items that do not fit.
+  Underneath, a 12-run sparkline layers:
+  - distance bars, with the walked share hollow and runs inside the 28-day
+    window brightened;
+  - a dot for each run's effort score;
+  - the smoothed fitness line in the verdict color;
+  - a dashed baseline at the fitness level 28 days ago.
+
+  [Run analysis](run-analysis.md) defines the pace split, score, and trend.
 - **Weight (bottom 49px band):** The first line shows the latest weigh-in, the
   signed 30-day trend delta (colored green when moving toward the openScale goal
   weight, red when moving away), and measurement age (or `Stale`). The second

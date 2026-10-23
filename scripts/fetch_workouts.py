@@ -3,7 +3,8 @@
 
 Reads the workouts directory fed by the rclone WebDAV service (see
 docs/workout-data-source.md) and writes cache/workouts-status.json for the
-weather and running overlay's training section.
+weather and running overlay's training section. Walk/run splits, effort
+scores, and the fitness trend come from run_analysis.py.
 """
 import json
 import os
@@ -12,16 +13,28 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import fetch_common as common
+import run_analysis
 
 
 ROOT = Path(__file__).resolve().parents[1]
 CACHE_DIR = ROOT / "cache"
 STATUS_PATH = CACHE_DIR / "workouts-status.json"
+ANALYSIS_PATH = CACHE_DIR / "workouts-analysis.json"
 LOG_PATH = CACHE_DIR / "conky-workouts.log"
 DEFAULT_WORKOUTS_DIR = CACHE_DIR / "workouts"
 
+# Bump when parsing or run_analysis changes what a cached file summary means.
+ANALYSIS_VERSION = 1
 RECENT_LIMIT = 14
 WEEK_WINDOW = timedelta(days=7)
+TREND_WINDOW_DAYS = 28
+TREND_MIN_SCORED_RUNS = 3
+TREND_CONFIDENCE = 0.8
+TREND_MIN_SECONDS = 15
+EQUIVALENT_METERS = 5000.0
+NON_RUN_SPORTS = {"biking", "cycling", "swimming", "walking", "hiking", "elliptical"}
+OTHER_SPORT_RUN_SECONDS = 300
+TRACK_COVERAGE = 0.9
 
 SPORT_SHORT_NAMES = {
     "running": "Run",
@@ -62,32 +75,54 @@ def parse_time(value):
 
 
 def parse_workout(path):
-    """Parse one TCX file into a summary dict, raising on unusable content."""
+    """Parse one TCX file into a summary dict and its track, raising on unusable content.
+
+    An upload cut off mid-file keeps the lap totals and trackpoints read before
+    the break and is marked `truncated`.
+    """
     duration = 0.0
     distance = 0.0
     calories = 0
     heart_rates = []
     cadences = []
+    track = []
     start_time = None
     end_time = None
     sport = ""
     activity_count = 0
+    lap = None
+    parents = []
+    truncated = False
 
-    context = ET.iterparse(str(path), events=("start", "end"))
-    for event, element in context:
-        tag = local_tag(element)
-        if event == "start" and tag == "Activity":
-            activity_count += 1
-            sport = sport or str(element.get("Sport") or "")
-        elif event == "end":
+    def add_lap(fields):
+        nonlocal duration, distance, calories
+        duration += common.as_float(fields.get("TotalTimeSeconds"))
+        distance += common.as_float(fields.get("DistanceMeters"))
+        calories += common.as_int(fields.get("Calories"), 0)
+
+    try:
+        for event, element in ET.iterparse(str(path), events=("start", "end")):
+            tag = local_tag(element)
+            if event == "start":
+                if tag == "Activity":
+                    activity_count += 1
+                    sport = sport or str(element.get("Sport") or "")
+                elif tag == "Lap":
+                    lap = {}
+                parents.append(tag)
+                continue
+            parents.pop()
+            if lap is not None and parents and parents[-1] == "Lap":
+                if tag in ("TotalTimeSeconds", "DistanceMeters", "Calories"):
+                    lap[tag] = element.text
             if tag == "Trackpoint":
+                stamp = meters = steps = None
                 for child in element:
                     child_tag = local_tag(child)
                     if child_tag == "Time":
                         stamp = parse_time(child.text)
-                        if stamp:
-                            start_time = start_time or stamp
-                            end_time = stamp if not end_time or stamp > end_time else end_time
+                    elif child_tag == "DistanceMeters":
+                        meters = common.as_float(child.text, None)
                     elif child_tag == "HeartRateBpm":
                         for sub_child in child:
                             if local_tag(sub_child) == "Value":
@@ -97,20 +132,24 @@ def parse_workout(path):
                     elif child_tag == "Extensions":
                         for ext in child.iter():
                             if local_tag(ext) == "RunCadence":
-                                cadence = common.as_int(ext.text, 0)
-                                if cadence > 0:
-                                    cadences.append(cadence)
+                                steps = common.as_int(ext.text, 0)
+                                if steps > 0:
+                                    cadences.append(steps)
+                if stamp:
+                    start_time = start_time or stamp
+                    end_time = stamp if not end_time or stamp > end_time else end_time
+                    track.append((stamp.timestamp(), meters, steps))
                 element.clear()
             elif tag == "Lap":
-                for child in element:
-                    child_tag = local_tag(child)
-                    if child_tag == "TotalTimeSeconds":
-                        duration += common.as_float(child.text)
-                    elif child_tag == "DistanceMeters":
-                        distance += common.as_float(child.text)
-                    elif child_tag == "Calories":
-                        calories += common.as_int(child.text, 0)
+                add_lap(lap)
+                lap = None
                 element.clear()
+    except ET.ParseError:
+        if not activity_count or (lap is None and not track and duration <= 0):
+            raise
+        truncated = True
+        if lap is not None:
+            add_lap(lap)
 
     if not activity_count:
         raise ValueError("no Activity element")
@@ -131,20 +170,84 @@ def parse_workout(path):
         "avgHeartRate": round(sum(heart_rates) / len(heart_rates)) if heart_rates else None,
         "maxHeartRate": max(heart_rates) if heart_rates else None,
         "avgCadence": round(sum(cadences) / len(cadences)) if cadences else None,
+        "truncated": truncated,
+        "track": track,
     }
 
 
-def load_workouts(workouts_dir):
+def analyze_file(path):
+    workout = parse_workout(path)
+    workout.update(run_analysis.analyze_track(workout.pop("track")))
+    return workout
+
+
+def encode_workout(workout):
+    return {
+        key: value.isoformat() if isinstance(value, datetime) else value
+        for key, value in workout.items()
+    }
+
+
+def decode_workout(entry):
+    workout = dict(entry)
+    for key in ("startTime", "endTime"):
+        workout[key] = parse_time(workout.get(key))
+    return workout
+
+
+def read_analysis(path):
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(data, dict) or data.get("version") != ANALYSIS_VERSION:
+        return {}
+    files = data.get("files")
+    return files if isinstance(files, dict) else {}
+
+
+def load_workouts(workouts_dir, analysis_path=None):
+    """Analyze every TCX file, reusing `analysis_path` entries whose size and mtime match."""
+    previous = read_analysis(analysis_path) if analysis_path else {}
+    entries = {}
     workouts = []
     failures = 0
     for path in sorted(Path(workouts_dir).glob("*.tcx")):
         try:
-            workouts.append(parse_workout(path))
-        except (ET.ParseError, ValueError, OSError) as error:
+            stat = path.stat()
+        except OSError as error:
             failures += 1
             log_event(f"skipping {path.name}: {error}")
+            continue
+        key = [stat.st_size, stat.st_mtime_ns]
+        entry = previous.get(path.name)
+        if not isinstance(entry, dict) or entry.get("key") != key:
+            try:
+                entry = {"key": key, "workout": encode_workout(analyze_file(path))}
+                if entry["workout"]["truncated"]:
+                    log_event(f"salvaged truncated {path.name}")
+            except (ET.ParseError, ValueError, OSError) as error:
+                log_event(f"skipping {path.name}: {error}")
+                entry = {"key": key, "error": str(error)}
+        entries[path.name] = entry
+        if isinstance(entry.get("workout"), dict):
+            workouts.append(decode_workout(entry["workout"]))
+        else:
+            failures += 1
+    if analysis_path and entries != previous:
+        atomic_write_json(analysis_path, {"version": ANALYSIS_VERSION, "files": entries})
     workouts.sort(key=lambda workout: workout["startTime"] or datetime.min.replace(tzinfo=timezone.utc))
     return workouts, failures
+
+
+def is_run(workout):
+    """Running workouts, plus untyped ones (such as Other) with sustained running in them."""
+    sport = workout["sport"].strip().lower()
+    if sport == "running":
+        return True
+    if sport in NON_RUN_SPORTS:
+        return False
+    return (workout.get("runSeconds") or 0) >= OTHER_SPORT_RUN_SECONDS
 
 
 def short_sport(sport):
@@ -158,6 +261,13 @@ def format_duration(seconds):
     if hours:
         return f"{hours}:{minutes:02d}:{secs:02d}"
     return f"{minutes}:{secs:02d}"
+
+
+def format_signed_duration(seconds):
+    seconds = int(round(seconds))
+    sign = "−" if seconds < 0 else "+" if seconds > 0 else ""
+    minutes, secs = divmod(abs(seconds), 60)
+    return f"{sign}{minutes}:{secs:02d}"
 
 
 def format_distance(meters, units):
@@ -186,27 +296,77 @@ def format_date_text(stamp, now):
     return local_stamp.strftime("%b %-d")
 
 
+def equivalent_text(score):
+    return format_duration(run_analysis.equivalent_seconds(score, EQUIVALENT_METERS))
+
+
+def known_run_meters(workout):
+    """Running meters, or None when the track misses part of the workout (a truncated upload)."""
+    run_meters = workout.get("runMeters")
+    if run_meters is None or workout.get("trackMeters", 0.0) < TRACK_COVERAGE * workout["distanceMeters"]:
+        return None
+    return run_meters
+
+
+def trend_status(runs, last_age_days, now):
+    """Fitness level per run and the verdict on whether runs are getting better."""
+    samples = [
+        (run["startTime"].timestamp() if run["startTime"] else now.timestamp() + 1, run.get("score"))
+        for run in runs
+    ]
+    trend = run_analysis.fitness_trend(samples, now.timestamp(), TREND_WINDOW_DAYS)
+    scored = sum(1 for _, score in samples if score is not None)
+    status = {"progressVerdict": "Steady", "progressKind": "neutral", "trendText": ""}
+    if trend:
+        now_seconds = run_analysis.equivalent_seconds(trend["now"], EQUIVALENT_METERS)
+        then_seconds = run_analysis.equivalent_seconds(trend["then"], EQUIVALENT_METERS)
+        status.update(
+            {
+                "fitnessScore": round(trend["now"], 2),
+                "fitnessText": format_duration(now_seconds),
+                "fitnessBaselineScore": round(trend["then"], 2),
+                "trendWindowDays": TREND_WINDOW_DAYS,
+                "trendProbability": round(trend["probability"], 2),
+            }
+        )
+        if scored >= TREND_MIN_SCORED_RUNS:
+            delta = int(round(now_seconds - then_seconds))
+            status.update({"trendSeconds": delta, "trendText": format_signed_duration(delta)})
+            if trend["probability"] >= TREND_CONFIDENCE and delta <= -TREND_MIN_SECONDS:
+                status.update(progressVerdict="Better", progressKind="good")
+            elif trend["probability"] <= 1 - TREND_CONFIDENCE and delta >= TREND_MIN_SECONDS:
+                status.update(progressVerdict="Worse", progressKind="danger")
+    if status["progressVerdict"] == "Steady" and last_age_days >= 10:
+        status["progressKind"] = "caution"
+    return status, (trend["levels"] if trend else [None] * len(runs))
+
+
 def build_status(workouts, units, now=None):
     if now is None:
         now = datetime.now().astimezone()
+    runs = [workout for workout in workouts if is_run(workout)]
     status = {
         "ok": True,
         "stale": False,
         "updatedAt": datetime.now(timezone.utc).isoformat(),
         "workoutCount": len(workouts),
+        "runCount": len(runs),
         "unitName": units["name"],
     }
 
-    if not workouts:
+    if not runs:
         status["ok"] = False
-        status["error"] = "No workouts uploaded yet"
+        status["error"] = "No runs uploaded yet" if workouts else "No workouts uploaded yet"
         return status
 
-    last = workouts[-1]
+    last = runs[-1]
     last_duration = last["durationSeconds"]
     last_distance = last["distanceMeters"]
     last_stamp = (last["startTime"] or now).astimezone()
     last_age_days = max(0, (now.date() - last_stamp.date()).days)
+    run_meters = last.get("runMeters")
+    split_known = known_run_meters(last) is not None
+    last_score = last.get("score")
     status.update(
         {
             "lastSport": short_sport(last["sport"]),
@@ -218,6 +378,13 @@ def build_status(workouts, units, now=None):
             "lastDurationText": format_duration(last_duration),
             "lastDurationSeconds": round(last_duration),
             "lastPaceText": format_pace(last_duration, last_distance, units),
+            "lastRunDistanceText": format_distance(run_meters, units) if split_known else "",
+            "lastWalkDistanceText": format_distance(last["walkMeters"], units) if split_known else "",
+            "lastRunPaceText": (
+                format_pace(last["runSeconds"], run_meters, units) if run_meters else ""
+            ),
+            "lastScore": last_score,
+            "lastScoreText": equivalent_text(last_score) if last_score is not None else "",
             "lastHeartRateText": (
                 f"{last['avgHeartRate']} avg · {last['maxHeartRate']} max"
                 if last["avgHeartRate"]
@@ -236,16 +403,14 @@ def build_status(workouts, units, now=None):
     )
 
     week_start = now - WEEK_WINDOW
-    week_workouts = [
-        workout
-        for workout in workouts
-        if workout["startTime"] and workout["startTime"].astimezone() >= week_start
+    week_runs = [
+        run for run in runs if run["startTime"] and run["startTime"].astimezone() >= week_start
     ]
-    week_distance = sum(workout["distanceMeters"] for workout in week_workouts)
-    week_duration = sum(workout["durationSeconds"] for workout in week_workouts)
+    week_distance = sum(run["distanceMeters"] for run in week_runs)
+    week_duration = sum(run["durationSeconds"] for run in week_runs)
     status.update(
         {
-            "weekRuns": len(week_workouts),
+            "weekRuns": len(week_runs),
             "weekDistanceText": format_distance(week_distance, units),
             "weekDistanceMeters": round(week_distance, 1),
             "weekDurationText": format_duration(week_duration),
@@ -253,108 +418,42 @@ def build_status(workouts, units, now=None):
         }
     )
 
-    # Progress over time: combine pace progression vs recent baseline with 28-day consistency.
-    month_window = timedelta(days=28)
-    month_start = now - month_window
-    prev_month_start = now - (month_window * 2)
-    month_workouts = [
-        w for w in workouts if w["startTime"] and w["startTime"].astimezone() >= month_start
+    month_start = now - timedelta(days=TREND_WINDOW_DAYS)
+    month_runs = [
+        run for run in runs if run["startTime"] and run["startTime"].astimezone() >= month_start
     ]
-    prev_month_workouts = [
-        w
-        for w in workouts
-        if w["startTime"] and prev_month_start <= w["startTime"].astimezone() < month_start
-    ]
-    month_distance = sum(w["distanceMeters"] for w in month_workouts)
-    prev_month_distance = sum(w["distanceMeters"] for w in prev_month_workouts)
-    month_runs = len(month_workouts)
+    month_distance = sum(run["distanceMeters"] for run in month_runs)
     month_distance_text = format_distance(month_distance, units)
-    month_summary_text = f"{month_distance_text} · {month_runs} {'run' if month_runs == 1 else 'runs'} / 28d"
-
-    comparable = [
-        w
-        for w in workouts
-        if w["sport"].strip().lower() == last["sport"].strip().lower()
-        and w["distanceMeters"] >= 1000
-        and w["durationSeconds"] > 0
-    ]
-    pace_delta_sec = None
-    pace_delta_text = "--"
-    pace_detail_text = "Building baseline"
-    if len(comparable) >= 2 and last in comparable:
-        prior_runs = [w for w in comparable if w is not last][-6:]
-        if prior_runs:
-            last_pace_sec = last["durationSeconds"] / (last["distanceMeters"] / units["distanceDivisor"])
-            avg_pace_sec = sum(
-                w["durationSeconds"] / (w["distanceMeters"] / units["distanceDivisor"])
-                for w in prior_runs
-            ) / len(prior_runs)
-            pace_delta_sec = round(last_pace_sec - avg_pace_sec)
-            sign = "−" if pace_delta_sec < 0 else "+" if pace_delta_sec > 0 else ""
-            abs_sec = abs(int(pace_delta_sec))
-            dm, ds = divmod(abs_sec, 60)
-            pace_delta_text = f"{sign}{dm}:{ds:02d} {units['paceSymbol']}"
-            pace_detail_text = f"Pace {pace_delta_text} vs avg"
-
-    perf_score = 0
-    if pace_delta_sec is not None:
-        if pace_delta_sec <= -8:
-            perf_score = 1
-        elif pace_delta_sec >= 8:
-            perf_score = -1
-
-    cons_score = 0
-    if last_age_days >= 14 or (month_runs == 0 and len(workouts) > 1):
-        cons_score = -1
-    elif last_age_days <= 7 and (month_distance >= prev_month_distance * 0.9 or month_runs >= 3):
-        cons_score = 1
-    elif month_distance > prev_month_distance and month_runs >= 3:
-        cons_score = 1
-
-    total_score = perf_score + cons_score
-    if total_score >= 1:
-        verdict, kind = "Better", "good"
-    elif total_score <= -1:
-        verdict, kind = "Worse", "danger"
-    else:
-        verdict, kind = "Steady", "caution" if last_age_days >= 10 else "neutral"
-
     status.update(
         {
-            "monthRuns": month_runs,
+            "monthRuns": len(month_runs),
             "monthDistanceText": month_distance_text,
-            "monthSummaryText": month_summary_text,
-            "paceDeltaSeconds": pace_delta_sec,
-            "paceDeltaText": pace_delta_text,
-            "paceDetailText": pace_detail_text,
-            "progressVerdict": verdict,
-            "progressKind": kind,
+            "monthSummaryText": (
+                f"{month_distance_text} · {len(month_runs)} "
+                f"{'run' if len(month_runs) == 1 else 'runs'} / {TREND_WINDOW_DAYS}d"
+            ),
         }
     )
 
-    recent = workouts[-RECENT_LIMIT:]
+    trend, levels = trend_status(runs, last_age_days, now)
+    status.update(trend)
+
+    divisor = units["distanceDivisor"]
     status["recent"] = [
         {
-            "dateText": format_date_text(workout["startTime"] or now, now),
-            "sport": short_sport(workout["sport"]),
-            "distanceText": format_distance(workout["distanceMeters"], units),
-            "distanceUnits": round(
-                workout["distanceMeters"] / units["distanceDivisor"], 2
+            "dateText": format_date_text(run["startTime"] or now, now),
+            "sport": short_sport(run["sport"]),
+            "distanceText": format_distance(run["distanceMeters"], units),
+            "distanceUnits": round(run["distanceMeters"] / divisor, 2),
+            "runUnits": (
+                round(known_run_meters(run) / divisor, 2) if known_run_meters(run) is not None else None
             ),
-            "paceSeconds": (
-                round(
-                    workout["durationSeconds"]
-                    / (workout["distanceMeters"] / units["distanceDivisor"])
-                )
-                if workout["distanceMeters"] >= 200 and workout["durationSeconds"] > 0
-                else 0
-            ),
-            "inMonth": bool(
-                workout["startTime"] and workout["startTime"].astimezone() >= month_start
-            ),
-            "isLast": workout is last,
+            "score": run.get("score"),
+            "fitness": round(level, 2) if level is not None else None,
+            "inWindow": bool(run["startTime"] and run["startTime"].astimezone() >= month_start),
+            "isLast": run is last,
         }
-        for workout in recent
+        for run, level in list(zip(runs, levels))[-RECENT_LIMIT:]
     ]
     return status
 
@@ -386,7 +485,7 @@ def main():
         write_error(f"Workouts directory missing: {workouts_dir}")
         return 1
 
-    workouts, failures = load_workouts(workouts_dir)
+    workouts, failures = load_workouts(workouts_dir, ANALYSIS_PATH)
     if not workouts:
         write_error("No workouts uploaded yet")
         return 1
@@ -395,10 +494,15 @@ def main():
     if failures:
         status["skippedFiles"] = failures
     atomic_write_json(STATUS_PATH, status)
+    if not status["ok"]:
+        log_event(f"error: {status['error']}")
+        return 1
     log_event(
-        f"summarized workouts={len(workouts)} skipped={failures} "
-        f"last={status['lastSport']} {status['lastDistanceText']} {status['lastDateText']} "
-        f"week={status['weekDistanceText']}/{status['weekRuns']} runs"
+        f"summarized workouts={len(workouts)} runs={status['runCount']} skipped={failures} "
+        f"last={status['lastDistanceText']} {status['lastDateText']} "
+        f"run_pace={status['lastRunPaceText'] or '--'} score={status['lastScoreText'] or '--'} "
+        f"fitness={status.get('fitnessText', '--')} trend={status['trendText'] or '--'} "
+        f"verdict={status['progressVerdict']}"
     )
     print(json.dumps(status, indent=2))
     return 0

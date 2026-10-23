@@ -59,8 +59,10 @@ return function(shared, repo_root)
     for _, entry in ipairs(shared.json_array_objects(content, 'recent')) do
       table.insert(recent, {
         distance_units = json_number(entry, 'distanceUnits'),
-        pace_seconds = json_number(entry, 'paceSeconds'),
-        in_month = shared.json_boolean(entry, 'inMonth', true),
+        run_units = shared.json_number(entry, 'runUnits', nil),
+        score = shared.json_number(entry, 'score', nil),
+        fitness = shared.json_number(entry, 'fitness', nil),
+        in_window = shared.json_boolean(entry, 'inWindow', true),
         is_last = shared.json_boolean(entry, 'isLast', false),
       })
     end
@@ -70,15 +72,10 @@ return function(shared, repo_root)
       local hr_full = json_string(content, 'lastHeartRateText', '')
       hr_short = hr_full:match('^(%d+)%s*avg') and (hr_full:match('^(%d+)%s*avg') .. ' bpm') or hr_full
     end
-    local cad_short = json_string(content, 'lastCadenceShortText', '')
-    if cad_short == '' then
-      local cad_full = json_string(content, 'lastCadenceText', '')
-      cad_short = cad_full:gsub('%s*avg$', '')
-    end
 
-    local pace_raw = json_string(content, 'lastPaceText', '--')
+    local pace_raw = json_string(content, 'lastRunPaceText', '')
+    if pace_raw == '' then pace_raw = json_string(content, 'lastPaceText', '--') end
     local pace_compact = pace_raw:gsub('%s+/', '/')
-    local pace_delta = strip_unit(json_string(content, 'paceDeltaText', ''))
 
     return {
       ok = true,
@@ -88,9 +85,10 @@ return function(shared, repo_root)
       last_distance = json_string(content, 'lastDistanceText', '--'),
       last_duration = json_string(content, 'lastDurationText', '--'),
       last_pace = pace_compact,
+      last_score = json_string(content, 'lastScoreText', ''),
       last_heart_rate = hr_short,
-      last_cadence = cad_short,
-      pace_delta = pace_delta,
+      trend = json_string(content, 'trendText', ''),
+      fitness_baseline = shared.json_number(content, 'fitnessBaselineScore', nil),
       kind = json_string(content, 'progressKind', 'neutral'),
       recent = recent,
     }
@@ -146,61 +144,82 @@ return function(shared, repo_root)
     end
   end
 
-  local function draw_run_sparkline(cr, recent, kind, x, y, w, h)
+  -- Bars are total distance with the walked share hollow; dots are each run's
+  -- effort score and the line is the smoothed fitness level, dashed where it
+  -- stood at the start of the trend window.
+  local function draw_run_sparkline(cr, workouts, x, y, w, h)
+    local recent = workouts.recent
     local n = math.min(#recent, 12)
     if n == 0 then return end
     local start_idx = #recent - n + 1
+    local kind = workouts.kind
+    local color = semantic_color(kind)
     local max_dist = 1.0
-    local min_pace, max_pace = math.huge, 0
-    local pace_sum, pace_count = 0, 0
+    local lo, hi = math.huge, -math.huge
+    local function widen(value, top_only)
+      if value == nil then return end
+      if value > hi then hi = value end
+      if not top_only and value < lo then lo = value end
+    end
+    widen(workouts.fitness_baseline)
     for i = start_idx, #recent do
       local item = recent[i]
       if item.distance_units > max_dist then max_dist = item.distance_units end
-      if item.pace_seconds and item.pace_seconds > 0 then
-        if item.pace_seconds < min_pace then min_pace = item.pace_seconds end
-        if item.pace_seconds > max_pace then max_pace = item.pace_seconds end
-        if i < #recent then
-          pace_sum = pace_sum + item.pace_seconds
-          pace_count = pace_count + 1
-        end
-      end
+      widen(item.fitness)
+      widen(item.score, true)
+    end
+    local scaled = lo < math.huge
+    if scaled then
+      lo = lo - 3
+      hi = math.max(hi, lo + 4)
+    end
+    local function level_y(value)
+      return y + h - 2 - shared.clamp((value - lo) / (hi - lo), 0, 1) * (h - 4)
     end
 
     local bar_gap = 3
     local bar_w = math.max(3, math.floor((w - bar_gap * (n - 1)) / n))
     local total_w = bar_w * n + bar_gap * (n - 1)
     local left_x = x + math.floor((w - total_w) / 2)
-    local pace_points = {}
-    local color = semantic_color(kind)
 
-    if pace_count > 0 and max_pace > min_pace then
-      local avg_pace = pace_sum / pace_count
-      local avg_norm = shared.clamp((max_pace - avg_pace) / (max_pace - min_pace), 0, 1)
-      local avg_y = y + h - 2 - avg_norm * (h - 4)
-      ui.dash(cr, left_x, avg_y, left_x + total_w, avg_y, ui.line_strong, 1, 2, 2, 0.75)
+    if scaled and workouts.fitness_baseline then
+      local base_y = level_y(workouts.fitness_baseline)
+      ui.dash(cr, left_x, base_y, left_x + total_w, base_y, ui.line_strong, 1, 2, 2, 0.75)
     end
 
+    local line = {}
     for idx = 1, n do
       local item = recent[start_idx + idx - 1]
       local bx = left_x + (idx - 1) * (bar_w + bar_gap)
       local frac = shared.clamp(item.distance_units / max_dist, 0.14, 1.0)
       local bh = math.max(2, math.floor(frac * h + 0.5))
-      local by = y + h - bh
-      local bar_color = item.is_last and color or (item.in_month and ui.muted or ui.line_strong)
-      local bar_alpha = item.is_last and 0.85 or (item.in_month and 0.55 or 0.35)
-      ui.rect(cr, bx, by, bar_w, bh, bar_color, 1.5, bar_alpha)
-
-      if item.pace_seconds and item.pace_seconds > 0 and max_pace > min_pace then
-        local p_norm = (max_pace - item.pace_seconds) / (max_pace - min_pace)
-        local py = y + h - 2 - p_norm * (h - 4)
-        pace_points[#pace_points + 1] = {bx + bar_w / 2, py}
+      local run_share = 1
+      if item.run_units and item.distance_units > 0 then
+        run_share = shared.clamp(item.run_units / item.distance_units, 0, 1)
       end
+      local run_h = math.floor(bh * run_share + 0.5)
+      local bar_color = item.is_last and color or (item.in_window and ui.muted or ui.line_strong)
+      local bar_alpha = item.is_last and 0.85 or (item.in_window and 0.55 or 0.35)
+      if run_h < bh then
+        ui.rect(cr, bx + 0.5, y + h - bh + 0.5, bar_w - 1, bh - 1, bar_color, 1.5, math.min(1, bar_alpha + 0.2), 1)
+      end
+      if run_h > 0 then
+        ui.rect(cr, bx, y + h - run_h, bar_w, run_h, bar_color, 1.5, bar_alpha)
+      end
+      if scaled and item.fitness then line[#line + 1] = {bx + bar_w / 2, level_y(item.fitness)} end
     end
 
-    if #pace_points >= 2 then
-      ui.polyline(cr, pace_points, color, 1.5, 0.95, true)
-      local last_pt = pace_points[#pace_points]
-      draw_endpoint(cr, last_pt[1], last_pt[2], kind, color)
+    if not scaled then return end
+    for idx = 1, n do
+      local item = recent[start_idx + idx - 1]
+      if item.score then
+        local cx = left_x + (idx - 1) * (bar_w + bar_gap) + bar_w / 2
+        ui.circle(cr, cx, level_y(item.score), 1.25, item.is_last and ui.strong or ui.ink, item.is_last and 1 or 0.7)
+      end
+    end
+    if #line >= 2 then
+      ui.polyline(cr, line, color, 1.5, 0.95, true)
+      draw_endpoint(cr, line[#line][1], line[#line][2], kind, color)
     end
   end
 
@@ -290,24 +309,34 @@ return function(shared, repo_root)
 
     local x = 0
     x = x + ui.text(cr, workouts.last_distance, x, top + 11, {size = 13.5, bold = 'bold', color = ui.ink}) + 6
-    local pace_str = width < 160 and workouts.last_pace:gsub('/[a-zA-Z]+$', '') or workouts.last_pace
-    if pace_str ~= '' and pace_str ~= '--' and x + ui.width(cr, pace_str, 11, true) <= width - recency_w then
+    local limit = width - recency_w
+    local trend_w = workouts.trend ~= '' and ui.width(cr, workouts.trend, 11, true, 'bold') or 0
+    local pace = workouts.last_pace ~= '--' and workouts.last_pace or ''
+    local pace_str = width < 160 and pace:gsub('/[a-zA-Z]+$', '') or pace
+    local pace_inline = pace_str ~= ''
+      and x + ui.width(cr, pace_str, 11, true) + (trend_w > 0 and 5 + trend_w or 0) <= limit
+    if pace_inline then
       x = x + ui.text(cr, pace_str, x, top + 11, {size = 11, mono = true, color = ui.muted}) + 5
     end
-    if workouts.pace_delta ~= '' and x + ui.width(cr, workouts.pace_delta, 11, true, 'bold') <= width - recency_w then
-      ui.text(cr, workouts.pace_delta, x, top + 11, {size = 11, mono = true, bold = 'bold', color = color})
+    if trend_w > 0 and x + trend_w <= limit then
+      ui.text(cr, workouts.trend, x, top + 11, {size = 11, mono = true, bold = 'bold', color = color})
     end
     if recency ~= '' then
       ui.text(cr, recency, width, top + 11, {size = 11, mono = true, color = recency_color, align = 'right'})
     end
 
     local hr_part = width < 160 and workouts.last_heart_rate:gsub('%s*bpm$', '') or workouts.last_heart_rate
-    local cad_part = width < 160 and workouts.last_cadence:gsub('%s*spm$', '') or workouts.last_cadence
-    local telemetry = join({workouts.last_duration, hr_part, cad_part}, ' · ')
+    local score_part = workouts.last_score ~= '' and ('5K ' .. workouts.last_score) or ''
+    local telemetry = ''
+    for _, part in ipairs({pace_inline and '' or pace, score_part, workouts.last_duration, hr_part}) do
+      local candidate = join({telemetry, part}, ' · ')
+      if ui.width(cr, candidate, 11, true) > width then break end
+      telemetry = candidate
+    end
     ui.text(cr, telemetry, 0, top + 26, {size = 11, mono = true, color = ui.muted, width = width})
 
     if #workouts.recent >= 2 then
-      draw_run_sparkline(cr, workouts.recent, workouts.kind, 0, top + 31, width, 18)
+      draw_run_sparkline(cr, workouts, 0, top + 31, width, 18)
     else
       ui.line_between(cr, 0, top + 40, width, top + 40, color, 1.5, 0.7)
     end
