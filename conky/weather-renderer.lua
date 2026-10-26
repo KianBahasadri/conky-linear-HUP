@@ -350,7 +350,12 @@ return function(shared, repo_root)
     end
     local color = semantic_color(weight.kind)
     local right_tag = weight.stale and 'Stale' or short_age(weight.age, weight.last_date)
-    local right_color = (weight.stale or weight.age_days >= 10) and ui.caution or ui.muted
+    local right_color = ui.muted
+    if weight.age_days > 5 then
+      right_color = ui.danger
+    elseif weight.age_days > 3 or weight.stale then
+      right_color = ui.caution
+    end
     local right_w = right_tag ~= '' and (ui.width(cr, right_tag, 11, true) + 6) or 0
 
     local x = 0

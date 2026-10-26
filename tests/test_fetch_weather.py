@@ -68,10 +68,35 @@ def test_thermometer_rejects_incomplete_history_or_local_events(thermometer_weat
 
 
 @pytest.mark.parametrize("code,condition", [(0, "clear"), (1, "clear"), (45, "cloudy"),
-                                           (61, "rain"), (95, "rain"), (73, "snow"), (86, "snow")])
+                                           (61, "rain"), (95, "rain"), (97, "rain"),
+                                           (73, "snow"), (86, "snow")])
 def test_thermometer_maps_weather_to_reference_conditions(thermometer_weather, code, condition):
     thermometer_weather["current"]["weather_code"] = code
     assert weather.normalize_thermometer(thermometer_weather)["condition"] == condition
+
+
+@pytest.mark.parametrize(
+    "code,temperature,danger",
+    [
+        (2, 23.1, False),
+        (95, 23.1, True),
+        (96, 10, True),
+        (97, 20, True),
+        (99, 0, True),
+        (0, 35, True),
+        (0, 34.9, False),
+        (1, -15, True),
+        (1, -14.9, False),
+    ],
+)
+def test_thermometer_marks_severe_storms_and_extreme_temperatures_as_danger(
+    thermometer_weather, code, temperature, danger
+):
+    thermometer_weather["current"]["weather_code"] = code
+    thermometer_weather["current"]["temperature_2m"] = temperature
+    status = weather.normalize_thermometer(thermometer_weather)
+    assert status["ok"] is True
+    assert status["danger"] is danger
 
 
 def test_thermometer_stays_in_celsius_when_legacy_readouts_use_fahrenheit(thermometer_weather, monkeypatch):

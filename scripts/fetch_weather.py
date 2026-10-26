@@ -54,6 +54,7 @@ WEATHER_DESCRIPTIONS = {
     86: "Heavy snow showers",
     95: "Thunderstorms",
     96: "Storms with hail",
+    97: "Heavy thunderstorms",
     99: "Storms with hail",
 }
 
@@ -564,22 +565,26 @@ def normalize_thermometer(weather):
                 or int(offset) != offset or abs(offset) > 86400):
             raise ValueError("Local sun times unavailable")
         code = current["weather_code"]
+        temperature = current["temperature_2m"]
         if code in (0, 1):
             condition = "clear"
         elif code in (2, 3, 45, 48):
             condition = "cloudy"
         elif code in (71, 73, 75, 77, 85, 86):
             condition = "snow"
-        elif code in (51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82, 95, 96, 99):
+        elif code in (51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82, 95, 96, 97, 99):
             condition = "rain"
         else:
             raise ValueError("Weather condition unavailable")
+        # No official alert feed: flag severe WMO storms and extreme heat/cold.
+        danger = code in (95, 96, 97, 99) or temperature >= 35 or temperature <= -15
         return {
             "ok": True,
             "date": today.isoformat(),
-            "temperatureCelsius": current["temperature_2m"],
+            "temperatureCelsius": temperature,
             "previousDays": previous_days,
             "condition": condition,
+            "danger": danger,
             "sunriseMinute": sunrise_minute,
             "sunsetMinute": sunset_minute,
             "utcOffsetSeconds": offset,

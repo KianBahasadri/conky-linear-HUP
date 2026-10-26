@@ -25,7 +25,8 @@ rather than explicit section headers or status chips:
   [Run analysis](run-analysis.md) defines the pace split, score, and trend.
 - **Weight (bottom 49px band):** The first line shows the latest weigh-in, the
   signed 30-day trend delta (colored green when moving toward the openScale goal
-  weight, red when moving away), and measurement age (or `Stale`). The second
+  weight, red when moving away), and measurement age (caution yellow when >3
+  days ago, danger red when >5 days ago, or `Stale`). The second
   line shows the step change and previous weigh-in date on the left and the
   target weight (`→ 183 lb`) on the right. Underneath, a 12-weigh-in trajectory
   sparkline plots shaded segment areas and curve segments colored by direction
@@ -46,12 +47,13 @@ valid current weather or air-quality fields are treated as failed refreshes.
 
 `conky/thermometer-component.lua` implements the design-guide weather summary in
 a transparent 120px-wide, 124px-high window. A 92px thermometer sits beside a
-16px Lucide weather glyph above four detail rows: sunrise, sunset, UV index,
-and rain chance. Detail rows use 12px glyphs and 11px IBM Plex Mono text.
-All thermometer text and glyphs use the muted color. Sun times use 12-hour time with
-AM/PM, such as `6:30 AM` and `7:00 PM`. There are no persistent temperature
-numbers, ticks, average markers, or enclosing panel. The shipped overlay uses half-size
-graphics and spacing, with minimum text and detail-glyph sizes for readability.
+16px Lucide weather glyph above detail rows: sunrise and sunset, plus dynamic
+notable conditions for UV index, rain chance, air quality, and wind speed.
+Detail rows use 12px glyphs and 11px IBM Plex Mono text. Sun times use 12-hour
+time with AM/PM, such as `6:30 AM` and `7:00 PM`. There are no persistent
+temperature numbers, ticks, average markers, or enclosing panel. The shipped
+overlay uses half-size graphics and spacing, with minimum text and detail-glyph
+sizes for readability.
 
 The component measures the visible detail rows to size its content and centers
 the weather glyph over the full detail group. Its default placement is
@@ -59,15 +61,28 @@ the weather glyph over the full detail group. Its default placement is
 `left-icon-below`, `stack-above`, and `stack-below`. Side placements center the
 whole information stack against the thermometer; vertical placements share a
 center axis. Glyph sizes accept 16–64px before scaling. The independent boolean
-options `show_sun_times`, `show_uv_index`, and `show_rain_chance` default to
-`true`; hiding rows removes their space and recenters the remaining content.
+options `show_sun_times`, `show_uv_index`, `show_rain_chance`, `show_air_quality`,
+and `show_wind_speed` default to `true`; hiding rows removes their space and
+recenters the remaining content. Detail rows omit negligible readings:
+0% rain, UV under 1.0, AQI 50 or below (good air), and wind under 12 km/h (8 mph)
+are hidden so only notable conditions take up space. Displayed detail text and
+glyphs use semantic colors:
+- **UV Index:** muted for low readings (1.0–2.9), caution (yellow) for moderate
+  levels (≥3.0), and danger (red) for dangerous exposure (≥8.0).
+- **Rain Chance:** muted for slight chances (1–49%), and caution (yellow) when
+  rain is likely (≥50%).
+- **Air Quality (AQI):** omitted when good (≤50), caution (yellow) for moderate
+  air (51–100), and danger (red) for unhealthy air (>100).
+- **Wind Speed:** omitted when calm or light (<12 km/h / <8 mph), caution (yellow)
+  when strong (≥30 km/h / ≥20 mph), and danger (red) for severe wind (≥50 km/h /
+  ≥30 mph).
 
-The cyan fill compares the unrounded current Celsius reading with the mean of
-the previous seven complete local days' daily mean temperatures, excluding
-today. The [Open-Meteo forecast request](https://open-meteo.com/en/docs) includes
-`past_days=7` and `temperature_2m_mean` for the same coordinates. The comparison
-data stays in Celsius; unit conversion applies only to the other cached
-weather and run-guidance fields.
+The tube fill height compares the unrounded current Celsius reading with the
+mean of the previous seven complete local days' daily mean temperatures,
+excluding today. The [Open-Meteo forecast request](https://open-meteo.com/en/docs)
+includes `past_days=7` and `temperature_2m_mean` for the same coordinates. The
+comparison data stays in Celsius; unit conversion applies only to the other
+cached weather and run-guidance fields.
 
 | Difference from the seven-day mean | Fill |
 | --- | --- |
@@ -77,22 +92,30 @@ weather and run-guidance fields.
 | Above +2°C and below +6°C | Three-quarter tube |
 | At or above +6°C | Full tube |
 
-The cache's `thermometer` object contains the current reading, seven dated
-daily readings, condition, local date, UTC offset, and today's sunrise/sunset
-in local minutes. Missing, nonfinite, incomplete, or incorrectly dated inputs
-show `Weather unavailable`; a partial week never becomes a comparison against
-zero. After local midnight, yesterday's summary is unavailable until refreshed.
-Sun events are selected by today's date because the daily response includes
-historical events too. The renderer uses location time on every draw, switching
-clear/cloudy Sun glyphs to Moon glyphs at sunset and back at sunrise. Rain and
-snow use `CloudRain` and `Snowflake`. The passive overlay has no hover controls.
+Fill color is muted for bulb through half tube, and caution (yellow) for
+three-quarter and full tube. When `thermometer.danger` is true, the tube and
+bulb use danger (red) instead, and a red `triangle-alert` glyph replaces the
+usual weather icon. Danger is derived from current conditions because Open-Meteo
+does not provide an official alert feed: WMO thunderstorm codes `95`/`96`/`97`/`99`,
+current temperature at or above `35°C`, or at or below `−15°C`.
 
-UV and rain chance use the cache's top-level `uvIndex` and
-`precipitationProbability` fields. UV uses at most one decimal place, such as
-`UV 4.2`; rain chance rounds to a whole percentage. Missing or invalid optional
-readings show `UV —` or `—` without removing the thermometer. UV must be finite
-and nonnegative, and rain chance must be finite and between 0 and 100. Zero is
-a valid reading for both.
+The cache's `thermometer` object contains the current reading, seven dated
+daily readings, condition, danger flag, local date, UTC offset, and today's
+sunrise/sunset in local minutes. Missing, nonfinite, incomplete, or incorrectly
+dated inputs show `Weather unavailable`; a partial week never becomes a
+comparison against zero. After local midnight, yesterday's summary is
+unavailable until refreshed. Sun events are selected by today's date because
+the daily response includes historical events too. The renderer uses location
+time on every draw, switching clear/cloudy Sun glyphs to Moon glyphs at sunset
+and back at sunrise. Rain and snow use `CloudRain` and `Snowflake`. The passive
+overlay has no hover controls.
+
+Detail readings use the cache's top-level `uvIndex`,
+`precipitationProbability`, `aqi`, `windSpeed`, and `windUnit` fields. UV uses
+at most one decimal place, such as `UV 4.2`; rain chance rounds to a whole
+percentage; air quality uses `AQI <value>`; and wind speed shows `<speed> <unit>`.
+Non-notable, missing, or nonfinite readings are omitted to keep the detail group
+clean and compact.
 
 ## Location
 

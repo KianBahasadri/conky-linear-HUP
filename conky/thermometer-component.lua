@@ -19,6 +19,8 @@ return function(shared, repo_root, options)
   local show_sun = visible('show_sun_times')
   local show_uv = visible('show_uv_index')
   local show_rain = visible('show_rain_chance')
+  local show_air = visible('show_air_quality')
+  local show_wind = visible('show_wind_speed')
   local padding_x = options.padding_x or (20 * scale)
   local padding_y = options.padding_y or (24 * scale)
   local stack_gap = options.stack_gap or (12 * scale)
@@ -79,10 +81,15 @@ return function(shared, repo_root, options)
     local glyphs = {clear = is_day and 'sun' or 'moon', cloudy = is_day and 'cloud-sun' or 'cloud-moon',
       rain = 'cloud-rain', snow = 'snowflake'}
     if not glyphs[condition] then return unavailable end
+    local danger = shared.json_boolean(data, 'danger', false)
     return {ok = true, stale = shared.json_boolean(content, 'stale', false),
-      level = level, mode = modes[level], glyph = glyphs[condition], sunrise = sunrise, sunset = sunset,
+      level = level, mode = modes[level], danger = danger,
+      glyph = danger and 'triangle-alert' or glyphs[condition], sunrise = sunrise, sunset = sunset,
       uv_index = optional_number(content, 'uvIndex'),
-      rain_chance_percent = optional_number(content, 'precipitationProbability', 100)}
+      rain_chance_percent = optional_number(content, 'precipitationProbability', 100),
+      aqi = optional_number(content, 'aqi'),
+      wind_speed = optional_number(content, 'windSpeed'),
+      wind_unit = shared.json_string(content, 'windUnit', 'km/h')}
   end
 
   local function sun_time(value)
@@ -94,50 +101,79 @@ return function(shared, repo_root, options)
 
   local function detail_rows(data)
     local rows = {}
-    if show_sun then
+    if show_sun and data.sunrise and data.sunset then
       for _, event in ipairs({{'sunrise', data.sunrise}, {'sunset', data.sunset}}) do
-        rows[#rows + 1] = {icon = event[1], value = sun_time(event[2])}
+        rows[#rows + 1] = {icon = event[1], value = sun_time(event[2]), color = ui.muted}
       end
     end
-    if show_uv then
-      local value = data.uv_index and string.format('%.1f', data.uv_index):gsub('%.0$', '') or '—'
-      rows[#rows + 1] = {icon = 'radiation', value = 'UV ' .. value}
+    if show_uv and data.uv_index and data.uv_index >= 1.0 then
+      local uv_color = data.uv_index >= 8.0 and ui.danger
+        or (data.uv_index >= 3.0 and ui.caution or ui.muted)
+      local value = string.format('%.1f', data.uv_index):gsub('%.0$', '')
+      rows[#rows + 1] = {icon = 'radiation', value = 'UV ' .. value, color = uv_color}
     end
-    if show_rain then
-      rows[#rows + 1] = {icon = 'cloud-rain', value = data.rain_chance_percent
-        and string.format('%d%%', math.floor(data.rain_chance_percent + 0.5)) or '—'}
+    if show_rain and data.rain_chance_percent and data.rain_chance_percent > 0 then
+      local rain_color = data.rain_chance_percent >= 50 and ui.caution or ui.muted
+      local value = string.format('%d%%', math.floor(data.rain_chance_percent + 0.5))
+      rows[#rows + 1] = {icon = 'cloud-rain', value = value, color = rain_color}
+    end
+    if show_air and data.aqi and data.aqi > 50 then
+      local aqi_color = data.aqi > 100 and ui.danger or ui.caution
+      rows[#rows + 1] = {icon = 'haze', value = 'AQI ' .. math.floor(data.aqi + 0.5), color = aqi_color}
+    end
+    if show_wind and data.wind_speed then
+      local unit = data.wind_unit or 'km/h'
+      local is_mph = unit == 'mph'
+      local threshold = is_mph and 8 or 12
+      if data.wind_speed >= threshold then
+        local caution_th = is_mph and 20 or 30
+        local danger_th = is_mph and 30 or 50
+        local wind_color = data.wind_speed >= danger_th and ui.danger
+          or (data.wind_speed >= caution_th and ui.caution or ui.muted)
+        local value = string.format('%d %s', math.floor(data.wind_speed + 0.5), unit)
+        rows[#rows + 1] = {icon = 'wind', value = value, color = wind_color}
+      end
     end
     return rows
   end
 
   function component.layout(cr, data)
-    local rows, details_width = detail_rows(data), 0
+    local rows = detail_rows(data)
+    local details_width = 0
     for _, row in ipairs(rows) do
       details_width = math.max(details_width, detail_icon + detail_gap + ui.width(cr, row.value, text_size, true))
     end
+    local current_gap = row_gap
+    local count = #rows
+    if count > 4 then
+      current_gap = math.max(2 * scale, row_gap - (count - 4) * 2 * scale)
+    end
+    local current_details_height = count > 0 and (count * row_height + (count - 1) * current_gap) or 0
+    local current_info_height = glyph_size + (count > 0 and (stack_gap + current_details_height) or 0)
     local info_width = math.max(glyph_size, details_width)
     local width = vertical and math.max(tube_width, info_width) or tube_width + 16 * scale + info_width
     local tube_x, tube_y, info_x, info_y
     if vertical then
       tube_x, info_x = (width - tube_width) / 2, (width - info_width) / 2
-      if placement == 'stack-above' then tube_y, info_y = info_height + stack_gap, 0
+      if placement == 'stack-above' then tube_y, info_y = current_info_height + stack_gap, 0
       else tube_y, info_y = 0, tube_height + stack_gap end
     else
-      tube_y, info_y = (composition_height - tube_height) / 2, (composition_height - info_height) / 2
+      tube_y, info_y = (composition_height - tube_height) / 2, (composition_height - current_info_height) / 2
       if placement:sub(1, 4) == 'left' then tube_x, info_x = info_width + 16 * scale, 0
       else tube_x, info_x = 0, tube_width + 16 * scale end
     end
     tube_x, tube_y = padding_x + tube_x, padding_y + tube_y
     info_x, info_y = padding_x + info_x, padding_y + info_y
     return {width = padding_x * 2 + width, height = component.height, rows = rows,
+      row_gap = current_gap,
       tube = {x = tube_x, y = tube_y, width = tube_width, height = tube_height},
-      info = {x = info_x, y = info_y, width = info_width, height = info_height},
+      info = {x = info_x, y = info_y, width = info_width, height = current_info_height},
       glyph = {x = info_x + (info_width - glyph_size) / 2,
-        y = info_y + (not icon_above and count > 0 and details_height + stack_gap or 0),
+        y = info_y + (not icon_above and count > 0 and current_details_height + stack_gap or 0),
         width = glyph_size, height = glyph_size},
       details = {x = info_x + (info_width - details_width) / 2,
         y = info_y + (icon_above and count > 0 and glyph_size + stack_gap or 0),
-        width = details_width, height = details_height}}
+        width = details_width, height = current_details_height}}
   end
 
   function component.draw(cr, data, x, y)
@@ -162,16 +198,19 @@ return function(shared, repo_root, options)
       cairo_set_line_width(cr, 1.5)
       cairo_stroke(cr)
       local fill_top = fill_tops[data.level]
-      ui.rect(cr, 35, fill_top, 6, 160 - fill_top, ui.accent, 3)
-      ui.circle(cr, 38, 160, 11, ui.accent)
+      local fill_color = data.danger and ui.danger or (data.level >= 4 and ui.caution or ui.muted)
+      local glyph_color = data.danger and ui.danger or ui.muted
+      ui.rect(cr, 35, fill_top, 6, 160 - fill_top, fill_color, 3)
+      ui.circle(cr, 38, 160, 11, fill_color)
       cairo_restore(cr)
-      ui.icon(cr, data.glyph, x + layout.glyph.x, y + layout.glyph.y, glyph_size, ui.muted)
+      ui.icon(cr, data.glyph, x + layout.glyph.x, y + layout.glyph.y, glyph_size, glyph_color)
       for index, row in ipairs(layout.rows) do
         local row_x = x + layout.details.x
-        local row_y = y + layout.details.y + (index - 1) * (row_height + row_gap)
-        ui.icon(cr, row.icon, row_x, row_y + (row_height - detail_icon) / 2, detail_icon, ui.muted)
+        local row_y = y + layout.details.y + (index - 1) * (row_height + layout.row_gap)
+        local row_color = row.color or ui.muted
+        ui.icon(cr, row.icon, row_x, row_y + (row_height - detail_icon) / 2, detail_icon, row_color)
         ui.text(cr, row.value, row_x + detail_icon + detail_gap, row_y + row_height / 2 + text_size * 0.32,
-          {size = text_size, mono = true, color = ui.muted})
+          {size = text_size, mono = true, color = row_color})
       end
     end)
     if data.stale then

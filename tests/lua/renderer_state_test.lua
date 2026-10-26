@@ -3,13 +3,17 @@
 local root = arg[1]
 local shared = dofile(root .. '/conky/renderer-shared.lua')
 local ui = shared.ui
-local files, labels, trails, dashes, rects, lines = {}, {}, {}, {}, {}, {}
+local files, labels, trails, dashes, rects, lines, text_calls = {}, {}, {}, {}, {}, {}, {}
 local width, height = 1136, 420
 shared.read_file = function(path) return files[path:match('/([^/]+)$')] end
 shared.wrap_title = function(_, value) return {value} end
 ui.draw = function(callback) callback({}, width, height) end
 ui.font = function() end
-ui.text = function(_, value) labels[#labels + 1] = tostring(value); return #tostring(value) * 6 end
+ui.text = function(_, value, _, _, opts)
+  labels[#labels + 1] = tostring(value)
+  text_calls[#text_calls + 1] = {text = tostring(value), color = opts and opts.color}
+  return #tostring(value) * 6
+end
 ui.width = function(_, value) return #tostring(value) * 6 end
 ui.rect = function(_, x, y, w, h, color) rects[#rects + 1] = {x = x, y = y, w = w, h = h, color = color} end
 ui.circle = function() end
@@ -38,12 +42,18 @@ local original_time = os.time
 os.time = function(date) return date and original_time(date) or 120000 end
 
 local function draw(name)
-  labels, trails, dashes, rects, lines = {}, {}, {}, {}, {}
+  labels, trails, dashes, rects, lines, text_calls = {}, {}, {}, {}, {}, {}
   dofile(root .. '/conky/' .. name)(shared, '/fixture').draw()
 end
 local function has(value)
   for _, label in ipairs(labels) do if label:find(value, 1, true) then return true end end
   return false
+end
+local function text_color_for(value)
+  for _, call in ipairs(text_calls) do
+    if call.text == value then return call.color end
+  end
+  return nil
 end
 
 files['codex-usage-render.tsv'] = table.concat({
@@ -176,6 +186,39 @@ assert(not has('Better') and not has('Worse') and #trails >= 2,
 assert(not has('Weather unavailable'), 'the thermometer belongs to its own window')
 assert(has('22d') and has('Aug 13') and has('→ 183 lb'),
   'weight must show compact measurement age, previous comparison date, and goal target')
+assert(text_color_for('22d') == ui.danger, 'weigh-in older than 5 days must be red')
+
+-- Weigh-in age coloring thresholds: <=3 days muted, >3 days caution, >5 days danger
+files['weight-status.json'] = [[{"ok":true,"stale":false,"lastWeight":199.1,"lastWeightText":"199.1 lb",
+  "lastDateText":"Aug 19","ageText":"3d ago","ageDays":3,"changeText":"−2.3 lb","previousDateText":"Aug 13",
+  "progressVerdict":"Steady","progressKind":"neutral","trendDeltaText":"−2.3 lb",
+  "goalWeight":183.0,"unit":"lb",
+  "recent":[{"value":201.4,"isLast":false},{"value":199.1,"isLast":true}]}]]
+draw('weather-renderer.lua')
+assert(text_color_for('3d') == ui.muted, 'weigh-in within 3 days must be muted')
+
+files['weight-status.json'] = [[{"ok":true,"stale":false,"lastWeight":199.1,"lastWeightText":"199.1 lb",
+  "lastDateText":"Aug 19","ageText":"4d ago","ageDays":4,"changeText":"−2.3 lb","previousDateText":"Aug 13",
+  "progressVerdict":"Steady","progressKind":"neutral","trendDeltaText":"−2.3 lb",
+  "goalWeight":183.0,"unit":"lb",
+  "recent":[{"value":201.4,"isLast":false},{"value":199.1,"isLast":true}]}]]
+draw('weather-renderer.lua')
+assert(text_color_for('4d') == ui.caution, 'weigh-in more than 3 days ago must be caution yellow')
+
+files['weight-status.json'] = [[{"ok":true,"stale":false,"lastWeight":199.1,"lastWeightText":"199.1 lb",
+  "lastDateText":"Aug 19","ageText":"6d ago","ageDays":6,"changeText":"−2.3 lb","previousDateText":"Aug 13",
+  "progressVerdict":"Steady","progressKind":"neutral","trendDeltaText":"−2.3 lb",
+  "goalWeight":183.0,"unit":"lb",
+  "recent":[{"value":201.4,"isLast":false},{"value":199.1,"isLast":true}]}]]
+draw('weather-renderer.lua')
+assert(text_color_for('6d') == ui.danger, 'weigh-in more than 5 days ago must be danger red')
+
+files['weight-status.json'] = [[{"ok":true,"stale":false,"lastWeight":199.1,"lastWeightText":"199.1 lb",
+  "lastDateText":"Aug 19","ageText":"22d ago","ageDays":22,"changeText":"−2.3 lb","previousDateText":"Aug 13",
+  "progressVerdict":"Better","progressKind":"good","trendDeltaText":"−2.3 lb",
+  "goalWeight":183.0,"unit":"lb",
+  "recent":[{"value":201.4,"isLast":false},{"value":199.1,"isLast":true}]}]]
+draw('weather-renderer.lua')
 local max_trail_y = 0
 for _, trail in ipairs(trails) do
   for _, pt in ipairs(trail.points) do
