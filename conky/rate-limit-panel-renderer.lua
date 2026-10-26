@@ -600,7 +600,9 @@ return function(shared, repo_root)
     for _, window in ipairs(windows) do
       local window_label = normalized_window_label(window)
       if provider == 'cursor' and window_label == 'api' then
-        second = window
+        if not is_free_account(account) then
+          second = window
+        end
       elseif provider == 'cursor' and window_label == 'auto' then
         first = window
       elseif window_label == 'weekly' then
@@ -643,7 +645,7 @@ return function(shared, repo_root)
         elseif provider_lower == 'cursor' or provider_lower == 'grok' then
           local acct_delta_total = 0
           local acct_delta_count = 0
-          for _, window in ipairs(account.windows or {}) do
+          for _, window in ipairs(get_row_windows(account)) do
             local pace = calculate_window_pace(window, window_duration(window))
             if pace then
               acct_delta_total = acct_delta_total + pace.delta
@@ -1108,5 +1110,6 @@ return function(shared, repo_root)
              used_before_today = used_before_today,
              read_usage_history = read_usage_history,
              calculate_provider_average_pace = calculate_provider_average_pace,
-             account_shows_pace = account_shows_pace}}
+             account_shows_pace = account_shows_pace,
+             get_row_windows = get_row_windows}}
 end

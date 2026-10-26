@@ -178,6 +178,8 @@ def normalize_usage(auth, usage, me, plan_info, is_selected):
     plan = plan if isinstance(plan, dict) else {}
     cycle_start = epoch_millis(usage.get("billingCycleStart"))
     cycle_end = epoch_millis(usage.get("billingCycleEnd")) or epoch_millis(plan.get("billingCycleEnd"))
+    plan_name = plan.get("planName", "")
+    is_free = str(plan_name).strip().lower() == "free"
     windows = []
     if any(
         plan_usage.get(field) is not None
@@ -192,7 +194,7 @@ def normalize_usage(auth, usage, me, plan_info, is_selected):
             cycle_end,
             fetched_at,
         ))
-    if any(
+    if not is_free and any(
         plan_usage.get(field) is not None
         for field in ("apiPercentUsed", "apiSpend", "apiLimit")
     ):
@@ -211,7 +213,7 @@ def normalize_usage(auth, usage, me, plan_info, is_selected):
         "label": auth["label"],
         "email": me.get("email", "") if isinstance(me, dict) else "",
         "accountId": str(me.get("userId", "")) if isinstance(me, dict) else "",
-        "planType": plan.get("planName", ""),
+        "planType": plan_name,
         "isSelected": is_selected,
         "windows": windows,
     }

@@ -68,8 +68,8 @@ profiles live in `~/.local/share/clusterfork-auth/`.
 
 - Multiple accounts are discovered from `~/.local/share/clusterfork-auth/cursor/auth.json.*`; `CURSOR_AUTH_PATH` forces a single auth file and `CURSOR_HOME` overrides the config directory. The legacy path `~/.config/cursor/auth.json.*` is used as a fallback when the shared store directory does not exist.
 - `CURSOR_AUTH_STORE_DIR` overrides the shared auth store directory.
-- Usage is fetched from Cursor's DashboardService. It renders Cursor's monthly `Auto + Composer` and `API` usage pools as the two bars for each account.
-- Free and paid accounts share the same `Auto` and `API` window labels. Both Pro and Free accounts display on-pace ticks and participate in the `CURSOR` average pace summary, with Pro accounts weighted 20x relative to Free accounts (weight 1).
+- Usage is fetched from Cursor's DashboardService. Pro accounts render Cursor's monthly `Auto + Composer` and `API` usage pools as two bars (`Auto` and `API`). Free accounts render only the `Auto` pool because Free accounts have no API usage limit.
+- Both Pro and Free accounts display on-pace ticks and participate in the `CURSOR` average pace summary, with Pro accounts weighted 20x relative to Free accounts (weight 1).
 
 ## Gemini
 

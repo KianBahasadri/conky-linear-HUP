@@ -239,12 +239,25 @@ local cursor_mixed_accounts = {
     provider = 'Cursor', label = 'kian', plan_type = 'free',
     windows = {
       { label = 'auto', used_percent = 44, reset_after_seconds = 1296000, window_seconds = 2592000 },
-      { label = 'api', used_percent = 44, reset_after_seconds = 1296000, window_seconds = 2592000 },
     }
   },
 }
 eq(shows_pace(cursor_mixed_accounts, cursor_mixed_accounts[1]), true, 'Cursor Pro shows pace')
 eq(shows_pace(cursor_mixed_accounts, cursor_mixed_accounts[2]), true, 'Cursor Free shows pace')
+
+local get_row_windows = renderer._test.get_row_windows
+eq(#get_row_windows(cursor_mixed_accounts[1]), 2, 'Cursor Pro returns auto and api windows')
+eq(#get_row_windows(cursor_mixed_accounts[2]), 1, 'Cursor Free returns only auto window')
+local free_with_api = {
+  provider = 'Cursor', label = 'free_with_api', plan_type = 'free',
+  windows = {
+    { label = 'auto', used_percent = 20, reset_after_seconds = 1000, window_seconds = 2000 },
+    { label = 'api', used_percent = 0, reset_after_seconds = 1000, window_seconds = 2000 },
+  }
+}
+local free_windows = get_row_windows(free_with_api)
+eq(#free_windows, 1, 'Cursor Free drops api window even if present in raw windows')
+eq(free_windows[1].label, 'auto', 'Cursor Free retains auto window')
 
 -- Cursor pace calculation: sepehr delta = +15 (weight 20), kian delta = -6 (weight 1)
 -- (20 * 15 + 1 * -6) / 21 = 14%

@@ -58,6 +58,26 @@ def test_normalize_usage_creates_monthly_auto_and_api_buckets():
     assert bars[0]["windowSeconds"] == 90000
 
 
+def test_normalize_usage_free_account_omits_api_bucket():
+    now = int(datetime.now(timezone.utc).timestamp())
+    account = cursor.normalize_usage(
+        {"label": "kian"},
+        usage_payload(now),
+        {"email": "kian@example.com", "userId": 456},
+        {"planInfo": {"planName": "Free"}},
+        True,
+    )
+    bars = cursor.flatten_bars([account])
+
+    assert account["ok"] is True
+    assert account["email"] == "kian@example.com"
+    assert account["planType"] == "Free"
+    assert [bar["window"] for bar in bars] == ["auto"]
+    assert bars[0]["usedPercent"] == 12.9
+    assert bars[0]["resetAfterSeconds"] > 0
+    assert bars[0]["windowSeconds"] == 90000
+
+
 def test_normalize_usage_does_not_invent_zero_buckets_from_empty_payload():
     account = cursor.normalize_usage(
         {"label": "ida"},
