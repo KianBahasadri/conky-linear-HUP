@@ -950,37 +950,13 @@ return function(shared, repo_root)
         ui.callout(cr, 'Unavailable', usage.error or 'Waiting for usage data', 0, 0, width, 'danger')
         return
       end
-      local is_two_col = width >= 1200 and #accounts > 4
+      local is_two_col = width >= 1200
       local col_w = is_two_col and math.floor(width / 2) or width
+      local pitch_width = is_two_col and math.max(880, col_w) or width
       local windows_for, heights = {}, {}
       for index, account in ipairs(accounts) do
         windows_for[index] = get_row_windows(account)
-      end
-
-      if is_two_col then
-        local split = find_split_point(accounts)
-        local left_count = split
-        local right_count = #accounts - split
-        local max_count = math.max(left_count, right_count)
-        local target_h = max_count * 16
-
-        local function compute_column_pitches(start_idx, count)
-          if count <= 0 then return end
-          local base = math.floor(target_h / count)
-          local rem = target_h % count
-          for i = 1, count do
-            local idx = start_idx + i - 1
-            local extra = (rem > 0 and i > math.floor((count - rem) / 2) and i <= math.floor((count - rem) / 2) + rem) and 1 or 0
-            heights[idx] = base + extra
-          end
-        end
-
-        compute_column_pitches(1, left_count)
-        compute_column_pitches(split + 1, right_count)
-      else
-        for index, account in ipairs(accounts) do
-          heights[index] = account_pitch(width, account, windows_for[index])
-        end
+        heights[index] = account_pitch(pitch_width, account, windows_for[index])
       end
 
       local function draw_column(first, last, col_x, col_width, top)
@@ -996,7 +972,7 @@ return function(shared, repo_root)
           local pitch = heights[index]
           local wins = windows_for[index]
           if account.is_selected then ui.rect(cr, col_x, y, col_width, pitch, ui.raised, 4) end
-          local name_baseline = y + 12 + math.max(0, (pitch - 16) / 2)
+          local name_baseline = y + 12 + math.max(0, math.floor((pitch - 16) / 2))
           if marks[index] then
             -- The provider's average pace delta is a derived value; it sits beside
             -- the group mark rather than in a separate summary row.
@@ -1074,10 +1050,33 @@ return function(shared, repo_root)
         end
       end
 
+      local function draw_fitted_column(first, last, col_x, col_width)
+        if first > last then return end
+        local pitches = {}
+        for index = first, last do pitches[#pitches + 1] = heights[index] end
+        local page_first, page_last, page = ui.pack(pitches, height, 0)
+        last = first + page_last - 1
+        first = first + page_first - 1
+        local used = 0
+        for index = first, last do used = used + heights[index] end
+        local available = height - (page ~= '' and 16 or 0)
+        local spare = math.max(0, available - used)
+        local count = last - first + 1
+        -- Distribute whole pixels across the visible rows so both columns
+        -- fill their allocation even when profiles change between frames.
+        for index = first, last do
+          local row = index - first
+          heights[index] = heights[index] + math.floor(spare * (row + 1) / count)
+            - math.floor(spare * row / count)
+        end
+        draw_column(first, last, col_x, col_width)
+        ui.footer(cr, page, col_x + col_width, height)
+      end
+
       if is_two_col then
         local split = find_split_point(accounts)
-        draw_column(1, split, 0, col_w)
-        draw_column(split + 1, #accounts, col_w, width - col_w)
+        draw_fitted_column(1, split, 0, col_w)
+        draw_fitted_column(split + 1, #accounts, col_w, width - col_w)
       else
         local first, last, page = ui.pack(heights, height, 0)
         -- Keep compact narrow rows at the bottom of their allocated region.

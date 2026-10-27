@@ -157,5 +157,84 @@ for _, panel_width in ipairs({608, 368}) do
   for _, label in ipairs(accounts) do assert(seen_accounts[label], 'paging must reach ' .. label) end
 end
 
+-- Wide panels keep the same band while the live cache loses or gains profiles.
+-- Highlight every row so its full bounds can be checked at the drawing boundary.
+for name, content in pairs(files) do
+  files[name] = content:gsub('(account\t[^\t]+\t[^\t]+\t)[01]', function(prefix)
+    return prefix .. '1'
+  end)
+end
+local codex_profiles = files['codex-usage-render.tsv']
+local function set_codex_count(count)
+  local rows = {}
+  for line in codex_profiles:gmatch('[^\n]+') do
+    local index = tonumber(line:match('^%w+\tcdx(%d+)\t'))
+    if not index or index <= count then rows[#rows + 1] = line end
+  end
+  files['codex-usage-render.tsv'] = table.concat(rows, '\n')
+end
+
+local function assert_filled_columns(result, bottoms)
+  local columns = {}
+  for _, rect in ipairs(result.selected) do
+    local bottom = columns[rect.x] or 0
+    assert(rect.y == bottom, 'wide rows must fill their column without gaps')
+    assert(rect.h >= 16, 'wide rows must retain readable minimum spacing')
+    columns[rect.x] = rect.y + rect.h
+  end
+  for x, bottom in pairs(columns) do
+    assert(bottom == (bottoms and bottoms[x] or height),
+      'wide columns must stay flush with their allocated top and bottom edges')
+  end
+end
+
+width, height = 1248, 112
+for _, count in ipairs({7, 6, 4, 0, 7}) do
+  set_codex_count(count)
+  local band = draw()
+  assert(not band.footer, 'fitting wide profiles must not need a footer')
+  assert_filled_columns(band)
+  for _, label in ipairs(accounts) do
+    local codex_index = tonumber(label:match('^cdx(%d+)$'))
+    local expected = not codex_index or codex_index <= count
+    assert(band.names[label] == (expected and 1 or nil),
+      'live profile changes must be reflected exactly once: ' .. label)
+    if expected then
+      assert(#band.bars[label] == window_counts[label], 'wide rows must preserve every quota window')
+    end
+  end
+end
+
+-- An overflowing provider pages within its half of the same band, keeping the
+-- other column in place and leaving the footer clear.
+set_codex_count(8)
+local seen_codex = {}
+for _ = 1, 2 do
+  local page = draw()
+  assert(page.footer, 'overflowing wide columns must report the visible profiles')
+  assert_filled_columns(page, {[0] = height - 16, [width / 2] = height})
+  for label in pairs(page.names) do
+    if label:match('^cdx') then
+      assert(not seen_codex[label], 'wide pages must not repeat profiles within a cycle')
+      seen_codex[label] = true
+    end
+  end
+  for label, bars in pairs(page.bars) do
+    for _, bar in ipairs(bars) do
+      assert(bar.y + bar.h <= (label:match('^cdx') and height - 16 or height),
+        'wide quota bars must stay above their column footer')
+    end
+  end
+  now = now + 30
+end
+for index = 1, 8 do assert(seen_codex['cdx' .. index], 'wide paging must reach every profile') end
+
+-- Removing most profiles must retain the wide layout and its full height.
+files['cursor-usage-render.tsv'], files['gemini-usage-render.tsv'] = nil, nil
+set_codex_count(3)
+local sparse = draw()
+assert(not sparse.footer, 'a sparse wide panel must fit')
+assert_filled_columns(sparse)
+
 os.time = original_time
 print('rate-limit-panel responsive layout OK')

@@ -37,14 +37,21 @@ def test_planned_windows_fit_without_overlap_under_changing_record_counts(size, 
                 or a[1] + a[3] <= b[1] or b[1] + b[3] <= a[1]), (name_a, name_b)
 
 
-def test_rate_limit_panel_adds_space_for_each_gemini_pro_stack():
-    base = overlay_layout.plan(1920, 1080, 40, {"accounts": 8}, {})
-    stacked = overlay_layout.plan(1920, 1080, 40, {"accounts": 8, "gemini_pro": 1}, {})
-    assert stacked["rate-limit-panel"][3] == base["rate-limit-panel"][3] + 6
+@pytest.mark.parametrize("size", [(1920, 1080), (1920, 1200), (2560, 1440)])
+@pytest.mark.parametrize("accounts", [0, 1, 4, 8, 9, 12, 13, 15, 30, 150])
+def test_wide_rate_limit_band_stays_aligned_when_profiles_change(size, accounts):
+    width, height = size
+    base = overlay_layout.plan(width, height, 40, {"accounts": 13}, {})
+    changed = overlay_layout.plan(width, height, 40, {"accounts": accounts, "gemini_pro": 3}, {})
+    assert changed == base
+    quota = changed["rate-limit-panel"]
+    assert quota[3] == 112
+    assert quota[1] + quota[3] == height - 8
+    assert changed["billing"][1] + 8 == quota[1]
 
 
 def test_rate_limit_panel_is_centered_in_center_column_and_is_narrower():
-    windows = overlay_layout.plan(1920, 1080, 40, {"accounts": 8}, {})
+    windows = overlay_layout.plan(1600, 1080, 40, {"accounts": 8}, {})
     linear = windows["linear"]
     quota = windows["rate-limit-panel"]
     assert quota[0] == linear[0] + (linear[2] - quota[2]) // 2

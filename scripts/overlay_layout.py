@@ -171,19 +171,18 @@ def plan(width, height, top=40, counts=None, env=None):
     right_top_clearance = top + resource_h + 12 + 204 + 12
 
     # Center: quota rows sit at the bottom, the calendar above them, and the
-    # task grid takes what is left. On wide displays with many accounts, quota
-    # rows split into two columns side by side across the bottom.
+    # task grid takes what is left. Wide displays keep a fixed quota band
+    # alongside the billing map; the renderer fits and pages its two columns.
     row = 16 if center >= 880 else 40 if center >= 760 else 76
     is_wide = width >= 1600
     account_count = counts.get("accounts", 0) or 1
     centered_w = width - 2 * center_x
-    two_col = is_wide and account_count > 8 and centered_w >= 1200
-    effective_accounts = (account_count + 1) // 2 if two_col else account_count
+    two_col = is_wide and centered_w >= 1200
     max_quota_available = height - margin - right_top_clearance
     quota_limit = min(int(available * (0.55 if available >= 900 else 0.44)), max_quota_available)
-    quota_rows = max(1, min(effective_accounts, quota_limit // row))
+    quota_rows = max(1, min(account_count, quota_limit // row))
     stacked_extra = 6 * counts.get("gemini_pro", 0) if row <= 16 else 0
-    quota_h = max(100, quota_rows * row + stacked_extra)
+    quota_h = 112 if two_col else max(100, quota_rows * row + stacked_extra)
     github = env.get("GITHUB_OVERLAY_ENABLED", "1") != "0"
     github_h = 128 if available >= 900 else 112
     quota_y = height - margin - quota_h
