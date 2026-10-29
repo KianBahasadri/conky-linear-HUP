@@ -5,7 +5,7 @@ handlers, tabs, focus models, or show/hide APIs in the Lua renderers.
 
 Each overlay is a separate Conky process and X window. The launcher gives them
 non-overlapping regions per the [Desktop design system](design-system.md).
-The usual window type is `desktop`, with
+Every overlay uses window type `desktop`, with
 `undecorated,below,sticky,skip_taskbar,skip_pager` hints.
 
 Every template explicitly selects `output_backend = 'x11'`, so GNOME Wayland
@@ -15,10 +15,11 @@ lacks the layer-shell protocol needed for native desktop overlay placement.
 Keep the backend explicit when adding templates. See Conky's
 [output backend settings](https://conky.cc/config_settings#output_backend).
 
-The git overlay retains `own_window_type = 'normal'` plus `below`: under
-GNOME/Xwayland the desktop layer previously failed to composite that window
-at the leftmost monitor edge. Its placement is therefore owned by the window
-manager; `render_desktop.py --check` reports any positional offset separately.
+The git overlay previously used `normal` plus `below` to work around a
+GNOME/Xwayland compositing issue at the leftmost monitor edge. That made the
+sticky repository list stay fixed above the workspace-switch animation.
+It now uses `desktop` like the other overlays so it travels with the desktop
+during workspace transitions.
 
 Clicking opaque drawn pixels may affect window-manager stacking; transparent
 pixels may pass clicks through to another window. This is not a UI interaction.

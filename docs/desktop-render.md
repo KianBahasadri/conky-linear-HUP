@@ -54,10 +54,9 @@ The parser retains support for legacy configs with Conky's default margins
 and `${voffset}` sizing. Its 19px legacy text-line constant describes the old
 JetBrains Mono spacer configs; current windows have no spacer text.
 
-`--check` compares modelled sizes and positions with live X windows. Git is
-still the sole `normal` window and its window-manager offsets are diagnostic;
-size and presence remain checked. In the redesigned three-monitor layout,
-all 24 window rectangles were verified to match, including git.
+`--check` compares modelled sizes and positions with live X windows and reports
+missing or unexpected windows. For configs using `normal`, window-manager
+position offsets are diagnostic; size and presence remain checked.
 
 ## Monitor layout
 
