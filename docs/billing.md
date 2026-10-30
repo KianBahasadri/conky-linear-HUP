@@ -27,7 +27,10 @@ otherwise; the compact dimensions are described under placement below.
   at the current marker at today's position. Missing history days break the
   trail instead of being interpolated, and a single stored day stays a point.
 - The current marker is the provider's own vector mark, with no vertical line
-  connecting the markers. For forecasts reaching at least 50% usage by
+  connecting the markers. Logos sharing exactly the same current value sit
+  side by side around that point, bounded by the window; their observations
+  and forecast paths retain the exact data coordinates.
+  For forecasts reaching at least 50% usage by
   month-end, a dashed violet connector runs from it toward
   the month-end edge, turning red only where it passes 100%. Trajectories that
   fall under 50% usage by the end of the month omit the predicted line.
@@ -94,9 +97,10 @@ current observation, not a full-month line to the origin.
 This is independent of whether a provider exposes a daily API. AWS and
 GitHub Actions therefore gain a trail only on days the fetcher actually
 ran. Azure still seeds the same store from Cost Management daily rows when
-those are available, and Blacksmith seeds it from `blacksmith usage` daily
-totals, so those trails can be complete even if the overlay was not running on
-those days. OpenRouter's plotted pressure is remaining-runway
+those are available, Blacksmith seeds it from `blacksmith usage` daily totals,
+and Tinfoil backfills completed days from its usage API, so those trails can
+be complete even if the overlay was not running on those days.
+OpenRouter's plotted pressure is remaining-runway
 future draw (the current point stays at today's position at zero), so its stored trail sits
 on the baseline; the same file still keeps dated total-usage samples for the
 burn-rate fallback.
@@ -125,6 +129,39 @@ own dated total-usage observations. It does not invent history: until two dates
 exist, OpenRouter renders its current point with no forecast line or endpoint marker.
 Top-ups do not distort this fallback because it uses cumulative total usage,
 not changes in remaining balance.
+
+## Tinfoil
+
+Tinfoil plots consumed credits against the month's available credit pool,
+like Azure. The dashboard's `GET /api/billing/credits` supplies
+`balance_dollars`, and the
+[Admin API usage endpoint](https://docs.tinfoil.sh/admin/admin-api#get-usage-statistics)
+with an explicit local-calendar month-start-to-now range supplies spend in
+dollars. The 100% ceiling is remaining credit plus this month's spend; the
+current point is that spend divided by the pool. Calendar month pace projects
+total consumption through EOM against the same pool. Top-ups expand the pool.
+For example, $1.09 spent with $3.91 remaining means about 22% consumed, even
+if only 1% of the remaining balance is expected to be spent before EOM.
+
+This credit-pool ceiling is independent of the optional usage limit in
+Tinfoil's dashboard, which pauses requests per billing period. That settings
+endpoint requires dashboard authentication and is not available to the admin
+key; the map therefore does not claim to plot that limit. Successful fetches
+store the actual consumption percentage each day.
+
+The fetcher also backfills each completed local calendar day by querying
+month-start-to-next-midnight usage. These cumulative dollar amounts are cached
+in the shared observation store and normalized against the current credit pool,
+so later top-ups keep the historical trail on the same scale. Only missing
+days are fetched again. A failed backfill preserves completed samples and
+retries the missing dates next time; it never fills a failed query with zero.
+The current marker remains available when a backfill is incomplete. If either
+the current credit or current usage fetch fails, the last successful provider
+observation is retained as stale only within the current calendar month.
+
+Authentication uses an unscoped personal or organization admin key for the
+account to track; scoped keys cannot read billing usage. Setup is listed in
+[Configuration](configuration.md#billing-forecast-panel).
 
 ## Azure
 
@@ -207,6 +244,8 @@ current installation. Auth is `blacksmith auth login`.
   `ActualCost` / `PreTaxCost` as fallback (converted to USD when billed in
   another currency; usage-detail `costInUSD` if Cost Management is throttled).
 - OpenRouter uses a management key for the [credits](https://openrouter.ai/docs/api/api-reference/credits/get-credits) and [analytics](https://openrouter.ai/docs/cookbook/administration/analytics-cost-control) endpoints.
+- Tinfoil uses an admin key for its live credit balance and month-to-date usage,
+  as described above.
 - GitHub Actions uses the authenticated `gh` CLI to read the personal-account
   [billing usage report](https://docs.github.com/en/rest/billing/usage) and
   repository visibility. The token needs the `user` scope. Plan allowances and

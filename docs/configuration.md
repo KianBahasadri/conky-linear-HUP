@@ -226,6 +226,7 @@ the plots, and a passive window has no accessible name to hold it.
 | `BILLING_AZURE_SUBSCRIPTION_ID` | Optional subscription for month-to-date spend; otherwise the Azure CLI active subscription is used |
 | `BILLING_AZURE_API_VERSION` | Cost Management API version override (default `2025-03-01`) |
 | `OPENROUTER_API_KEY` | OpenRouter management key for live credits and trailing usage |
+| `TINFOIL_ADMIN_KEY` | Tinfoil unscoped admin key for live credits and month-to-date usage; create it under Dashboard → Admin Keys for the personal account or organization to track |
 | `BILLING_GITHUB_ACTIONS_ENABLED` | Set to `1` to plot the authenticated `gh` user's private-repository standard-runner minutes against the plan allowance; the token needs `user` scope |
 | `BILLING_BLACKSMITH_ENABLED` | Set to `1` to plot Blacksmith x64 2vCPU minutes against the advertised 3,000-minute free allowance |
 | `BILLING_BLACKSMITH_ORG` | Optional GitHub org login passed to `blacksmith usage --org`; otherwise the CLI's current org is used |
@@ -234,7 +235,7 @@ the plots, and a passive window has no accessible name to hold it.
 
 Only configured providers are fetched. AWS uses boto3 with the IAM user from
 `scripts/apply_aws_billing_iam.sh`; Azure uses the authenticated Azure CLI;
-OpenRouter uses its official API; GitHub Actions uses the official API
+OpenRouter and Tinfoil use their billing APIs; GitHub Actions uses the official API
 through `gh`; Blacksmith uses the authenticated `blacksmith` CLI. Live usage,
 balances, and ceilings do not have environment-variable overrides. See
 [Billing forecast panel](billing.md) for the normalization and forecast semantics.

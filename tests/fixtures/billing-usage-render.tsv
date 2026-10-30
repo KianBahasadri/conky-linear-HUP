@@ -5,3 +5,4 @@ provider	openrouter	OR	c8ff00	prepaid	1	0	0.0	0.4148	1	openrouter-credits	$12.44
 provider	github_actions	GH	3fb950	allowance	1	0	0.4123	0.6728	1	github-billing-usage	1,237 / 3,000 min · 2,018 EOM · $0.00 due
 provider	blacksmith	BSM	f0fb29	allowance	1	0	0.175	0.2855	1	blacksmith-usage	525 / 3,000 min · 857 EOM
 provider	azure	AZR	38bdf8	prepaid	1	0	0.2478	0.4042	1	azure-credits	$24.46 now · $39.91 EOM · $98.72 at month start
+provider	tinfoil	TF	f3f6f5	prepaid	1	0	0.6	0.9789	1	tinfoil-credits	$18.00 used · $30.00 credits · $29.37 EOM · $12.00 left

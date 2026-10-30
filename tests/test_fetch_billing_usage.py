@@ -2,6 +2,8 @@ import json
 from datetime import date, datetime, time, timezone
 from decimal import Decimal
 
+import pytest
+
 import fetch_billing_usage as billing
 
 
@@ -23,6 +25,7 @@ def isolate_cache(monkeypatch, tmp_path):
     monkeypatch.setenv("BILLING_AZURE_ENABLED", "0")
     monkeypatch.delenv("BILLING_AZURE_SUBSCRIPTION_ID", raising=False)
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("TINFOIL_ADMIN_KEY", raising=False)
     monkeypatch.setenv("BILLING_GITHUB_ACTIONS_ENABLED", "0")
     monkeypatch.setenv("BLACKSMITH_CONFIG_DIR", str(tmp_path))
     monkeypatch.setattr(
@@ -436,6 +439,210 @@ def test_openrouter_analytics_averages_the_full_trailing_window(monkeypatch):
     assert burn == Decimal("0.3")
     assert captured["granularity"] == "day"
     assert captured["time_range"]["end"] == "2026-08-19T12:00:00Z"
+
+
+def test_tinfoil_reads_balance_and_calendar_month_usage_in_dollars(monkeypatch):
+    calls = []
+
+    def request(url, **kwargs):
+        calls.append((url, kwargs))
+        if url.endswith("/credits"):
+            return {"balance_dollars": "12.44"}
+        if "/usage?" in url:
+            return {"cost": "12.90", "tokens": 123456789}
+        raise AssertionError(f"Unexpected URL: {url}")
+
+    monkeypatch.setattr(billing, "request_json", request)
+
+    assert billing.fetch_tinfoil_balance("admin_secret", 5) == Decimal("12.44")
+    period = billing.month_period(datetime(2026, 8, 19, 12, tzinfo=timezone.utc))
+    assert billing.fetch_tinfoil_current(period, "admin_secret", 5) == Decimal("12.90")
+    assert len(calls) == 2
+    query = billing.urllib.parse.parse_qs(billing.urllib.parse.urlparse(calls[1][0]).query)
+    assert set(query) == {"start", "end"}
+    start = datetime.fromisoformat(query["start"][0]).astimezone()
+    assert start.date() == date(2026, 8, 1) and start.time() == time.min
+    assert query["end"] == ["2026-08-19T12:00:00Z"]
+    for _, kwargs in calls:
+        assert kwargs == {
+            "headers": {"Authorization": "Bearer admin_secret"}, "timeout": 5
+        }
+
+
+@pytest.mark.parametrize("payload", [{}, {"balance_dollars": "NaN"}, []])
+def test_tinfoil_does_not_treat_invalid_balance_as_zero(monkeypatch, payload):
+    monkeypatch.setattr(billing, "request_json", lambda *_args, **_kwargs: payload)
+
+    with pytest.raises(billing.ProviderError):
+        billing.fetch_tinfoil_balance("admin_secret", 5)
+
+
+@pytest.mark.parametrize("payload", [{}, {"cost": "Infinity"}, {"cost": -1}, []])
+def test_tinfoil_does_not_invent_consumption_from_invalid_usage(monkeypatch, payload):
+    monkeypatch.setattr(billing, "request_json", lambda *_args, **_kwargs: payload)
+
+    with pytest.raises(billing.ProviderError):
+        billing.fetch_tinfoil_current(
+            billing.month_period(date(2026, 8, 19)), "admin_secret", 5
+        )
+
+
+def stub_tinfoil(monkeypatch, tmp_path, *, balance="3.91", spent="1.09"):
+    isolate_cache(monkeypatch, tmp_path)
+    monkeypatch.setenv("TINFOIL_ADMIN_KEY", "admin_secret")
+    monkeypatch.setattr(
+        billing, "fetch_tinfoil_balance", lambda *_args: Decimal(balance)
+    )
+    monkeypatch.setattr(
+        billing, "fetch_tinfoil_current", lambda *_args: Decimal(spent)
+    )
+    monkeypatch.setattr(billing, "fetch_tinfoil_history", lambda *_args: [])
+
+
+def test_tinfoil_backfills_actual_cumulative_daily_usage_and_reuses_cached_dollars(
+    monkeypatch, tmp_path
+):
+    isolate_cache(monkeypatch, tmp_path)
+    calls = []
+    amounts = {2: "2", 3: "2", 4: "5", 5: "9"}
+
+    def usage(period, admin_key, timeout, *, end):
+        calls.append(end)
+        assert end.time() == time.min
+        assert period["periodStart"] == date(2026, 8, 1)
+        return Decimal(amounts[end.day])
+
+    monkeypatch.setattr(billing, "fetch_tinfoil_current", usage)
+    period = billing.month_period(date(2026, 8, 5))
+    history = billing.fetch_tinfoil_history(period, "admin_secret", 5, Decimal("100"))
+    assert history == [
+        {"day": 1, "pressure": 0.02}, {"day": 2, "pressure": 0.02},
+        {"day": 3, "pressure": 0.05}, {"day": 4, "pressure": 0.09},
+    ]
+    assert [d.date() for d in calls] == [date(2026, 8, d) for d in range(2, 6)]
+    stored = json.loads(billing.HISTORY_PATH.read_text())["providers"]["tinfoil"]
+    assert [s["monthUsageUsd"] for s in stored] == ["2", "2", "5", "9"]
+
+    # A top-up changes the denominator, while the observed dollar amounts stay real.
+    topped_up = billing.fetch_tinfoil_history(period, "admin_secret", 5, Decimal("200"))
+    assert [s["pressure"] for s in topped_up] == [0.01, 0.01, 0.025, 0.045]
+    assert len(calls) == 4
+
+
+def test_tinfoil_backfill_preserves_progress_and_retries_failed_days(monkeypatch, tmp_path):
+    isolate_cache(monkeypatch, tmp_path)
+    calls = []
+    fail = True
+
+    def usage(_period, _key, _timeout, *, end):
+        calls.append(end.day)
+        if fail and end.day == 3:
+            raise billing.ProviderError("HTTP 429")
+        return Decimal(end.day - 1)
+
+    monkeypatch.setattr(billing, "fetch_tinfoil_current", usage)
+    period = billing.month_period(date(2026, 8, 5))
+    first = billing.fetch_tinfoil_history(period, "admin_secret", 5, Decimal("10"))
+    assert first == [{"day": 1, "pressure": 0.1}]
+
+    fail = False
+    second = billing.fetch_tinfoil_history(period, "admin_secret", 5, Decimal("10"))
+    assert second == [{"day": d, "pressure": d / 10} for d in range(1, 5)]
+    assert calls == [2, 3, 3, 4, 5]
+
+
+def test_tinfoil_plots_consumed_share_of_credit_pool_and_common_eom(monkeypatch, tmp_path):
+    stub_tinfoil(monkeypatch, tmp_path)
+    provider = billing.tinfoil_provider(billing.month_period(date(2026, 10, 30)), 5)
+
+    assert provider["kind"] == "prepaid"
+    assert provider["balanceUsd"] == 3.91
+    assert provider["capUsd"] == 5
+    assert provider["currentUsd"] == 1.09
+    assert provider["currentPressure"] == 0.218
+    assert provider["dailyBurnUsd"] == 0.0363
+    assert provider["forecastUsd"] == 1.13
+    assert provider["forecastPressure"] == 0.2253
+    assert provider["projectedBalanceUsd"] == 3.87
+    assert provider["forecastSource"] == "linear-month-pace"
+    assert "admin_secret" not in json.dumps(provider)
+
+
+@pytest.mark.parametrize(
+    "day,balance,spent,current,pressure,projected",
+    [(19, "1", "19", 0.95, 1.55, 0), (19, "0", "19", 1, 1.6316, 0),
+     (19, "12", "0", 0, 0, 12), (31, "12", "19", 0.6129, 0.6129, 12)],
+)
+def test_tinfoil_handles_overruns_empty_credits_and_eom(
+    monkeypatch, tmp_path, day, balance, spent, current, pressure, projected
+):
+    stub_tinfoil(monkeypatch, tmp_path, balance=balance, spent=spent)
+    provider = billing.tinfoil_provider(billing.month_period(date(2026, 8, day)), 5)
+
+    assert provider["forecastAvailable"] is True
+    assert provider["currentPressure"] == current
+    assert provider["forecastPressure"] == pressure
+    assert provider["projectedBalanceUsd"] == projected
+
+
+def test_tinfoil_cannot_plot_without_credits_or_usage(monkeypatch, tmp_path):
+    stub_tinfoil(monkeypatch, tmp_path, balance="0", spent="0")
+
+    with pytest.raises(billing.ProviderError, match="no credits"):
+        billing.tinfoil_provider(billing.month_period(date(2026, 8, 19)), 5)
+
+
+def test_tinfoil_does_not_fabricate_zero_consumption_when_usage_fails(monkeypatch, tmp_path):
+    stub_tinfoil(monkeypatch, tmp_path)
+
+    def fail(*_args):
+        raise billing.ProviderError("HTTP 403")
+
+    monkeypatch.setattr(billing, "fetch_tinfoil_current", fail)
+    with pytest.raises(billing.ProviderError, match="HTTP 403"):
+        billing.tinfoil_provider(billing.month_period(date(2026, 8, 19)), 5)
+
+
+def test_tinfoil_collect_records_history_and_retains_stale_on_failure(
+    monkeypatch, tmp_path
+):
+    stub_tinfoil(monkeypatch, tmp_path)
+    first = billing.collect(date(2026, 8, 18))
+    billing.write_output(first)
+    second = billing.collect(date(2026, 8, 19))
+    billing.write_output(second)
+    assert [p["id"] for p in second["providers"]] == ["tinfoil"]
+    assert second["providers"][0]["history"] == [{"day": 18, "pressure": 0.218}]
+    assert "provider\ttinfoil\tTF\t" in billing.render_tsv(second)
+    assert "admin_secret" not in billing.render_tsv(second)
+
+    def fail(*_args):
+        raise billing.ProviderError("HTTP 401")
+
+    monkeypatch.setattr(billing, "fetch_tinfoil_balance", fail)
+    stale = billing.collect(date(2026, 8, 20))
+    assert stale["providers"][0]["stale"] is True
+    assert stale["providers"][0]["balanceUsd"] == 3.91
+    assert stale["providers"][0]["currentPressure"] == 0.218
+    assert stale["errors"] == [{"provider": "tinfoil", "error": "HTTP 401"}]
+    stored = json.loads(billing.HISTORY_PATH.read_text())
+    assert [s["date"] for s in stored["providers"]["tinfoil"]] == [
+        "2026-08-18", "2026-08-19"
+    ]
+    assert billing.collect(date(2026, 9, 1))["providers"] == []
+
+
+def test_tinfoil_is_not_fetched_without_an_admin_key(monkeypatch, tmp_path):
+    isolate_cache(monkeypatch, tmp_path)
+    calls = []
+
+    def unexpected(*_args):
+        calls.append(True)
+        raise AssertionError("Tinfoil must be opt-in through its admin key")
+
+    monkeypatch.setattr(billing, "tinfoil_provider", unexpected)
+    assert billing.collect(date(2026, 8, 19))["providers"] == []
+    assert calls == []
 
 
 def test_anthropic_cost_report_converts_fractional_cents(monkeypatch):

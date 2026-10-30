@@ -2,10 +2,9 @@
 """Collect month-to-date billing data for the affine billing map.
 
 Metered AWS spend is normalized against the live monthly COST budget.
-OpenRouter is prepaid against remaining credit. Azure is prepaid against the
-credit pool the current month started with: month-to-date spend is the
-current point, and calendar pace projects that spend through the same month
-end.
+OpenRouter is prepaid against remaining credit. Azure and Tinfoil plot
+month-to-date consumption against their available monthly credit pool, with
+calendar pace projecting that spend through the same month end.
 
 Every successful collect stores that day's observation. The map's solid past
 trail is that growing series; missing days are not invented.
@@ -39,6 +38,7 @@ AZURE_DAILY_COST_COOLDOWN_SECONDS = 6 * 60 * 60
 AWS_COLOR = "ffb454"
 AZURE_COLOR = "38bdf8"
 OPENROUTER_COLOR = "c8ff00"
+TINFOIL_COLOR = "f3f6f5"
 GITHUB_ACTIONS_COLOR = "4ade80"
 BLACKSMITH_COLOR = "f0fb29"
 BLACKSMITH_FREE_MINUTES = Decimal("3000")
@@ -1645,6 +1645,101 @@ def openrouter_provider(period, timeout, observed_at):
     return provider
 
 
+def fetch_tinfoil_balance(admin_key, timeout):
+    payload = request_json(
+        "https://api.tinfoil.sh/api/billing/credits",
+        headers={"Authorization": f"Bearer {admin_key}"},
+        timeout=timeout,
+    )
+    if not isinstance(payload, dict):
+        raise ProviderError("Tinfoil credits response was not an object")
+    return max(
+        Decimal(0), as_decimal(payload.get("balance_dollars"), "Tinfoil balance")
+    )
+
+
+def fetch_tinfoil_current(period, admin_key, timeout, *, end=None):
+    start = datetime.combine(period["periodStart"], time.min).astimezone()
+    query = urllib.parse.urlencode({
+        "start": utc_iso(start), "end": utc_iso(end or period["localNow"]),
+    })
+    payload = request_json(
+        f"https://api.tinfoil.sh/api/billing/usage?{query}",
+        headers={"Authorization": f"Bearer {admin_key}"},
+        timeout=timeout,
+    )
+    if not isinstance(payload, dict):
+        raise ProviderError("Tinfoil usage response was not an object")
+    cost = as_decimal(payload.get("cost"), "Tinfoil month-to-date usage")
+    if cost < 0:
+        raise ProviderError("Tinfoil month-to-date usage was negative")
+    return cost
+
+
+def fetch_tinfoil_history(period, admin_key, timeout, pool):
+    """Cache actual cumulative spend at each completed local day's end."""
+    store = load_observation_history()
+    cached = {sample.get("date"): sample for sample in store.get("tinfoil", [])}
+    observed_at = utc_iso(datetime.now(timezone.utc))
+    for day_number in range(1, period["day"]):
+        sample_date = period["periodStart"] + timedelta(days=day_number - 1)
+        amount = None
+        raw = (cached.get(sample_date.isoformat()) or {}).get("monthUsageUsd")
+        if raw is not None:
+            try:
+                amount = as_decimal(raw, "Tinfoil historical usage")
+                if amount < 0:
+                    amount = None
+            except ProviderError:
+                pass
+        if amount is None:
+            end = datetime.combine(sample_date + timedelta(days=1), time.min).astimezone()
+            try:
+                amount = fetch_tinfoil_current(period, admin_key, timeout, end=end)
+            except ProviderError as error:
+                log_event(f"Tinfoil history incomplete at {sample_date}: {clean_error(error)}")
+                break
+        upsert_observation(
+            store, "tinfoil", sample_date, observed_at,
+            {"pressure": rounded(amount / pool), "monthUsageUsd": str(amount)},
+        )
+    store = save_observation_history(store, period["today"])
+    return map_history_from_store(store, "tinfoil", period)
+
+
+def tinfoil_provider(period, timeout):
+    log_event("Tinfoil: fetching credit balance and month-to-date usage...")
+    admin_key = os.environ.get("TINFOIL_ADMIN_KEY", "").strip()
+    if not admin_key:
+        raise ProviderError("TINFOIL_ADMIN_KEY is required")
+    balance = fetch_tinfoil_balance(admin_key, timeout)
+    spent = fetch_tinfoil_current(period, admin_key, timeout)
+    pool = balance + spent
+    if pool <= 0:
+        raise ProviderError("Tinfoil has no credits or month-to-date usage to plot")
+    forecast = linear_month_forecast(spent, period)
+    provider = metered_provider(
+        "tinfoil", "TF", "Tinfoil", TINFOIL_COLOR,
+        pool, spent, period, "tinfoil-credits",
+    )
+    provider.update({
+        "kind": "prepaid",
+        "history": fetch_tinfoil_history(period, admin_key, timeout, pool),
+        "balanceUsd": rounded(balance, 2),
+        "dailyBurnUsd": rounded(spent / Decimal(period["day"]), 4),
+        "projectedBalanceUsd": rounded(max(Decimal(0), pool - forecast), 2),
+        "detail": (
+            f"${float(spent):.2f} used · ${float(pool):.2f} credits · "
+            f"${float(forecast):.2f} EOM · ${float(balance):.2f} left"
+        ),
+    })
+    log_event(
+        f"Tinfoil: fresh usage ${provider['currentUsd']} / ${provider['capUsd']} credits "
+        f"({provider['currentPressure']:.1%}), remaining ${provider['balanceUsd']}"
+    )
+    return provider
+
+
 def github_api(path, timeout):
     return run_json(
         [
@@ -2128,6 +2223,19 @@ def collect(reference=None):
             if "openrouter" in old:
                 providers.append(stale_provider(old["openrouter"], error))
 
+    if configured("TINFOIL_ADMIN_KEY"):
+        try:
+            providers.append(tinfoil_provider(period, timeout))
+        except Exception as error:
+            message = clean_error(error)
+            if is_rate_limited(error):
+                log_event(f"RATE LIMIT / THROTTLED: Tinfoil request was throttled: {message}")
+            else:
+                log_event(f"ERROR: Tinfoil fetch failed: {message}")
+            errors.append({"provider": "tinfoil", "error": message})
+            if "tinfoil" in old:
+                providers.append(stale_provider(old["tinfoil"], error))
+
     if env_flag("BILLING_GITHUB_ACTIONS_ENABLED"):
         try:
             providers.append(github_actions_provider(period, timeout))
@@ -2161,11 +2269,12 @@ def collect(reference=None):
         "github_actions": 3,
         "blacksmith": 4,
         "azure": 5,
+        "tinfoil": 6,
     }
     providers.sort(key=lambda item: provider_order.get(item.get("id"), 99))
     if not providers and not errors:
         msg = (
-            "No billing providers configured; set an OpenRouter key "
+            "No billing providers configured; set an OpenRouter / Tinfoil key "
             "or enable AWS / Azure / GitHub Actions / Blacksmith"
         )
         log_event(f"Configuration notice: {msg}")

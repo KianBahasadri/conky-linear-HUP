@@ -46,6 +46,14 @@ local marks = {
         fill = '202020', stroke = 'f0fb29', stroke_width = 0.8, non_scaling = true},
     },
   },
+  tinfoil = {
+    view = {0, 0, 835, 813}, ratio = 835 / 813,
+    paths = {
+      -- Symbol from https://tinfoil.sh/brand-assets/logo-green.svg.
+      {d = 'M825.24 610.01 L245.95 786.69 L10.37 602.06 L235.81 23.4 Z M146.55 564.75 L269.37 661.01 L611.07 556.81 L278.57 225.89 Z',
+        fill = 'currentColor', evenodd = true},
+    },
+  },
   codex = {
     view = {0, 0, 24, 24}, ratio = 1,
     paths = {

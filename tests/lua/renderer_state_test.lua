@@ -4,6 +4,7 @@ local root = arg[1]
 local shared = dofile(root .. '/conky/renderer-shared.lua')
 local ui = shared.ui
 local files, labels, trails, dashes, rects, lines, text_calls = {}, {}, {}, {}, {}, {}, {}
+local marks = {}
 local width, height = 1136, 420
 shared.read_file = function(path) return files[path:match('/([^/]+)$')] end
 shared.wrap_title = function(_, value) return {value} end
@@ -26,7 +27,10 @@ ui.polyline = function(_, points, color)
   trails[#trails + 1] = {points = points, color = color}
 end
 ui.icon = function() return true end
-ui.mark = function() return true end
+ui.mark = function(_, key, x, y, size)
+  marks[#marks + 1] = {key = key, x = x, y = y, size = size}
+  return true
+end
 ui.group = function(_, alpha, callback) callback() end
 ui.badge = function(_, value) labels[#labels + 1] = value; return #value * 6 + 16 end
 ui.callout = function(_, label, message) labels[#labels + 1] = label .. ': ' .. message; return 36 end
@@ -43,6 +47,7 @@ os.time = function(date) return date and original_time(date) or 120000 end
 
 local function draw(name)
   labels, trails, dashes, rects, lines, text_calls = {}, {}, {}, {}, {}, {}
+  marks = {}
   dofile(root .. '/conky/' .. name)(shared, '/fixture').draw()
 end
 local function has(value)
@@ -163,6 +168,30 @@ for _, dash in ipairs(dashes) do
   if dash.color == ui.derived then has_forecast_connector = true end
 end
 assert(not has_forecast_connector, 'trajectories under 50% usage omit the predicted line')
+
+-- Runway providers share a current coordinate without hiding each other's logo.
+width, height = 316, 128
+files['billing-usage-render.tsv'] = table.concat({
+  'meta\tok\t1\tday\t6\tdaysInMonth\t30\telapsedFraction\t0.2',
+  'provider\topenrouter\tOR\tffffff\tprepaid\t1\t0\t0\t0.6\t1\tcredits\t$12 left',
+  'provider\ttinfoil\tTF\tffffff\tprepaid\t1\t0\t0\t0.8\t1\tcredits\t$10 left',
+}, '\n')
+draw('billing-renderer.lua')
+assert(#marks == 2 and marks[1].key == 'openrouter' and marks[2].key == 'tinfoil',
+  'both runway providers must draw their own vector logo')
+assert(marks[2].x - marks[1].x > marks[1].size * 1.2,
+  'coincident logos must not overlap')
+local origin = (marks[1].x + marks[2].x) / 2
+assert(#dashes == 2 and math.abs(dashes[1].x1 - origin) < 0.001
+  and math.abs(dashes[2].x1 - origin) < 0.001,
+  'forecast paths must start at the exact shared data coordinate')
+files['billing-usage-render.tsv'] = files['billing-usage-render.tsv']:gsub('elapsedFraction\t0%.2', 'elapsedFraction\t0.999', 1)
+draw('billing-renderer.lua')
+for _, mark in ipairs(marks) do
+  assert(mark.x - mark.size * 0.6 >= 0 and mark.x + mark.size * 0.6 <= width,
+    'coincident logos must fit at the month-end window edge')
+end
+width, height = 1136, 420
 
 files['weather-status.json'] = [[{"ok":true,"temperature":16,"aqi":23}]]
 files['workouts-status.json'] = [[{"ok":true,"weekRuns":4,"lastDistanceText":"2.6 km","lastPaceText":"5:53 /km",
