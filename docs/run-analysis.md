@@ -38,15 +38,31 @@ caches the per-file results and writes the status fields listed in
 
 ## Effort score
 
-- A run's score is the best Daniels–Gilbert VDOT over any window of the moving
-  (running and walking) track lasting at least max(8 min, min(60 min, half the
-  running time)), plus `2.5 × ln(T / 20 min)` for a window of length `T`. The
-  adjustment credits longer windows for the faster fatigue of recreational
+- A run's score is the best Daniels–Gilbert VDOT over any window of either the moving
+  track or the concentrated running bouts lasting at least max(8 min, min(60 min, half the
+  running time)), plus `2.5 × ln(T / 20 min)` for a window of length `T`. For interval runs
+  or circuit workouts with bodyweight exercise stops between laps, evaluating the running
+  segments ensures stationary rests do not artificially depress the runner's speed score.
+  The adjustment credits longer windows for the faster fatigue of recreational
   runners, so a short hard run and a long steady one share one scale (roughly
   a Riegel exponent of 1.1–1.15).
 - Runs with less than 8 minutes or 1.2 km of running get no score. They still
   count toward volume and reset the detraining clock.
 - Scores are shown as the 5K time that would earn the same score (`5K 29:23`).
+
+## Workout load and Rate of Progress
+
+- For cross-training, calisthenics runs, and multi-sport sessions, each workout receives
+  a unified physical strain score (`totalLoad`):
+  - **Cardio Load (TRIMP):** Duration scaled by Heart Rate Reserve factor $\Delta\text{HR} = (\text{HR} - 50) / 145$
+    via Banister's impulse equation ($t \times \Delta\text{HR} \times 0.64 e^{1.92 \Delta\text{HR}}$), falling back to
+    sport MET multipliers when heart rate is absent.
+  - **Strength Load:** Bodyweight reps extracted from TCX `<Notes>` (`pushups`, `pullups`, `situps`), multiplied
+    by lap count for per-lap routines and weighted by biomechanical load points (pull-ups 1.5, push-ups 0.5, sit-ups 0.3).
+- **Chronic Training Load (CTL):** An exponential moving average of daily workout load with a 28-day time constant.
+- **Rate of Progress:** The 28-day percentage change in training capacity $\frac{\text{CTL}_{\text{now}} - \text{CTL}_{\text{28d ago}}}{\text{CTL}_{\text{28d ago}}} \times 100\%$.
+  When bodyweight circuits are detected, the progress headline shows this rate of progress (`+59%`) in semantic green
+  (`Better`) or red (`Worse`), and the telemetry line highlights total strength reps (`35 push · 25 pull · 50 sit`).
 
 ## Fitness trend
 

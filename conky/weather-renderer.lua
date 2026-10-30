@@ -86,6 +86,7 @@ return function(shared, repo_root)
       last_duration = json_string(content, 'lastDurationText', '--'),
       last_pace = pace_compact,
       last_score = json_string(content, 'lastScoreText', ''),
+      last_strength = json_string(content, 'lastStrengthText', ''),
       last_heart_rate = hr_short,
       trend = json_string(content, 'trendText', ''),
       fitness_baseline = shared.json_number(content, 'fitnessBaselineScore', nil),
@@ -326,7 +327,8 @@ return function(shared, repo_root)
     end
 
     local hr_part = width < 160 and workouts.last_heart_rate:gsub('%s*bpm$', '') or workouts.last_heart_rate
-    local score_part = workouts.last_score ~= '' and ('5K ' .. workouts.last_score) or ''
+    local score_part = workouts.last_strength ~= '' and workouts.last_strength
+      or (workouts.last_score ~= '' and ('5K ' .. workouts.last_score) or '')
     local telemetry = ''
     for _, part in ipairs({pace_inline and '' or pace, score_part, workouts.last_duration, hr_part}) do
       local candidate = join({telemetry, part}, ' · ')

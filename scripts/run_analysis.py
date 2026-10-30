@@ -4,6 +4,7 @@ Pure functions over parsed TCX tracks; fetch_workouts.py owns file I/O and
 caching. See docs/run-analysis.md for the model.
 """
 import math
+import re
 
 
 STOPPED, WALKING, RUNNING, VEHICLE = range(4)
@@ -291,6 +292,7 @@ def analyze_track(track):
         "walkMeters": round(meters[WALKING], 1),
         "warmupMeters": round(warmup, 1),
         "cooldownMeters": round(cooldown, 1),
+        "laps": max(1, len(runs)),
     }
     if seconds[RUNNING] >= MIN_SCORED_RUN_SECONDS and meters[RUNNING] >= MIN_SCORED_RUN_METERS:
         moving = [
@@ -299,7 +301,18 @@ def analyze_track(track):
             else 0.0
             for index, state in enumerate(states)
         ]
-        effort = best_effort(moving, seconds[RUNNING])
+        effort_continuous = best_effort(moving, seconds[RUNNING])
+        running_only = [
+            min(increments[index], MAX_STEP_METERS)
+            for index, state in enumerate(states)
+            if state == RUNNING and not paused[index]
+        ]
+        effort_running = best_effort(running_only, seconds[RUNNING])
+        effort = (
+            effort_running
+            if (effort_running and (not effort_continuous or effort_running[0] > effort_continuous[0]))
+            else effort_continuous
+        )
         if effort:
             summary.update(
                 {
@@ -500,3 +513,117 @@ def fitness_trend(samples, now, window_days=28.0):
         "thenSd": then_moments[1],
         "probability": 0.5 * (1.0 + math.erf(difference / (SQRT2 * spread))),
     }
+
+
+MAX_HR_DEFAULT = 195.0
+REST_HR_DEFAULT = 50.0
+
+CALISTHENICS_POINTS = {
+    "pullups": 1.5,
+    "pushups": 0.5,
+    "situps": 0.3,
+}
+
+
+def cardio_load(duration_seconds, avg_hr=None, max_hr=MAX_HR_DEFAULT, rest_hr=REST_HR_DEFAULT, sport="Running"):
+    """Training Impulse (TRIMP) or MET-duration load for any workout duration and HR."""
+    duration_minutes = duration_seconds / 60.0
+    if duration_minutes <= 0:
+        return 0.0
+    if avg_hr and avg_hr > rest_hr:
+        delta_hr = max(0.0, min(1.0, (avg_hr - rest_hr) / (max_hr - rest_hr)))
+        return duration_minutes * delta_hr * 0.64 * math.exp(1.92 * delta_hr)
+    sport_key = (sport or "").lower()
+    factor = 1.8 if sport_key == "running" else (1.2 if sport_key in ("cycling", "biking") else 1.0)
+    return duration_minutes * factor
+
+
+def parse_calisthenics(notes, lap_count=1):
+    """Parse bodyweight strength exercises and calculate total reps and load points."""
+    if not notes:
+        return {}, 0.0
+    text = str(notes).lower()
+    exercises = {}
+    patterns = {
+        "pushups": r"(\d+)\s*(?:push[\s-]*ups?|pushups?)",
+        "pullups": r"(\d+)\s*(?:pull[\s-]*ups?|pullups?)",
+        "situps": r"(\d+)\s*(?:sit[\s-]*ups?|situps?)",
+    }
+    has_match = False
+    for ex, pat in patterns.items():
+        m = re.search(pat, text)
+        if m:
+            exercises[ex] = int(m.group(1))
+            has_match = True
+        elif ex.rstrip("s") in text:
+            exercises[ex] = 5
+            has_match = True
+
+    if not has_match:
+        return {}, 0.0
+
+    is_per_lap = any(kw in text for kw in ("per lap", "a lap", "every lap", "/lap", "each lap"))
+    multiplier = lap_count if (is_per_lap or (lap_count > 1 and "pushup" in text)) else 1
+
+    total_reps = {ex: reps * multiplier for ex, reps in exercises.items()}
+    strength_load = sum(total_reps[ex] * CALISTHENICS_POINTS.get(ex, 0.5) for ex in total_reps)
+    return total_reps, round(strength_load, 1)
+
+
+def workout_strain(duration_seconds, avg_hr=None, notes=None, lap_count=1, sport="Running"):
+    """Unified physical strain score for any workout (cardio impulse + strength work)."""
+    c_load = cardio_load(duration_seconds, avg_hr, sport=sport)
+    reps, s_load = parse_calisthenics(notes, lap_count)
+    return {
+        "cardioLoad": round(c_load, 1),
+        "strengthLoad": round(s_load, 1),
+        "totalLoad": round(c_load + s_load, 1),
+        "reps": reps,
+    }
+
+
+def training_capacity(history, now_timestamp, window_days=28.0):
+    """Chronic Training Load (CTL) via 28-day EWMA across all workouts and 28-day Rate of Progress."""
+    if not history:
+        return None
+    sorted_history = sorted(history, key=lambda item: item[0])
+    day_seconds = 86400.0
+    tau = float(window_days)
+    decay = math.exp(-1.0 / tau)
+
+    start_day = int(math.floor(sorted_history[0][0] / day_seconds))
+    end_day = int(math.floor(now_timestamp / day_seconds))
+
+    daily_loads = {}
+    for stamp, load in sorted_history:
+        day_idx = int(math.floor(stamp / day_seconds))
+        daily_loads[day_idx] = daily_loads.get(day_idx, 0.0) + (load or 0.0)
+
+    ctl = 0.0
+    day_ctl = {}
+    for day_idx in range(start_day, end_day + 1):
+        load = daily_loads.get(day_idx, 0.0)
+        ctl = ctl * decay + load * (1.0 - decay)
+        day_ctl[day_idx] = ctl
+
+    now_day = end_day
+    baseline_day = now_day - int(window_days)
+    ctl_now = day_ctl.get(now_day, ctl)
+    ctl_baseline = day_ctl.get(baseline_day, 0.0)
+
+    levels = []
+    for stamp, _ in sorted_history:
+        w_day = int(math.floor(stamp / day_seconds))
+        levels.append(round(day_ctl.get(w_day, 0.0), 2))
+
+    delta = ctl_now - ctl_baseline
+    denom = max(5.0, ctl_baseline)
+    rate_of_progress = round((delta / denom) * 100.0, 1)
+
+    return {
+        "now": round(ctl_now, 2),
+        "then": round(ctl_baseline, 2),
+        "rateOfProgress": rate_of_progress,
+        "levels": levels,
+    }
+

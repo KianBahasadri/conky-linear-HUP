@@ -152,3 +152,76 @@ def test_fitness_levels_keep_input_order_and_cover_unscored_runs():
 def test_fitness_trend_needs_a_score():
     assert analysis.fitness_trend([(NOW - DAY, None)], NOW) is None
     assert analysis.fitness_trend([], NOW) is None
+
+
+def test_cardio_load_with_and_without_heart_rate():
+    # 35 min at avg HR 164 bpm
+    hr_load = analysis.cardio_load(35 * 60, avg_hr=164)
+    assert hr_load == pytest.approx(79.6, abs=2.0)
+
+    # 35 min running without HR
+    no_hr_run = analysis.cardio_load(35 * 60, avg_hr=None, sport="Running")
+    assert no_hr_run == pytest.approx(63.0, abs=1.0)
+
+    # 60 min cycling without HR
+    no_hr_cycle = analysis.cardio_load(60 * 60, avg_hr=None, sport="Cycling")
+    assert no_hr_cycle == pytest.approx(72.0, abs=1.0)
+
+
+def test_parse_calisthenics_extracts_reps_and_load():
+    notes = "7 pushup 5 pullup 10 situp"
+    reps, load = analysis.parse_calisthenics(notes, lap_count=6)
+    assert reps == {"pushups": 42, "pullups": 30, "situps": 60}
+    # 42*0.5 + 30*1.5 + 60*0.3 = 21 + 45 + 18 = 84.0
+    assert load == pytest.approx(84.0)
+
+    # Singular or varied spelling
+    reps_single, _ = analysis.parse_calisthenics("10 push-ups + 5 pull-ups", lap_count=1)
+    assert reps_single["pushups"] == 10
+    assert reps_single["pullups"] == 5
+
+    # Empty notes
+    assert analysis.parse_calisthenics("") == ({}, 0.0)
+
+
+def test_workout_strain_combines_cardio_and_strength():
+    strain = analysis.workout_strain(
+        duration_seconds=35 * 60,
+        avg_hr=147,
+        notes="7 pushup 5 pullup 10 situp",
+        lap_count=6,
+        sport="Running",
+    )
+    assert strain["cardioLoad"] > 50
+    assert strain["strengthLoad"] == pytest.approx(84.0)
+    assert strain["totalLoad"] == pytest.approx(strain["cardioLoad"] + 84.0, abs=0.2)
+    assert strain["reps"]["pushups"] == 42
+
+
+def test_training_capacity_calculates_ctl_and_rate_of_progress():
+    # 84 days history: steady 50 load/day building to 100 load/day in last 28 days
+    history = []
+    start_stamp = NOW - 84 * DAY
+    for i in range(84):
+        load = 50.0 if i < 56 else 100.0
+        history.append((start_stamp + i * DAY, load))
+
+    res = analysis.training_capacity(history, NOW, window_days=28.0)
+    assert res is not None
+    assert res["now"] > res["then"]
+    assert res["rateOfProgress"] > 30.0  # Significant capacity growth
+
+
+def test_interval_running_with_calisthenics_stops_scores_running_pace():
+    # 6 laps of: 120s running at 3.0 m/s (5:33/km) + 60s stopped (0 m/s)
+    lap = [(120, 3.0, 82), (60, 0.0, 0)]
+    track_pts = track(lap * 6)
+    summary = analysis.analyze_track(track_pts)
+
+    assert summary["runSeconds"] == pytest.approx(720, abs=10)
+    assert summary["runMeters"] == pytest.approx(2160, abs=50)
+    # The pure running score should reflect 3.0 m/s (~5:33/km) over 720s (~30+ VDOT),
+    # not diluted by the 60s rest periods down to 2.0 m/s
+    assert summary["score"] >= 28.0
+    assert summary["laps"] == 6
+

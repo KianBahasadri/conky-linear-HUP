@@ -40,6 +40,7 @@ TCX_TEMPLATE = """<?xml version="1.0" encoding="UTF-8"?>
           </Trackpoint>
         </Track>
       </Lap>
+      {notes_block}
     </Activity>
   </Activities>
 </TrainingCenterDatabase>
@@ -61,6 +62,7 @@ def write_tcx(
     bpm=154,
     cadence=61,
     calories=180,
+    notes="",
 ):
     start_dt = datetime.fromisoformat(start.replace("Z", "+00:00"))
     path.write_text(
@@ -75,6 +77,7 @@ def write_tcx(
             calories=calories,
             heart_rate=heart_rate_block(bpm),
             cadence=cadence,
+            notes_block=f"<Notes>{notes}</Notes>" if notes else "",
         ),
         encoding="utf-8",
     )
@@ -455,3 +458,31 @@ def test_main_reports_missing_directory(monkeypatch, tmp_path):
     )
     assert status["ok"] is False
     assert "missing" in status["error"]
+
+
+def test_parse_workout_extracts_notes(tmp_path):
+    tcx_path = tmp_path / "run_notes.tcx"
+    write_tcx(tcx_path, notes="7 pushup 5 pullup 10 situp")
+
+    workout = workouts.parse_workout(tcx_path)
+    assert workout["notes"] == "7 pushup 5 pullup 10 situp"
+
+
+def test_build_status_calisthenics_circuit_rate_of_progress():
+    now = datetime(2026, 10, 30, 12, 0, 0).astimezone()
+    run = analyzed_run(
+        now,
+        score=30.0,
+        notes="7 pushup 5 pullup 10 situp",
+        avgHeartRate=147,
+        laps=6,
+        reps={"pushups": 42, "pullups": 30, "situps": 60},
+        totalLoad=180.0,
+        cardioLoad=60.0,
+        strengthLoad=120.0,
+    )
+    status = workouts.build_status([run], metric_units(), now)
+    assert status["lastStrengthText"] == "42 push · 30 pull · 60 sit"
+    assert status["trendText"].endswith("%")
+    assert status["progressVerdict"] in {"Better", "Steady"}
+

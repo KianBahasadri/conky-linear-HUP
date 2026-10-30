@@ -24,7 +24,7 @@ LOG_PATH = CACHE_DIR / "conky-workouts.log"
 DEFAULT_WORKOUTS_DIR = CACHE_DIR / "workouts"
 
 # Bump when parsing or run_analysis changes what a cached file summary means.
-ANALYSIS_VERSION = 1
+ANALYSIS_VERSION = 3
 RECENT_LIMIT = 14
 WEEK_WINDOW = timedelta(days=7)
 TREND_WINDOW_DAYS = 28
@@ -93,6 +93,7 @@ def parse_workout(path):
     lap = None
     parents = []
     truncated = False
+    notes = ""
 
     def add_lap(fields):
         nonlocal duration, distance, calories
@@ -112,6 +113,8 @@ def parse_workout(path):
                 parents.append(tag)
                 continue
             parents.pop()
+            if tag == "Notes":
+                notes = element.text or ""
             if lap is not None and parents and parents[-1] == "Lap":
                 if tag in ("TotalTimeSeconds", "DistanceMeters", "Calories"):
                     lap[tag] = element.text
@@ -171,13 +174,26 @@ def parse_workout(path):
         "maxHeartRate": max(heart_rates) if heart_rates else None,
         "avgCadence": round(sum(cadences) / len(cadences)) if cadences else None,
         "truncated": truncated,
+        "notes": notes.strip(),
         "track": track,
     }
 
 
 def analyze_file(path):
     workout = parse_workout(path)
-    workout.update(run_analysis.analyze_track(workout.pop("track")))
+    track = workout.pop("track")
+    if is_run(workout):
+        workout.update(run_analysis.analyze_track(track))
+    laps = workout.get("laps", 1)
+    workout.update(
+        run_analysis.workout_strain(
+            workout["durationSeconds"],
+            workout.get("avgHeartRate"),
+            workout.get("notes"),
+            lap_count=laps,
+            sport=workout.get("sport", "Running"),
+        )
+    )
     return workout
 
 
@@ -437,6 +453,42 @@ def build_status(workouts, units, now=None):
 
     trend, levels = trend_status(runs, last_age_days, now)
     status.update(trend)
+
+    reps = last.get("reps") or {}
+    strength_parts = []
+    if reps.get("pushups"):
+        strength_parts.append(f"{reps['pushups']} push")
+    if reps.get("pullups"):
+        strength_parts.append(f"{reps['pullups']} pull")
+    if reps.get("situps"):
+        strength_parts.append(f"{reps['situps']} sit")
+    last_strength_text = " · ".join(strength_parts)
+    status["lastStrengthText"] = last_strength_text
+    status["lastTotalLoad"] = last.get("totalLoad")
+    status["lastCardioLoad"] = last.get("cardioLoad")
+    status["lastStrengthLoad"] = last.get("strengthLoad")
+
+    load_history = [
+        (w["startTime"].timestamp() if w["startTime"] else now.timestamp(), w.get("totalLoad", 0.0))
+        for w in workouts
+    ]
+    capacity = run_analysis.training_capacity(load_history, now.timestamp(), TREND_WINDOW_DAYS)
+    if capacity:
+        rop = capacity["rateOfProgress"]
+        status["rateOfProgress"] = rop
+        status["rateOfProgressText"] = f"{int(round(rop)):+d}%"
+        status["chronicTrainingLoad"] = capacity["now"]
+        status["chronicTrainingBaseline"] = capacity["then"]
+        if last_strength_text:
+            status["trendText"] = status["rateOfProgressText"]
+            if rop >= 10.0:
+                status.update(progressVerdict="Better", progressKind="good")
+            elif rop <= -5.0:
+                status.update(progressVerdict="Worse", progressKind="danger")
+            else:
+                status.update(progressVerdict="Steady", progressKind="neutral")
+            if last_age_days >= 10:
+                status["progressKind"] = "caution"
 
     divisor = units["distanceDivisor"]
     status["recent"] = [
