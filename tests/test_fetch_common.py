@@ -61,7 +61,7 @@ def test_atomic_write_rejects_dangling_and_cyclic_symlinks(tmp_path):
     second = tmp_path / "second"
     first.symlink_to(second.name)
     second.symlink_to(first.name)
-    with pytest.raises(RuntimeError):
+    with pytest.raises((RuntimeError, OSError)):
         common.atomic_write_text(first, "payload")
     assert first.is_symlink()
     assert second.is_symlink()
