@@ -12,6 +12,14 @@ Pool-distinguishing labels (like `Auto`, `API`, `Reserve`, or `Argon`) flank
 on the left. Standard interval windows (`5h`, `7d`, `Month`) omit the leading label so
 bars start directly beside the account name.
 Selected profiles use a neutral raised row and a medium-weight account name.
+Managed Codex/Cursor accounts show one small Lucide computer icon beside the
+name when an independently authenticated local login is configured on this host.
+The icon appears on selected and unselected rows alike; selection keeps its
+separate highlight. All managed accounts are cloud-accessible, so no cloud badge
+is shown. A managed row without the computer icon is cloud-only, or its local
+availability is unknown/stale. A leftover auth file never establishes availability.
+The icon uses space inside the existing name column; names retain their normal
+ellipsis behavior and all bars and reset columns stay aligned.
 A single horizontal rule separates provider sections in a column. A column with only one provider has no rule. Wide panels use a fixed 112px-high band aligned with the neighboring billing map, retaining two columns regardless of account count. Each column redistributes its row spacing to fill that band when profiles are added or removed, including during cache refreshes. Rows keep their minimum readable pitch; an overflowing column reserves a 16px footer and rotates through its own pages within the same band. Provider identity does not determine bar color. Shared typography, colors, and
 overflow are owned by the [Desktop design system](design-system.md).
 
@@ -39,8 +47,8 @@ the 608px-wide panel shows the current 13 accounts together without paging.
 - Cache refreshes do not resize or reload windows. Startup bounds the list and
   excess rows rotate through the available region.
 
-Selected profiles are resolved by the existing fetchers: shared `current`
-profiles for Codex/Cursor, the active Claude credential file or matching access
+Selected profiles are resolved by Clusterfork's eligible `selected_local_profile`
+for Codex/Cursor, the active Claude credential file or matching access
 token, and Antigravity's current profile.
 Claude requires token comparison because its
 CLI replaces the credential file during refresh.
@@ -48,13 +56,69 @@ CLI replaces the credential file during refresh.
 Account-rotation tooling lives in `~/.config/clusterfork`; shared Codex/Cursor
 profiles live in `~/.local/share/clusterfork-auth/`.
 
+## Managed Codex/Cursor source and ownership
+
+Both fetchers use Clusterfork's [read-only consumer contract, schema version 1](https://github.com/KianBahasadri/clusterfork/blob/5787a55a3c5cccadf0f221006fcf9c99209d8bae/docs/remote-development-accounts.md#read-only-consumer-contract-schema-version-1),
+delivered by KIAN-941. Each poll invokes the installed account CLI:
+
+```bash
+~/.config/clusterfork/automation/venv/bin/python \
+  ~/.config/clusterfork/automation/accounts.py snapshot --provider codex \
+  --store ~/.local/share/clusterfork-auth/codex
+# Repeat with --provider cursor and the cursor store.
+```
+
+The CLI joins offline, host-scoped availability with the controller's read-only
+`GET /api/accounts/snapshot?provider=codex|cursor`, using the existing Azure CLI
+operator identity's management access token. It never signs in for the operator.
+The controller collects quota under its credential/lease boundary; polling this
+snapshot cannot initiate a provider probe or refresh. Install/update Clusterfork
+and retain its existing operator access before enabling these fetchers.
+`CLUSTERFORK_ACCOUNTS_SCRIPT` can override the installed `automation/accounts.py`;
+`CLUSTERFORK_PYTHON` can override its interpreter (otherwise the adjacent
+`venv/bin/python`, then the fetcher's interpreter). The subprocess has a 45-second
+timeout; command failures report a bounded error without exposing subprocess output.
+
+Rows, cached usage, daily usage history and quota contributions join by
+`(provider, account_id)`, where the upstream ID is an unprefixed 64-character
+SHA-256. Aliases are display names only. Independent sessions and multiple aliases
+produce one account row and one contribution to the provider pace average.
+The label stays stable across selection changes. JSON retains aliases, stable
+identity, local profiles, selected profile, availability capture time, cloud state,
+and usage source. The TSV appends explicit availability/identity/capture/freshness
+fields to account records and identity/source-window fields to bar records;
+legacy records with no availability fields show no local icon.
+
+Managed accounts, including dual-session accounts, always use cloud quota data.
+The fetchers never enumerate or read their auth copies for tokens, refresh them,
+rewrite them, or fall back to them on source failure. Existing `CODEX_AUTH_PATH`
+and `CURSOR_AUTH_PATH` settings cannot bypass this ownership boundary. Ordinary
+unenrolled accounts may still use direct provider polling, but only when the
+current contract explicitly reports `cloud_available: false` and an eligible local
+profile. Their quota is also deduplicated by stable identity. Auth store locations
+come from `CODEX_AUTH_STORE_DIR` / `CURSOR_AUTH_STORE_DIR`; an explicit
+`CODEX_HOME` / `CURSOR_HOME` continues to set the corresponding store by default.
+
+Usage preserves original observation/attempt timestamps, source-window names,
+reset times, durations (including unknown durations), source freshness/age and
+error codes. Freshness is recomputed from the observation time and absolute
+resets, with a maximum age of 300 seconds, both at fetch time and while rendering.
+Unknown quota produces an error row rather than zero usage. Failed/unauthorized
+snapshots retain known accounts and their last captured windows as stale; expired
+windows show `Refresh`. Stale quota contributes neither pace ticks nor averages.
+Cached availability is never reused after a failed metadata read; local icons also
+expire after 300 seconds when fetching stops. A controller error can retain a
+fresh offline availability result, independently of quota freshness.
+
+Schema version 1 supplies no plan tier. Managed accounts therefore use the
+baseline capacity weight of 1 rather than inferring a subscription from aliases
+or duplicating local/cloud capacity. Known tiers from direct local polling retain
+their existing weights.
+
 ## Codex
 
-- Multiple accounts are discovered from `~/.local/share/clusterfork-auth/codex/auth.json.*`; `CODEX_AUTH_PATH` forces a single auth file. The legacy path `~/.codex/auth.json.*` is used as a fallback when the shared store directory does not exist.
-- `CODEX_HOME`, `CODEX_SQLITE_HOME`, `CODEX_AUTH_STORE_DIR`, `CODEX_USAGE_DEGENERATE_RETRIES`, and `CODEX_LOCAL_RATE_LIMIT_MAX_AGE_SECONDS` are advanced overrides for local Codex state discovery and retry behavior. The usage endpoint is authoritative for every account whenever it returns a successful usage response; local session rate limits are discarded rather than allowed to replace fresh endpoint data.
-- When the account-level limit is reached (`limit_reached` / `allowed`), only the blocking window is pinned to 100%: the one whose reset matches the response's `rate_limit_upsell.reset_at`, or the fullest window when the banner is missing (rollout samples always use the fullest window, since they carry no banner). Other windows keep their reported percentages, so an exhausted 5h window no longer pegs the weekly bar.
-- A third `reserve` bar is rendered when `/wham/usage` includes `additional_rate_limits` whose `limit_name` contains `reserve` (today `gpt-reserve`, Luna Reserve). That bucket is a fallback weekly pool, not a refill of the main 5h/weekly windows, so account-level reached/allowed flags never pin it. The bar is labelled `RESERVE` on the bar. Accounts without that extra limit keep two bars.
-- Recent Codex rollout samples are still logged per session for diagnostics, including their values and matching account candidates. They never override a fresh endpoint response, so an older local sample cannot make a bar move backward. Local samples only carry 5h and weekly; an existing reserve window is kept beside them rather than dropped.
+- Managed accounts render the snapshot's `codex/primary`, `codex/secondary`, and applicable `gpt-…/primary|secondary` windows, preserving their original names for history. Durations distinguish 5-hour, weekly and monthly windows; reserve model limits retain the `Reserve` label. No local session measurement replaces the cloud source.
+- Explicit unenrolled local profiles use `/wham/usage`. `CODEX_USAGE_DEGENERATE_RETRIES` controls retries of incomplete local responses. If the account limit is reached, only the blocking window is pinned to 100%; additional reserve limits stay separate. Managed polling never enters the local HTTP 401/403 token-refresh recovery path.
 - The `CODEX` summary's pace percentage uses the weekly window when available, falling back to 5h and monthly (for Free accounts). Pro accounts are weighted 20x relative to Plus accounts (400x relative to Free accounts), while Plus accounts are weighted 20x relative to Free accounts (weight 1) in the average. Reserve is never the summary's pace source. Free accounts have a single 30-day window.
 
 ## Claude
@@ -66,10 +130,9 @@ profiles live in `~/.local/share/clusterfork-auth/`.
 
 ## Cursor
 
-- Multiple accounts are discovered from `~/.local/share/clusterfork-auth/cursor/auth.json.*`; `CURSOR_AUTH_PATH` forces a single auth file and `CURSOR_HOME` overrides the config directory. The legacy path `~/.config/cursor/auth.json.*` is used as a fallback when the shared store directory does not exist.
-- `CURSOR_AUTH_STORE_DIR` overrides the shared auth store directory.
-- Usage is fetched from Cursor's DashboardService. Pro accounts render Cursor's monthly `Auto + Composer` and `API` usage pools as two bars (`Auto` and `API`). Free accounts render only the `Auto` pool because Free accounts have no API usage limit.
-- Both Pro and Free accounts display on-pace ticks and participate in the `CURSOR` average pace summary, with Pro accounts weighted 20x relative to Free accounts (weight 1).
+- Managed cloud and joined accounts render exactly the supplied `cursor/api` and optional `cursor/included` pools as `API` and `Included`. Included total usage is never relabeled `Auto`. Billing-cycle resets are Unix seconds, not milliseconds; nullable duration/reset metadata does not invent a pace estimate.
+- Explicit unenrolled local profiles retain DashboardService's `Auto + Composer` and `API` pools (`Auto` and `API`); Free local accounts display only `Auto`.
+- Fresh measured windows display on-pace ticks and participate once per account in the `CURSOR` average. Known Pro local accounts retain weight 20, Free and unknown tiers weight 1.
 
 ## Gemini
 
@@ -112,7 +175,7 @@ profiles live in `~/.local/share/clusterfork-auth/`.
 ## Adaptive polling
 
 - Each active rate-limit fetcher (Codex, Cursor, Gemini) repolls adaptively instead of on a fixed cadence.
-- After every fetch the loop fingerprints the meaningful usage state in that fetcher's `cache/*-usage-render.tsv`: the `meta`/`updatedAt` row is dropped, and time-derived bar columns (`resetsAt`, `resetAtEpoch`, `resetAfterSeconds`) are blanked so the fingerprint only changes when actual usage numbers or account/window structure change.
+- After every fetch the loop fingerprints the meaningful usage state in that fetcher's `cache/*-usage-render.tsv`: the `meta`/`updatedAt` row is dropped, and time-derived bar columns (`resetsAt`, `resetAtEpoch`, `resetAfterSeconds`) and account availability/measurement capture timestamps are blanked. Usage, availability, selection, freshness/error and account/window structure changes still affect the fingerprint.
 - When the fingerprint changes, the loop records the change time in `cache/*-usage-render.tsv.last_change` and uses `RATE_LIMIT_CHANGED_INTERVAL` (default `60`s). It keeps that short interval for any subsequent poll whose last change is still within `RATE_LIMIT_RECENT_CHANGE_WINDOW` (default `600`s / 10 minutes), even if the latest poll itself was unchanged. After the window expires with no further changes, it backs off to `RATE_LIMIT_UNCHANGED_INTERVAL` (default `300`s).
 - The fingerprint is stored as `cache/*-usage-render.tsv.fingerprint`. Both the fingerprint and last-change files persist across overlay restarts; a restart does not force a short interval unless usage actually changed or a prior change is still inside the recent-change window.
 

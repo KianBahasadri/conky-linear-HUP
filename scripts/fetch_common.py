@@ -161,6 +161,14 @@ def usage_render_tsv(output):
                     "1" if account.get("ok") else "0",
                     escape_tsv(account.get("error", "")),
                     "1" if account.get("staleCache") else "0",
+                    *([
+                        "1" if account.get("localAvailable") is True else "0",
+                        escape_tsv(account["accountId"]),
+                        str(account.get("availabilityGeneratedAt", 0)),
+                        str(account.get("observedAt") or 0),
+                        str(account.get("maxAgeSeconds", 300)),
+                        escape_tsv(account.get("freshness", "unknown")),
+                    ] if account.get("accountId") and "localAvailable" in account else []),
                 ]
             )
         )
@@ -180,6 +188,10 @@ def usage_render_tsv(output):
                     str(bar.get("resetAtEpoch", 0)),
                     str(bar.get("resetAfterSeconds", 0)),
                     str(bar.get("windowSeconds", 0)),
+                    *([
+                        escape_tsv(bar["accountId"]),
+                        escape_tsv(bar.get("sourceName", "")),
+                    ] if bar.get("accountId") else []),
                 ]
             )
         )
@@ -204,6 +216,9 @@ def flatten_bars(accounts):
                     "resetAfterSeconds": window.get("resetAfterSeconds", 0),
                     "windowSeconds": window.get("windowSeconds", 0),
                     "ok": account.get("ok", False),
+                    **({"accountId": account["accountId"],
+                        "sourceName": window.get("sourceName", "")}
+                       if account.get("accountId") and "localAvailable" in account else {}),
                 }
             )
     return bars
@@ -366,17 +381,18 @@ def _usage_observations(provider, output, observed_at, existing):
     for account in output.get("accounts") or []:
         if not account.get("ok") or account.get("staleCache"):
             continue
-        label = str(account.get("label") or "")
+        label = str((account.get("accountId") if "localAvailable" in account else None)
+                    or account.get("label") or "")
         if not label:
             continue
         for window in account.get("windows") or []:
-            window_label = str(window.get("label") or "")
+            window_label = str(window.get("sourceName") or window.get("label") or "")
             if not window_label:
                 continue
             reset = as_int(window.get("resetAtEpoch"))
             used = round(as_float(window.get("usedPercent")), 1)
             sample = {
-                "t": observed_at,
+                "t": as_int(account.get("observedAt"), observed_at),
                 "provider": provider,
                 "account": label,
                 "window": window_label,

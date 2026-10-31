@@ -137,6 +137,14 @@ def test_usage_render_tsv_golden_string():
     )
 
 
+def test_legacy_provider_id_is_not_the_managed_account_contract():
+    account = {"label": "local", "accountId": "provider-native-id", "windows": [{"label": "weekly"}]}
+    bars = common.flatten_bars([account])
+    assert "accountId" not in bars[0]
+    line = common.usage_render_tsv({"accounts": [account]}).splitlines()[1]
+    assert len(line.split("\t")) == 7
+
+
 def test_load_env_strips_quotes_and_preserves_existing(monkeypatch, tmp_path):
     env_path = tmp_path / ".env"
     env_path.write_text(

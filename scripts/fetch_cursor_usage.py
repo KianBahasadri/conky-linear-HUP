@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import fetch_common as common
+import clusterfork_usage
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -271,17 +272,18 @@ def write_error(message):
 def main():
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     common.load_env()
-    auth_files = discover_auth_files()
-    labels = ",".join(label for label, _, _ in auth_files)
-    log_event(f"starting Cursor usage fetch accounts={labels or 'none'}")
+    log_event("starting Cursor usage fetch source=clusterfork")
 
     try:
-        accounts = [fetch_account(label, path, is_selected) for label, path, is_selected in auth_files]
+        accounts, source_error = clusterfork_usage.fetch_accounts(
+            "cursor", cursor_auth_store_dir(), OUTPUT_PATH, fetch_account
+        )
         ok_count = sum(1 for account in accounts if account.get("ok"))
         output = {
             "updatedAt": datetime.now(timezone.utc).isoformat(),
             "provider": "Cursor",
             "ok": ok_count > 0,
+            "error": source_error or "",
             "accounts": accounts,
             "bars": flatten_bars(accounts),
         }
