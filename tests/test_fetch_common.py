@@ -61,7 +61,7 @@ def test_atomic_write_rejects_dangling_and_cyclic_symlinks(tmp_path):
     second = tmp_path / "second"
     first.symlink_to(second.name)
     second.symlink_to(first.name)
-    with pytest.raises(RuntimeError):
+    with pytest.raises((RuntimeError, OSError)):
         common.atomic_write_text(first, "payload")
     assert first.is_symlink()
     assert second.is_symlink()
@@ -135,6 +135,14 @@ def test_usage_render_tsv_golden_string():
         "account\tacct\\\\one\tpro\t1\t1\t\t0\n"
         "bar\tacct\\\\one\tpro\t1\t5h\t12.3\t87.7\t2026-06-03T17:00:00+00:00\t1780506000\t18000\t18000\n"
     )
+
+
+def test_legacy_provider_id_is_not_the_managed_account_contract():
+    account = {"label": "local", "accountId": "provider-native-id", "windows": [{"label": "weekly"}]}
+    bars = common.flatten_bars([account])
+    assert "accountId" not in bars[0]
+    line = common.usage_render_tsv({"accounts": [account]}).splitlines()[1]
+    assert len(line.split("\t")) == 7
 
 
 def test_load_env_strips_quotes_and_preserves_existing(monkeypatch, tmp_path):

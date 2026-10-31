@@ -408,9 +408,11 @@ start_fetch_loop() {
       # Drop the volatile "meta" line (updatedAt changes every poll) and blank
       # time-derived bar columns (resetsAt, resetAtEpoch, resetAfterSeconds) so
       # only meaningful usage / structure contributes to the fingerprint.
+      # Account availability/measurement capture times are volatile too.
       awk -F"\t" -v OFS="\t" "
         \$1 != \"meta\" {
           if (\$1 == \"bar\") { \$8 = \"\"; \$9 = \"\"; \$10 = \"\" }
+          if (\$1 == \"account\" && NF >= 13) { \$10 = \"\"; \$11 = \"\" }
           print
         }
       " "$render_path" | sha256sum | cut -d" " -f1

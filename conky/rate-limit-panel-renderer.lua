@@ -12,6 +12,26 @@ return function(shared, repo_root)
   local usage_history_path = repo_root .. '/cache/rate-limit-usage-history.tsv'
   -- Local day boundary for the bar split. Must match scripts/fetch_common.py.
   local day_start_hour = 5
+  local function account_is_stale(account)
+    if account.stale then return true end
+    if account.freshness then
+      local observed = account.observed_at or 0
+      local age = os.time() - observed
+      if account.freshness ~= 'fresh' or observed <= 0 or age < 0
+        or age > math.min(300, account.max_age_seconds or 300) then return true end
+      for _, window in ipairs(account.windows or {}) do
+        local reset = window.reset_at_epoch or 0
+        if reset > 0 and reset <= os.time() then return true end
+      end
+    end
+    return false
+  end
+
+  local function account_is_local(account)
+    local generated = account.availability_generated_at or 0
+    local age = os.time() - generated
+    return account.local_available == true and generated > 0 and age >= 0 and age <= 300
+  end
   local function seconds_until_reset(window)
     if window.reset_at_epoch and window.reset_at_epoch > 0 then
       return math.max(0, window.reset_at_epoch - os.time())
@@ -21,7 +41,7 @@ return function(shared, repo_root)
 
   local function normalized_window_label(window)
     local label = string.lower(window.label or '')
-    if label == 'auto' or label == 'api' or label == 'reserve' or label == 'argon'
+    if label == 'auto' or label == 'api' or label == 'included' or label == 'reserve' or label == 'argon'
        or label:find('^gemini%-') or label:find('^other%-') or label:find('^3p%-')
        or label:find('^argon%-') then
       return label
@@ -46,6 +66,8 @@ return function(shared, repo_root)
     if window.window_seconds and window.window_seconds > 0 then
       return window.window_seconds
     end
+    -- Nullable durations in the consumer contract do not imply a 5h window.
+    if window.source_name and window.source_name ~= '' then return 0 end
     local norm = normalized_window_label(window)
     if norm == 'weekly' or norm == 'reserve' or norm == 'argon' or norm == 'argon-weekly' then
       return weekly_window_seconds
@@ -123,8 +145,9 @@ return function(shared, repo_root)
         end
       elseif row_type == 'account' then
         local label = fields[2] or ''
-        if label ~= '' and not account_index[label] then
-          account_index[label] = {
+        local key = fields[9] ~= nil and fields[9] ~= '' and fields[9] or label
+        if label ~= '' and not account_index[key] then
+          account_index[key] = {
             label = label,
             provider = provider,
             plan_type = fields[3] or '',
@@ -132,15 +155,22 @@ return function(shared, repo_root)
             ok = fields[5] == '1',
             error = fields[6] or '',
             stale = fields[7] == '1',
+            local_available = fields[8] == '1',
+            account_id = fields[9],
+            availability_generated_at = tonumber(fields[10]),
+            observed_at = tonumber(fields[11]),
+            max_age_seconds = tonumber(fields[12]),
+            freshness = fields[13],
             windows = {},
           }
-          table.insert(usage.accounts, account_index[label])
+          table.insert(usage.accounts, account_index[key])
         end
       elseif row_type == 'bar' then
         local label = fields[2] or ''
+        local key = fields[12] ~= nil and fields[12] ~= '' and fields[12] or label
         if label ~= '' then
-          if not account_index[label] then
-            account_index[label] = {
+          if not account_index[key] then
+            account_index[key] = {
               label = label,
               provider = provider,
               plan_type = fields[3] or '',
@@ -150,17 +180,18 @@ return function(shared, repo_root)
               stale = false,
               windows = {},
             }
-            table.insert(usage.accounts, account_index[label])
+            table.insert(usage.accounts, account_index[key])
           end
 
           local raw_label = fields[5] or ''
-          table.insert(account_index[label].windows, {
+          table.insert(account_index[key].windows, {
             label = normalized_window_label({
               label = raw_label,
               reset_at_epoch = tonumber(fields[9]) or 0,
               reset_after_seconds = tonumber(fields[10]) or 0,
             }),
-            raw_label = raw_label,
+            raw_label = fields[13] ~= nil and fields[13] ~= '' and fields[13] or raw_label,
+            source_name = fields[13],
             used_percent = tonumber(fields[6]) or 0,
             remaining_percent = tonumber(fields[7]) or 0,
             resets_at = fields[8] or '',
@@ -228,7 +259,8 @@ return function(shared, repo_root)
           reset_at_epoch = reset_at_epoch,
           reset_after_seconds = reset_after_seconds,
         }),
-        raw_label = label,
+        raw_label = shared.json_string(object, 'sourceName', label),
+        source_name = shared.json_string(object, 'sourceName', nil),
         used_percent = used_percent,
         remaining_percent = shared.json_number(
           object,
@@ -253,9 +285,16 @@ return function(shared, repo_root)
           provider = 'Codex',
           plan_type = shared.json_string(object, 'planType', ''),
           is_selected = shared.json_boolean(object, 'isSelected', false),
+          local_available = shared.json_boolean(object, 'localAvailable', false),
+          account_id = shared.json_boolean(object, 'localAvailable', nil) ~= nil
+            and shared.json_string(object, 'accountId', nil) or nil,
+          availability_generated_at = shared.json_number(object, 'availabilityGeneratedAt', 0),
+          observed_at = shared.json_number(object, 'observedAt', 0),
+          max_age_seconds = shared.json_number(object, 'maxAgeSeconds', 300),
+          freshness = shared.json_string(object, 'freshness', nil),
           ok = shared.json_boolean(object, 'ok', false),
           error = shared.json_string(object, 'error', ''),
-          stale = shared.json_boolean(object, 'stale', false),
+          stale = shared.json_boolean(object, 'staleCache', false) or shared.json_boolean(object, 'stale', false),
           windows = {},
         }
         for _, window_object in ipairs(shared.json_array_objects(object, 'windows')) do
@@ -434,6 +473,8 @@ return function(shared, repo_root)
   end
 
   local function format_window_countdown(window)
+    if window.source_name and window.source_name ~= '' and (window.reset_at_epoch or 0) <= 0
+       and ((window.used_percent or 0) > 0 or window_duration(window) <= 0) then return '—' end
     if window_has_not_started(window) then
       return format_window_span(window_duration(window))
     end
@@ -489,6 +530,10 @@ return function(shared, repo_root)
     if not window or window_seconds <= 0 then
       return nil
     end
+    if window.source_name and window.source_name ~= ''
+       and (window.reset_at_epoch or 0) <= 0 and (window.used_percent or 0) > 0 then
+      return nil
+    end
 
     local elapsed_seconds = window_seconds - remaining_for_pace(window, window_seconds)
     local expected = shared.clamp((elapsed_seconds / window_seconds) * 100, 0, 100)
@@ -515,7 +560,7 @@ return function(shared, repo_root)
   end
 
   local function account_shows_pace(accounts, account)
-    return true
+    return not account_is_stale(account)
   end
 
   local function window_reset_has_passed(window)
@@ -534,7 +579,7 @@ return function(shared, repo_root)
 
     -- Every expired/stale account: keep cached fill and reset until that
     -- window's reset time has already passed.
-    return account.stale and window_reset_has_passed(window)
+    return account_is_stale(account) and window_reset_has_passed(window)
   end
 
   local function account_has_filled_bar(account, wins)
@@ -596,6 +641,16 @@ return function(shared, repo_root)
       return result
     end
 
+    if provider == 'cursor' and account.account_id then
+      local result = {}
+      for _, label in ipairs({'api', 'included', 'auto'}) do
+        for _, window in ipairs(windows) do
+          if normalized_window_label(window) == label then result[#result + 1] = window end
+        end
+      end
+      return result
+    end
+
     local first, second
     for _, window in ipairs(windows) do
       local window_label = normalized_window_label(window)
@@ -624,7 +679,7 @@ return function(shared, repo_root)
     local delta_count = 0
 
     for _, account in ipairs(accounts or {}) do
-      if string.lower(account.provider or '') == provider_lower then
+      if string.lower(account.provider or '') == provider_lower and not account_is_stale(account) then
         if provider_lower == 'gemini' then
           local acct_delta_total = 0
           local acct_delta_count = 0
@@ -706,7 +761,7 @@ return function(shared, repo_root)
   local window_labels = {
     ['5h'] = '', weekly = '', monthly = '', month = '',
     reserve = 'Reserve', argon = 'Argon', ['argon-weekly'] = 'Argon', ['argon-5h'] = 'Argon',
-    auto = 'Auto', api = 'API',
+    auto = 'Auto', api = 'API', included = 'Included',
     gemini = '', other = 'Other',
     ['gemini-5h'] = '', ['gemini-weekly'] = '', ['other-5h'] = 'Other',
     ['other-weekly'] = 'Other', ['3p-weekly'] = 'Other', ['3p-5h'] = 'Other',
@@ -800,7 +855,7 @@ return function(shared, repo_root)
     end
     local provider = provider_name(account)
     local label = window.raw_label or window.label or ''
-    local account_label = account.label or ''
+    local account_label = account.account_id or account.label or ''
     local best_t, best_used = nil, 0
     for _, sample in ipairs(history or {}) do
       if sample.provider == provider
@@ -989,9 +1044,15 @@ return function(shared, repo_root)
           local has_filled_bar = account_has_filled_bar(account, wins)
           local name_color = has_filled_bar and ui.danger
             or (account.is_selected and ui.strong or ui.ink)
-          ui.text(cr, account.label, col_x + provider_width, name_baseline,
+          local local_icon = account_is_local(account)
+          local icon_space = local_icon and 14 or 0
+          local name_x = col_x + provider_width
+          if local_icon then
+            ui.icon(cr, 'monitor', name_x, name_baseline - 10, 11, ui.muted)
+          end
+          ui.text(cr, account.label, name_x + icon_space, name_baseline,
             {size = 13.5, bold = account.is_selected and 'medium' or nil,
-              color = name_color, width = name_width - 4})
+              color = name_color, width = name_width - 4 - icon_space})
           local x = col_x + provider_width + name_width
           local bar_area = col_width - (provider_width + name_width)
           if #wins == 0 then
@@ -1101,6 +1162,7 @@ return function(shared, repo_root)
 
   return {draw = draw, height_spacer = height_spacer,
     _test = {read_ai_usage = read_ai_usage, sort_accounts = sort_accounts,
+             account_is_local = account_is_local, account_is_stale = account_is_stale,
              account_has_filled_bar = account_has_filled_bar,
              gemini_duration_columns = gemini_duration_columns,
              account_pitch = account_pitch,
