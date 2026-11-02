@@ -132,7 +132,7 @@ their existing weights.
 
 ## Cursor
 
-- Managed cloud and joined accounts render exactly the supplied `cursor/api` and optional `cursor/included` pools as `API` and `Included`. Included total usage is never relabeled `Auto`. Billing-cycle resets are Unix seconds, not milliseconds; nullable duration/reset metadata does not invent a pace estimate.
+- Managed cloud and joined accounts render exactly the supplied `cursor/api` and optional `cursor/included` pools as `API` and `Incl`. Included total usage is never relabeled `Auto`. Billing-cycle resets are Unix seconds, not milliseconds; nullable duration/reset metadata does not invent a pace estimate.
 - Explicit unenrolled local profiles retain DashboardService's `Auto + Composer` and `API` pools (`Auto` and `API`); Free local accounts display only `Auto`.
 - Fresh measured windows display on-pace ticks and participate once per account in the `CURSOR` average. Known Pro local accounts retain weight 20, Free and unknown tiers weight 1.
 

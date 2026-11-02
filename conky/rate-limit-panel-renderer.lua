@@ -41,7 +41,7 @@ return function(shared, repo_root)
 
   local function normalized_window_label(window)
     local label = string.lower(window.label or '')
-    if label == 'auto' or label == 'api' or label == 'included' or label == 'reserve' or label == 'argon'
+    if label == 'auto' or label == 'api' or label == 'included' or label == 'incl' or label == 'reserve' or label == 'argon'
        or label:find('^gemini%-') or label:find('^other%-') or label:find('^3p%-')
        or label:find('^argon%-') then
       return label
@@ -643,7 +643,7 @@ return function(shared, repo_root)
 
     if provider == 'cursor' and account.account_id then
       local result = {}
-      for _, label in ipairs({'api', 'included', 'auto'}) do
+      for _, label in ipairs({'api', 'included', 'incl', 'auto'}) do
         for _, window in ipairs(windows) do
           if normalized_window_label(window) == label then result[#result + 1] = window end
         end
@@ -761,7 +761,7 @@ return function(shared, repo_root)
   local window_labels = {
     ['5h'] = '', weekly = '', monthly = '', month = '',
     reserve = 'Reserve', argon = 'Argon', ['argon-weekly'] = 'Argon', ['argon-5h'] = 'Argon',
-    auto = 'Auto', api = 'API', included = 'Included',
+    auto = 'Auto', api = 'API', included = 'Incl', incl = 'Incl',
     gemini = '', other = 'Other',
     ['gemini-5h'] = '', ['gemini-weekly'] = '', ['other-5h'] = 'Other',
     ['other-weekly'] = 'Other', ['3p-weekly'] = 'Other', ['3p-5h'] = 'Other',
