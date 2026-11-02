@@ -93,6 +93,7 @@ for _, panel_width in ipairs({368, 608, 880, 1248}) do
       end
     end
     assert(matching == 1, 'one icon sits beside each locally available name')
+    assert(name.width >= 54, 'name column width must accommodate 6-character names')
   end
   local dual, cloud, local_row = frame.bars.dual[1], frame.bars.cloud[1], frame.bars['local'][1]
   assert(dual.x == cloud.x and cloud.x == local_row.x and dual.w == cloud.w and cloud.w == local_row.w,

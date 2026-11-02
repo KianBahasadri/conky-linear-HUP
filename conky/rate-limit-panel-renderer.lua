@@ -914,17 +914,8 @@ return function(shared, repo_root)
     if nw > 0 then
       ui.text(cr, name, x, text_y, {size = size, mono = true, color = used >= 100 and ui.danger or ui.muted})
     end
-    -- Two-part countdowns left-align each quantity in a 3-character field
-    -- so both number columns share x-positions across rows.
     local count_color = refresh and ui.caution or ui.muted
-    local first, second = count:match('^(%S+)%s+(%S+)$')
-    if first then
-      ui.text(cr, first, count_x, text_y, {size = size, mono = true, color = count_color})
-      ui.text(cr, second, count_x + ui.width(cr, '00d ', size, true), text_y,
-        {size = size, mono = true, color = count_color})
-    else
-      ui.text(cr, count, count_x, text_y, {size = size, mono = true, color = count_color})
-    end
+    ui.text(cr, count, count_x, text_y, {size = size, mono = true, color = count_color})
 
     ui.rect(cr, bx, by, bw, bar_h, ui.line, 0)
     if not refresh and used > 0 then
@@ -1018,8 +1009,7 @@ return function(shared, repo_root)
         if first > last then return end
         local narrow = not is_two_col and col_width < 880
         local stacked = narrow and col_width < 560
-        local provider_width, name_width = col_width < 760 and 56 or 64, col_width < 760 and 48 or 56
-        if narrow then name_width = 64 end
+        local provider_width, name_width = col_width < 760 and 56 or 64, 72
         local y = top or 0
         local marks = provider_mark_indices(accounts, first, last)
         for index = first, last do

@@ -4,10 +4,9 @@
 
 The provider mark (brand logo) sits on the highlighted (selected) row of its group
 (or on the first row when no profile is selected), followed by the account name and quota windows. Reset countdowns occupy a fixed-width
-column flanking the flat observed-data bars on the right, keeping bar lengths uniform.
-Two-part labels left-align each quantity in a 3-character field so both numbers
-share x-positions across rows (`9h  58m`, `10d 11h`, `17d 1h`) rather than
-staggering with digit count.
+Reset countdowns render as a single left-aligned readout (`4h 59m`, `1d 23h`) in
+the fixed-width countdown column flanking the flat observed-data bars on the right,
+keeping the time cohesive and bar lengths uniform.
 Pool-distinguishing labels (like `Auto`, `API`, `Reserve`, or `Argon`) flank
 on the left. Standard interval windows (`5h`, `7d`, `Month`) omit the leading label so
 bars start directly beside the account name.
@@ -18,9 +17,11 @@ The icon appears on selected and unselected rows alike; selection keeps its
 separate highlight. All managed accounts are cloud-accessible, so no cloud badge
 is shown. A managed row without the computer icon is cloud-only, or its local
 availability is unknown/stale. A leftover auth file never establishes availability.
-Every row reserves the icon's space inside the existing name column, so names
-share a left edge whether or not the icon is shown. Names retain their normal
-ellipsis behavior and all bars and reset columns stay aligned.
+Every row reserves the icon's space inside the standardized 72px name column,
+providing enough space for 6-character names (such as `sepehr` and `21kb60`) to
+remain fully visible while names share a left edge whether or not the icon is
+shown. Names retain their normal ellipsis behavior and all bars and reset
+columns stay aligned with standardized spacing.
 A single horizontal rule separates provider sections in a column. A column with only one provider has no rule. Wide panels use a fixed 112px-high band aligned with the neighboring billing map, retaining two columns regardless of account count. Each column redistributes its row spacing to fill that band when profiles are added or removed, including during cache refreshes. Rows keep their minimum readable pitch; an overflowing column reserves a 16px footer and rotates through its own pages within the same band. Provider identity does not determine bar color. Shared typography, colors, and
 overflow are owned by the [Desktop design system](design-system.md).
 
