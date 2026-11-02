@@ -62,6 +62,7 @@ ui.icon = function(_, name, x, y, size)
   frame.icons[#frame.icons + 1] = {x = x, y = y, size = size}
 end
 ui.text = function(cr, value, x, y, opts)
+  if frame and frame.texts then frame.texts[value] = true end
   if rows[value] then
     current = value
     frame.names[value] = {x = x, y = y, width = opts.width}
@@ -79,8 +80,10 @@ ui.rect = function(_, x, y, w, h, color)
 end
 for _, panel_width in ipairs({368, 608, 880, 1248}) do
   width, height = panel_width, panel_width >= 1200 and 112 or 300
-  frame = {icons={}, names={}, bars={}, selected=0}
+  frame = {icons={}, names={}, bars={}, texts={}, selected=0}
   renderer.draw()
+  assert(frame.texts['Incl'], 'Cursor included pool renders with shortened Incl label')
+  assert(not frame.texts['Included'], 'Cursor included pool must not render with full Included label')
   assert(#frame.icons == 3, 'both selected and unselected local rows draw one icon')
   assert(frame.selected == 1, 'availability does not change selection highlighting')
   for _, label in ipairs({'dual', 'local', 'stale'}) do
