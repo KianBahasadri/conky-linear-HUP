@@ -18,7 +18,8 @@ The icon appears on selected and unselected rows alike; selection keeps its
 separate highlight. All managed accounts are cloud-accessible, so no cloud badge
 is shown. A managed row without the computer icon is cloud-only, or its local
 availability is unknown/stale. A leftover auth file never establishes availability.
-The icon uses space inside the existing name column; names retain their normal
+Every row reserves the icon's space inside the existing name column, so names
+share a left edge whether or not the icon is shown. Names retain their normal
 ellipsis behavior and all bars and reset columns stay aligned.
 A single horizontal rule separates provider sections in a column. A column with only one provider has no rule. Wide panels use a fixed 112px-high band aligned with the neighboring billing map, retaining two columns regardless of account count. Each column redistributes its row spacing to fill that band when profiles are added or removed, including during cache refreshes. Rows keep their minimum readable pitch; an overflowing column reserves a 16px footer and rotates through its own pages within the same band. Provider identity does not determine bar color. Shared typography, colors, and
 overflow are owned by the [Desktop design system](design-system.md).

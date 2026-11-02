@@ -1045,7 +1045,7 @@ return function(shared, repo_root)
           local name_color = has_filled_bar and ui.danger
             or (account.is_selected and ui.strong or ui.ink)
           local local_icon = account_is_local(account)
-          local icon_space = local_icon and 14 or 0
+          local icon_space = 14 -- Reserve the icon slot on every row to align names.
           local name_x = col_x + provider_width
           if local_icon then
             ui.icon(cr, 'monitor', name_x, name_baseline - 10, 11, ui.muted)
