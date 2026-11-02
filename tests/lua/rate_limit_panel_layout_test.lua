@@ -42,6 +42,7 @@ ui.text = function(cr, value, x, y, opts)
   if window_counts[value] then
     current_account = value
     frame.names[value] = (frame.names[value] or 0) + 1
+    frame.name_widths[value] = opts and opts.width or 0
   end
   if value:find(' of ', 1, true) then frame.footer = value end
   frame.labels[#frame.labels + 1] = {value = value, x = x, y = y}
@@ -67,7 +68,7 @@ os.time = function() return now end
 local renderer = dofile(root .. '/conky/rate-limit-panel-renderer.lua')(shared, '/fixture')
 
 local function draw()
-  frame = {names = {}, labels = {}, bars = {}, selected = {}}
+  frame = {names = {}, name_widths = {}, labels = {}, bars = {}, selected = {}}
   current_account = nil
   renderer.draw()
   return frame
@@ -76,6 +77,7 @@ end
 local function assert_all_accounts(result)
   for _, label in ipairs(accounts) do
     assert(result.names[label] == 1, 'each account must be drawn exactly once: ' .. label)
+    assert((result.name_widths[label] or 0) >= 54, 'name column must allow 6-character names: ' .. label)
     assert(#(result.bars[label] or {}) == window_counts[label],
       'all quota windows must remain visible: ' .. label)
   end
