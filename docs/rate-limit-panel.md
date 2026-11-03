@@ -91,13 +91,19 @@ and usage source. The TSV appends explicit availability/identity/capture/freshne
 fields to account records and identity/source-window fields to bar records;
 legacy records with no availability fields show no local icon.
 
-Managed accounts, including dual-session accounts, always use cloud quota data.
-The fetchers never enumerate or read their auth copies for tokens, refresh them,
-rewrite them, or fall back to them on source failure. Existing `CODEX_AUTH_PATH`
-and `CURSOR_AUTH_PATH` settings cannot bypass this ownership boundary. Ordinary
-unenrolled accounts may still use direct provider polling, but only when the
-current contract explicitly reports `cloud_available: false` and an eligible local
-profile. Their quota is also deduplicated by stable identity. Auth store locations
+Quota prefers this host's own login. When the snapshot reports fresh local
+availability (`local_available: true`, an eligible profile, metadata ≤300s old),
+the fetcher polls the provider directly with `auth.json.<selected or first
+profile>` from the store, whether or not the account is also cloud-managed and
+even when the controller reports `cloud_error`. That path may refresh the local
+token exactly as for any local profile. A successful poll sets
+`usageSource: "local"` and keeps the local plan tier. If it fails, the error is
+kept as `localError` and the row falls back to the cloud snapshot quota; a
+local-only account instead keeps its last cached windows as stale. Accounts
+with no fresh local availability never read auth files. A leftover auth file,
+cached availability, or `CODEX_AUTH_PATH` / `CURSOR_AUTH_PATH` never triggers a
+local poll. Quota is still deduplicated by stable identity, with one poll per
+account. Auth store locations
 come from `CODEX_AUTH_STORE_DIR` / `CURSOR_AUTH_STORE_DIR`; an explicit
 `CODEX_HOME` / `CURSOR_HOME` continues to set the corresponding store by default.
 
@@ -112,15 +118,15 @@ Cached availability is never reused after a failed metadata read; local icons al
 expire after 300 seconds when fetching stops. A controller error can retain a
 fresh offline availability result, independently of quota freshness.
 
-Schema version 1 supplies no plan tier. Managed accounts therefore use the
+Schema version 1 supplies no plan tier. Cloud-sourced rows therefore use the
 baseline capacity weight of 1 rather than inferring a subscription from aliases
-or duplicating local/cloud capacity. Known tiers from direct local polling retain
-their existing weights.
+or duplicating local/cloud capacity. Rows measured by direct local polling carry
+the provider-reported tier and its weight.
 
 ## Codex
 
-- Managed accounts render the snapshot's `codex/primary`, `codex/secondary`, and applicable `gpt-…/primary|secondary` windows, preserving their original names for history. Durations distinguish 5-hour, weekly and monthly windows; reserve model limits retain the `Reserve` label. No local session measurement replaces the cloud source.
-- Explicit unenrolled local profiles use `/wham/usage`. `CODEX_USAGE_DEGENERATE_RETRIES` controls retries of incomplete local responses. If the account limit is reached, only the blocking window is pinned to 100%; additional reserve limits stay separate. Managed polling never enters the local HTTP 401/403 token-refresh recovery path.
+- Cloud-sourced rows render the snapshot's `codex/primary`, `codex/secondary`, and applicable `gpt-…/primary|secondary` windows, preserving their original names for history. Durations distinguish 5-hour, weekly and monthly windows; reserve model limits retain the `Reserve` label.
+- Locally polled accounts use `/wham/usage`. `CODEX_USAGE_DEGENERATE_RETRIES` controls retries of incomplete local responses. If the account limit is reached, only the blocking window is pinned to 100%; additional reserve limits stay separate. HTTP 401/403 refreshes the local profile's token once; cloud-sourced rows never touch credentials.
 - The `CODEX` summary's pace percentage uses the weekly window when available, falling back to 5h and monthly (for Free accounts). Pro accounts are weighted 20x relative to Plus accounts (400x relative to Free accounts), while Plus accounts are weighted 20x relative to Free accounts (weight 1) in the average. Reserve is never the summary's pace source. Free accounts have a single 30-day window.
 
 ## Claude
@@ -132,8 +138,8 @@ their existing weights.
 
 ## Cursor
 
-- Managed cloud and joined accounts render exactly the supplied `cursor/api` and optional `cursor/included` pools as `API` and `Incl`. Included total usage is never relabeled `Auto`. Billing-cycle resets are Unix seconds, not milliseconds; nullable duration/reset metadata does not invent a pace estimate.
-- Explicit unenrolled local profiles retain DashboardService's `Auto + Composer` and `API` pools (`Auto` and `API`); Free local accounts display only `Auto`.
+- Cloud-sourced rows render exactly the supplied `cursor/api` and optional `cursor/included` pools as `API` and `Incl`. Included total usage is never relabeled `Auto`. Billing-cycle resets are Unix seconds, not milliseconds; nullable duration/reset metadata does not invent a pace estimate.
+- Locally polled accounts use DashboardService's `Auto + Composer` and `API` pools (`Auto` and `API`); Free local accounts display only `Auto`.
 - Fresh measured windows display on-pace ticks and participate once per account in the `CURSOR` average. Known Pro local accounts retain weight 20, Free and unknown tiers weight 1.
 
 ## Gemini

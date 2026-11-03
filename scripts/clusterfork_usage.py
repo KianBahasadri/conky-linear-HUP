@@ -1,4 +1,4 @@
-"""Read Clusterfork's v1 consumer contract without handling managed credentials."""
+"""Read Clusterfork's v1 consumer contract, preferring eligible local logins for quota."""
 
 import copy
 import json
@@ -168,7 +168,7 @@ def fetch_accounts(provider, store, cache_path, fetch_local, *, now=None):
         for identity, cached in previous.items():
             groups.setdefault(identity, [{
                 "account_id": identity, "aliases": cached.get("aliases", []),
-                "cloud_available": cached.get("usageSource") == "cloud",
+                "cloud_available": cached.get("cloudAvailable", cached.get("usageSource") == "cloud"),
             }])
     generated = common.as_float(snapshot.get("generated_at"))
     availability_fresh = 0 < generated <= now and now - generated <= MAX_AGE_SECONDS
@@ -194,7 +194,20 @@ def fetch_accounts(provider, store, cache_path, fetch_local, *, now=None):
             "cloudState": next((row.get("cloud_state") for row in rows if row.get("cloud_state")), None),
             "ok": False, "staleCache": False,
         }
-        if cloud:
+        local = None
+        if profiles:
+            # Prefer this host's own eligible login over the cloud snapshot:
+            # it measures quota directly instead of waiting on the controller.
+            local = fetch_local(label, Path(store) / ("auth.json." + (selected or profiles[0])), selected is not None)
+            if not local.get("ok"):
+                account["localError"] = local.get("error") or "local usage unavailable"
+        if local and local.get("ok"):
+            for key in ("windows", "planType"):
+                if key in local:
+                    account[key] = local[key]
+            account.update(ok=True, error="", usageSource="local", observedAt=now,
+                           maxAgeSeconds=MAX_AGE_SECONDS, freshness="fresh")
+        elif cloud:
             candidates = [row.get("usage") for row in rows if isinstance(row.get("usage"), dict)]
             usage = max(candidates, key=lambda u: common.as_float(u.get("observed_at")), default={})
             account.update(normalize_cloud_usage(usage, provider, now))
@@ -205,18 +218,11 @@ def fetch_accounts(provider, store, cache_path, fetch_local, *, now=None):
             account["staleCache"] = not account["ok"]
             if not account["windows"]:
                 retain_cached_usage(account, cached, now)
-        elif not source_error and profiles and all(row.get("cloud_available") is False for row in rows):
-            # Only explicitly unenrolled, eligible local profiles may use the
-            # legacy provider path. A separate login on a managed account still
-            # consumes the cloud snapshot, so its quota is counted just once.
-            result = fetch_local(label, Path(store) / ("auth.json." + (selected or profiles[0])), selected is not None)
-            for key in ("ok", "windows", "planType", "error"):
-                if key in result:
-                    account[key] = result[key]
-            account.update(observedAt=now if account["ok"] else None, maxAgeSeconds=MAX_AGE_SECONDS,
-                           freshness="fresh" if account["ok"] else "unknown")
-            if not account["ok"]:
-                retain_cached_usage(account, cached, now)
+        elif local:
+            # Local-only account whose direct poll failed: no cloud fallback.
+            account.update(error=account["localError"], observedAt=None,
+                           maxAgeSeconds=MAX_AGE_SECONDS, freshness="unknown")
+            retain_cached_usage(account, cached, now)
         else:
             account.update(error=source_error or "Unknown local availability", freshness="unknown")
             retain_cached_usage(account, cached, now)
