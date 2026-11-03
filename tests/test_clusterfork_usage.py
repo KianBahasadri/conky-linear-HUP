@@ -44,6 +44,10 @@ def forbidden(*args, **kwargs):
     pytest.fail("managed polling crossed the provider credential boundary")
 
 
+def local_down(label, path, selected):
+    return {"ok": False, "error": "local login unavailable", "windows": []}
+
+
 @pytest.mark.parametrize("provider", ["codex", "cursor"])
 @pytest.mark.parametrize("local,selected", [(False, False), (True, False), (True, True)])
 def test_identity_join_and_serialization(monkeypatch, tmp_path, provider, local, selected):
@@ -53,7 +57,8 @@ def test_identity_join_and_serialization(monkeypatch, tmp_path, provider, local,
     source["accounts"].append(alias)
     monkeypatch.setattr(managed, "read_snapshot", lambda *_: source)
 
-    accounts, error = managed.fetch_accounts(provider, tmp_path, tmp_path / "cache.json", forbidden, now=NOW)
+    # A failed local poll falls back to the cloud snapshot.
+    accounts, error = managed.fetch_accounts(provider, tmp_path, tmp_path / "cache.json", local_down, now=NOW)
 
     assert error is None
     assert len(accounts) == 1
@@ -67,6 +72,8 @@ def test_identity_join_and_serialization(monkeypatch, tmp_path, provider, local,
     assert account["maxAgeSeconds"] == 300
     assert account["planType"] == ""  # Unknown tier uses the renderer's baseline weight.
     assert account["freshness"] == "fresh"
+    assert account["usageSource"] == "cloud"
+    assert ("localError" in account) is local
     assert len(account["windows"]) == 2
     assert account["windows"][0]["resetAfterSeconds"] == 1060  # Measured, not poll time.
     assert [w["label"] for w in account["windows"]] == (["5h", "weekly"] if provider == "codex" else ["api", "included"])
@@ -163,7 +170,7 @@ def test_failure_retains_cloud_only_quota_and_drops_cached_availability(monkeypa
     source = snapshot(provider, local=True, selected=True)
     monkeypatch.setattr(managed, "read_snapshot", lambda *_: source)
     cache = tmp_path / "usage.json"
-    previous, _ = managed.fetch_accounts(provider, tmp_path, cache, forbidden, now=NOW)
+    previous, _ = managed.fetch_accounts(provider, tmp_path, cache, local_down, now=NOW)
     cache.write_text(json.dumps({"accounts": previous}))
     monkeypatch.setattr(managed, "read_snapshot", lambda *_: (_ for _ in ()).throw(RuntimeError("HTTP 403")))
 
@@ -219,9 +226,12 @@ def test_stale_or_unknown_local_metadata_is_not_availability(monkeypatch, tmp_pa
     assert accounts[0]["ok"]  # Quota validity is independent of local metadata.
 
 
-def test_only_explicit_unenrolled_local_account_can_use_provider_path(monkeypatch, tmp_path):
+@pytest.mark.parametrize("cloud_available", [True, False, None])
+@pytest.mark.parametrize("cloud_error", [None, "operator_authentication_unavailable"])
+def test_local_login_is_preferred_over_cloud_snapshot(monkeypatch, tmp_path, cloud_available, cloud_error):
     source = snapshot("cursor", local=True, selected=True)
-    source["accounts"][0]["cloud_available"] = False
+    source["cloud_error"] = cloud_error
+    source["accounts"][0]["cloud_available"] = cloud_available
     source["accounts"].append(copy.deepcopy(source["accounts"][0]))
     monkeypatch.setattr(managed, "read_snapshot", lambda *_: source)
     calls = []
@@ -231,18 +241,47 @@ def test_only_explicit_unenrolled_local_account_can_use_provider_path(monkeypatc
         return {"ok": True, "planType": "Pro", "windows": [{"label": "auto", "usedPercent": 12}]}
 
     accounts, _ = managed.fetch_accounts("cursor", tmp_path, tmp_path / "cache", fetch_local, now=NOW)
-    assert calls == [(tmp_path / "auth.json.work-local", True)]
+    assert calls == [(tmp_path / "auth.json.work-local", True)]  # One poll per identity.
     assert len(accounts) == 1
-    assert accounts[0]["windows"][0]["usedPercent"] == 12
-    source["cloud_error"] = "operator_authentication_unavailable"
-    accounts, _ = managed.fetch_accounts("cursor", tmp_path, tmp_path / "cache", forbidden, now=NOW)
-    assert not accounts[0]["ok"]
-    source["cloud_error"] = None
-    # Missing ownership is not permission to read credentials.
-    for row in source["accounts"]:
-        row.pop("cloud_available")
-    accounts, _ = managed.fetch_accounts("cursor", tmp_path, tmp_path / "cache", forbidden, now=NOW)
-    assert not accounts[0]["ok"]
+    account = accounts[0]
+    assert account["ok"] and account["freshness"] == "fresh" and not account["error"]
+    assert account["usageSource"] == "local"
+    assert account["planType"] == "Pro"
+    assert account["observedAt"] == NOW
+    assert account["windows"] == [{"label": "auto", "usedPercent": 12}]
+
+
+def test_failed_local_poll_falls_back_to_cloud_or_cache(monkeypatch, tmp_path):
+    source = snapshot("codex", local=True)
+    monkeypatch.setattr(managed, "read_snapshot", lambda *_: source)
+    accounts, _ = managed.fetch_accounts("codex", tmp_path, tmp_path / "cache", local_down, now=NOW)
+    assert accounts[0]["ok"] and accounts[0]["usageSource"] == "cloud"
+    assert accounts[0]["localError"] == "local login unavailable"
+    assert [w["usedPercent"] for w in accounts[0]["windows"]] == [23, 67]
+    # A local-only account has no cloud fallback and keeps its last windows stale.
+    cache = tmp_path / "usage.json"
+    source["accounts"][0]["cloud_available"] = False
+    ok = lambda *_: {"ok": True, "planType": "plus", "windows": [{"label": "5h", "usedPercent": 40}]}
+    previous, _ = managed.fetch_accounts("codex", tmp_path, cache, ok, now=NOW)
+    cache.write_text(json.dumps({"accounts": previous}))
+    accounts, _ = managed.fetch_accounts("codex", tmp_path, cache, local_down, now=NOW + 60)
+    assert not accounts[0]["ok"] and accounts[0]["staleCache"]
+    assert accounts[0]["error"] == "local login unavailable"
+    assert accounts[0]["windows"] == [{"label": "5h", "usedPercent": 40}]
+
+
+def test_snapshot_failure_keeps_cloud_fallback_for_locally_polled_account(monkeypatch, tmp_path):
+    source = snapshot("codex", local=True)
+    monkeypatch.setattr(managed, "read_snapshot", lambda *_: source)
+    cache = tmp_path / "usage.json"
+    ok = lambda *_: {"ok": True, "windows": [{"label": "5h", "usedPercent": 40}]}
+    previous, _ = managed.fetch_accounts("codex", tmp_path, cache, ok, now=NOW)
+    cache.write_text(json.dumps({"accounts": previous}))
+    monkeypatch.setattr(managed, "read_snapshot", lambda *_: (_ for _ in ()).throw(RuntimeError("HTTP 403")))
+    # Cached availability is never reused, so no local poll happens here.
+    accounts, error = managed.fetch_accounts("codex", tmp_path, cache, forbidden, now=NOW + 60)
+    assert error and accounts[0]["cloudAvailable"]
+    assert accounts[0]["staleCache"] and accounts[0]["windows"] == [{"label": "5h", "usedPercent": 40}]
 
 
 def test_failed_collection_keeps_capture_time_and_new_attempt_error(monkeypatch, tmp_path):
@@ -274,7 +313,7 @@ def test_snapshot_generation_is_evaluated_after_the_command(monkeypatch, tmp_pat
     # Host metadata is generated during the command, after the fetch starts.
     monkeypatch.setattr(managed, "read_snapshot", lambda *_: snapshot("codex", local=True))
     monkeypatch.setattr(managed.time, "time", lambda: NOW + 1)
-    accounts, _ = managed.fetch_accounts("codex", tmp_path, tmp_path / "cache", forbidden)
+    accounts, _ = managed.fetch_accounts("codex", tmp_path, tmp_path / "cache", local_down)
     assert accounts[0]["localAvailable"]
 
 
