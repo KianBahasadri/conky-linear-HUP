@@ -1,6 +1,6 @@
 # Desktop design system
 
-The overlays apply the design-guide's dark theme to passive Cairo readouts.
+The overlays apply the design-guide's system-selected theme to passive Cairo readouts.
 `conky/design-system.lua`, loaded by `renderer-shared.lua`, owns typography,
 colors, geometry, badges, callouts, metrics, resource readings, vector paths,
 and bounded list paging.
@@ -15,11 +15,8 @@ and bounded list paging.
 - Text measurement reserves the greater of the glyphs' ink width and cursor
   advance, so glyph overhangs do not cause fitting labels to truncate and
   trailing spaces retain their width.
-- The dark tokens are canvas `#080b0d`, surface `#11171b`, raised surface
-  `#151d21`, ink `#dbe3e6`, strong ink `#f3f6f5`, muted `#849094`, faint
-  `#566166`, border `#263137`, and strong border `#3a4a51`.
-- Observed data uses `#62c8d8`; modeled data uses `#b9aaef` and dashed strokes.
-  Healthy, caution, and error states use `#79c99e`, `#d6ad63`, and `#df7e78`,
+- Observed data uses the accent token; modeled data uses the derived token and
+  dashed strokes. Healthy, caution, and error states use their semantic tokens,
   always with visible status text. Severity also changes geometry: good shapes
   are the most rounded, caution shapes use a 4px radius, and danger shapes are
   square.
@@ -28,13 +25,57 @@ and bounded list paging.
   separate object on a transparent desktop rather than a section of a page.
   Records identify themselves through their own labels, values, and states.
 - Nothing is bordered. Only objects that carry their own boundary are filled:
-  task cards, status badges, and callouts. Badges carry a 14% semantic tint,
-  callouts a 14% tint over a bold status label, and neutral variants of both
+  task cards, status badges, and callouts. Badges and callouts carry a 14%
+  semantic tint in dark mode and 12% in light mode, and neutral variants of both
   use the raised surface. Sections, plots, metrics, and record lists are
   transparent and shadowless.
-- The desktop remains transparent between objects. The dark palette assumes a
-  dark desktop background; the render tool can preview the canonical canvas
-  with `--background 080b0d`.
+- The desktop remains transparent between objects. Each palette assumes a
+  desktop background of matching brightness.
+
+## Automatic theme
+
+All overlays follow GNOME's `org.gnome.desktop.interface color-scheme` setting
+without restarting their windows or fetchers. `prefer-dark` and `prefer-light`
+select the corresponding palette. With `default`, a GTK theme whose name contains
+`dark` selects dark; other GTK themes select light. If the settings are unavailable,
+the fallback is dark.
+
+The launcher takes an initial snapshot before opening windows, then supervises
+one `scripts/watch_desktop_theme.py` listener for the whole desktop. It monitors
+both `color-scheme` and `gtk-theme` through `gsettings monitor`, atomically writes
+`cache/desktop-theme`, and retries a disconnected listener after five seconds.
+Each window refreshes its shared palette before drawing, so changes appear on
+the next frame (within five seconds at the current update intervals). A missing
+or invalid cache retains the last palette, or dark before the first snapshot.
+The stop script also stops the listener; diagnostics use `cache/conky-theme.log`.
+`--generate-only` does not start the listener or update its cache.
+
+| Token | Dark | Light |
+| --- | --- | --- |
+| Canvas | `#080b0d` | `#ecefec` |
+| Surface | `#11171b` | `#f7f8f5` |
+| Raised surface | `#151d21` | `#ffffff` |
+| Ink | `#dbe3e6` | `#172027` |
+| Strong ink | `#f3f6f5` | `#0a0d0f` |
+| Muted | `#849094` | `#536168` |
+| Faint | `#566166` | `#778287` |
+| Border | `#263137` | `#c8d1d0` |
+| Strong border | `#3a4a51` | `#9dacab` |
+| Accent | `#62c8d8` | `#006f7c` |
+| Healthy | `#79c99e` | `#1d6846` |
+| Caution | `#d6ad63` | `#805600` |
+| Error | `#df7e78` | `#9a332f` |
+| Derived | `#b9aaef` | `#63559b` |
+
+`CONKY_OVERLAY_THEME=dark` or `light` pins a palette when launching or rendering;
+unset it or use `auto` to follow the shared theme cache. Provider brand colors
+and project emoji retain their original colors. To preview both palettes without
+changing the desktop preference:
+
+```bash
+CONKY_OVERLAY_THEME=light uv run python scripts/render_desktop.py --background ecefec -o cache/desktop-light.png
+CONKY_OVERLAY_THEME=dark uv run python scripts/render_desktop.py --background 080b0d -o cache/desktop-dark.png
+```
 
 ## Components
 

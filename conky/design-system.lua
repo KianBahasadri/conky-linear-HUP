@@ -1,18 +1,45 @@
--- The design-guide's dark tokens and passive Cairo components.
+-- The design-guide's theme tokens and passive Cairo components.
 -- Text coordinates are baselines; component coordinates are top-left corners.
 -- Overlays begin directly with their content: there are no section titles,
 -- and only badges, callouts, cards, and charts carry a fill.
 local module_dir = (debug.getinfo(1, 'S').source:gsub('^@', '')):match('^(.*)/') or './conky'
-
-return function(shared)
-  local ui = {
-    sans = 'IBM Plex Sans', mono = 'IBM Plex Mono',
+local theme_path = module_dir .. '/../cache/desktop-theme'
+local palettes = {
+  dark = {
     canvas = '080b0d', surface = '11171b', raised = '151d21',
     ink = 'dbe3e6', strong = 'f3f6f5', muted = '849094', faint = '566166',
     line = '263137', line_strong = '3a4a51',
     accent = '62c8d8', good = '79c99e', caution = 'd6ad63',
-    danger = 'df7e78', derived = 'b9aaef',
+    danger = 'df7e78', derived = 'b9aaef', soft_alpha = 0.14,
+  },
+  light = {
+    canvas = 'ecefec', surface = 'f7f8f5', raised = 'ffffff',
+    ink = '172027', strong = '0a0d0f', muted = '536168', faint = '778287',
+    line = 'c8d1d0', line_strong = '9dacab',
+    accent = '006f7c', good = '1d6846', caution = '805600',
+    danger = '9a332f', derived = '63559b', soft_alpha = 0.12,
+  },
+}
+
+return function(shared)
+  local ui = {
+    sans = 'IBM Plex Sans', mono = 'IBM Plex Mono',
   }
+  local theme_override = os.getenv('CONKY_OVERLAY_THEME')
+
+  function ui.refresh_theme()
+    local theme = theme_override
+    if not palettes[theme] then
+      theme = (shared.read_file(theme_path) or ''):match('^%s*(%a+)%s*$')
+    end
+    -- Keep the last complete palette if the cache is missing or malformed.
+    theme = palettes[theme] and theme or ui.theme or 'dark'
+    if theme ~= ui.theme then
+      for token, value in pairs(palettes[theme]) do ui[token] = value end
+      ui.theme = theme
+    end
+  end
+  ui.refresh_theme()
   ui.icons = dofile(module_dir .. '/lucide-icons.lua')
   ui.marks = dofile(module_dir .. '/provider-marks.lua')
 
@@ -388,7 +415,7 @@ return function(shared)
     local semantic = kind and kind ~= 'neutral' and ui[kind] or nil
     local width = ui.width(cr, label, 12, false, 'medium') + 16
     if opts.right then x = x - width end
-    ui.rect(cr, x, y, width, 20, semantic or ui.raised, ui.radius(kind, 10), semantic and 0.14 or 1)
+    ui.rect(cr, x, y, width, 20, semantic or ui.raised, ui.radius(kind, 10), semantic and ui.soft_alpha or 1)
     ui.text(cr, label, x + 8, y + 14, {size = 12, color = semantic or ui.muted, bold = 'medium'})
     return width
   end
@@ -559,7 +586,7 @@ return function(shared)
     end
     if current ~= '' and #lines < 3 then lines[#lines + 1] = current end
     local height = 16 + math.max(1, #lines) * 20
-    ui.rect(cr, x, y, width, height, semantic or ui.raised, ui.radius(kind), semantic and 0.14 or 1)
+    ui.rect(cr, x, y, width, height, semantic or ui.raised, ui.radius(kind), semantic and ui.soft_alpha or 1)
     ui.text(cr, prefix, x + 10, y + 22, {size = 13.5, bold = true})
     for index, line in ipairs(lines) do
       ui.text(cr, line, x + 10 + (index == 1 and prefix_width + 5 or 0), y + 2 + index * 20,
@@ -642,6 +669,7 @@ return function(shared)
   end
 
   function ui.draw(callback)
+    ui.refresh_theme()
     local surface, owned = shared.create_surface()
     if not surface then return end
     local cr = cairo_create(surface)

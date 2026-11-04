@@ -161,7 +161,7 @@ return function(shared, repo_root)
         baseline_y - depth * usage * (1 + perspective) / distance}
     end
     if maximum > 100 then
-      ui.polygon(cr, {point(0, 100), point(1, 100), point(1, maximum), point(0, maximum)}, ui.danger, 0.14 * 0.35)
+      ui.polygon(cr, {point(0, 100), point(1, 100), point(1, maximum), point(0, maximum)}, ui.danger, ui.soft_alpha * 0.35)
     end
     for _, t in ipairs({0, 0.25, 0.5, 0.75, 1}) do
       local a, b = point(t, 0), point(t, maximum)

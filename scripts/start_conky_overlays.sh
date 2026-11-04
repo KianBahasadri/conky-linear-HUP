@@ -127,7 +127,7 @@ GENERATED_CONFIG_COUNT=0
 GENERATION_STAGE_DIR=""
 
 overlay_keys=(linear rate-limit-panel minecraft github weather thermometer resource-monitor billing git sessions)
-fetch_keys=(linear codex cursor gemini minecraft github weather workouts weight billing git sessions)
+fetch_keys=(theme linear codex cursor gemini minecraft github weather workouts weight billing git sessions)
 retired_fetch_keys=(claude grok opencode commandcode)
 
 declare -A overlay_disabled_name=(
@@ -155,6 +155,7 @@ declare -A overlay_config=(
   [sessions]="$SESSIONS_CONFIG"
 )
 declare -A overlay_log_path=(
+  [theme]="$CACHE_DIR/conky-theme.log"
   [linear]="$LINEAR_LOG_PATH"
   [rate-limit-panel]="$RATE_LIMIT_PANEL_LOG_PATH"
   [minecraft]="$MINECRAFT_LOG_PATH"
@@ -186,6 +187,7 @@ declare -a queued_launch_configs=()
 declare -a queued_launch_notes=()
 
 declare -A fetch_label=(
+  [theme]="Desktop theme"
   [linear]="Linear"
   [codex]="Codex"
   [claude]="Claude"
@@ -204,6 +206,7 @@ declare -A fetch_label=(
   [sessions]="Sessions"
 )
 declare -A fetch_overlay_key=(
+  [theme]="theme"
   [linear]="linear"
   [codex]="rate-limit-panel"
   [claude]="rate-limit-panel"
@@ -225,6 +228,7 @@ declare -A fetch_overlay_key=(
 # gemini/grok/opencode/commandcode) use adaptive polling via fetch_render_path; their
 # fetch_interval values are unused fallbacks only.
 declare -A fetch_interval=(
+  [theme]="5"
   [linear]="60"
   [codex]="$RATE_LIMIT_UNCHANGED_INTERVAL"
   [claude]="$RATE_LIMIT_UNCHANGED_INTERVAL"
@@ -243,6 +247,7 @@ declare -A fetch_interval=(
   [sessions]="$SESSIONS_REFRESH_SECONDS"
 )
 declare -A fetch_script=(
+  [theme]="$ROOT/scripts/watch_desktop_theme.py"
   [linear]="$ROOT/scripts/fetch_linear_tasks.py"
   [codex]="$ROOT/scripts/fetch_codex_usage.py"
   [claude]="$ROOT/scripts/fetch_claude_usage.py"
@@ -261,6 +266,7 @@ declare -A fetch_script=(
   [sessions]="$ROOT/scripts/fetch_sessions.py"
 )
 declare -A fetch_pid_file=(
+  [theme]="$CACHE_DIR/theme-fetch-loop.pid"
   [linear]="$LINEAR_FETCH_PID"
   [codex]="$CODEX_FETCH_PID"
   [claude]="$CLAUDE_FETCH_PID"
@@ -855,10 +861,16 @@ else
   log_overlay linear "stopped existing matching Conky processes"
   rotate_oversized_logs
 
+  if (( ${#queued_launch_configs[@]} > 0 )); then
+    run_python "$SCRIPT_DIR/watch_desktop_theme.py" --once >> "$CACHE_DIR/conky-theme.log" 2>&1
+  fi
   for fetch_key in "${fetch_keys[@]}"; do
-    if overlay_enabled "${fetch_overlay_key[$fetch_key]}"; then
-      start_fetch_loop "$fetch_key"
+    if [[ "$fetch_key" == "theme" ]]; then
+      (( ${#queued_launch_configs[@]} > 0 )) || continue
+    elif ! overlay_enabled "${fetch_overlay_key[$fetch_key]}"; then
+      continue
     fi
+    start_fetch_loop "$fetch_key"
   done
   launch_queued_overlays
 fi

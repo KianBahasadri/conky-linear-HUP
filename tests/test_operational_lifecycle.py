@@ -577,6 +577,55 @@ def test_live_start_rotates_logs_but_launches_nothing_when_overlays_disabled(tmp
     assert "pkill " not in calls
 
 
+def test_theme_listener_runs_without_linear_and_stops_with_the_suite(tmp_path):
+    repo, bin_dir = make_launcher_repo(
+        tmp_path, "Monitors: 1\n 0: +*DP-1 1920/1x1080/1+0+0 DP-1\n"
+    )
+    for name in ("stop_conky_overlays.sh", "watch_desktop_theme.py", "fetch_common.py"):
+        shutil.copy2(ROOT / "scripts" / name, repo / "scripts")
+    write_executable(
+        bin_dir / "uv",
+        """
+        #!/usr/bin/env bash
+        while [[ "$1" != "python" ]]; do shift; done
+        shift
+        exec python "$@"
+        """,
+    )
+    write_executable(
+        bin_dir / "gsettings",
+        """
+        #!/usr/bin/env python3
+        import signal
+        import sys
+        if sys.argv[1] == "monitor":
+            while True:
+                signal.pause()
+        print("'prefer-light'" if sys.argv[-1] == "color-scheme" else "'Adwaita'")
+        """,
+    )
+    env = launcher_env(repo, bin_dir, tmp_path)
+    env.update({f"{key.upper().replace('-', '_')}_OVERLAY_ENABLED": "0"
+                for key in OVERLAY_KEYS})
+    env.update({"RATE_LIMIT_PANEL_ENABLED": "0", "RESOURCE_MONITOR_OVERLAY_ENABLED": "1"})
+    pid_file = repo / "cache" / "theme-fetch-loop.pid"
+    script = repo / "scripts" / "watch_desktop_theme.py"
+    try:
+        subprocess.run(
+            [str(repo / "scripts" / "start_conky_overlays.sh")],
+            check=True, capture_output=True, text=True, env=env, timeout=30,
+        )
+        assert (repo / "cache" / "desktop-theme").read_text() == "light\n"
+        assert lifecycle_status(pid_file, script, repo) == "owned"
+        assert not (repo / "cache" / "linear-fetch-loop.pid").exists()
+    finally:
+        subprocess.run(
+            [str(repo / "scripts" / "stop_conky_overlays.sh")],
+            check=True, capture_output=True, text=True, env=env, timeout=30,
+        )
+    assert not pid_file.exists()
+
+
 def test_autostart_installer_writes_a_valid_direct_exec_entry(tmp_path):
     config_home = tmp_path / "config"
     subprocess.run(
