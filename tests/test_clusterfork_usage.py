@@ -66,6 +66,7 @@ def test_identity_join_and_serialization(monkeypatch, tmp_path, provider, local,
     assert account["accountId"] == IDENTITY
     assert account["aliases"] == ["another-alias", "work", "work-local"]
     assert account["localAvailable"] is local
+    assert account["cloudAvailable"] is True
     assert account["isSelected"] is selected
     assert account["observedAt"] == NOW - 60
     assert account["attemptedAt"] == NOW - 10
@@ -89,6 +90,7 @@ def test_identity_join_and_serialization(monkeypatch, tmp_path, provider, local,
     assert fields[7:9] == [str(int(local)), IDENTITY]
     assert list(map(float, fields[9:12])) == [NOW, NOW - 60, 300]
     assert fields[12] == "fresh"
+    assert fields[13] == "1"
     assert tsv[2].split("\t")[11:] == [IDENTITY, source["accounts"][0]["usage"]["windows"][0]["name"]]
     history = common.load_usage_history(tmp_path / common.RATE_LIMIT_USAGE_HISTORY_NAME)
     assert {sample["t"] for sample in history} == {NOW - 60}
@@ -158,6 +160,7 @@ def test_entrypoint_never_reads_or_refreshes_managed_credentials(
     assert len(output["accounts"]) == 1
     account = output["accounts"][0]
     assert not account["localAvailable"] and not account["isSelected"]
+    assert account["cloudAvailable"] is (source_status in (200, "expired"))
     assert account["observedAt"] == NOW - 60
     assert len(output["bars"]) == 2
     if source_status != 200:
@@ -184,6 +187,84 @@ def test_failure_retains_cloud_only_quota_and_drops_cached_availability(monkeypa
     assert account["freshness"] == "stale"
     assert account["staleCache"] and not account["ok"]
     assert not account["localAvailable"] and not account["isSelected"]
+    assert not account["cloudAvailable"]
+
+
+@pytest.mark.parametrize("provider", ["codex", "cursor"])
+@pytest.mark.parametrize("local,cloud", [(True, False), (False, True), (True, True), (False, False)])
+@pytest.mark.parametrize("selected", [False, True])
+def test_independent_availability_round_trip(monkeypatch, tmp_path, provider, local, cloud, selected):
+    source = snapshot(provider, local=local, selected=selected)
+    source["accounts"][0]["cloud_available"] = cloud
+    source["accounts"].append(copy.deepcopy(source["accounts"][0]))
+    monkeypatch.setattr(managed, "read_snapshot", lambda *_: source)
+    calls = []
+
+    def fetch_local(*args):
+        calls.append(args)
+        return {"ok": True, "windows": [{"label": "weekly", "usedPercent": 23}]}
+
+    accounts, error = managed.fetch_accounts(provider, tmp_path, tmp_path / "cache", fetch_local, now=NOW)
+    assert error is None and len(accounts) == 1
+    account = accounts[0]
+    assert account["localAvailable"] is local
+    assert account["cloudAvailable"] is cloud
+    assert account["isSelected"] is (local and selected)
+    assert len(calls) == int(local)
+    bars = common.flatten_bars(accounts)
+    assert len(bars) == (1 if local else 2 if cloud else 0)
+    output = {"accounts": accounts, "bars": bars}
+    common.write_usage_outputs(tmp_path / "usage.json", tmp_path / "usage.tsv", output)
+    assert json.loads((tmp_path / "usage.json").read_text())["accounts"] == accounts
+    fields = (tmp_path / "usage.tsv").read_text().splitlines()[1].split("\t")
+    assert fields[7] == str(int(local)) and fields[13] == str(int(cloud))
+
+
+@pytest.mark.parametrize("provider", ["codex", "cursor"])
+@pytest.mark.parametrize("field", ["local_available", "cloud_available"])
+@pytest.mark.parametrize("unknown", [None, "true", 1, "missing"])
+def test_unknown_flag_does_not_infer_either_availability(monkeypatch, tmp_path, provider, field, unknown):
+    source = snapshot(provider, local=True)
+    if unknown == "missing":
+        source["accounts"][0].pop(field)
+    else:
+        source["accounts"][0][field] = unknown
+    monkeypatch.setattr(managed, "read_snapshot", lambda *_: source)
+    local_ok = lambda *_: {"ok": True, "windows": [{"label": "weekly", "usedPercent": 23}]}
+    accounts, _ = managed.fetch_accounts(provider, tmp_path, tmp_path / "cache", local_ok, now=NOW)
+    assert accounts[0]["localAvailable"] is (field != "local_available")
+    assert accounts[0]["cloudAvailable"] is (field != "cloud_available")
+
+
+@pytest.mark.parametrize("provider", ["codex", "cursor"])
+@pytest.mark.parametrize("generated,fresh", [(None, False), (0, False), (NOW + 1, False),
+                                             (NOW - 301, False), (NOW - 300, True)])
+def test_both_availability_flags_require_fresh_metadata(monkeypatch, tmp_path, provider, generated, fresh):
+    source = snapshot(provider, local=True, selected=True)
+    source["generated_at"] = generated
+    monkeypatch.setattr(managed, "read_snapshot", lambda *_: source)
+    accounts, _ = managed.fetch_accounts(provider, tmp_path, tmp_path / "cache",
+                                         local_down if fresh else forbidden, now=NOW)
+    assert accounts[0]["localAvailable"] is fresh
+    assert accounts[0]["cloudAvailable"] is fresh
+    assert accounts[0]["ok"]  # Usage observation and metadata capture are independent.
+
+
+@pytest.mark.parametrize("provider", ["codex", "cursor"])
+def test_cloud_error_does_not_stamp_fresh_availability_on_cached_accounts(monkeypatch, tmp_path, provider):
+    source = snapshot(provider)
+    monkeypatch.setattr(managed, "read_snapshot", lambda *_: source)
+    cache = tmp_path / "usage.json"
+    previous, _ = managed.fetch_accounts(provider, tmp_path, cache, forbidden, now=NOW)
+    cache.write_text(json.dumps({"accounts": previous}))
+    source.update(generated_at=NOW + 60, accounts=[], cloud_error="controller_unavailable")
+
+    accounts, error = managed.fetch_accounts(provider, tmp_path, cache, forbidden, now=NOW + 60)
+
+    assert error and len(accounts) == 1
+    assert not accounts[0]["cloudAvailable"] and not accounts[0]["localAvailable"]
+    assert accounts[0]["windows"] == previous[0]["windows"]
+    assert accounts[0]["usageSource"] == "cloud" and accounts[0]["staleCache"]
 
 
 @pytest.mark.parametrize("change", ["old", "future", "reset", "unknown", "null", "bad-percent"])
@@ -246,6 +327,8 @@ def test_local_login_is_preferred_over_cloud_snapshot(monkeypatch, tmp_path, clo
     account = accounts[0]
     assert account["ok"] and account["freshness"] == "fresh" and not account["error"]
     assert account["usageSource"] == "local"
+    assert account["localAvailable"]
+    assert account["cloudAvailable"] is (cloud_available is True)
     assert account["planType"] == "Pro"
     assert account["observedAt"] == NOW
     assert account["windows"] == [{"label": "auto", "usedPercent": 12}]
@@ -270,17 +353,19 @@ def test_failed_local_poll_falls_back_to_cloud_or_cache(monkeypatch, tmp_path):
     assert accounts[0]["windows"] == [{"label": "5h", "usedPercent": 40}]
 
 
-def test_snapshot_failure_keeps_cloud_fallback_for_locally_polled_account(monkeypatch, tmp_path):
+def test_snapshot_failure_keeps_quota_source_without_reusing_availability(monkeypatch, tmp_path):
     source = snapshot("codex", local=True)
     monkeypatch.setattr(managed, "read_snapshot", lambda *_: source)
     cache = tmp_path / "usage.json"
-    ok = lambda *_: {"ok": True, "windows": [{"label": "5h", "usedPercent": 40}]}
+    ok = lambda *_: {"ok": True, "planType": "plus", "windows": [{"label": "5h", "usedPercent": 40}]}
     previous, _ = managed.fetch_accounts("codex", tmp_path, cache, ok, now=NOW)
     cache.write_text(json.dumps({"accounts": previous}))
     monkeypatch.setattr(managed, "read_snapshot", lambda *_: (_ for _ in ()).throw(RuntimeError("HTTP 403")))
     # Cached availability is never reused, so no local poll happens here.
     accounts, error = managed.fetch_accounts("codex", tmp_path, cache, forbidden, now=NOW + 60)
-    assert error and accounts[0]["cloudAvailable"]
+    assert error and not accounts[0]["cloudAvailable"]
+    assert accounts[0]["usageSource"] == "local"
+    assert accounts[0]["planType"] == "plus"
     assert accounts[0]["staleCache"] and accounts[0]["windows"] == [{"label": "5h", "usedPercent": 40}]
 
 

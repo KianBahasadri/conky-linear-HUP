@@ -27,10 +27,16 @@ return function(shared, repo_root)
     return false
   end
 
-  local function account_is_local(account)
+  local function availability_is_fresh(account)
     local generated = account.availability_generated_at or 0
     local age = os.time() - generated
-    return account.local_available == true and generated > 0 and age >= 0 and age <= 300
+    return generated > 0 and age >= 0 and age <= 300
+  end
+  local function account_is_local(account)
+    return account.local_available == true and availability_is_fresh(account)
+  end
+  local function account_is_cloud(account)
+    return account.cloud_available == true and availability_is_fresh(account)
   end
   local function seconds_until_reset(window)
     if window.reset_at_epoch and window.reset_at_epoch > 0 then
@@ -161,6 +167,7 @@ return function(shared, repo_root)
             observed_at = tonumber(fields[11]),
             max_age_seconds = tonumber(fields[12]),
             freshness = fields[13],
+            cloud_available = fields[14] == '1',
             windows = {},
           }
           table.insert(usage.accounts, account_index[key])
@@ -286,6 +293,7 @@ return function(shared, repo_root)
           plan_type = shared.json_string(object, 'planType', ''),
           is_selected = shared.json_boolean(object, 'isSelected', false),
           local_available = shared.json_boolean(object, 'localAvailable', false),
+          cloud_available = shared.json_boolean(object, 'cloudAvailable', false),
           account_id = shared.json_boolean(object, 'localAvailable', nil) ~= nil
             and shared.json_string(object, 'accountId', nil) or nil,
           availability_generated_at = shared.json_number(object, 'availabilityGeneratedAt', 0),
@@ -1009,7 +1017,7 @@ return function(shared, repo_root)
         if first > last then return end
         local narrow = not is_two_col and col_width < 880
         local stacked = narrow and col_width < 560
-        local provider_width, name_width = col_width < 760 and 56 or 64, 72
+        local provider_width, name_width = col_width < 760 and 56 or 64, 86
         local y = top or 0
         local marks = provider_mark_indices(accounts, first, last)
         for index = first, last do
@@ -1034,11 +1042,13 @@ return function(shared, repo_root)
           local has_filled_bar = account_has_filled_bar(account, wins)
           local name_color = has_filled_bar and ui.danger
             or (account.is_selected and ui.strong or ui.ink)
-          local local_icon = account_is_local(account)
-          local icon_space = 14 -- Reserve the icon slot on every row to align names.
+          local icon_space = 28 -- Two fixed slots, even for rows with neither icon.
           local name_x = col_x + provider_width
-          if local_icon then
+          if account_is_local(account) then
             ui.icon(cr, 'monitor', name_x, name_baseline - 10, 11, ui.muted)
+          end
+          if account_is_cloud(account) then
+            ui.icon(cr, 'cloud', name_x + 14, name_baseline - 10, 11, ui.muted)
           end
           ui.text(cr, account.label, name_x + icon_space, name_baseline,
             {size = 13.5, bold = account.is_selected and 'medium' or nil,
@@ -1153,6 +1163,7 @@ return function(shared, repo_root)
   return {draw = draw, height_spacer = height_spacer,
     _test = {read_ai_usage = read_ai_usage, sort_accounts = sort_accounts,
              account_is_local = account_is_local, account_is_stale = account_is_stale,
+             account_is_cloud = account_is_cloud,
              account_has_filled_bar = account_has_filled_bar,
              gemini_duration_columns = gemini_duration_columns,
              account_pitch = account_pitch,

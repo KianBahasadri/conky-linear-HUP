@@ -145,7 +145,7 @@ def normalize_cloud_usage(usage, provider, now):
 def retain_cached_usage(account, cached, now):
     if not cached or not cached.get("observedAt") or not cached.get("windows"):
         return
-    for key in ("windows", "observedAt", "maxAgeSeconds"):
+    for key in ("windows", "observedAt", "maxAgeSeconds", "usageSource", "planType"):
         if key in cached:
             account[key] = copy.deepcopy(cached[key])
     account.update(ageSeconds=now - account["observedAt"], freshness="stale", staleCache=True)
@@ -168,7 +168,6 @@ def fetch_accounts(provider, store, cache_path, fetch_local, *, now=None):
         for identity, cached in previous.items():
             groups.setdefault(identity, [{
                 "account_id": identity, "aliases": cached.get("aliases", []),
-                "cloud_available": cached.get("cloudAvailable", cached.get("usageSource") == "cloud"),
             }])
     generated = common.as_float(snapshot.get("generated_at"))
     availability_fresh = 0 < generated <= now and now - generated <= MAX_AGE_SECONDS
@@ -190,7 +189,7 @@ def fetch_accounts(provider, store, cache_path, fetch_local, *, now=None):
             "localProfiles": profiles, "selectedLocalProfile": selected,
             "isSelected": selected is not None, "availabilityGeneratedAt": generated,
             "usageSource": "cloud" if cloud else "local", "windows": [],
-            "cloudAvailable": cloud,
+            "cloudAvailable": availability_fresh and cloud,
             "cloudState": next((row.get("cloud_state") for row in rows if row.get("cloud_state")), None),
             "ok": False, "staleCache": False,
         }
