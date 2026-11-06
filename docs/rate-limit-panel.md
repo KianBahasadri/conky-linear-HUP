@@ -11,15 +11,20 @@ Pool-distinguishing labels (like `Auto`, `API`, `Reserve`, or `Argon`) flank
 on the left. Standard interval windows (`5h`, `7d`, `Month`) omit the leading label so
 bars start directly beside the account name.
 Selected profiles use a neutral raised row and a medium-weight account name.
-Managed Codex/Cursor accounts show one small Lucide computer icon beside the
-name when an independently authenticated local login is configured on this host.
-The icon appears on selected and unselected rows alike; selection keeps its
-separate highlight. All managed accounts are cloud-accessible, so no cloud badge
-is shown. A managed row without the computer icon is cloud-only, or its local
-availability is unknown/stale. A leftover auth file never establishes availability.
-Every row reserves the icon's space inside the standardized 72px name column,
+Managed Codex/Cursor accounts show independent Lucide computer and cloud icons
+beside the name: computer for a configured independent local login on this host,
+cloud for recorded cloud enrollment. Local-only accounts show the computer,
+cloud-only accounts the cloud, and accounts with both copies show both. Each icon
+requires its own explicit availability flag and a metadata capture no more than
+300 seconds old. Missing or unknown flags never show that icon; a missing,
+future-dated or stale capture suppresses both.
+An absent computer icon never implies cloud availability. A leftover auth file
+never establishes availability. Icons appear on selected and unselected rows
+alike; selection keeps its separate highlight. Availability does not depend on
+which source supplied the displayed quota, or on that quota's freshness.
+Every row reserves two 14px icon slots inside the standardized 86px name column,
 providing enough space for 6-character names (such as `sepehr` and `21kb60`) to
-remain fully visible while names share a left edge whether or not the icon is
+remain fully visible while names share a left edge regardless of which icons are
 shown. Names retain their normal ellipsis behavior and all bars and reset
 columns stay aligned with standardized spacing.
 A single horizontal rule separates provider sections in a column. A column with only one provider has no rule. Wide panels use a fixed 112px-high band aligned with the neighboring billing map, retaining two columns regardless of account count. Each column redistributes its row spacing to fill that band when profiles are added or removed, including during cache refreshes. Rows keep their minimum readable pitch; an overflowing column reserves a 16px footer and rotates through its own pages within the same band. Provider identity does not determine bar color. Shared typography, colors, and
@@ -89,7 +94,9 @@ The label stays stable across selection changes. JSON retains aliases, stable
 identity, local profiles, selected profile, availability capture time, cloud state,
 and usage source. The TSV appends explicit availability/identity/capture/freshness
 fields to account records and identity/source-window fields to bar records;
-legacy records with no availability fields show no local icon.
+legacy records with no availability fields show neither icon. Cloud availability
+is appended after freshness on TSV account records; older records without that
+field never imply cloud access.
 
 Quota prefers this host's own login. When the snapshot reports fresh local
 availability (`local_available: true`, an eligible profile, metadata ≤300s old),
@@ -114,7 +121,9 @@ resets, with a maximum age of 300 seconds, both at fetch time and while renderin
 Unknown quota produces an error row rather than zero usage. Failed/unauthorized
 snapshots retain known accounts and their last captured windows as stale; expired
 windows show `Refresh`. Stale quota contributes neither pace ticks nor averages.
-Cached availability is never reused after a failed metadata read; local icons also
+Retained quota keeps its original usage source and plan tier; neither establishes
+availability.
+Cached availability is never reused after a failed metadata read; both icons also
 expire after 300 seconds when fetching stops. A controller error can retain a
 fresh offline availability result, independently of quota freshness.
 

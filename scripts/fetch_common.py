@@ -168,6 +168,7 @@ def usage_render_tsv(output):
                         str(account.get("observedAt") or 0),
                         str(account.get("maxAgeSeconds", 300)),
                         escape_tsv(account.get("freshness", "unknown")),
+                        "1" if account.get("cloudAvailable") is True else "0",
                     ] if account.get("accountId") and "localAvailable" in account else []),
                 ]
             )

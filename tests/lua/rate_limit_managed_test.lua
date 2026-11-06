@@ -7,9 +7,10 @@ local now = 1800000000
 local original_time = os.time
 os.time = function() return now end
 local files = {}
-local function account(label, id, selected, available, freshness)
+local function account(label, id, selected, available, cloud, freshness)
   return table.concat({'account', label, '', selected and '1' or '0', '1', '', '0',
-    available and '1' or '0', id, tostring(now), tostring(now - 60), '300', freshness or 'fresh'}, '\t')
+    available and '1' or '0', id, tostring(now), tostring(now - 60), '300', freshness or 'fresh',
+    cloud and '1' or '0'}, '\t')
 end
 local function bar(label, id, window, used, source)
   return table.concat({'bar', label, '', '0', window, tostring(used), tostring(100 - used), '',
@@ -17,15 +18,15 @@ local function bar(label, id, window, used, source)
 end
 local a, b, c, d, e = string.rep('a', 64), string.rep('b', 64), string.rep('c', 64), string.rep('d', 64), string.rep('e', 64)
 files['codex-usage-render.tsv'] = table.concat({
-  account('dual', a, true, true), account('alias', a, false, false),
-  account('cloud', b, false, false), account('local', c, false, true),
+  account('dual', a, true, true, true), account('alias', a, false, false, false),
+  account('cloud', b, false, false, true), account('local', c, false, true, false),
   'account\tunknown\t\t0\t0\tNo measurement\t0',
   bar('dual', a, 'weekly', 20, 'codex/secondary'),
   bar('cloud', b, 'weekly', 40, 'codex/secondary'),
   bar('local', c, 'weekly', 60, 'codex/secondary'),
 }, '\n')
 files['cursor-usage-render.tsv'] = table.concat({
-  account('cursor', d, false, false), account('stale', e, false, true, 'stale'),
+  account('cursor', d, false, false, true), account('stale', e, false, true, true, 'stale'),
   bar('cursor', d, 'api', 10, 'cursor/api'), bar('cursor', d, 'included', 30, 'cursor/included'),
   bar('stale', e, 'api', 99, 'cursor/api'),
 }, '\n')
@@ -40,6 +41,9 @@ assert(test.account_is_local(rows.dual) and rows.dual.is_selected, 'selected loc
 assert(test.account_is_local(rows['local']) and not rows['local'].is_selected, 'unselected local account still has availability')
 assert(not test.account_is_local(rows.cloud), 'cloud-only account has no local icon')
 assert(not test.account_is_local(rows.unknown), 'legacy unknown metadata cannot imply local access')
+assert(test.account_is_cloud(rows.dual) and test.account_is_cloud(rows.cloud), 'cloud metadata is explicit')
+assert(not test.account_is_cloud(rows['local']) and not test.account_is_cloud(rows.unknown),
+  'an absent local icon never implies cloud availability')
 assert(#test.get_row_windows(rows.cursor) == 2, 'Cursor API and Included windows are both retained')
 assert(test.get_row_windows(rows.cursor)[2].label == 'included', 'Included must never be relabeled Auto')
 local pace = test.calculate_provider_average_pace(usage.accounts, 'Codex')
@@ -58,8 +62,8 @@ ui.width = function(_, value, size) return #tostring(value) * (size or 13.5) * 0
 ui.mark = function() return true end
 ui.line_between = function() end
 ui.icon = function(_, name, x, y, size)
-  assert(name == 'monitor', 'availability draws only the existing local/computer icon')
-  frame.icons[#frame.icons + 1] = {x = x, y = y, size = size}
+  assert(name == 'monitor' or name == 'cloud', 'availability uses matching Lucide icons')
+  frame.icons[#frame.icons + 1] = {name = name, x = x, y = y, size = size}
 end
 ui.text = function(cr, value, x, y, opts)
   if frame and frame.texts then frame.texts[value] = true end
@@ -67,7 +71,6 @@ ui.text = function(cr, value, x, y, opts)
     current = value
     frame.names[value] = {x = x, y = y, width = opts.width}
   end
-  assert(not tostring(value):lower():find('cloud', 1, true) or value == 'cloud', 'never add a cloud indicator')
   return ui.width(cr, value, opts and opts.size)
 end
 ui.rect = function(_, x, y, w, h, color)
@@ -84,13 +87,13 @@ for _, panel_width in ipairs({368, 608, 880, 1248}) do
   renderer.draw()
   assert(frame.texts['Incl'], 'Cursor included pool renders with shortened Incl label')
   assert(not frame.texts['Included'], 'Cursor included pool must not render with full Included label')
-  assert(#frame.icons == 3, 'both selected and unselected local rows draw one icon')
+  assert(#frame.icons == 7, 'local and cloud availability draw independently of selection and quota freshness')
   assert(frame.selected == 1, 'availability does not change selection highlighting')
   for _, label in ipairs({'dual', 'local', 'stale'}) do
     local name = frame.names[label]
     local matching = 0
     for _, icon in ipairs(frame.icons) do
-      if icon.x + 14 == name.x and icon.y + 10 == name.y then
+      if icon.name == 'monitor' and icon.x + 28 == name.x and icon.y + 10 == name.y then
         matching = matching + 1
         assert(icon.x + icon.size <= name.x, 'icon fits beside the name')
       end
@@ -108,6 +111,7 @@ now = now + 301
 usage = test.read_ai_usage()
 for _, row in ipairs(usage.accounts) do
   assert(not test.account_is_local(row), 'cached availability expires even when fetches stop')
+  assert(not test.account_is_cloud(row), 'cached cloud availability expires even when fetches stop')
 end
 assert(test.calculate_provider_average_pace(usage.accounts, 'Codex') == nil,
   'cached fresh strings cannot extend measurement lifetime')
@@ -115,13 +119,34 @@ assert(test.calculate_provider_average_pace(usage.accounts, 'Codex') == nil,
 -- The JSON fallback must honor the same availability and measurement fields.
 files['codex-usage-render.tsv'], files['cursor-usage-render.tsv'] = nil, nil
 files['codex-usage.json'] = string.format([[{"ok":true,"accounts":[
-  {"label":"json","accountId":"%s","localAvailable":true,"availabilityGeneratedAt":%d,
+  {"label":"json","accountId":"%s","localAvailable":true,"cloudAvailable":true,"availabilityGeneratedAt":%d,
    "isSelected":false,"freshness":"fresh","observedAt":%d,"maxAgeSeconds":300,
    "windows":[{"label":"weekly","sourceName":"codex/secondary","usedPercent":23,
      "windowSeconds":604800,"resetAtEpoch":%d}]}]}]], a, now, now - 30, now + 300000)
 local json_row = test.read_ai_usage().accounts[1]
 assert(test.account_is_local(json_row) and not json_row.is_selected, 'JSON preserves independent availability')
+assert(test.account_is_cloud(json_row), 'JSON preserves explicit cloud availability')
 assert(not test.account_is_stale(json_row), 'JSON preserves measurement time')
 assert(json_row.windows[1].source_name == 'codex/secondary', 'JSON preserves quota identity')
+for _, flags in ipairs({
+  {['local'] = 'true', cloud = 'false', want_local = true, want_cloud = false},
+  {['local'] = 'false', cloud = 'true', want_local = false, want_cloud = true},
+  {['local'] = 'true', cloud = 'true', want_local = true, want_cloud = true},
+  {['local'] = 'null', cloud = '"unknown"', want_local = false, want_cloud = false},
+}) do
+  for _, capture in ipairs({now, now - 301, now + 1, 0}) do
+    files['codex-usage.json'] = string.format([[{"ok":true,"accounts":[
+      {"label":"json","accountId":"%s","localAvailable":%s,"cloudAvailable":%s,
+       "availabilityGeneratedAt":%d,"isSelected":true,"windows":[]}]}]], a, flags['local'], flags.cloud, capture)
+    local row = test.read_ai_usage().accounts[1]
+    assert(test.account_is_local(row) == (capture == now and flags.want_local), 'JSON local flag needs a fresh capture')
+    assert(test.account_is_cloud(row) == (capture == now and flags.want_cloud), 'JSON cloud flag needs a fresh capture')
+  end
+end
+files['codex-usage.json'] = string.format([[{"ok":true,"accounts":[
+  {"label":"legacy","localAvailable":true,"availabilityGeneratedAt":%d,"windows":[]}]}]], now)
+local legacy_row = test.read_ai_usage().accounts[1]
+assert(test.account_is_local(legacy_row) and not test.account_is_cloud(legacy_row),
+  'a pre-cloud-field JSON record never implies cloud access')
 os.time = original_time
 print('managed rate-limit consumer OK')
