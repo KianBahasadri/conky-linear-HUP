@@ -30,7 +30,7 @@ SEVERITY_STASH = 25
 SEVERITY_AHEAD = 15
 SEVERITY_CLEAN = 0
 
-DEFAULT_MAX_REPOS = 8
+DEFAULT_MAX_REPOS = 0
 DEFAULT_SCAN_DAYS = 14
 DEFAULT_SCAN_MAX_DEPTH = 3
 DEFAULT_SCAN_TTL_SECONDS = 300
@@ -1075,8 +1075,8 @@ def collect_status(repo_paths=None, timeout=None, hide_clean=None, max_repos=Non
         hide_clean = env_flag("GIT_HIDE_CLEAN", False)
     if max_repos is None:
         max_repos = env_int("GIT_MAX_REPOS", DEFAULT_MAX_REPOS)
-    if max_repos < 1:
-        max_repos = DEFAULT_MAX_REPOS
+    if max_repos < 0:
+        max_repos = 0
 
     include_stash = env_flag("GIT_INCLUDE_STASH", True)
 
@@ -1124,11 +1124,15 @@ def limit_repos(status, max_repos=None):
     """Cap the sorted fleet before Actions enrichment; CI does not select rows."""
     repos = status.get("repos") or []
     if max_repos is None:
-        max_repos = int(status.get("maxRepos") or 0) or env_int("GIT_MAX_REPOS", DEFAULT_MAX_REPOS)
-    if max_repos < 1:
-        max_repos = DEFAULT_MAX_REPOS
+        raw_max = status.get("maxRepos")
+        max_repos = int(raw_max) if raw_max is not None else env_int("GIT_MAX_REPOS", DEFAULT_MAX_REPOS)
+    if max_repos < 0:
+        max_repos = 0
 
-    status["repos"] = repos[:max_repos]
+    if max_repos > 0:
+        status["repos"] = repos[:max_repos]
+    else:
+        status["repos"] = repos
     status["summary"] = build_summary(status["repos"])
     return status
 
