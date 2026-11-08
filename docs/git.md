@@ -14,8 +14,9 @@ Top-left fleet panel for local repository health. Each configured repo shows bra
   default branches remain eligible without workflow runs; `GIT_HIDE_CLEAN=1`
   can explicitly hide fully clean repos.
 - Repos are sorted by severity: conflict → error → behind → dirty → stash → ahead → clean. Within a tier, higher counts rank first (capped), then last modified (HEAD commit or newest dirty/untracked file), then A–Z by name.
-- After sorting and applying `GIT_HIDE_CLEAN`, the first `GIT_MAX_REPOS` rows
-  are kept (default **8**). Actions statuses are resolved only for those rows.
+- After sorting and applying `GIT_HIDE_CLEAN`, rows are kept up to
+  `GIT_MAX_REPOS` (default `0`, meaning unlimited / no cap). Actions statuses
+  are resolved only for those rows.
 - Missing pinned paths appear as error rows instead of being skipped.
 
 ## Configuration
@@ -42,7 +43,7 @@ GIT_OVERLAY_ENABLED=1
 | `GIT_GAP_Y` | Vertical gap from the top (empty aligns with Tasks) |
 | `GIT_REFRESH_SECONDS` | Fetch interval (default `30`) |
 | `GIT_TIMEOUT_SECONDS` | Per-repo git command timeout (default `2`) |
-| `GIT_MAX_REPOS` | Cap on rows shown after sort and optional clean-row filtering (default `8`) |
+| `GIT_MAX_REPOS` | Cap on rows shown after sort and optional clean-row filtering (default `0` for unlimited) |
 | `GIT_HIDE_CLEAN` | `1` hides fully clean repos |
 | `GIT_INCLUDE_STASH` | `0` skips stash counting |
 | `GIT_DEFAULT_BRANCHES` | Branches whose names are suppressed on a settled row (`main`, `master`) |

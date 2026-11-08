@@ -800,3 +800,18 @@ def test_limit_repos_caps_the_sorted_candidates(tmp_path, monkeypatch):
     capped = git_status.limit_repos(status)
     assert len(capped["repos"]) == 2
     assert capped["summary"]["total"] == 2
+
+
+def test_limit_repos_zero_means_unlimited(tmp_path, monkeypatch):
+    monkeypatch.setenv("GIT_INCLUDE_STASH", "0")
+    paths = [init_repo(tmp_path / f"repo-{index}") for index in range(5)]
+
+    status = git_status.collect_status(
+        repo_paths=paths, timeout=5, hide_clean=False, max_repos=0
+    )
+
+    assert status["maxRepos"] == 0
+    assert len(status["repos"]) == 5
+    uncapped = git_status.limit_repos(status)
+    assert len(uncapped["repos"]) == 5
+    assert uncapped["summary"]["total"] == 5
