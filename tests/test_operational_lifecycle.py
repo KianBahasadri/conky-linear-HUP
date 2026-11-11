@@ -5,6 +5,7 @@ import signal
 import stat
 import subprocess
 import textwrap
+import time
 from pathlib import Path
 
 import pytest
@@ -616,7 +617,14 @@ def test_theme_listener_runs_without_linear_and_stops_with_the_suite(tmp_path):
             check=True, capture_output=True, text=True, env=env, timeout=30,
         )
         assert (repo / "cache" / "desktop-theme").read_text() == "light\n"
-        assert lifecycle_status(pid_file, script, repo) == "owned"
+        # The launcher backgrounds setsid before the child execs its loop shell.
+        # Wait for that transition rather than classifying the intermediate PID.
+        deadline = time.monotonic() + 5
+        status = lifecycle_status(pid_file, script, repo)
+        while status != "owned" and time.monotonic() < deadline:
+            time.sleep(0.01)
+            status = lifecycle_status(pid_file, script, repo)
+        assert status == "owned"
         assert not (repo / "cache" / "linear-fetch-loop.pid").exists()
     finally:
         subprocess.run(
