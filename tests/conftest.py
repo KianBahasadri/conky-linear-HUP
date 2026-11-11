@@ -1,3 +1,4 @@
+import math
 import os
 import sys
 from pathlib import Path
@@ -7,6 +8,27 @@ import pytest
 
 SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
+
+
+@pytest.fixture
+def circuit_positions():
+    """A known oval course with an approach, exercise stops, and optional detours."""
+    def build(turns=4.0, detour=False):
+        xy = [(0.0, -350.0 + 2.0 * index) for index in range(136)]
+        for index in range(1, int(240 * turns) + 1):
+            angle = 2.0 * math.pi * index / 240 - math.pi / 2
+            xy.append((120.0 * math.cos(angle), 80.0 * math.sin(angle)))
+            if index % 60 == 0:
+                xy.extend([xy[-1]] * 20)
+        if detour:
+            xy.extend((float(x), -80.0) for x in range(0, 102, 2))
+            xy.extend((float(x), -80.0) for x in range(100, -2, -2))
+        return [
+            (1_800_000_000.0 + index, 40.0 + y / 111320.0,
+             -75.0 + x / (111320.0 * math.cos(math.radians(40.0))))
+            for index, (x, y) in enumerate(xy)
+        ]
+    return build
 
 
 @pytest.fixture(autouse=True)

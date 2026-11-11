@@ -7,22 +7,21 @@ AQI, UV, condition, and location readouts are removed. Both personal-metrics
 bands communicate progress implicitly through semantic color and micro-charts
 rather than explicit section headers or status chips:
 
-- **Running (top 49px band):** The first line shows the last run's total
-  distance (walking included), its running pace (walking and stops excluded),
-  the signed 28-day fitness change as a 5K-equivalent time, and run age (amber
-  when ≥10 days). The change is green for `Better`, red for `Worse`, and muted
-  while `Steady`, or amber if the last run is ≥10 days old. When the pace and
-  change do not both fit, the pace moves to the start of the second line. The
-  second line shows the run's effort as an equivalent 5K time (`5K 29:23`),
-  duration, and average heart rate, dropping trailing items that do not fit.
-  Underneath, a 12-run sparkline layers:
-  - distance bars, with the walked share hollow and runs inside the 28-day
-    window brightened;
-  - a dot for each run's effort score;
-  - the smoothed fitness line in the verdict color;
-  - a dashed baseline at the fitness level 28 days ago.
+- **Training (top 62px band):** Three aligned text rows rotate every 12 seconds
+  through circuit elapsed time and reps, running pace and continuous-run
+  eligibility, separate seven-day push/pull/sit volumes, seven-day workload,
+  and workout-time weather/preceding weight. Non-circuit runs omit the circuit
+  page. The header includes run age; failed refreshes show `Stale`. Narrow
+  screens use compact complete values, including slash-separated rep counts
+  in push/pull/sit order. A matched performance change can color its own page;
+  workload and insufficient evidence remain neutral.
 
-  [Run analysis](run-analysis.md) defines the pace split, score, and trend.
+  A 12-run micro-chart shows distance volume only, with walked shares hollow
+  and recent runs brightened. It contains no fitness line, equivalent-race
+  prediction, or composite progress percentage. Cached data from the previous
+  schema retains basic measured stats while suppressing its old fitness
+  verdict. [Exercise progression](run-analysis.md) owns calculations, quality
+  rules, supported notes, and comparison meaning.
 - **Weight (bottom 49px band):** The first line shows the latest weigh-in, the
   signed 30-day trend delta (colored green when moving toward the openScale goal
   weight, red when moving away), and measurement age (caution yellow when >3
@@ -145,8 +144,9 @@ both sit 24px above it. Repository and standalone session lists reserve room
 above them and page their records when needed.
 
 All three components stay visible at the supported monitor sizes, including
-1280×720. Training and weight retain whole-section paging every 30 seconds if
-their window is manually shortened below 111px. Both windows use
+1280×720. Training and weight are separated by 8px. They retain whole-section
+paging every 30 seconds if their window is manually shortened below 119px;
+the compact training page omits the third row to fit. Both windows use
 `WEATHER_OVERLAY_ENABLED`; `WEATHER_GAP_X` and `WEATHER_GAP_Y` continue to move
 only the personal-metrics window. Shared styling belongs to the
 [Desktop design system](design-system.md).

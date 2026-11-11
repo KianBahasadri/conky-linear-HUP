@@ -3,17 +3,23 @@
 
 Reads the workouts directory fed by the rclone WebDAV service (see
 docs/workout-data-source.md) and writes cache/workouts-status.json for the
-weather and running overlay's training section. Walk/run splits, effort
-scores, and the fitness trend come from run_analysis.py.
+weather and running overlay's training section. GPS and gait measurements,
+matched performance comparisons, and workload/context calculations live in
+run_analysis.py, exercise_progression.py, and workout_context.py.
 """
+import fcntl
 import json
+import math
 import os
+import statistics
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import fetch_common as common
 import run_analysis
+import exercise_progression as progression
+import workout_context
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -24,15 +30,11 @@ LOG_PATH = CACHE_DIR / "conky-workouts.log"
 DEFAULT_WORKOUTS_DIR = CACHE_DIR / "workouts"
 
 # Bump when parsing or run_analysis changes what a cached file summary means.
-ANALYSIS_VERSION = 3
+ANALYSIS_VERSION = 9
 RECENT_LIMIT = 14
 WEEK_WINDOW = timedelta(days=7)
 TREND_WINDOW_DAYS = 28
-TREND_MIN_SCORED_RUNS = 3
-TREND_CONFIDENCE = 0.8
-TREND_MIN_SECONDS = 15
-EQUIVALENT_METERS = 5000.0
-NON_RUN_SPORTS = {"biking", "cycling", "swimming", "walking", "hiking", "elliptical"}
+NON_RUN_SPORTS = progression.NON_RUN_SPORTS
 OTHER_SPORT_RUN_SECONDS = 300
 TRACK_COVERAGE = 0.9
 
@@ -69,7 +71,8 @@ def parse_time(value):
     if not value:
         return None
     try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        stamp = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return stamp if stamp.tzinfo is not None else None
     except ValueError:
         return None
 
@@ -84,8 +87,10 @@ def parse_workout(path):
     distance = 0.0
     calories = 0
     heart_rates = []
+    hr_samples = []
     cadences = []
     track = []
+    positions = []
     start_time = None
     end_time = None
     sport = ""
@@ -97,8 +102,12 @@ def parse_workout(path):
 
     def add_lap(fields):
         nonlocal duration, distance, calories
-        duration += common.as_float(fields.get("TotalTimeSeconds"))
-        distance += common.as_float(fields.get("DistanceMeters"))
+        seconds = progression.finite(fields["TotalTimeSeconds"]) if fields.get("TotalTimeSeconds") is not None else 0.0
+        meters = progression.finite(fields["DistanceMeters"]) if fields.get("DistanceMeters") is not None else 0.0
+        if seconds is None or meters is None or seconds < 0 or meters < 0:
+            raise ValueError("Invalid workout totals")
+        duration += seconds
+        distance += meters
         calories += common.as_int(fields.get("Calories"), 0)
 
     try:
@@ -119,18 +128,24 @@ def parse_workout(path):
                 if tag in ("TotalTimeSeconds", "DistanceMeters", "Calories"):
                     lap[tag] = element.text
             if tag == "Trackpoint":
-                stamp = meters = steps = None
+                stamp = meters = steps = latitude = longitude = rate = None
                 for child in element:
                     child_tag = local_tag(child)
                     if child_tag == "Time":
                         stamp = parse_time(child.text)
                     elif child_tag == "DistanceMeters":
-                        meters = common.as_float(child.text, None)
+                        meters = progression.finite(child.text)
+                    elif child_tag == "Position":
+                        for coordinate in child:
+                            if local_tag(coordinate) == "LatitudeDegrees":
+                                latitude = common.as_float(coordinate.text, None)
+                            elif local_tag(coordinate) == "LongitudeDegrees":
+                                longitude = common.as_float(coordinate.text, None)
                     elif child_tag == "HeartRateBpm":
                         for sub_child in child:
                             if local_tag(sub_child) == "Value":
                                 rate = common.as_int(sub_child.text, 0)
-                                if rate > 0:
+                                if 30 <= rate <= 240:
                                     heart_rates.append(rate)
                     elif child_tag == "Extensions":
                         for ext in child.iter():
@@ -142,6 +157,10 @@ def parse_workout(path):
                     start_time = start_time or stamp
                     end_time = stamp if not end_time or stamp > end_time else end_time
                     track.append((stamp.timestamp(), meters, steps))
+                    if rate is not None:
+                        hr_samples.append((stamp.timestamp(), rate))
+                    if latitude is not None and longitude is not None:
+                        positions.append((stamp.timestamp(), latitude, longitude))
                 element.clear()
             elif tag == "Lap":
                 add_lap(lap)
@@ -176,24 +195,57 @@ def parse_workout(path):
         "truncated": truncated,
         "notes": notes.strip(),
         "track": track,
+        "positions": positions,
+        "hrSamples": hr_samples,
     }
+
+
+def hr_settings():
+    resting = progression.finite(os.environ.get("WORKOUTS_RESTING_HR", "50"))
+    maximum = progression.finite(os.environ.get("WORKOUTS_MAX_HR", "195"))
+    if resting is None or maximum is None or not 20 <= resting < maximum <= 240:
+        raise ValueError("WORKOUTS_RESTING_HR and WORKOUTS_MAX_HR must satisfy 20 <= resting < maximum <= 240")
+    return {"restingHR": resting, "maximumHR": maximum}
 
 
 def analyze_file(path):
     workout = parse_workout(path)
     track = workout.pop("track")
-    if is_run(workout):
+    positions = workout.pop("positions")
+    hr_samples = workout.pop("hrSamples")
+    notes = progression.parse_notes(workout.get("notes"))
+    workout["trainingNotes"] = notes
+    if workout["sport"].strip().lower() not in NON_RUN_SPORTS:
         workout.update(run_analysis.analyze_track(track))
-    laps = workout.get("laps", 1)
-    workout.update(
-        run_analysis.workout_strain(
-            workout["durationSeconds"],
-            workout.get("avgHeartRate"),
-            workout.get("notes"),
-            lap_count=laps,
-            sport=workout.get("sport", "Running"),
-        )
-    )
+    valid_positions = [(stamp, latitude, longitude) for stamp, latitude, longitude in positions
+                       if all(math.isfinite(v) for v in (stamp, latitude, longitude))
+                       and -90 <= latitude <= 90 and -180 <= longitude <= 180]
+    if valid_positions:
+        workout["location"] = {"latitude": statistics.median(p[1] for p in valid_positions),
+                               "longitude": statistics.median(p[2] for p in valid_positions)}
+    geometry = None
+    if not workout["truncated"] and workout.get("trackMeters", 0.0) >= TRACK_COVERAGE * workout["distanceMeters"]:
+        geometry = run_analysis.circuit_geometry(positions)
+    workout.update(progression.repetition_summary(notes, geometry["laps"] if geometry else None))
+    if geometry and not workout["lapCountConflict"]:
+        workout["circuit"] = geometry
+    settings = hr_settings()
+    workout["hrLoad"] = progression.heart_rate_load(hr_samples, workout["durationSeconds"], settings["restingHR"], settings["maximumHR"])
+    continuous = workout.get("continuousRun")
+    if continuous:
+        points = [p for p in valid_positions if continuous["startEpoch"] <= p[0] <= continuous["endEpoch"]]
+        if points:
+            latitudes, longitudes = [p[1] for p in points], [p[2] for p in points]
+            latitude = statistics.median(latitudes)
+            continuous.update(latitude=latitude, longitude=statistics.median(longitudes), lapMeters=continuous["meters"],
+                              widthMeters=(max(longitudes) - min(longitudes)) * 111320 * math.cos(math.radians(latitude)),
+                              heightMeters=(max(latitudes) - min(latitudes)) * 111320)
+        selected = sorted({stamp: rate for stamp, rate in hr_samples
+                           if continuous["endEpoch"] - 300 <= stamp <= continuous["endEpoch"] and 30 <= rate <= 240}.items())
+        intervals = [(b[0] - a[0], (a[1] + b[1]) / 2) for a, b in zip(selected, selected[1:]) if 0 < b[0] - a[0] <= 10]
+        covered = sum(dt for dt, _ in intervals)
+        continuous["hrCoverage"] = min(1, covered / 300)
+        continuous["steadyHR"] = round(sum(dt * rate for dt, rate in intervals) / covered, 2) if covered >= 270 else None
     return workout
 
 
@@ -216,7 +268,7 @@ def read_analysis(path):
         data = json.loads(Path(path).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
-    if not isinstance(data, dict) or data.get("version") != ANALYSIS_VERSION:
+    if not isinstance(data, dict) or data.get("version") != ANALYSIS_VERSION or data.get("hrSettings") != hr_settings():
         return {}
     files = data.get("files")
     return files if isinstance(files, dict) else {}
@@ -244,14 +296,19 @@ def load_workouts(workouts_dir, analysis_path=None):
                     log_event(f"salvaged truncated {path.name}")
             except (ET.ParseError, ValueError, OSError) as error:
                 log_event(f"skipping {path.name}: {error}")
-                entry = {"key": key, "error": str(error)}
+                entry = {"key": key, "error": str(error), **({"workout": entry["workout"], "stale": True} if isinstance(entry, dict) and isinstance(entry.get("workout"), dict) else {})}
         entries[path.name] = entry
         if isinstance(entry.get("workout"), dict):
-            workouts.append(decode_workout(entry["workout"]))
+            workout = decode_workout(entry["workout"])
+            workout["sourceMtimeNs"] = stat.st_mtime_ns
+            if entry.get("stale"):
+                workout["analysisStale"] = True
+                failures += 1
+            workouts.append(workout)
         else:
             failures += 1
     if analysis_path and entries != previous:
-        atomic_write_json(analysis_path, {"version": ANALYSIS_VERSION, "files": entries})
+        atomic_write_json(analysis_path, {"version": ANALYSIS_VERSION, "hrSettings": hr_settings(), "files": entries})
     workouts.sort(key=lambda workout: workout["startTime"] or datetime.min.replace(tzinfo=timezone.utc))
     return workouts, failures
 
@@ -312,10 +369,6 @@ def format_date_text(stamp, now):
     return local_stamp.strftime("%b %-d")
 
 
-def equivalent_text(score):
-    return format_duration(run_analysis.equivalent_seconds(score, EQUIVALENT_METERS))
-
-
 def known_run_meters(workout):
     """Running meters, or None when the track misses part of the workout (a truncated upload)."""
     run_meters = workout.get("runMeters")
@@ -324,42 +377,11 @@ def known_run_meters(workout):
     return run_meters
 
 
-def trend_status(runs, last_age_days, now):
-    """Fitness level per run and the verdict on whether runs are getting better."""
-    samples = [
-        (run["startTime"].timestamp() if run["startTime"] else now.timestamp() + 1, run.get("score"))
-        for run in runs
-    ]
-    trend = run_analysis.fitness_trend(samples, now.timestamp(), TREND_WINDOW_DAYS)
-    scored = sum(1 for _, score in samples if score is not None)
-    status = {"progressVerdict": "Steady", "progressKind": "neutral", "trendText": ""}
-    if trend:
-        now_seconds = run_analysis.equivalent_seconds(trend["now"], EQUIVALENT_METERS)
-        then_seconds = run_analysis.equivalent_seconds(trend["then"], EQUIVALENT_METERS)
-        status.update(
-            {
-                "fitnessScore": round(trend["now"], 2),
-                "fitnessText": format_duration(now_seconds),
-                "fitnessBaselineScore": round(trend["then"], 2),
-                "trendWindowDays": TREND_WINDOW_DAYS,
-                "trendProbability": round(trend["probability"], 2),
-            }
-        )
-        if scored >= TREND_MIN_SCORED_RUNS:
-            delta = int(round(now_seconds - then_seconds))
-            status.update({"trendSeconds": delta, "trendText": format_signed_duration(delta)})
-            if trend["probability"] >= TREND_CONFIDENCE and delta <= -TREND_MIN_SECONDS:
-                status.update(progressVerdict="Better", progressKind="good")
-            elif trend["probability"] <= 1 - TREND_CONFIDENCE and delta >= TREND_MIN_SECONDS:
-                status.update(progressVerdict="Worse", progressKind="danger")
-    if status["progressVerdict"] == "Steady" and last_age_days >= 10:
-        status["progressKind"] = "caution"
-    return status, (trend["levels"] if trend else [None] * len(runs))
-
-
 def build_status(workouts, units, now=None):
     if now is None:
         now = datetime.now().astimezone()
+    observed_count = len(workouts)
+    workouts = progression.usable_workouts(workouts, now.timestamp())
     runs = [workout for workout in workouts if is_run(workout)]
     status = {
         "ok": True,
@@ -368,6 +390,8 @@ def build_status(workouts, units, now=None):
         "workoutCount": len(workouts),
         "runCount": len(runs),
         "unitName": units["name"],
+        "schemaVersion": 2,
+        "excludedWorkouts": observed_count - len(workouts),
     }
 
     if not runs:
@@ -376,13 +400,15 @@ def build_status(workouts, units, now=None):
         return status
 
     last = runs[-1]
+    status["stale"] = bool(last.get("analysisStale"))
+    if status["stale"]:
+        status["error"] = "Workout upload incomplete; showing previous summary"
     last_duration = last["durationSeconds"]
     last_distance = last["distanceMeters"]
     last_stamp = (last["startTime"] or now).astimezone()
     last_age_days = max(0, (now.date() - last_stamp.date()).days)
     run_meters = last.get("runMeters")
     split_known = known_run_meters(last) is not None
-    last_score = last.get("score")
     status.update(
         {
             "lastSport": short_sport(last["sport"]),
@@ -399,8 +425,6 @@ def build_status(workouts, units, now=None):
             "lastRunPaceText": (
                 format_pace(last["runSeconds"], run_meters, units) if run_meters else ""
             ),
-            "lastScore": last_score,
-            "lastScoreText": equivalent_text(last_score) if last_score is not None else "",
             "lastHeartRateText": (
                 f"{last['avgHeartRate']} avg · {last['maxHeartRate']} max"
                 if last["avgHeartRate"]
@@ -451,44 +475,33 @@ def build_status(workouts, units, now=None):
         }
     )
 
-    trend, levels = trend_status(runs, last_age_days, now)
-    status.update(trend)
-
     reps = last.get("reps") or {}
     strength_parts = []
-    if reps.get("pushups"):
+    if reps.get("pushups") is not None:
         strength_parts.append(f"{reps['pushups']} push")
-    if reps.get("pullups"):
+    if reps.get("pullups") is not None:
         strength_parts.append(f"{reps['pullups']} pull")
-    if reps.get("situps"):
+    if reps.get("situps") is not None:
         strength_parts.append(f"{reps['situps']} sit")
     last_strength_text = " · ".join(strength_parts)
+    notes = last.get("trainingNotes", progression.parse_notes(last.get("notes")))
+    for exercise in notes["unquantified"]:
+        last_strength_text += (" · " if last_strength_text else "") + "? " + {"pushups": "push", "pullups": "pull", "situps": "sit"}[exercise]
+    if last_strength_text and last.get("repsPerLap"):
+        last_strength_text += " /lap"
     status["lastStrengthText"] = last_strength_text
-    status["lastTotalLoad"] = last.get("totalLoad")
-    status["lastCardioLoad"] = last.get("cardioLoad")
-    status["lastStrengthLoad"] = last.get("strengthLoad")
-
-    load_history = [
-        (w["startTime"].timestamp() if w["startTime"] else now.timestamp(), w.get("totalLoad", 0.0))
-        for w in workouts
-    ]
-    capacity = run_analysis.training_capacity(load_history, now.timestamp(), TREND_WINDOW_DAYS)
-    if capacity:
-        rop = capacity["rateOfProgress"]
-        status["rateOfProgress"] = rop
-        status["rateOfProgressText"] = f"{int(round(rop)):+d}%"
-        status["chronicTrainingLoad"] = capacity["now"]
-        status["chronicTrainingBaseline"] = capacity["then"]
-        if last_strength_text:
-            status["trendText"] = status["rateOfProgressText"]
-            if rop >= 10.0:
-                status.update(progressVerdict="Better", progressKind="good")
-            elif rop <= -5.0:
-                status.update(progressVerdict="Worse", progressKind="danger")
-            else:
-                status.update(progressVerdict="Steady", progressKind="neutral")
-            if last_age_days >= 10:
-                status["progressKind"] = "caution"
+    status["lastLapCount"] = last.get("laps")
+    status["lastLapCountSource"] = last.get("lapCountSource", "unknown")
+    summary = progression.summarize(workouts, now.timestamp(), subject=last)
+    status.update(summary)
+    # Performance is anchored to the displayed run, even when a different
+    # sport was uploaded more recently. Workload still includes all sports.
+    assessment = status["performance"]["circuit" if notes["isCircuit"] else "running"]
+    status["progressVerdict"] = assessment["text"]
+    status["progressKind"] = assessment["kind"] if last_age_days < 10 else "caution"
+    status["trendText"] = assessment["text"]
+    status["lastContext"] = last.get("context", {})
+    status["trainingPages"] = training_pages(last, status, units)
 
     divisor = units["distanceDivisor"]
     status["recent"] = [
@@ -500,34 +513,106 @@ def build_status(workouts, units, now=None):
             "runUnits": (
                 round(known_run_meters(run) / divisor, 2) if known_run_meters(run) is not None else None
             ),
-            "score": run.get("score"),
-            "fitness": round(level, 2) if level is not None else None,
             "inWindow": bool(run["startTime"] and run["startTime"].astimezone() >= month_start),
             "isLast": run is last,
         }
-        for run, level in list(zip(runs, levels))[-RECENT_LIMIT:]
+        for run in runs[-RECENT_LIMIT:]
     ]
     return status
 
 
+def training_pages(last, status, units):
+    notes = last.get("trainingNotes", progression.parse_notes(last.get("notes")))
+    performance = status["performance"]
+    week = status["workload"]["7"]
+    pages = []
+
+    def comparison(category):
+        result = performance[category]
+        if result["state"] in ("improving", "declining"):
+            delta = result["change"]
+            change = format_signed_duration(delta) if result["unit"] == "seconds" else f"{delta:+.1f} {result['unit']}"
+            return result["text"] + " " + change
+        if result["matchedCount"]:
+            return f"{result['matchedCount']} matches · {result['text'].lower()}"
+        return result.get("reason") or result["text"]
+
+    def compact_comparison(category, fallback):
+        result = performance[category]
+        return comparison(category) if result["state"] in ("improving", "declining", "steady") else fallback
+
+    if notes["isCircuit"]:
+        circuit = last.get("circuit")
+        pages.append({"headline": f"{last['laps']} laps · {format_duration(circuit['seconds'])}" if circuit else "Circuit logged",
+                      "shortHeadline": f"{last['laps']} laps" if last.get("laps") else "Circuit logged",
+                      "detail": status["lastStrengthText"],
+                      "shortDetail": "/".join(str((last.get("reps") or {}).get(k, "?")) for k in progression.EXERCISES) + (" /lap" if last.get("repsPerLap") else " reps"),
+                      "comparison": comparison("circuit"), "shortComparison": compact_comparison("circuit", "Add RPE to compare" if notes["rpe"] is None else "Building baseline"),
+                      "kind": performance["circuit"]["kind"]})
+    continuous = last.get("continuousRun")
+    pages.append({"headline": "Run " + (status["lastRunPaceText"] or status["lastPaceText"]).replace(" /", "/"),
+                  "shortHeadline": "Run " + (status["lastRunPaceText"] or status["lastPaceText"]).split(" ")[0],
+                  "detail": f"{status['lastRunDistanceText'] or status['lastDistanceText']} · {format_duration(last.get('runSeconds') or last['durationSeconds'])}",
+                  "comparison": comparison("running"), "shortComparison": compact_comparison("running", "Continuous run needed" if not continuous or notes["isCircuit"] else "Building baseline"),
+                  "kind": performance["running"]["kind"]})
+    counts = week["reps"]
+    rep_triplet = "/".join(str(counts[k]) for k in progression.EXERCISES)
+    pages.append({"headline": "7d " + rep_triplet + ("+?" if week["unquantifiedRepSessions"] else "") + " reps",
+                  "shortHeadline": "7d " + rep_triplet + ("+?" if week["unquantifiedRepSessions"] else ""),
+                  "detail": "push / pull / sit",
+                  "comparison": comparison("strength"), "shortComparison": compact_comparison("strength", "Rep benchmark needed"),
+                  "kind": performance["strength"]["kind"]})
+    def load_text(label, record):
+        value = "—" if record["value"] is None else f"{record['value']:.0f} AU"
+        return f"{label} {value} · {record['coveredSessions']}/{record['totalSessions']} logs"
+    pages.append({"headline": "7d " + ("~" if week["staleSessions"] else "") + format_distance(week["runMeters"], units) + f" · {week['runs']} runs",
+                  "shortHeadline": "7d " + ("~" if week["staleSessions"] else "") + format_distance(week["runMeters"], units),
+                  "detail": load_text("HR~", week["hrTrimp"]),
+                  "comparison": load_text("RPE", week["sessionRpe"]),
+                  "shortComparison": "RPE not logged" if week["sessionRpe"]["value"] is None else load_text("RPE", week["sessionRpe"]),
+                  "kind": "neutral"})
+    context = last.get("context", {})
+    weather, weight = context.get("weather", {}), context.get("weight", {})
+    temperature = weather.get("temperatureC")
+    if weather.get("available"):
+        if units["name"] == "imperial":
+            temperature = temperature * 9 / 5 + 32
+        weather_text = f"~{temperature:.1f}°{'F' if units['name'] == 'imperial' else 'C'} · {weather['humidityPercent']:.0f}% RH"
+    else:
+        weather_text = weather.get("reason") or "Weather pending"
+    if weight.get("available"):
+        age = weight["ageDays"] * 24
+        weight_text = f"{weight['value']:.1f} {weight['unit']} · {age:.0f}h before"
+    else:
+        weight_text = weight.get("reason") or "Weight unavailable"
+    pages.append({"headline": weather_text, "shortHeadline": weather_text.replace(" RH", ""),
+                  "detail": weight_text, "comparison": "At workout · model weather", "shortComparison": "Workout conditions", "kind": "neutral"})
+    return pages
+
+
 def write_error(message):
-    atomic_write_json(
-        STATUS_PATH,
-        {
+    try:
+        previous = json.loads(STATUS_PATH.read_text())
+    except (OSError, ValueError):
+        previous = {}
+    if not isinstance(previous, dict):
+        previous = {}
+    payload = ({**previous, "stale": True, "error": message} if previous.get("ok") else {
             "ok": False,
             "stale": False,
             "updatedAt": datetime.now(timezone.utc).isoformat(),
             "error": message,
-        },
-    )
+        })
+    atomic_write_json(STATUS_PATH, payload)
     log_event(f"error: {message}")
 
 
-def main():
+def refresh():
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     common.load_env()
     try:
         units_config = units()
+        hr_settings()
     except ValueError as error:
         write_error(str(error))
         return 1
@@ -542,22 +627,48 @@ def main():
         write_error("No workouts uploaded yet")
         return 1
 
-    status = build_status(workouts, units_config)
+    now = datetime.now(timezone.utc)
+    raw_user_id = os.environ.get("WEIGHT_USER_ID", "").strip()
+    try:
+        user_id = int(raw_user_id) if raw_user_id else None
+        workouts, context_status = workout_context.enrich(
+            workouts, workouts_dir, CACHE_DIR / "workout-context.json", now,
+            weight_dir=os.environ.get("WEIGHT_DIR") or None, user_id=user_id,
+            weather_enabled=os.environ.get("WORKOUTS_WEATHER_ENABLED", "1") != "0",
+        )
+    except (OSError, ValueError) as error:
+        context_status = {"issues": [str(error)], "weatherPending": len(workouts)}
+    status = build_status(workouts, units_config, now.astimezone())
+    status["contextStatus"] = context_status
     if failures:
         status["skippedFiles"] = failures
-    atomic_write_json(STATUS_PATH, status)
     if not status["ok"]:
-        log_event(f"error: {status['error']}")
+        write_error(status["error"])
         return 1
+    atomic_write_json(STATUS_PATH, status)
     log_event(
         f"summarized workouts={len(workouts)} runs={status['runCount']} skipped={failures} "
         f"last={status['lastDistanceText']} {status['lastDateText']} "
-        f"run_pace={status['lastRunPaceText'] or '--'} score={status['lastScoreText'] or '--'} "
-        f"fitness={status.get('fitnessText', '--')} trend={status['trendText'] or '--'} "
+        f"run_pace={status['lastRunPaceText'] or '--'} laps={status.get('lastLapCount')} "
+        f"performance={status['trendText'] or '--'} "
         f"verdict={status['progressVerdict']}"
     )
     print(json.dumps(status, indent=2))
     return 0
+
+
+def main():
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    with (CACHE_DIR / "workouts-fetch.lock").open("a") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            try:
+                print(STATUS_PATH.read_text())
+            except OSError:
+                pass
+            return 0
+        return refresh()
 
 
 if __name__ == "__main__":

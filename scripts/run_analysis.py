@@ -259,6 +259,115 @@ def best_effort(increments, run_seconds):
         window *= EFFORT_GROWTH
 
 
+def circuit_geometry(positions):
+    """Count repeated closed GPS loops, or return None without enough evidence.
+
+    Positions are (epoch, latitude, longitude). Running bouts and exercise
+    stops are not lap boundaries. Require at least two comparable loops and
+    reject recording gaps, impossible jumps, and narrow out-and-back detours.
+    """
+    if len(positions) < 3:
+        return None
+    if any(
+        not all(math.isfinite(value) for value in point)
+        or not -90 <= point[1] <= 90 or not -180 <= point[2] <= 180
+        for point in positions
+    ):
+        return None
+    ordered = sorted(positions, key=lambda point: point[0])
+    latitude, longitude = ordered[0][1:]
+    lon_scale = 111320.0 * math.cos(math.radians(latitude))
+    projected = [
+        (stamp, (lon - longitude) * lon_scale, (lat - latitude) * 111320.0)
+        for stamp, lat, lon in ordered
+    ]
+    unique = []
+    for point in projected:
+        if unique and point[0] == unique[-1][0]:
+            if math.hypot(point[1] - unique[-1][1], point[2] - unique[-1][2]) > 20.0:
+                return None
+            continue
+        unique.append(point)
+    projected = unique
+    for before, after in zip(projected, projected[1:]):
+        elapsed = after[0] - before[0]
+        if elapsed <= 0 or elapsed > PAUSE_GAP_SECONDS:
+            return None
+        if math.hypot(after[1] - before[1], after[2] - before[2]) > 15.0 * elapsed:
+            return None
+
+    # Thin GPS jitter before measuring length or choosing spatial anchors.
+    points = [projected[0]]
+    for point in projected[1:]:
+        if math.hypot(point[1] - points[-1][1], point[2] - points[-1][2]) >= 5.0:
+            points.append(point)
+    if points[-1] != projected[-1]:
+        points.append(projected[-1])
+    meters, twice_area = [0.0], [0.0]
+    anchors = {}
+    previous_cell = None
+    for index, (stamp, x, y) in enumerate(points):
+        cell = (math.floor(x / 10.0), math.floor(y / 10.0))
+        anchor = anchors.setdefault(cell, [x, y, 0])
+        if cell != previous_cell:
+            anchor[2] += 1
+        previous_cell = cell
+        if index:
+            _, px, py = points[index - 1]
+            meters.append(meters[-1] + math.hypot(x - px, y - py))
+            twice_area.append(twice_area[-1] + px * y - x * py)
+
+    # Three separate visits can establish two completed loops. Sampling every
+    # nth anchor could miss the course entrance and lose the first lap.
+    candidates = [anchor[:2] for anchor in anchors.values() if anchor[2] >= 3]
+    best = None
+    for anchor_x, anchor_y in candidates:
+        start, entered, away, loops = None, None, False, []
+        for index, (stamp, x, y) in enumerate(points):
+            radius = math.hypot(x - anchor_x, y - anchor_y)
+            if radius > 40.0:
+                away = True
+            if radius > 20.0:
+                continue
+            if start is not None and away:
+                first_stamp, sx, sy = points[start]
+                length = meters[index] - meters[start]
+                area = abs(twice_area[index] - twice_area[start] + x * sy - sx * y) / 2.0
+                if (
+                    stamp - first_stamp >= 60.0 and length >= 200.0
+                    and area >= 2000.0 and area >= 0.02 * length * length
+                ):
+                    loops.append({
+                        "startEpoch": points[entered][0], "endEpoch": stamp,
+                        "meters": length,
+                    })
+            if entered is None or away:
+                entered = index
+            start, away = index, False
+        lengths = [loop["meters"] for loop in loops]
+        if len(lengths) >= 2 and max(lengths) <= 1.25 * min(lengths):
+            if best is None or len(loops) > best["laps"]:
+                left = min(p[1] for p in points if loops[0]["startEpoch"] <= p[0] <= loops[-1]["endEpoch"])
+                right = max(p[1] for p in points if loops[0]["startEpoch"] <= p[0] <= loops[-1]["endEpoch"])
+                bottom = min(p[2] for p in points if loops[0]["startEpoch"] <= p[0] <= loops[-1]["endEpoch"])
+                top = max(p[2] for p in points if loops[0]["startEpoch"] <= p[0] <= loops[-1]["endEpoch"])
+                best = {
+                    "laps": len(loops), "loops": loops,
+                    "seconds": loops[-1]["endEpoch"] - loops[0]["startEpoch"],
+                    "lapMeters": sum(lengths) / len(lengths),
+                    "latitude": latitude + (bottom + top) / 2 / 111320.0,
+                    "longitude": longitude + (left + right) / 2 / lon_scale if abs(lon_scale) > 1 else longitude,
+                    "widthMeters": right - left, "heightMeters": top - bottom,
+                    "timingResolutionSeconds": 40.0,
+                }
+    return best
+
+
+def estimate_circuit_laps(positions):
+    geometry = circuit_geometry(positions)
+    return geometry["laps"] if geometry else None
+
+
 def analyze_track(track):
     """Gait split and effort score for one workout's (epoch, meters, cadence) points."""
     distance, cadence, paused = resample(track)
@@ -292,8 +401,22 @@ def analyze_track(track):
         "walkMeters": round(meters[WALKING], 1),
         "warmupMeters": round(warmup, 1),
         "cooldownMeters": round(cooldown, 1),
-        "laps": max(1, len(runs)),
+        "runBouts": len(runs),
     }
+    if runs:
+        first, last = max(runs, key=lambda pair: pair[1] - pair[0])
+        seconds_in_block = last - first + 1
+        meters_in_block = sum(increments[first:last + 1])
+        summary["longestRunSeconds"] = seconds_in_block
+        if seconds_in_block >= 600 and meters_in_block > 0:
+            start_epoch = min(point[0] for point in track if point[0] is not None)
+            stamps = sorted(set(point[0] for point in track if point[0] is not None))
+            if all(b - a <= PAUSE_GAP_SECONDS for a, b in zip(stamps, stamps[1:])):
+                summary["continuousRun"] = {
+                    "startEpoch": start_epoch + first, "endEpoch": start_epoch + last,
+                    "seconds": seconds_in_block, "meters": round(meters_in_block, 1),
+                    "paceSecondsPerKm": round(seconds_in_block / meters_in_block * 1000, 2),
+                }
     if seconds[RUNNING] >= MIN_SCORED_RUN_SECONDS and meters[RUNNING] >= MIN_SCORED_RUN_METERS:
         moving = [
             min(increments[index], MAX_STEP_METERS)
@@ -524,6 +647,20 @@ CALISTHENICS_POINTS = {
     "situps": 0.3,
 }
 
+CALISTHENICS_NAMES = {
+    "pushups": r"push[\s-]*ups?",
+    "pullups": r"pull[\s-]*ups?",
+    "situps": r"sit[\s-]*ups?",
+}
+
+
+def _mentioned_calisthenics(notes):
+    text = str(notes or "").lower()
+    return {
+        exercise for exercise, pattern in CALISTHENICS_NAMES.items()
+        if re.search(r"\b(?:" + pattern + r")\b", text)
+    }
+
 
 def cardio_load(duration_seconds, avg_hr=None, max_hr=MAX_HR_DEFAULT, rest_hr=REST_HR_DEFAULT, sport="Running"):
     """Training Impulse (TRIMP) or MET-duration load for any workout duration and HR."""
@@ -543,27 +680,34 @@ def parse_calisthenics(notes, lap_count=1):
     if not notes:
         return {}, 0.0
     text = str(notes).lower()
+    shorthand = re.fullmatch(r"\s*(\d+)\s+(\d+)\s+(\d+)\s*", text)
     exercises = {}
-    patterns = {
-        "pushups": r"(\d+)\s*(?:push[\s-]*ups?|pushups?)",
-        "pullups": r"(\d+)\s*(?:pull[\s-]*ups?|pullups?)",
-        "situps": r"(\d+)\s*(?:sit[\s-]*ups?|situps?)",
-    }
     has_match = False
-    for ex, pat in patterns.items():
-        m = re.search(pat, text)
+    for ex, pattern in CALISTHENICS_NAMES.items():
+        m = re.search(r"(?<![\d.\-])(\d+)\s*(?:" + pattern + r")\b", text)
         if m:
             exercises[ex] = int(m.group(1))
             has_match = True
-        elif ex.rstrip("s") in text:
-            exercises[ex] = 5
-            has_match = True
+
+    if shorthand:
+        # Numeric circuit notes use push-ups, pull-ups, sit-ups per lap.
+        exercises = dict(zip(("pushups", "pullups", "situps"), map(int, shorthand.groups())))
+        has_match = True
 
     if not has_match:
-        return {}, 0.0
+        # An exercise name without a count is evidence of missing load, not
+        # permission to invent a default number of repetitions.
+        return {}, None if _mentioned_calisthenics(text) else 0.0
 
-    is_per_lap = any(kw in text for kw in ("per lap", "a lap", "every lap", "/lap", "each lap"))
-    multiplier = lap_count if (is_per_lap or (lap_count > 1 and "pushup" in text)) else 1
+    is_per_lap = shorthand is not None or any(
+        kw in text for kw in ("per lap", "a lap", "every lap", "/lap", "each lap")
+    )
+    is_per_lap = is_per_lap or (lap_count != 1 and "pushups" in _mentioned_calisthenics(text))
+    if re.search(r"\btotal\b", text):
+        is_per_lap = False
+    if is_per_lap and lap_count is None:
+        return exercises, None
+    multiplier = lap_count if is_per_lap else 1
 
     total_reps = {ex: reps * multiplier for ex, reps in exercises.items()}
     strength_load = sum(total_reps[ex] * CALISTHENICS_POINTS.get(ex, 0.5) for ex in total_reps)
@@ -576,9 +720,11 @@ def workout_strain(duration_seconds, avg_hr=None, notes=None, lap_count=1, sport
     reps, s_load = parse_calisthenics(notes, lap_count)
     return {
         "cardioLoad": round(c_load, 1),
-        "strengthLoad": round(s_load, 1),
-        "totalLoad": round(c_load + s_load, 1),
+        "strengthLoad": round(s_load, 1) if s_load is not None else None,
+        "totalLoad": round(c_load + (s_load or 0.0), 1),
         "reps": reps,
+        "repsPerLap": bool(reps) and s_load is None,
+        "strengthLoadIncomplete": s_load is None or bool(_mentioned_calisthenics(notes).difference(reps)),
     }
 
 

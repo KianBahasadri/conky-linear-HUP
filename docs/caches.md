@@ -30,13 +30,17 @@
 - `cache/sessions.json`: inbound logins joined to tmux sessions, consumed by the Cairo renderer. Device names and OS strings come from `tailscale status`; no tailnet account identity is stored.
 - `cache/weather-status.json`: normalized weather, air quality, and running guidance consumed by the Cairo renderer.
 - `cache/workouts-status.json`: run summaries from the TCX files in `cache/workouts/` (uploaded from the phone; see [Workout data source](workout-data-source.md)), consumed by the weather panel's training section. It holds:
-  - the last run's totals, walk-excluded pace, and 5K-equivalent effort;
-  - rolling 7- and 28-day run totals;
-  - the fitness level, 28-day trend, and verdict;
-  - the last 14 runs' total and running distance, score, and fitness level for the sparkline.
+  - the last run's totals, walk-excluded pace, inferred lap count, and recorded reps;
+  - separate performance assessments and seven-/28-day volume, HR, and session-RPE workload;
+  - prior-weight and historical weather context with quality flags;
+  - formatted training pages and the last 14 runs' total/running distance for the volume chart.
 
-  Rides and untyped workouts without running are excluded; see [Run analysis](run-analysis.md). Heart rate and cadence are per-workout optionals.
-- `cache/workouts-analysis.json`: per-file parse and gait analysis keyed by file size, modification time, and a format version, so each refresh re-reads only new or changed TCX files. Unparseable files are remembered too. Deleting it only costs one full re-analysis.
+  Run counts exclude rides and untyped workouts without running; workload
+  bookkeeping includes all sports. See [Exercise progression](run-analysis.md).
+  Heart rate and cadence are per-workout optionals.
+- `cache/workouts-analysis.json`: per-file parse and gait analysis keyed by file size, modification time, format version, and HR calibration settings. Failed replacement uploads retain a flagged last good summary. Deleting it costs a full re-analysis.
+- `cache/workout-context.json`: selected weight history and validated monthly historical-weather tiles, with provider/retry metadata; this is independent of per-file gait analysis.
+- `cache/workouts-fetch.lock`: advisory lock preventing concurrent workout refreshes from overwriting one another.
 - `cache/weight-status.json`: the selected openScale user's latest weight, measurement dates, and change from the preceding reading, consumed by the weather panel. See [Weight backups](workout-data-source.md#weight-backups-from-openscale) for parsing.
 - `cache/git-status.json`: local git fleet status consumed by the Cairo renderer. Each repo may include `actions` (`run` / `fail` / `ok` / empty) for the name-line pip.
 - `cache/git-repo-discovery.json`: auto-discovered home repos with recent commits (TTL `GIT_SCAN_TTL_SECONDS`).

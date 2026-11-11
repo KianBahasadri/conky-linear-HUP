@@ -184,6 +184,131 @@ def test_parse_calisthenics_extracts_reps_and_load():
     assert analysis.parse_calisthenics("") == ({}, 0.0)
 
 
+@pytest.mark.parametrize(
+    "notes, lap_count, expected_reps, expected_load",
+    [
+        ("8 5 10", 5, {"pushups": 40, "pullups": 25, "situps": 50}, 72.5),
+        ("7 3 10", 5, {"pushups": 35, "pullups": 15, "situps": 50}, 55.0),
+        ("8 3 11", 9, {"pushups": 72, "pullups": 27, "situps": 99}, 106.2),
+        (" 8\t3  11\n", 1, {"pushups": 8, "pullups": 3, "situps": 11}, 11.8),
+        ("0 0 0", 5, {"pushups": 0, "pullups": 0, "situps": 0}, 0.0),
+    ],
+)
+def test_numeric_circuit_notes_use_push_pull_sit_order_per_lap(
+    notes, lap_count, expected_reps, expected_load
+):
+    reps, load = analysis.parse_calisthenics(notes, lap_count)
+
+    assert reps == expected_reps
+    assert load == pytest.approx(expected_load)
+
+
+@pytest.mark.parametrize(
+    "notes", ["8 3", "8 3 11 5", "slept 8 3 11 hours", "2026-11-11", "8 -3 11", "8 3.5 11"]
+)
+def test_other_numeric_notes_are_not_circuits(notes):
+    assert analysis.parse_calisthenics(notes, lap_count=5) == ({}, 0.0)
+
+
+def test_unknown_lap_count_keeps_reps_per_lap_without_inventing_total_load():
+    strain = analysis.workout_strain(1800, 150, "8 3 11", lap_count=None)
+
+    assert strain["reps"] == {"pushups": 8, "pullups": 3, "situps": 11}
+    assert strain["repsPerLap"] is True
+    assert strain["strengthLoad"] is None
+    assert strain["totalLoad"] == strain["cardioLoad"]
+
+
+def test_exercise_names_without_counts_do_not_invent_repetitions():
+    assert analysis.parse_calisthenics("pushups", lap_count=4) == ({}, None)
+
+
+def test_partially_quantified_strength_notes_preserve_known_load_and_flag_missing_counts():
+    strain = analysis.workout_strain(1800, 150, "6 pushups + pull-ups", lap_count=4)
+
+    assert strain["reps"] == {"pushups": 24}
+    assert strain["strengthLoad"] == 12.0
+    assert strain["strengthLoadIncomplete"] is True
+    assert strain["totalLoad"] == pytest.approx(strain["cardioLoad"] + 12.0, abs=0.2)
+
+
+@pytest.mark.parametrize("notes", ["-3 pushups", "3.5 pushups", "push-ups"])
+def test_invalid_or_unspecified_named_counts_remain_unknown(notes):
+    assert analysis.parse_calisthenics(notes, lap_count=4) == ({}, None)
+
+
+def test_explicit_total_repetitions_are_not_multiplied_by_laps():
+    reps, load = analysis.parse_calisthenics("total 32 pushups 12 pullups 44 situps", lap_count=4)
+
+    assert reps == {"pushups": 32, "pullups": 12, "situps": 44}
+    assert load == pytest.approx(47.2)
+
+
+@pytest.mark.parametrize("turns, expected", [(2.0, 2), (4.0, 4), (3.5, 3)])
+def test_gps_laps_count_closed_courses_through_exercise_stops(circuit_positions, turns, expected):
+    assert analysis.estimate_circuit_laps(circuit_positions(turns)) == expected
+
+
+def test_walking_out_and_back_does_not_add_a_circuit_lap(circuit_positions):
+    assert analysis.estimate_circuit_laps(circuit_positions(detour=True)) == 4
+
+
+def test_duplicate_timestamps_with_small_gps_jitter_do_not_add_laps(circuit_positions):
+    points = circuit_positions()
+    stamp, latitude, longitude = points[400]
+    points.insert(401, (stamp, latitude + 0.00001, longitude))
+
+    assert analysis.estimate_circuit_laps(points) == 4
+
+
+def test_gps_gap_leaves_lap_count_unknown(circuit_positions):
+    points = circuit_positions()
+    points[400:] = [(stamp + 60, lat, lon) for stamp, lat, lon in points[400:]]
+
+    assert analysis.estimate_circuit_laps(points) is None
+
+
+def test_gps_jump_leaves_lap_count_unknown(circuit_positions):
+    points = circuit_positions()
+    stamp, latitude, longitude = points[400]
+    points[400] = (stamp, latitude + 0.01, longitude)
+
+    assert analysis.estimate_circuit_laps(points) is None
+
+
+def test_conflicting_positions_at_same_timestamp_leave_laps_unknown(circuit_positions):
+    points = circuit_positions()
+    stamp, latitude, longitude = points[400]
+    points.insert(401, (stamp, latitude + 0.001, longitude))
+
+    assert analysis.estimate_circuit_laps(points) is None
+
+
+def test_out_and_back_and_stationary_gps_noise_do_not_become_laps():
+    out_and_back = [
+        (NOW + index, 40.0 + meters / 111320, -75.0)
+        for index, meters in enumerate(list(range(0, 402, 2)) + list(range(400, -2, -2)))
+    ]
+    noise = [(NOW + index, 40.0 + (index % 3) * 0.000001, -75.0) for index in range(1000)]
+
+    assert analysis.estimate_circuit_laps(out_and_back) is None
+    assert analysis.estimate_circuit_laps(noise) is None
+
+
+@pytest.mark.parametrize("latitude", [float("nan"), float("inf"), 100.0])
+def test_invalid_gps_coordinates_leave_laps_unknown(circuit_positions, latitude):
+    points = circuit_positions()
+    stamp, _, longitude = points[400]
+    points[400] = (stamp, latitude, longitude)
+
+    assert analysis.estimate_circuit_laps(points) is None
+
+
+def test_insufficient_gps_does_not_turn_running_bouts_into_laps(circuit_positions):
+    assert analysis.estimate_circuit_laps([]) is None
+    assert analysis.estimate_circuit_laps(circuit_positions(turns=1)) is None
+
+
 def test_workout_strain_combines_cardio_and_strength():
     strain = analysis.workout_strain(
         duration_seconds=35 * 60,
@@ -223,5 +348,6 @@ def test_interval_running_with_calisthenics_stops_scores_running_pace():
     # The pure running score should reflect 3.0 m/s (~5:33/km) over 720s (~30+ VDOT),
     # not diluted by the 60s rest periods down to 2.0 m/s
     assert summary["score"] >= 28.0
-    assert summary["laps"] == 6
+    assert summary["runBouts"] == 6
+    assert "laps" not in summary
 

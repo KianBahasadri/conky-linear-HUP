@@ -138,7 +138,11 @@ archived 3D city and are no longer used.
 | `WEATHER_REFRESH_SECONDS` | Weather and air-quality refresh interval |
 | `WEATHER_TIMEOUT_SECONDS` | Timeout for each provider request |
 | `WORKOUTS_UNITS` | `metric` (default) or `imperial`; formats the training section's distances and paces |
-| `WORKOUTS_REFRESH_SECONDS` | TCX re-scan interval (default `20`); local files, no network |
+| `WORKOUTS_DIR` | Phone-uploaded TCX directory; defaults to `cache/workouts/` |
+| `WORKOUTS_REFRESH_SECONDS` | TCX refresh interval (default `20`); cached workout-time weather is backfilled with bounded requests |
+| `WORKOUTS_WEATHER_ENABLED` | `1` (default) fetches historical weather context; `0` keeps workout calculations offline |
+| `WORKOUTS_RESTING_HR` | Resting HR for the separate HR workload estimate; default `50` |
+| `WORKOUTS_MAX_HR` | Maximal HR for the separate HR workload estimate; default `195`, must exceed resting HR |
 | `WEIGHT_DIR` | openScale ZIP backup directory; defaults to `weight/` under `WORKOUTS_DIR` (or `cache/workouts/`) |
 | `WEIGHT_USER_ID` | openScale user ID; optional when exactly one user has weight readings, required otherwise |
 | `WEIGHT_REFRESH_SECONDS` | Local openScale backup re-scan interval; see [Caches](caches.md#fetch-intervals) for the default |

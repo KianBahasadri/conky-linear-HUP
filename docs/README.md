@@ -14,7 +14,7 @@
 - [GitHub rail blob experiments](github-rail-blob-experiments.md) — poured-shape study; reverted to the square calendar
 - [Weather and running overlay](weather.md) — current conditions, air quality, runs, and weight
 - [Workout data source](workout-data-source.md) — how workouts get from the phone to this machine
-- [Run analysis](run-analysis.md) — walk/run split, effort score, and the fitness trend behind the running band
+- [Exercise progression](run-analysis.md) — walk/run split, comparable performances, separate workloads, and weight/weather context
 - [Billing forecast panel](billing.md) — live provider spend, prepaid runway, and common EOM forecasts
 - [Git status overlay](git.md) — local repo fleet (branch, dirty, ahead/behind, Actions status)
 - [Sessions overlay](sessions.md) — tmux sessions and the inbound logins driving them

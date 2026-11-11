@@ -210,8 +210,8 @@ width, height = 188, 124
 draw('weather-renderer.lua')
 assert(not has('AQI') and not has('Temp') and has('2.6 km') and has('199.1 lb') and has('−2.3'),
   'replace the old weather metrics while preserving compact training and weight')
-assert(not has('Better') and not has('Worse') and #trails >= 2,
-  'progress is communicated implicitly through semantic sparklines and deltas without text chips')
+assert(not has('Better') and not has('Worse') and #trails >= 1 and not has('5K 26:10'),
+  'legacy caches retain volume and weight while hiding unvalidated fitness predictions')
 assert(not has('Weather unavailable'), 'the thermometer belongs to its own window')
 assert(has('22d') and has('Aug 13') and has('→ 183 lb'),
   'weight must show compact measurement age, previous comparison date, and goal target')
@@ -255,20 +255,33 @@ for _, trail in ipairs(trails) do
   end
 end
 assert(max_trail_y >= 120, 'personal-metrics bands must anchor flush to the bottom of the 124px window')
-assert(has('5:12/km') and not has('5:53') and has('−0:42') and has('5K 26:10 · 29:25 · 168 bpm'),
-  'training shows the walk-excluded running pace, the fitness trend, and the run as a 5K equivalent')
+assert(has('5:12/km') and not has('5:53') and not has('−0:42') and has('Building baseline'),
+  'unvalidated legacy fitness changes must not be displayed as progression')
+
+files['workouts-status.json'] = [[{"ok":true,"lastDateText":"Today","lastAgeDays":0,
+  "trainingPages":[
+    {"headline":"4 laps · 34:32","shortHeadline":"4 laps","detail":"32 push · 12 pull · 44 sit",
+     "shortDetail":"32/12/44 reps","comparison":"Add RPE for comparisons","shortComparison":"Add RPE to compare","kind":"neutral"},
+    {"headline":"Run 6:07/km","detail":"3.6 km · 22:11","comparison":"Continuous run needed","kind":"neutral"}],
+  "recent":[{"distanceUnits":4.0,"runUnits":3.0,"isLast":false},{"distanceUnits":4.9,"runUnits":3.6,"isLast":true}]}]]
+os.time = function(date) return date and original_time(date) or 120000 end
+width = 188
+draw('weather-renderer.lua')
+assert(has('4 laps') and has('32 push') and has('Add RPE') and not has('5K '),
+  'circuit observations, recorded reps, and comparison quality must be distinct')
 width = 132
 draw('weather-renderer.lua')
-assert(has('5:12') and not has('5:12/km') and has('5K 26:10 · 29:25') and not has('168'),
-  'narrow training drops units, then the lowest-priority telemetry, instead of clipping')
-width = 120
+assert(has('4 laps') and has('32/12/44 reps') and not has('32 push'),
+  'narrow screens use compact complete repetition totals')
+os.time = function(date) return date and original_time(date) or 120012 end
 draw('weather-renderer.lua')
-assert(has('−0:42') and has('5:12/km · 5K 26:10') and not has('29:25'),
-  'the fitness trend keeps its place on the headline and the pace moves to the telemetry line')
+assert(has('Run 6:07/km') and has('Continuous run needed') and not has('4 laps'),
+  'workout pages rotate independently without mixing circuit and running evidence')
 width = 188
 draw('thermometer-renderer.lua')
 assert(has('Weather') and has('unavailable') and not has('199.1 lb'), 'a legacy cache cannot invent a weekly comparison')
 height = 70
+files['workouts-status.json'] = [[{"ok":true,"lastDistanceText":"2.6 km","lastRunPaceText":"5:12 /km","lastDurationText":"29:25"}]]
 os.time = function(date) return date and original_time(date) or 120000 end
 draw('weather-renderer.lua')
 assert(has('2.6 km') and not has('199.1 lb') and has('1/2'),

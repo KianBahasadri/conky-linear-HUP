@@ -1,4 +1,6 @@
 import json
+import math
+import xml.etree.ElementTree as ET
 
 import pytest
 
@@ -81,6 +83,39 @@ def write_tcx(
         ),
         encoding="utf-8",
     )
+
+
+def write_circuit_tcx(path, positions, notes="8 3 11"):
+    ns = "http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2"
+    ext = "http://www.garmin.com/xmlschemas/ActivityExtension/v2"
+    root = ET.Element(f"{{{ns}}}TrainingCenterDatabase")
+    activities = ET.SubElement(root, f"{{{ns}}}Activities")
+    activity = ET.SubElement(activities, f"{{{ns}}}Activity", Sport="Running")
+    lap = ET.SubElement(activity, f"{{{ns}}}Lap")
+    ET.SubElement(lap, f"{{{ns}}}TotalTimeSeconds").text = str(positions[-1][0] - positions[0][0])
+    lap_distance = ET.SubElement(lap, f"{{{ns}}}DistanceMeters")
+    track = ET.SubElement(lap, f"{{{ns}}}Track")
+    meters = 0.0
+    previous = positions[0]
+    for stamp, latitude, longitude in positions:
+        step = math.hypot(
+            (latitude - previous[1]) * 111320.0,
+            (longitude - previous[2]) * 111320.0 * math.cos(math.radians(40.0)),
+        )
+        meters += step
+        point = ET.SubElement(track, f"{{{ns}}}Trackpoint")
+        ET.SubElement(point, f"{{{ns}}}Time").text = datetime.fromtimestamp(stamp, timezone.utc).isoformat()
+        ET.SubElement(point, f"{{{ns}}}DistanceMeters").text = str(meters)
+        position = ET.SubElement(point, f"{{{ns}}}Position")
+        ET.SubElement(position, f"{{{ns}}}LatitudeDegrees").text = str(latitude)
+        ET.SubElement(position, f"{{{ns}}}LongitudeDegrees").text = str(longitude)
+        extensions = ET.SubElement(point, f"{{{ns}}}Extensions")
+        tpx = ET.SubElement(extensions, f"{{{ext}}}TPX")
+        ET.SubElement(tpx, f"{{{ext}}}RunCadence").text = "80" if step > 0.1 else "0"
+        previous = (stamp, latitude, longitude)
+    lap_distance.text = str(meters)
+    ET.SubElement(activity, f"{{{ns}}}Notes").text = notes
+    path.write_text(ET.tostring(root, encoding="unicode"), encoding="utf-8")
 
 
 def test_parse_workout_extracts_summary(tmp_path):
@@ -244,15 +279,15 @@ def test_build_status_last_and_week(monkeypatch):
     assert status["lastDurationText"] == "23:49"
     assert status["lastPaceText"] == "9:36 /km"
     assert status["lastRunPaceText"] == ""
-    assert status["lastScoreText"] == ""
+    assert "lastScoreText" not in status
     assert status["lastHeartRateText"] == ""
     assert status["lastCadenceText"] == "61 spm avg"
     assert status["weekRuns"] == 2
     assert status["weekDistanceText"] == "12.5 km"
     assert status["weekDurationText"] == "1:13:49"
     assert status["monthRuns"] == 2
-    assert status["progressVerdict"] == "Steady"
-    assert status["trendText"] == ""
+    assert status["progressVerdict"] == "Building baseline"
+    assert status["workload"]["7"]["runMeters"] == pytest.approx(12482.9)
     assert "runs / 28d" in status["monthSummaryText"]
     assert [entry["distanceUnits"] for entry in status["recent"]] == [10.0, 2.48]
     assert [entry["runUnits"] for entry in status["recent"]] == [None, None]
@@ -307,38 +342,35 @@ def test_build_status_reports_walk_excluded_pace_and_effort(monkeypatch):
     assert status["lastRunPaceText"] == "5:30 /km"
     assert status["lastRunDistanceText"] == "5.0 km"
     assert status["lastWalkDistanceText"] == "1.0 km"
-    assert status["lastScoreText"] == workouts.equivalent_text(runs[-1]["score"])
-    assert status["fitnessText"] and status["trendText"]
-    assert status["progressVerdict"] == "Steady"
+    assert "fitnessText" not in status and "lastScoreText" not in status
+    assert status["progressVerdict"] == "Building baseline"
     assert status["progressKind"] == "neutral"
     recent = status["recent"]
     assert len(recent) == workouts.RECENT_LIMIT
-    assert recent[-1]["runUnits"] == 5.0 and recent[-1]["score"] == runs[-1]["score"]
-    assert all(entry["fitness"] == pytest.approx(33, abs=2.5) for entry in recent)
+    assert recent[-1]["runUnits"] == 5.0
+    assert all("fitness" not in entry and "score" not in entry for entry in recent)
     assert recent[-1]["inWindow"] is True and recent[0]["inWindow"] is False
 
 
-def test_build_status_calls_rising_fitness_better():
+def test_unvalidated_rising_scores_cannot_trigger_a_performance_verdict():
     now = datetime(2026, 10, 22, 20, 0, 0).astimezone()
     runs = history(now, lambda day: 29 + max(0.0, day - 42) * 5 / 42)
 
     status = workouts.build_status(runs, metric_units(), now)
 
-    assert status["progressVerdict"] == "Better"
-    assert status["progressKind"] == "good"
-    assert status["trendText"].startswith("−")
-    assert status["trendSeconds"] <= -workouts.TREND_MIN_SECONDS
+    assert status["progressVerdict"] == "Building baseline"
+    assert status["progressKind"] == "neutral"
+    assert "trendSeconds" not in status
 
 
-def test_build_status_calls_falling_fitness_worse():
+def test_unvalidated_falling_scores_cannot_trigger_a_performance_verdict():
     now = datetime(2026, 10, 22, 20, 0, 0).astimezone()
     runs = history(now, lambda day: 34 - max(0.0, day - 42) * 5 / 42)
 
     status = workouts.build_status(runs, metric_units(), now)
 
-    assert status["progressVerdict"] == "Worse"
-    assert status["progressKind"] == "danger"
-    assert status["trendText"].startswith("+")
+    assert status["progressVerdict"] == "Building baseline"
+    assert status["progressKind"] == "neutral"
 
 
 def test_build_status_flags_a_long_break_without_calling_it_better():
@@ -349,7 +381,7 @@ def test_build_status_flags_a_long_break_without_calling_it_better():
 
     assert status["progressVerdict"] != "Better"
     assert status["progressKind"] in {"caution", "danger"}
-    assert status["trendSeconds"] > 0
+    assert status["performance"]["running"]["reason"] == "Recent workout needed"
 
 
 def test_build_status_counts_only_runs():
@@ -365,7 +397,8 @@ def test_build_status_counts_only_runs():
     assert status["runCount"] == 2
     assert status["weekRuns"] == 2
     assert status["lastSport"] == "Other"
-    assert [entry["score"] for entry in status["recent"]] == [32.0, 30.0]
+    assert len(status["recent"]) == 2
+    assert status["workload"]["7"]["runs"] == 2
 
 
 def test_build_status_without_runs_reports_an_error():
@@ -426,6 +459,7 @@ def test_main_writes_status_cache(monkeypatch, tmp_path):
     workouts_dir.mkdir()
     write_tcx(workouts_dir / "run.tcx")
     monkeypatch.setenv("WORKOUTS_DIR", str(workouts_dir))
+    monkeypatch.setenv("WORKOUTS_WEATHER_ENABLED", "0")
     monkeypatch.setattr(workouts, "CACHE_DIR", tmp_path / "cache")
     monkeypatch.setattr(workouts, "STATUS_PATH", tmp_path / "cache" / "workouts-status.json")
     monkeypatch.setattr(workouts, "ANALYSIS_PATH", tmp_path / "cache" / "workouts-analysis.json")
@@ -468,10 +502,10 @@ def test_parse_workout_extracts_notes(tmp_path):
     assert workout["notes"] == "7 pushup 5 pullup 10 situp"
 
 
-def test_build_status_calisthenics_circuit_rate_of_progress():
+def test_circuit_volume_is_separate_from_performance():
     now = datetime(2026, 10, 30, 12, 0, 0).astimezone()
     run = analyzed_run(
-        now,
+        now - timedelta(hours=1),
         score=30.0,
         notes="7 pushup 5 pullup 10 situp",
         avgHeartRate=147,
@@ -483,6 +517,154 @@ def test_build_status_calisthenics_circuit_rate_of_progress():
     )
     status = workouts.build_status([run], metric_units(), now)
     assert status["lastStrengthText"] == "42 push · 30 pull · 60 sit"
-    assert status["trendText"].endswith("%")
-    assert status["progressVerdict"] in {"Better", "Steady"}
+    assert "rateOfProgress" not in status and "chronicTrainingLoad" not in status
+    assert status["workload"]["7"]["reps"] == {"pushups": 42, "pullups": 30, "situps": 60}
+    assert status["progressKind"] == "neutral"
 
+
+def test_numeric_notes_reanalyze_existing_upload_and_reach_overlay_status(tmp_path, circuit_positions):
+    tcx_path = tmp_path / "run.tcx"
+    write_circuit_tcx(tcx_path, circuit_positions())
+    legacy_workout = workouts.analyze_file(tcx_path)
+    legacy_workout.update(
+        laps=9, reps={"pushups": 72, "pullups": 27, "situps": 99},
+        strengthLoad=106.2, totalLoad=166.2, cardioLoad=60.0,
+    )
+    stat = tcx_path.stat()
+    analysis_path = tmp_path / "analysis.json"
+    analysis_path.write_text(
+        json.dumps({
+            "version": 7,
+            "files": {
+                tcx_path.name: {
+                    "key": [stat.st_size, stat.st_mtime_ns],
+                    "workout": workouts.encode_workout(legacy_workout),
+                }
+            },
+        }),
+        encoding="utf-8",
+    )
+
+    parsed, failures = workouts.load_workouts(tmp_path, analysis_path)
+    now = parsed[0]["startTime"] + timedelta(hours=1)
+    status = workouts.build_status(parsed, metric_units(), now)
+
+    assert failures == 0
+    assert parsed[0]["runBouts"] > parsed[0]["laps"]
+    assert status["lastLapCount"] == 4
+    assert status["lastLapCountSource"] == "gps"
+    assert status["lastStrengthText"] == "32 push · 12 pull · 44 sit"
+    assert "lastStrengthLoad" not in status and "lastTotalLoad" not in status
+    assert status["workload"]["7"]["reps"] == {"pushups": 32, "pullups": 12, "situps": 44}
+    assert status["performance"]["circuit"]["reason"] == "Add RPE for comparisons"
+    saved = json.loads(analysis_path.read_text(encoding="utf-8"))
+    assert saved["version"] == workouts.ANALYSIS_VERSION
+    assert saved["files"][tcx_path.name]["workout"]["reps"] == {
+        "pushups": 32, "pullups": 12, "situps": 44,
+    }
+
+
+def test_unknown_gps_laps_display_per_lap_reps_and_mark_load_incomplete(tmp_path):
+    tcx_path = tmp_path / "run.tcx"
+    write_tcx(tcx_path, notes="8 3 11")
+    run = workouts.analyze_file(tcx_path)
+
+    status = workouts.build_status([run], metric_units(), run["startTime"] + timedelta(hours=1))
+
+    assert status["lastLapCount"] is None
+    assert status["lastLapCountSource"] == "unknown"
+    assert status["lastStrengthText"] == "8 push · 3 pull · 11 sit /lap"
+    assert status["workload"]["7"]["reps"] == {"pushups": 0, "pullups": 0, "situps": 0}
+    assert status["workload"]["7"]["unquantifiedRepSessions"] == 1
+    assert "+?" in status["trainingPages"][2]["headline"]
+    assert "+?" in status["trainingPages"][2]["shortHeadline"]
+    assert "rateOfProgressText" not in status
+    assert status["progressVerdict"] == "Building baseline"
+    assert status["progressKind"] == "neutral"
+
+
+@pytest.mark.parametrize("incomplete", ["truncated", "distance"])
+def test_incomplete_track_does_not_extrapolate_circuit_totals(
+    tmp_path, monkeypatch, circuit_positions, incomplete
+):
+    tcx_path = tmp_path / "run.tcx"
+    write_circuit_tcx(tcx_path, circuit_positions())
+    parsed = workouts.parse_workout(tcx_path)
+    if incomplete == "truncated":
+        parsed["truncated"] = True
+    else:
+        parsed["distanceMeters"] *= 2
+    monkeypatch.setattr(workouts, "parse_workout", lambda _path: dict(parsed))
+
+    run = workouts.analyze_file(tcx_path)
+
+    assert run["laps"] is None
+    assert run["reps"] == {"pushups": 8, "pullups": 3, "situps": 11}
+    assert run["repsPerLap"] is True
+    assert run["repsIncomplete"] is True
+
+
+def test_optional_effort_keeps_numeric_shorthand_and_source_laps(tmp_path, circuit_positions):
+    path = tmp_path / "run.tcx"
+    write_circuit_tcx(path, circuit_positions(), notes="8 3 11; rpe=7; variant=standard")
+    result = workouts.analyze_file(path)
+    assert result["laps"] == 4
+    assert result["reps"] == {"pushups": 32, "pullups": 12, "situps": 44}
+    assert result["trainingNotes"]["rpe"] == 7
+    assert result["circuit"]["seconds"] > 0
+    assert "totalLoad" not in result and "strengthLoad" not in result
+
+
+def test_hr_calibration_change_invalidates_per_file_cache(tmp_path, monkeypatch):
+    path = tmp_path / "run.tcx"
+    write_tcx(path)
+    cache = tmp_path / "analysis.json"
+    workouts.load_workouts(tmp_path, cache)
+    calls = []
+    original = workouts.analyze_file
+    monkeypatch.setattr(workouts, "analyze_file", lambda path: calls.append(path.name) or original(path))
+    monkeypatch.setenv("WORKOUTS_MAX_HR", "200")
+    workouts.load_workouts(tmp_path, cache)
+    assert calls == ["run.tcx"]
+    assert json.loads(cache.read_text())["hrSettings"]["maximumHR"] == 200
+
+
+def test_changed_unreadable_upload_retains_last_good_file_summary(tmp_path):
+    path = tmp_path / "run.tcx"
+    write_tcx(path)
+    cache = tmp_path / "analysis.json"
+    first, _ = workouts.load_workouts(tmp_path, cache)
+    path.write_text("<upload-in-progress>")
+    retained, failures = workouts.load_workouts(tmp_path, cache)
+    assert failures == 1 and len(retained) == 1
+    assert retained[0]["distanceMeters"] == first[0]["distanceMeters"]
+    assert retained[0]["analysisStale"] is True
+
+
+def test_refresh_error_retains_a_visible_stale_status(tmp_path, monkeypatch):
+    path = tmp_path / "status.json"
+    path.write_text(json.dumps({"ok": True, "updatedAt": "earlier", "lastDistanceText": "4.0 km"}))
+    monkeypatch.setattr(workouts, "STATUS_PATH", path)
+    workouts.write_error("Upload unreadable")
+    status = json.loads(path.read_text())
+    assert status["ok"] and status["stale"] and status["lastDistanceText"] == "4.0 km"
+    assert status["updatedAt"] == "earlier" and status["error"] == "Upload unreadable"
+
+
+@pytest.mark.parametrize("previous", ["null", "[]", '"broken"'])
+def test_refresh_error_recovers_from_a_nonobject_status(tmp_path, monkeypatch, previous):
+    path = tmp_path / "status.json"
+    path.write_text(previous)
+    monkeypatch.setattr(workouts, "STATUS_PATH", path)
+    workouts.write_error("Upload unreadable")
+    status = json.loads(path.read_text())
+    assert status["ok"] is False and status["error"] == "Upload unreadable"
+
+
+@pytest.mark.parametrize("value", ["NaN", "Infinity", "-10"])
+def test_nonfinite_or_negative_workout_totals_are_rejected(tmp_path, value):
+    path = tmp_path / "run.tcx"
+    write_tcx(path)
+    path.write_text(path.read_text().replace("<TotalTimeSeconds>1429</TotalTimeSeconds>", f"<TotalTimeSeconds>{value}</TotalTimeSeconds>"))
+    with pytest.raises(ValueError, match="Invalid workout totals"):
+        workouts.parse_workout(path)

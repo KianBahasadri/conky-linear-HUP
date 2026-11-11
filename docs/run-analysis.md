@@ -1,90 +1,199 @@
-# Run analysis
+# Exercise progression
 
-`scripts/run_analysis.py` turns each uploaded TCX track into a walk-aware
-summary and turns the run history into a fitness trend. `fetch_workouts.py`
-caches the per-file results and writes the status fields listed in
-[Caches](caches.md); the running band of the
-[weather and running overlay](weather.md) draws them.
+`scripts/run_analysis.py` measures gait and GPS circuits. The pure
+`scripts/exercise_progression.py` module parses training notes, keeps workloads
+separate, and compares matched performances. `scripts/workout_context.py`
+attaches preceding weight and hourly weather. `fetch_workouts.py` owns TCX I/O,
+caching, and the [overlay](weather.md) output. Cache contracts belong to
+[Caches](caches.md); settings belong to [Configuration](configuration.md).
 
-## Input
+## Input and integrity
 
-- Lap totals give each workout's distance and time, so walking still counts
-  toward volume. Trackpoints (time, cumulative distance, `RunCadence`) feed the
-  gait split.
-- An upload that ends mid-file is kept and marked `truncated`. RunnerUp writes
-  the lap totals before the track, so the totals stay complete and the
-  trackpoints before the break still give a pace and score. When the track
-  covers less than 90% of the lap distance, the walk/run split of the missing
-  part is unknown, so the sparkline draws that bar solid.
-- `Running` workouts always count as runs. `Biking`, `Cycling`, `Walking`,
-  `Hiking`, `Swimming`, and `Elliptical` never do. Any other sport (RunnerUp's
-  `Other`) counts only with at least 5 minutes of detected running. The week
-  and 28-day totals and the recent-run list use the same set.
+- Lap totals give distance and duration, including walking. Negative, nonfinite,
+  or malformed totals are rejected. Missing totals can use the available track
+  duration; an upload cut off mid-file retains readable totals and is marked
+  truncated. An incomplete track never establishes a circuit total.
+- Only completed workouts with timezone-aware timestamps and finite totals
+  contribute to statistics. Identical sport/start/duration/distance reuploads
+  count once; complete, current analyses take precedence, then newer valid
+  uploads. Future sessions and invalid intervals are excluded.
+- Running workouts count as runs. Biking, cycling, walking, hiking, swimming,
+  and elliptical workouts never do. Other sports require five minutes of
+  detected running. All sports remain eligible for workload bookkeeping.
+- An unreadable replacement upload retains its previous successful per-file
+  summary with a stale flag. It cannot qualify for a performance comparison.
+  An overall refresh failure retains and visibly marks the last good display.
+  An advisory lock prevents concurrent refreshes from racing cache writes.
 
-## Gait split
+## Walk/run split and sustained runs
 
-- The track is resampled to 1 Hz. Recording gaps longer than 10 s are pauses
-  (capped at 10 minutes) and count as neither running nor walking time.
-- Speed is the median per-second distance over an 11 s window. A four-state
-  hidden Markov model (stopped, walking, running, vehicle), decoded with
-  Viterbi, labels every second from speed and cadence. `RunCadence` counts
-  strides per minute, about 54 walking and 82 running.
-- A cadence below 66 at more than 2.6 m/s is a sensor fault, not a long
-  stride, so it is ignored, and tracks without cadence fall back to speed
-  alone. Sustained speeds above about 5.5 m/s are a vehicle and count as
-  neither running nor walking.
-- Running pace uses only running seconds and meters. Warm-up and cool-down are
-  the distances before the first and after the last run of at least 60 s.
+The track is resampled to 1 Hz. Recording gaps longer than 10 seconds are
+pauses, capped at ten minutes. An 11-second median speed and cadence feed a
+four-state Viterbi model: stopped, walking, running, vehicle. RunCadence counts
+strides per minute, roughly 54 walking and 82 running. Cadence below 66 at speeds
+above 2.6 m/s is ignored as a sensor fault. Missing cadence uses speed alone;
+sustained speeds above about 5.5 m/s are treated as vehicle travel.
 
-## Effort score
+Running pace includes only running seconds and distance. Warm-up and cooldown
+are measured around running stretches of at least 60 seconds. `runBouts` counts
+those stretches; it is never a circuit-lap multiplier. A known walk/run bar
+requires track coverage of at least 90% of the lap distance.
 
-- A run's score is the best Daniels–Gilbert VDOT over any window of either the moving
-  track or the concentrated running bouts lasting at least max(8 min, min(60 min, half the
-  running time)), plus `2.5 × ln(T / 20 min)` for a window of length `T`. For interval runs
-  or circuit workouts with bodyweight exercise stops between laps, evaluating the running
-  segments ensures stationary rests do not artificially depress the runner's speed score.
-  The adjustment credits longer windows for the faster fatigue of recreational
-  runners, so a short hard run and a long steady one share one scale (roughly
-  a Riegel exponent of 1.1–1.15).
-- Runs with less than 8 minutes or 1.2 km of running get no score. They still
-  count toward volume and reset the detraining clock.
-- Scores are shown as the 5K time that would earn the same score (`5K 29:23`).
+A sustained-running observation requires at least ten uninterrupted running
+minutes and no recording gap over ten seconds. Its pace comes from that
+continuous block, with no rests removed or running segments concatenated. GPS
+location, course bounds, and block distance describe its comparison route.
+Steady HR uses the final five minutes with at least 90% valid timestamp coverage.
 
-## Workout load and Rate of Progress
+Legacy VDOT and latent-fitness helpers remain diagnostic utilities. Their scores
+are not published in the display status or used to judge progression.
 
-- For cross-training, calisthenics runs, and multi-sport sessions, each workout receives
-  a unified physical strain score (`totalLoad`):
-  - **Cardio Load (TRIMP):** Duration scaled by Heart Rate Reserve factor $\Delta\text{HR} = (\text{HR} - 50) / 145$
-    via Banister's impulse equation ($t \times \Delta\text{HR} \times 0.64 e^{1.92 \Delta\text{HR}}$), falling back to
-    sport MET multipliers when heart rate is absent.
-  - **Strength Load:** Bodyweight reps extracted from TCX `<Notes>` (`pushups`, `pullups`, `situps`), multiplied
-    by lap count for per-lap routines and weighted by biomechanical load points (pull-ups 1.5, push-ups 0.5, sit-ups 0.3).
-- **Chronic Training Load (CTL):** An exponential moving average of daily workout load with a 28-day time constant.
-- **Rate of Progress:** The 28-day percentage change in training capacity $\frac{\text{CTL}_{\text{now}} - \text{CTL}_{\text{28d ago}}}{\text{CTL}_{\text{28d ago}}} \times 100\%$.
-  When bodyweight circuits are detected, the progress headline shows this rate of progress (`+59%`) in semantic green
-  (`Better`) or red (`Worse`), and the telemetry line highlights total strength reps (`35 push · 25 pull · 50 sit`).
+## Exercise notes
 
-## Fitness trend
+Exactly three nonnegative integers mean **push-ups, pull-ups, sit-ups per lap**:
 
-- Fitness is a latent level on a 0.25-point grid, filtered forward and
-  smoothed backward over every run. Each run gets a smoothed level, including
-  unscored runs.
-- A scored run usually lands a little below the level: an exponential gap with
-  mean 1.5 points, plus 1 point of noise. Sometimes it lands anywhere up to 25
-  points below (a 35% easy-day share), and rarely far off in either direction
-  (a 4% outlier share, sd 8). Easy days and GPS glitches therefore barely move
-  the level.
-- Between runs the level drifts (variance 0.03 per day) and occasionally jumps
-  (4% per week, sd 4), which absorbs comebacks and layoffs. After 7 days
-  without a run it loses 0.06 points a day, up to 5 points per break.
-- The verdict compares the smoothed level now with the level 28 days ago. It is
-  `Better` when the chance the level rose is at least 80% and the 5K
-  equivalent improved by at least 15 s, `Worse` in the mirror case, and
-  `Steady` otherwise. A trend needs at least three scored runs.
-- The chance treats the two estimates as independent. That understates
-  confidence and keeps the verdict conservative. After a long break,
-  detraining shows as a slower trend in amber (the 10-day age rule), usually
-  before the evidence is strong enough for `Worse`.
-- Heat, hills, and heart rate are not modeled. GPS altitude is too noisy for
-  grade. Open-Meteo history for these runs showed no measurable heat effect on
-  the scores, so the fetcher stays offline.
+```text
+8 3 11
+8 3 11; rpe=7
+8 3 11; rpe=7; variant=standard; rest=60
+```
+
+Named routines such as `8 push-ups + 3 pullups + 11 situps` use the same order
+and per-lap interpretation. Explicit `total` notes are not multiplied. Unknown
+rep counts, such as a bare `pullups`, stay unknown; no default count is invented.
+
+Optional metadata follows semicolons and uses `key=value` or `key:value`:
+
+| Field | Meaning |
+| --- | --- |
+| `rpe` | Whole-session effort, 0–10; enables matched-effort circuit and running comparisons and session-RPE workload |
+| `variant` | Exercise/form identifier; defaults to `usual`, which assumes the usual form was maintained |
+| `rest` | Recorded rest protocol in seconds, 0–3600; comparisons require the same recorded value |
+| `laps` | Explicit positive integer count; disagreement with GPS leaves the count conflicted and unmultiplied |
+| `rir` | Estimated reps in reserve, 0–30; one value for all named exercises or push/pull/sit values such as `2/1/3` |
+| `test` | `run`, `pushups`, `pullups`, or `situps`; an exercise test describes a single recorded benchmark set |
+
+A repetition-capacity benchmark can be logged as:
+
+```text
+20 pushups total; test=pushups; rir=2; rest=120; variant=standard
+```
+
+Repeated or invalid metadata is retained as a quality error and excludes the
+session from comparisons. Valid recorded reps and basic volumes remain usable.
+Effort ratings are optional; missing ratings never become inferred zeroes.
+
+## GPS circuits
+
+Circuit measurements require repeated closed GPS loops. At least two loops
+must return within 20 m of an anchor, travel at least 200 m over at least one
+minute, enclose at least 2000 m², and have area at least 0.02 times squared
+path length. Comparable loop lengths must be within 25%. Five-metre thinning
+reduces GPS jitter. Ten-metre anchor cells retain the course entrance.
+
+Nearby duplicate timestamps are tolerated; contradictory positions, jumps
+above 15 m/s, recording gaps over ten seconds, truncated uploads, and inadequate
+track coverage leave the GPS count unknown. Short out-and-back detours cannot
+become laps. An explicit note count can supply the rep multiplier but cannot
+manufacture a timed GPS circuit.
+
+Circuit elapsed time spans first gate entry to the final completed-loop entry,
+including exercise/rest time and intervening detours, while excluding approach
+and cooldown. Loop times, geometry, and a conservative 40-second gate-timing
+resolution are retained. The timing resolution is an engineering guard against
+boundary placement, not a validated physiological-change threshold. Rep totals
+are inferred from the logged prescription and lap count; GPS does not observe
+whether every prescribed rep was performed or its technique.
+
+## Independent workload measures
+
+Seven- and 28-day windows report run distance/count, total session minutes, and
+separate push/pull/sit totals. Unknown-multiplier reps do not enter total reps;
+partly quantified sessions retain known totals and an incomplete count.
+
+Two internal-load series remain separate:
+
+- **HR TRIMP estimate:** integrate the Banister rate over successive valid HR
+  samples using trapezoidal integration. Coverage must be at least 90%; gaps
+  over ten seconds, conflicting duplicate readings, invalid calibration, or
+  coverage inconsistent with duration leave the load unknown. Resting and
+  maximal HR are configurable estimates. No MET fallback fills missing HR.
+- **Session-RPE:** session minutes multiplied by the recorded RPE. Only sessions
+  with valid effort metadata contribute. Report the number of covered sessions
+  beside each sum, so partial histories are not silently treated as complete.
+
+Neither series includes arbitrary cross-exercise rep points. Neither is a
+percentage improvement in fitness, and workload changes do not set the
+performance color.
+
+## Weight and workout-time weather
+
+Weight comes from the selected openScale user's backup, including its WAL.
+Each workout uses only preceding measurements, with explicit kg conversion,
+source age, sample count, and a trailing seven-day median. A measurement more
+than seven days old is unavailable for matching. A broken backup retains
+previous readings as stale and excludes them from comparisons.
+
+Hourly Open-Meteo ECMWF IFS temperature, humidity, dew point, wind, and solar
+radiation are interpolated and averaged over the workout interval in UTC.
+Coordinates are rounded to 0.01 degrees. Units, timestamp spacing, array lengths,
+missing hours, and supported value ranges are validated. Model weather is
+marked estimated; it does not imply on-site readings or measured WBGT.
+
+Monthly weather tiles are cached. At most three requests of ten seconds each
+run per refresh, prioritizing recent sessions; history fills over subsequent
+refreshes. Failures preserve already usable historical tiles and retry after an
+hour. HTTP 429/503 responses pause all weather requests and honor a longer
+`Retry-After` interval. A successful but incomplete tile is retried no sooner than six hours.
+Missing location or weather stays unknown and never prevents local statistics.
+
+Weight and weather select comparable sessions; they do not award bonus points
+or apply an unvalidated seconds-per-pound or seconds-per-degree correction.
+
+## Performance comparisons
+
+Comparisons use up to 84 days of earlier sessions and distinguish:
+
+- **Circuit performance:** the same rep prescription, per-lap/total convention,
+  lap count, route, form identifier, rest protocol, and RPE within one point.
+- **Running performance:** sustained runs on comparable routes/distances.
+  With RPE, compare pace at matched effort. Without RPE, valid steady HR can
+  be compared at paces within 2%, yielding `Lower HR`/`Higher HR` response labels.
+- **Repetition capacity:** the same exercise test, form, recorded rest protocol,
+  and RIR within one repetition. Ordinary circuit rep totals remain workload.
+
+Routes must have centres within 50 m, distances within 5%, and similar width
+and height (within 10% or 20 m). Weight medians must be within 2%. Circuit and
+running comparisons additionally require temperature and dew point within 3°C,
+wind within 5 km/h, and solar radiation within 150 W/m². These are conservative
+matching calipers, not validated correction equations. Missing context, stale
+uploads, changed prescriptions, and workouts older than ten days prevent a
+current performance verdict.
+
+A single matched difference is descriptive and stays neutral. At least eight
+sessions on distinct UTC days are required for the change screen: the latest
+four versus the preceding four. An exact two-sided rank-sum permutation screen
+must meet p ≤ 0.05, and the median difference must exceed measurement resolution
+(40 seconds for circuits, 1 second/km or bpm for running, 1 rep for capacity).
+Otherwise the result stays within variation or continues building a baseline.
+
+The screen assumes comparable, sufficiently independent observations. It labels
+an observed matched performance change (`Faster`, `Slower`, or a specific HR/rep
+response); it does not establish a causal training effect or a calibrated
+probability that overall fitness changed. Repeated laps and same-day sessions
+are not counted as independent longitudinal evidence.
+
+## Evidence behind the design
+
+The separation of load, athlete state, and adaptation follows the
+[2026 athlete-monitoring framework](https://doi.org/10.1007/s40279-026-02417-4).
+Distinct resistance-training outcomes are described by the
+[2026 ACSM position stand](https://pmc.ncbi.nlm.nih.gov/articles/PMC12965823/).
+[Session-RPE research](https://pubmed.ncbi.nlm.nih.gov/11708692/) and
+[longitudinal HR/running-speed research](https://pmc.ncbi.nlm.nih.gov/articles/PMC7967764/)
+support those measures within their intended scope. Environmental context is
+supported by [race-weather research](https://pmc.ncbi.nlm.nih.gov/articles/PMC8677617/),
+while [push-up force measurements](https://pubmed.ncbi.nlm.nih.gov/20179649/)
+and [running bodyweight experiments](https://pubmed.ncbi.nlm.nih.gov/18055630/)
+support retaining bodyweight context. None validates this application's complete
+comparison pipeline; its numerical matching rules are documented above.

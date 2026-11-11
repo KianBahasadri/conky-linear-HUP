@@ -4,7 +4,8 @@ return function(shared, repo_root)
   local weight_path = repo_root .. '/cache/weight-status.json'
   local ui = shared.ui
   local section_h = 49
-  local gap = 13
+  local training_h = 62
+  local gap = 8
 
   local function json_string(content, key, fallback)
     local value = shared.json_string(content, key, nil)
@@ -60,11 +61,21 @@ return function(shared, repo_root)
       table.insert(recent, {
         distance_units = json_number(entry, 'distanceUnits'),
         run_units = shared.json_number(entry, 'runUnits', nil),
-        score = shared.json_number(entry, 'score', nil),
-        fitness = shared.json_number(entry, 'fitness', nil),
         in_window = shared.json_boolean(entry, 'inWindow', true),
         is_last = shared.json_boolean(entry, 'isLast', false),
       })
+    end
+    local pages = {}
+    for _, entry in ipairs(shared.json_array_objects(content, 'trainingPages')) do
+      pages[#pages + 1] = {
+        headline = json_string(entry, 'headline', ''),
+        short_headline = json_string(entry, 'shortHeadline', ''),
+        detail = json_string(entry, 'detail', ''),
+        short_detail = json_string(entry, 'shortDetail', ''),
+        comparison = json_string(entry, 'comparison', ''),
+        short_comparison = json_string(entry, 'shortComparison', ''),
+        kind = json_string(entry, 'kind', 'neutral'),
+      }
     end
 
     local hr_short = json_string(content, 'lastHeartRateShortText', '')
@@ -79,17 +90,17 @@ return function(shared, repo_root)
 
     return {
       ok = true,
+      stale = shared.json_boolean(content, 'stale', false),
+      pages = pages,
       last_date = json_string(content, 'lastDateText', ''),
       last_age = json_string(content, 'lastAgeText', ''),
       last_age_days = json_number(content, 'lastAgeDays', 0),
       last_distance = json_string(content, 'lastDistanceText', '--'),
       last_duration = json_string(content, 'lastDurationText', '--'),
       last_pace = pace_compact,
-      last_score = json_string(content, 'lastScoreText', ''),
       last_strength = json_string(content, 'lastStrengthText', ''),
       last_heart_rate = hr_short,
       trend = json_string(content, 'trendText', ''),
-      fitness_baseline = shared.json_number(content, 'fitnessBaselineScore', nil),
       kind = json_string(content, 'progressKind', 'neutral'),
       recent = recent,
     }
@@ -145,9 +156,8 @@ return function(shared, repo_root)
     end
   end
 
-  -- Bars are total distance with the walked share hollow; dots are each run's
-  -- effort score and the line is the smoothed fitness level, dashed where it
-  -- stood at the start of the trend window.
+  -- Volume only: total distance, with the walked share hollow. A changing
+  -- exercise prescription must never masquerade as a fitness curve.
   local function draw_run_sparkline(cr, workouts, x, y, w, h)
     local recent = workouts.recent
     local n = math.min(#recent, 12)
@@ -156,26 +166,9 @@ return function(shared, repo_root)
     local kind = workouts.kind
     local color = semantic_color(kind)
     local max_dist = 1.0
-    local lo, hi = math.huge, -math.huge
-    local function widen(value, top_only)
-      if value == nil then return end
-      if value > hi then hi = value end
-      if not top_only and value < lo then lo = value end
-    end
-    widen(workouts.fitness_baseline)
     for i = start_idx, #recent do
       local item = recent[i]
       if item.distance_units > max_dist then max_dist = item.distance_units end
-      widen(item.fitness)
-      widen(item.score, true)
-    end
-    local scaled = lo < math.huge
-    if scaled then
-      lo = lo - 3
-      hi = math.max(hi, lo + 4)
-    end
-    local function level_y(value)
-      return y + h - 2 - shared.clamp((value - lo) / (hi - lo), 0, 1) * (h - 4)
     end
 
     local bar_gap = 3
@@ -183,12 +176,6 @@ return function(shared, repo_root)
     local total_w = bar_w * n + bar_gap * (n - 1)
     local left_x = x + math.floor((w - total_w) / 2)
 
-    if scaled and workouts.fitness_baseline then
-      local base_y = level_y(workouts.fitness_baseline)
-      ui.dash(cr, left_x, base_y, left_x + total_w, base_y, ui.line_strong, 1, 2, 2, 0.75)
-    end
-
-    local line = {}
     for idx = 1, n do
       local item = recent[start_idx + idx - 1]
       local bx = left_x + (idx - 1) * (bar_w + bar_gap)
@@ -207,20 +194,6 @@ return function(shared, repo_root)
       if run_h > 0 then
         ui.rect(cr, bx, y + h - run_h, bar_w, run_h, bar_color, 1.5, bar_alpha)
       end
-      if scaled and item.fitness then line[#line + 1] = {bx + bar_w / 2, level_y(item.fitness)} end
-    end
-
-    if not scaled then return end
-    for idx = 1, n do
-      local item = recent[start_idx + idx - 1]
-      if item.score then
-        local cx = left_x + (idx - 1) * (bar_w + bar_gap) + bar_w / 2
-        ui.circle(cr, cx, level_y(item.score), 1.25, item.is_last and ui.strong or ui.ink, item.is_last and 1 or 0.7)
-      end
-    end
-    if #line >= 2 then
-      ui.polyline(cr, line, color, 1.5, 0.95, true)
-      draw_endpoint(cr, line[#line][1], line[#line][2], kind, color)
     end
   end
 
@@ -297,50 +270,48 @@ return function(shared, repo_root)
     draw_endpoint(cr, last_pt[1], last_pt[2], end_kind, end_color)
   end
 
-  local function draw_training(cr, workouts, width, top)
+  local function draw_training(cr, workouts, width, top, available_height)
     top = top or 0
     if not workouts.ok then
       ui.text(cr, workouts.error, 0, top + 14, {size = 11, mono = true, color = ui.muted, width = width})
       return
     end
-    local color = semantic_color(workouts.kind)
-    local recency = short_age(workouts.last_age, workouts.last_date)
+    local pages = workouts.pages
+    -- Old caches remain readable during an upgrade without displaying their
+    -- unvalidated fitness or workload percentages.
+    if #pages == 0 then
+      pages = {{headline = workouts.last_distance .. ' · ' .. workouts.last_pace,
+        detail = workouts.last_strength ~= '' and workouts.last_strength or workouts.last_duration,
+        comparison = 'Building baseline', kind = 'neutral'}}
+    end
+    local page = pages[math.floor(os.time() / 12) % #pages + 1]
+    local color = semantic_color(page.kind)
+    local recency = workouts.stale and 'Stale' or short_age(workouts.last_age, workouts.last_date)
     local recency_w = recency ~= '' and (ui.width(cr, recency, 11, true) + 6) or 0
-    local recency_color = workouts.last_age_days >= 10 and ui.caution or ui.muted
-
-    local x = 0
-    x = x + ui.text(cr, workouts.last_distance, x, top + 11, {size = 13.5, bold = 'bold', color = ui.ink}) + 6
+    local recency_color = (workouts.stale or workouts.last_age_days >= 10) and ui.caution or ui.muted
     local limit = width - recency_w
-    local trend_w = workouts.trend ~= '' and ui.width(cr, workouts.trend, 11, true, 'bold') or 0
-    local pace = workouts.last_pace ~= '--' and workouts.last_pace or ''
-    local pace_str = width < 160 and pace:gsub('/[a-zA-Z]+$', '') or pace
-    local pace_inline = pace_str ~= ''
-      and x + ui.width(cr, pace_str, 11, true) + (trend_w > 0 and 5 + trend_w or 0) <= limit
-    if pace_inline then
-      x = x + ui.text(cr, pace_str, x, top + 11, {size = 11, mono = true, color = ui.muted}) + 5
+    local function fitted(primary, compact, size, available)
+      if ui.width(cr, primary or '', size, true, size == 13.5 and 'bold' or nil) <= available then return primary or '' end
+      return compact and compact ~= '' and compact or primary or ''
     end
-    if trend_w > 0 and x + trend_w <= limit then
-      ui.text(cr, workouts.trend, x, top + 11, {size = 11, mono = true, bold = 'bold', color = color})
-    end
+    local headline = fitted(page.headline, page.short_headline, 13.5, limit)
+    ui.text(cr, headline, 0, top + 11, {size = 13.5, mono = true, bold = 'bold', color = ui.ink, width = limit})
     if recency ~= '' then
       ui.text(cr, recency, width, top + 11, {size = 11, mono = true, color = recency_color, align = 'right'})
     end
 
-    local hr_part = width < 160 and workouts.last_heart_rate:gsub('%s*bpm$', '') or workouts.last_heart_rate
-    local score_part = workouts.last_strength ~= '' and workouts.last_strength
-      or (workouts.last_score ~= '' and ('5K ' .. workouts.last_score) or '')
-    local telemetry = ''
-    for _, part in ipairs({pace_inline and '' or pace, score_part, workouts.last_duration, hr_part}) do
-      local candidate = join({telemetry, part}, ' · ')
-      if ui.width(cr, candidate, 11, true) > width then break end
-      telemetry = candidate
+    ui.text(cr, fitted(page.detail, page.short_detail, 11, width), 0, top + 26,
+      {size = 11, mono = true, color = ui.muted, width = width})
+    local compact = (available_height or training_h) < training_h
+    if not compact then
+      ui.text(cr, fitted(page.comparison, page.short_comparison, 11, width), 0, top + 40,
+        {size = 11, mono = true, color = color, width = width})
     end
-    ui.text(cr, telemetry, 0, top + 26, {size = 11, mono = true, color = ui.muted, width = width})
 
     if #workouts.recent >= 2 then
-      draw_run_sparkline(cr, workouts, 0, top + 31, width, 18)
+      draw_run_sparkline(cr, workouts, 0, top + (compact and 31 or 45), width, 17)
     else
-      ui.line_between(cr, 0, top + 40, width, top + 40, color, 1.5, 0.7)
+      ui.line_between(cr, 0, top + 55, width, top + 55, color, 1.5, 0.7)
     end
   end
 
@@ -400,10 +371,11 @@ return function(shared, repo_root)
   local function draw()
     ui.draw(function(cr, width, height)
       local sections = {
-        {height = section_h, draw = draw_training, data = read_workouts()},
+        {height = height < training_h + gap + section_h and math.min(training_h, math.max(49, height - 16)) or training_h,
+          draw = draw_training, data = read_workouts()},
         {height = section_h, draw = draw_weight, data = read_weight()},
       }
-      local content_height = section_h + gap + section_h
+      local content_height = training_h + gap + section_h
       local available = height < content_height and height - 16 or height
       local pages, used = {{}}, 0
       for _, section in ipairs(sections) do
@@ -417,7 +389,7 @@ return function(shared, repo_root)
       local page_index = math.floor(os.time() / 30) % #pages + 1
       local top = height >= content_height and (height - content_height) or 0
       for _, section in ipairs(pages[page_index]) do
-        section.draw(cr, section.data, width, top)
+        section.draw(cr, section.data, width, top, section.height)
         top = top + section.height + gap
       end
       if #pages > 1 then ui.footer(cr, page_index .. '/' .. #pages, width, height) end
