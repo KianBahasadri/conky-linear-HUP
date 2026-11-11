@@ -3,9 +3,9 @@ return function(shared, repo_root)
   local workouts_path = repo_root .. '/cache/workouts-status.json'
   local weight_path = repo_root .. '/cache/weight-status.json'
   local ui = shared.ui
-  local section_h = 45
-  local training_h = 75
-  local gap = 4
+  local section_h = 49
+  local training_h = 62
+  local gap = 8
 
   local function json_string(content, key, fallback)
     local value = shared.json_string(content, key, nil)
@@ -418,7 +418,7 @@ return function(shared, repo_root)
         ui.text(cr, duration, width, top + 24, {size = 11, mono = true, color = ui.muted, align = 'right'})
       end
     end
-    local compact = (available_height or training_h) < 64
+    local compact = (available_height or training_h) < training_h
     if #workouts.recent > 0 and (available_height or training_h) >= 48 then
       local chart_y = compact and 29 or 42
       draw_combined_work(cr, workouts, 0, top + chart_y, width, (available_height or training_h) - chart_y, not compact)
@@ -457,14 +457,14 @@ return function(shared, repo_root)
       strip_unit(weight.change),
       weight.previous_date ~= '' and weight.previous_date or weight.last_date,
     }, ' · ')
-    ui.text(cr, step_str, 0, top + 24, {
+    ui.text(cr, step_str, 0, top + 26, {
       size = 11,
       mono = true,
       color = ui.muted,
       width = math.max(40, width - goal_w),
     })
     if goal_str ~= '' then
-      ui.text(cr, goal_str, width, top + 24, {
+      ui.text(cr, goal_str, width, top + 26, {
         size = 11,
         mono = true,
         color = ui.muted,
@@ -472,8 +472,8 @@ return function(shared, repo_root)
       })
     end
 
-    if #weight.recent >= 2 and (available_height or section_h) >= 45 then
-      draw_weight_sparkline(cr, weight.recent, weight.kind, 0, top + 27, width, 18)
+    if #weight.recent >= 2 and (available_height or section_h) >= 49 then
+      draw_weight_sparkline(cr, weight.recent, weight.kind, 0, top + 31, width, 18)
     elseif (available_height or section_h) >= 41 then
       ui.line_between(cr, 0, top + 40, width, top + 40, color, 1.5, 0.7)
     end
