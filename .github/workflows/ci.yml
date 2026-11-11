@@ -14,7 +14,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
-      - run: sudo apt-get update && sudo apt-get install -y lua5.4
+      - name: Check out Lua 5.4.8
+        uses: actions/checkout@v4
+        with:
+          repository: lua/lua
+          ref: 6e22fedb74cf0c9b6656e9fce8b7331db847c605 # v5.4.8
+          path: cache/ci-lua
+          persist-credentials: false
+      - name: Build Lua
+        run: |
+          make -C cache/ci-lua -j2 MYCFLAGS=-DLUA_USE_LINUX MYLIBS=-ldl
+          ln -s lua cache/ci-lua/lua5.4
+          echo "$GITHUB_WORKSPACE/cache/ci-lua" >> "$GITHUB_PATH"
+          cache/ci-lua/lua5.4 -v
       - run: uv sync --locked
       - run: uv run pytest tests/ -q
       - run: uv run python -m py_compile scripts/*.py
