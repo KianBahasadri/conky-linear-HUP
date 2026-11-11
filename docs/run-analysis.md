@@ -105,25 +105,34 @@ uses the existing phone recordings and notes.
 Recorded reps describe training volume, not maximal repetition capacity. There
 are no cross-exercise rep points or inferred maximal-strength scores.
 
-## Recorded pace trend
+## Recorded work curves
 
-The display's pace dots come from observed running seconds/metres, excluding
-walking and stops. At least five running minutes, 500 running metres, 90% track
-coverage, and a complete, current analysis are required for a plotted point.
-These are recording-quality checks, not a request to change the routine.
+The static display plots four independent quantities from the last 12 running
+workouts: detected running distance, push-ups, pull-ups, and sit-ups completed
+per session. Every curve starts at zero and has its own scale and unit. Values
+are not added, weighted, or normalized into an overall fitness score.
 
-The dashed pace line is a trailing median of the last three distinct UTC days,
-using only data already recorded at each point. Same-day repeats update that
-day's value. Missing observations, breaks longer than 28 days, and a change
-between running-only and exercise-circuit sessions break the line and reset
-its median. A separate guide is the prior 28-day median for the current session
-class. Faster running pace plots higher. Distance bars remain a separate
-volume layer.
+More completed distance or reps moves the corresponding curve upward immediately.
+There is no pace input or rolling-median delay. A demanding circuit can therefore
+show more work even when running pace slows. These are training-volume changes,
+not proof of physiological adaptation or maximal strength.
 
-This chart shows the recorded pace history, including ordinary interval
-running. Different rep prescriptions can influence that pace; the line alone
-is not a claim that underlying fitness rose or fell. The explicit performance
-comparisons below keep changed prescriptions separate.
+Running distance requires a complete, current recording with at least 90% track
+coverage. Rep totals require a known lap multiplier or explicit total notes;
+partial notes retain each known exercise separately. Missing counts, unknown
+multipliers, malformed values, and incomplete/stale uploads stay unknown rather
+than becoming zero. Explicit zero counts are valid. Each missing value breaks
+only its own curve. Gaps over 28 days break all curves.
+
+Endpoint colors and arrows compare each quantity with the immediately preceding
+recorded running workout. A missing previous quantity is not replaced with an
+older one. Percent changes are available only with a positive previous value;
+a zero-to-positive change retains its absolute increase without inventing an
+infinite percentage. No extra logging or exercise tests are needed.
+
+The walk/run pace and matched performance assessments remain separate data in
+the cache. Weight and weather remain context for those comparisons; they do not
+alter an observed count of metres or repetitions.
 
 ## Weight and workout-time weather
 

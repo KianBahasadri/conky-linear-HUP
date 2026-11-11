@@ -559,6 +559,7 @@ def test_numeric_notes_reanalyze_existing_upload_and_reach_overlay_status(tmp_pa
     assert status["performance"]["circuit"]["reason"] == "No matching routine in recorded history"
     assert status["trainingHeadline"].startswith("4 laps")
     assert status["trainingShortDetail"] == "32/12/44 reps"
+    assert status["recent"][-1]["volumePushups"] == 32
     assert "trainingPages" not in status
     saved = json.loads(analysis_path.read_text(encoding="utf-8"))
     assert saved["version"] == workouts.ANALYSIS_VERSION
@@ -580,9 +581,24 @@ def test_unknown_gps_laps_display_per_lap_reps_and_mark_load_incomplete(tmp_path
     assert status["workload"]["7"]["reps"] == {"pushups": 0, "pullups": 0, "situps": 0}
     assert status["workload"]["7"]["unquantifiedRepSessions"] == 1
     assert status["trainingShortDetail"].endswith("/lap")
+    assert status["recent"][-1]["volumePushups"] is None
     assert "rateOfProgressText" not in status
     assert status["progressVerdict"] == "Building baseline"
     assert status["progressKind"] == "neutral"
+
+
+def test_more_work_is_visible_even_when_pace_slows():
+    now = datetime(2026, 10, 30, 12, tzinfo=timezone.utc)
+    before = analyzed_run(now - timedelta(days=1), 30, run_meters=2000, runSeconds=600,
+                          notes="7 3 10", reps={"pushups": 21, "pullups": 9, "situps": 30}, laps=3)
+    after = analyzed_run(now - timedelta(hours=1), 29, run_meters=3600, runSeconds=1440,
+                         notes="8 3 11", reps={"pushups": 32, "pullups": 12, "situps": 44}, laps=4)
+    status = workouts.build_status([before, after], metric_units(), now)
+    assert status["schemaVersion"] == 4
+    assert status["volumeChangePercent"]["volumeRunMeters"] == 80
+    assert all(value > 0 for value in status["volumeChanges"].values())
+    assert "paceBaselineSecondsPerKm" not in status
+    assert "paceTrendSecondsPerKm" not in status["recent"][-1]
 
 
 @pytest.mark.parametrize("incomplete", ["truncated", "distance"])

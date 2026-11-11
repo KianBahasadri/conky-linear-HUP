@@ -236,26 +236,42 @@ def _running_observation(workout):
     return {**route, "paceSecondsPerKm": pace, "seconds": workout["runSeconds"], "mode": "interval"}
 
 
-def pace_series(workouts):
-    """A causal three-session median of recorded pace, never an effort score."""
-    values, days, previous_class, previous_start = [], {}, None, None
+VOLUME_FIELDS = ("volumeRunMeters", "volumePushups", "volumePullups", "volumeSitups")
+
+
+def volume_series(workouts):
+    """Separate observed session totals. Unknown quantities never become zero."""
+    values, previous_start = [], None
     for workout in workouts:
-        pace = recorded_pace(workout)
         start = epoch(workout.get("startTime"))
-        notes = workout.get("trainingNotes", parse_notes(workout.get("notes")))
-        routine_class = bool(notes["isCircuit"])
         gap = previous_start is not None and start is not None and start - previous_start > 28 * DAY
-        break_line = pace is None or routine_class != previous_class or gap
-        if break_line:
-            days.clear()
-        trend = None
-        if pace is not None and start is not None:
-            days[int(start // DAY)] = pace
-            days = dict(sorted(days.items())[-3:])
-            trend = round(statistics.median(days.values()), 2)
-        values.append({"paceSecondsPerKm": pace, "paceTrendSecondsPerKm": trend, "paceBreak": break_line})
-        previous_class, previous_start = routine_class, start
+        point = {key: None for key in VOLUME_FIELDS}
+        point["volumeBreak"] = previous_start is None or gap or start is None
+        if not workout.get("truncated") and not workout.get("analysisStale"):
+            track, total = finite(workout.get("trackMeters")), finite(workout.get("distanceMeters"))
+            run = finite(workout.get("runMeters"))
+            if track is not None and total is not None and total > 0 and track >= 0.9 * total and run is not None and 0 <= run <= track + 1:
+                point["volumeRunMeters"] = round(run, 1)
+            if not workout.get("repsPerLap"):
+                for exercise, field in zip(EXERCISES, VOLUME_FIELDS[1:]):
+                    count = finite((workout.get("reps") or {}).get(exercise))
+                    if count is not None and count >= 0 and count.is_integer():
+                        point[field] = int(count)
+        values.append(point)
+        previous_start = start
     return values
+
+
+def volume_changes(series):
+    """Compare each known total with the immediately preceding session."""
+    changes, percentages = {}, {}
+    for key in VOLUME_FIELDS:
+        before = finite(series[-2].get(key)) if len(series) >= 2 else None
+        after = finite(series[-1].get(key)) if series else None
+        valid = before is not None and after is not None and not series[-1].get("volumeBreak")
+        changes[key] = round(after - before, 1) if valid else None
+        percentages[key] = round(100 * (after / before - 1), 1) if valid and before > 0 else None
+    return changes, percentages
 
 
 def _comparison(workout, history, category, now):

@@ -7,19 +7,18 @@ AQI, UV, condition, and location readouts are removed. Both personal-metrics
 bands communicate progress implicitly through semantic color and micro-charts
 rather than explicit section headers or status chips:
 
-- **Training (top 62px band):** A static three-row summary shows the latest
-  circuit laps/elapsed time (or workout distance/duration), recorded reps, and
-  walk-excluded running pace. Available matched pace/HR changes sit beside the
-  pace; run age and stale status stay at the right edge. Narrow screens use
-  complete slash-separated rep totals in push/pull/sit order.
+- **Training (top 62px band):** A static summary shows the latest circuit
+  laps/elapsed time (or workout distance/duration) and recorded reps. Run age
+  and stale status stay at the right edge. Narrow screens use complete
+  slash-separated rep totals in push/pull/sit order.
 
-  The restored progress chart layers observed pace dots and a dashed trailing
-  median line over the 12-run distance bars; faster pace plots higher. A prior
-  28-day pace median provides a guide. Missing pace breaks the line. The chart
-  describes recorded running pace, while matched performance assessments keep
-  exercise prescriptions separate. The view never rotates or asks for effort
-  ratings or exercise benchmarks. [Exercise progression](run-analysis.md) owns
-  the calculations and quality rules.
+  Four labeled work curves show running distance (`km`/`mi`), push-ups, pull-ups,
+  and sit-ups. Each uses its own zero-based scale. Higher points mean more work
+  completed; pace never lowers the curves. Green/up or red/down endpoints and
+  label arrows compare each available total with the previous workout. Unknown
+  quantities remain gaps. All four curves stay visible together at supported
+  sizes, with no rotation or additional logging prompts.
+  [Exercise progression](run-analysis.md) owns calculation and quality rules.
 - **Weight (bottom 49px band):** The first line shows the latest weigh-in, the
   signed 30-day trend delta (colored green when moving toward the openScale goal
   weight, red when moving away), and measurement age (caution yellow when >3

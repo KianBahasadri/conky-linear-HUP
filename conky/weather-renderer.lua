@@ -63,11 +63,14 @@ return function(shared, repo_root)
         run_units = shared.json_number(entry, 'runUnits', nil),
         in_window = shared.json_boolean(entry, 'inWindow', true),
         is_last = shared.json_boolean(entry, 'isLast', false),
-        pace = shared.json_number(entry, 'paceSecondsPerKm', nil),
-        pace_trend = shared.json_number(entry, 'paceTrendSecondsPerKm', nil),
-        pace_break = shared.json_boolean(entry, 'paceBreak', true),
+        volumeRunMeters = shared.json_number(entry, 'volumeRunMeters', nil),
+        volumePushups = shared.json_number(entry, 'volumePushups', nil),
+        volumePullups = shared.json_number(entry, 'volumePullups', nil),
+        volumeSitups = shared.json_number(entry, 'volumeSitups', nil),
+        volume_break = shared.json_boolean(entry, 'volumeBreak', true),
       })
     end
+    local changes = shared.json_field(content, 'volumeChanges') or '{}'
 
     local hr_short = json_string(content, 'lastHeartRateShortText', '')
     if hr_short == '' then
@@ -89,7 +92,13 @@ return function(shared, repo_root)
       pace_text = json_string(content, 'trainingPace', ''),
       comparison = json_string(content, 'trainingComparison', ''),
       training_kind = json_string(content, 'trainingKind', 'neutral'),
-      pace_baseline = shared.json_number(content, 'paceBaselineSecondsPerKm', nil),
+      volume_changes = {
+        volumeRunMeters = shared.json_number(changes, 'volumeRunMeters', nil),
+        volumePushups = shared.json_number(changes, 'volumePushups', nil),
+        volumePullups = shared.json_number(changes, 'volumePullups', nil),
+        volumeSitups = shared.json_number(changes, 'volumeSitups', nil),
+      },
+      distance_unit = json_string(content, 'unitName', 'metric') == 'imperial' and 'mi' or 'km',
       last_date = json_string(content, 'lastDateText', ''),
       last_age = json_string(content, 'lastAgeText', ''),
       last_age_days = json_number(content, 'lastAgeDays', 0),
@@ -154,79 +163,48 @@ return function(shared, repo_root)
     end
   end
 
-  -- Distance bars plus observed running pace and its trailing median.
-  -- Faster pace is higher. This is a recorded pace trend, not a fitness score.
-  local function draw_run_sparkline(cr, workouts, x, y, w, h)
+  -- Four independent session-volume curves. Each has its own zero baseline;
+  -- there is no conversion between running distance and exercise repetitions.
+  local function draw_work_curves(cr, workouts, x, y, w, h, show_labels)
     local recent = workouts.recent
     local n = math.min(#recent, 12)
     if n == 0 then return end
-    local start_idx = #recent - n + 1
-    local color = ui.muted
-    local max_dist = 1.0
-    for i = start_idx, #recent do
-      local item = recent[i]
-      if item.distance_units > max_dist then max_dist = item.distance_units end
-    end
-
-    local bar_gap = 3
-    local bar_w = math.max(3, math.floor((w - bar_gap * (n - 1)) / n))
-    local total_w = bar_w * n + bar_gap * (n - 1)
-    local left_x = x + math.floor((w - total_w) / 2)
-
-    for idx = 1, n do
-      local item = recent[start_idx + idx - 1]
-      local bx = left_x + (idx - 1) * (bar_w + bar_gap)
-      local frac = shared.clamp(item.distance_units / max_dist, 0.14, 1.0)
-      local bh = math.max(2, math.floor(frac * h + 0.5))
-      local run_share = 1
-      if item.run_units and item.distance_units > 0 then
-        run_share = shared.clamp(item.run_units / item.distance_units, 0, 1)
+    local first = #recent - n + 1
+    local gap = 6
+    local cell_w = (w - 3 * gap) / 4
+    local fields = {'volumeRunMeters', 'volumePushups', 'volumePullups', 'volumeSitups'}
+    local names = {workouts.distance_unit, 'push', 'pull', 'sit'}
+    local function valid(value) return value and value >= 0 and value < math.huge end
+    for column, field in ipairs(fields) do
+      local left = x + (column - 1) * (cell_w + gap)
+      local maximum = 1
+      for i = first, #recent do
+        local value = recent[i][field]
+        if valid(value) then maximum = math.max(maximum, value) end
       end
-      local run_h = math.floor(bh * run_share + 0.5)
-      local bar_color = item.is_last and color or (item.in_window and ui.muted or ui.line_strong)
-      local bar_alpha = item.is_last and 0.85 or (item.in_window and 0.55 or 0.35)
-      if run_h < bh then
-        ui.rect(cr, bx + 0.5, y + h - bh + 0.5, bar_w - 1, bh - 1, bar_color, 1.5, math.min(1, bar_alpha + 0.2), 1)
+      local change = workouts.volume_changes[field]
+      local color = change and change > 0 and ui.good or change and change < 0 and ui.danger or ui.muted
+      if show_labels then
+        local arrow = change and change > 0 and '↑' or change and change < 0 and '↓' or ''
+        local label = names[column] .. arrow
+        if ui.width(cr, label, 11, true) > cell_w then label = names[column] end
+        ui.text(cr, label, left, y - 5, {size = 11, mono = true, color = color, width = cell_w})
       end
-      if run_h > 0 then
-        ui.rect(cr, bx, y + h - run_h, bar_w, run_h, bar_color, 1.5, bar_alpha)
-      end
-    end
-
-    local low, high = math.huge, -math.huge
-    local function valid(value) return value and value > 0 and value < math.huge end
-    local function include(value)
-      if valid(value) then low, high = math.min(low, value), math.max(high, value) end
-    end
-    include(workouts.pace_baseline)
-    for i = start_idx, #recent do
-      include(recent[i].pace)
-      include(recent[i].pace_trend)
-    end
-    if low == math.huge then return end
-    local padding = math.max(5, (high - low) * 0.1)
-    low, high = low - padding, high + padding
-    local function pace_y(value)
-      return y + 2 + (value - low) / (high - low) * (h - 4)
-    end
-    if valid(workouts.pace_baseline) then
-      local baseline_y = pace_y(workouts.pace_baseline)
-      ui.dash(cr, left_x, baseline_y, left_x + total_w, baseline_y, ui.line_strong, 1, 2, 2, 0.6)
-    end
-    local previous
-    for idx = 1, n do
-      local item = recent[start_idx + idx - 1]
-      local cx = left_x + (idx - 1) * (bar_w + bar_gap) + bar_w / 2
-      if item.pace_break or not valid(item.pace_trend) then previous = nil end
-      if valid(item.pace_trend) then
-        local cy = pace_y(item.pace_trend)
-        if previous then
-          ui.dash(cr, previous[1], previous[2], cx, cy, ui.derived, 1.5, 3, 1.5, 0.95)
+      ui.line_between(cr, left, y + h - 0.5, left + cell_w, y + h - 0.5, ui.line_strong, 1, 0.5)
+      local previous
+      for index = 1, n do
+        local item = recent[first + index - 1]
+        local value = item[field]
+        if item.volume_break or not valid(value) then previous = nil end
+        if valid(value) then
+          local cx = left + 2 + (index - 1) / math.max(1, n - 1) * (cell_w - 4)
+          local cy = y + h - 2 - value / maximum * (h - 4)
+          if previous then
+            ui.line_between(cr, previous[1], previous[2], cx, cy, item.is_last and color or ui.accent, 1.5, item.is_last and 1 or 0.65)
+          end
+          if item.is_last then ui.circle(cr, cx, cy, 2, color, 1) end
+          previous = {cx, cy}
         end
-        previous = {cx, cy}
-      end
-      if valid(item.pace) then
-        ui.circle(cr, cx, pace_y(item.pace), item.is_last and 2 or 1.2, item.is_last and ui.strong or ui.accent, 0.95)
       end
     end
   end
@@ -332,15 +310,8 @@ return function(shared, repo_root)
         {size = 11, mono = true, color = ui.muted, width = width})
     end
     local compact = (available_height or training_h) < training_h
-    if not compact then
-      local pace = workouts.pace_text ~= '' and workouts.pace_text or 'Run ' .. workouts.last_pace
-      local comparison = join({pace, workouts.comparison})
-      ui.text(cr, fitted(comparison, pace, 11, width), 0, top + 40,
-        {size = 11, mono = true, color = color, width = width})
-    end
-
-    if #workouts.recent >= 2 and (available_height or training_h) >= 48 then
-      draw_run_sparkline(cr, workouts, 0, top + (compact and 31 or 45), width, 17)
+    if #workouts.recent > 0 and (available_height or training_h) >= 48 then
+      draw_work_curves(cr, workouts, 0, top + (compact and 31 or 45), width, 17, not compact)
     end
   end
 

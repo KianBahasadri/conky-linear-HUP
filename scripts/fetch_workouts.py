@@ -390,7 +390,7 @@ def build_status(workouts, units, now=None):
         "workoutCount": len(workouts),
         "runCount": len(runs),
         "unitName": units["name"],
-        "schemaVersion": 3,
+        "schemaVersion": 4,
         "excludedWorkouts": observed_count - len(workouts),
     }
 
@@ -504,9 +504,10 @@ def build_status(workouts, units, now=None):
     status.update(training_display(last, status, units))
 
     divisor = units["distanceDivisor"]
+    volumes = progression.volume_series(runs)
     status["recent"] = [
         {
-            **pace,
+            **volume,
             "dateText": format_date_text(run["startTime"] or now, now),
             "sport": short_sport(run["sport"]),
             "distanceText": format_distance(run["distanceMeters"], units),
@@ -517,12 +518,10 @@ def build_status(workouts, units, now=None):
             "inWindow": bool(run["startTime"] and run["startTime"].astimezone() >= month_start),
             "isLast": run is last,
         }
-        for run, pace in list(zip(runs, progression.pace_series(runs)))[-RECENT_LIMIT:]
+        for run, volume in list(zip(runs, volumes))[-RECENT_LIMIT:]
     ]
-    prior_paces = [progression.recorded_pace(run) for run in month_runs if run is not last
-                   and bool(run.get("trainingNotes", progression.parse_notes(run.get("notes")))["isCircuit"]) == notes["isCircuit"]]
-    prior_paces = [pace for pace in prior_paces if pace is not None]
-    status["paceBaselineSecondsPerKm"] = round(statistics.median(prior_paces), 2) if prior_paces else None
+    status["volumeChanges"], status["volumeChangePercent"] = progression.volume_changes(volumes)
+    status["volumeComparisonDateText"] = format_date_text(runs[-2]["startTime"], now) if len(runs) >= 2 else ""
     return status
 
 

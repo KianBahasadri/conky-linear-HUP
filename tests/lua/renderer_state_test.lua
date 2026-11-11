@@ -262,20 +262,23 @@ files['workouts-status.json'] = [[{"ok":true,"lastDateText":"Today","lastAgeDays
   "trainingHeadline":"4 laps · 34:32","trainingShortHeadline":"4 laps",
   "trainingDetail":"32 push · 12 pull · 44 sit","trainingShortDetail":"32/12/44 reps",
   "trainingPace":"Run 6:07/km","trainingComparison":"","trainingKind":"neutral",
-  "paceBaselineSecondsPerKm":380,
-  "recent":[{"distanceUnits":4.0,"runUnits":3.0,"paceSecondsPerKm":390,"paceTrendSecondsPerKm":390,"paceBreak":true,"isLast":false},
-    {"distanceUnits":4.9,"runUnits":3.6,"paceSecondsPerKm":367,"paceTrendSecondsPerKm":378.5,"paceBreak":false,"isLast":true}]}]]
+  "volumeChanges":{"volumeRunMeters":1600,"volumePushups":11,"volumePullups":3,"volumeSitups":14},
+  "recent":[{"volumeRunMeters":2000,"volumePushups":21,"volumePullups":9,"volumeSitups":30,"volumeBreak":true,"isLast":false},
+    {"volumeRunMeters":3600,"volumePushups":32,"volumePullups":12,"volumeSitups":44,"volumeBreak":false,"isLast":true}]}]]
 os.time = function(date) return date and original_time(date) or 120000 end
 width = 188
 draw('weather-renderer.lua')
-assert(has('4 laps') and has('32 push') and has('Run 6:07/km') and not has('5K ') and not has('RPE'),
-  'static summary uses existing circuit, reps, and pace without requesting new inputs')
-local pace_trend
-for _, dash in ipairs(dashes) do
-  if dash.color == ui.derived then pace_trend = dash end
+assert(has('4 laps') and has('32 push') and has('km') and has('push↑') and not has('5K ') and not has('RPE'),
+  'static summary labels separate observed work curves without requesting new inputs')
+local rising = 0
+for _, line in ipairs(lines) do
+  if line.color == ui.good and line.y1 <= 67 then
+    assert(line.y2 < line.y1, 'more completed work must make each curve rise')
+    rising = rising + 1
+  end
 end
-assert(pace_trend and pace_trend.y2 < pace_trend.y1 and pace_trend.y1 <= 67,
-  'restored pace trend must rise for faster running and stay within its chart')
+assert(rising == 4 and text_color_for('push↑') == ui.good,
+  'running, pushups, pullups and situps must all show the recorded increases')
 width = 132
 draw('weather-renderer.lua')
 assert(has('4 laps') and has('32/12/44 reps') and not has('32 push'),
@@ -283,12 +286,12 @@ assert(has('4 laps') and has('32/12/44 reps') and not has('32 push'),
 local static_labels = table.concat(labels, '|')
 os.time = function(date) return date and original_time(date) or 120012 end
 draw('weather-renderer.lua')
-assert(table.concat(labels, '|') == static_labels and has('4 laps') and has('Run 6:07/km'),
+assert(table.concat(labels, '|') == static_labels and has('4 laps') and has('km'),
   'all workout metrics must stay static as time passes')
-files['workouts-status.json'] = files['workouts-status.json']:gsub('"paceBreak":false', '"paceBreak":true')
+files['workouts-status.json'] = files['workouts-status.json']:gsub('"volumeBreak":false', '"volumeBreak":true')
 draw('weather-renderer.lua')
-for _, dash in ipairs(dashes) do
-  assert(dash.color ~= ui.derived, 'pace trend must not bridge a recording gap or session-class change')
+for _, line in ipairs(lines) do
+  assert(line.color ~= ui.good or line.y1 > 67, 'workload curves must not bridge a long recording break')
 end
 width = 188
 draw('thermometer-renderer.lua')

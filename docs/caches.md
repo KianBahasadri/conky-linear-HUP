@@ -33,9 +33,11 @@
   - the last run's totals, walk-excluded pace, inferred lap count, and recorded reps;
   - separate performance assessments and seven-/28-day volume, HR, and session-RPE workload;
   - prior-weight and historical weather context with quality flags;
-  - static `training*` text fields and the last 14 runs' total/running distance,
-    recorded pace, trailing pace median, and gap flags for the layered chart;
-  - the prior 28-day pace median guide. `trainingPages` is no longer emitted.
+  - static `training*` text fields and the last 14 runs' separate running-metre
+    and push/pull/sit totals (`volume*` fields), with gap flags for the work curves;
+  - absolute/percentage changes for each quantity against the immediately
+    preceding run, plus its date. Missing comparisons remain null.
+    Paging and the former pace-curve/baseline fields are no longer emitted.
 
   Run counts exclude rides and untyped workouts without running; workload
   bookkeeping includes all sports. See [Exercise progression](run-analysis.md).

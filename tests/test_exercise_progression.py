@@ -213,35 +213,66 @@ def test_interval_running_compares_existing_pace_without_additional_logging():
     assert p.summarize(records, (BASE + timedelta(days=8)).timestamp())["performance"]["running"]["state"] == "baseline"
 
 
-def test_pace_trend_uses_past_recordings_and_breaks_at_missing_data():
-    records = [session(day) for day in range(4)]
-    for record, meters in zip(records, (4000, 2000, 3600, 3000)):
-        record.update(runMeters=meters, trackMeters=4000)
-    values = p.pace_series(records)
-    assert [v["paceTrendSecondsPerKm"] for v in values[:3]] == [300, 450, 333.33]
-    records[2]["truncated"] = True
-    values = p.pace_series(records)
-    assert values[2]["paceTrendSecondsPerKm"] is None and values[2]["paceBreak"]
-    assert values[3]["paceTrendSecondsPerKm"] == 400
-    records[3]["runMeters"] = float("nan")
-    assert p.recorded_pace(records[3]) is None
+def test_more_completed_work_rises_even_when_running_pace_is_slower():
+    before, after = session(1, notes="7 3 10"), session(2, notes="8 3 11")
+    before.update(p.repetition_summary(before["trainingNotes"], 3))
+    before.update(runMeters=2000, runSeconds=600, trackMeters=4000)
+    after.update(runMeters=3600, runSeconds=1440, trackMeters=4000)
+    assert p.recorded_pace(after) > p.recorded_pace(before)
+    series = p.volume_series([before, after])
+    changes, percentages = p.volume_changes(series)
+    assert all(changes[key] > 0 for key in p.VOLUME_FIELDS)
+    assert percentages == dict(zip(p.VOLUME_FIELDS, (80.0, 52.4, 33.3, 46.7)))
+    assert series[-1]["volumeRunMeters"] == 3600
+    assert series[-1]["volumePushups"] == 32
 
 
-def test_same_day_workouts_do_not_overweight_the_pace_median():
-    records = [session(1), session(2), session(2.1)]
-    for record, meters in zip(records, (4000, 2000, 3000)):
-        record.update(runMeters=meters, trackMeters=4000)
-    assert p.pace_series(records)[-1]["paceTrendSecondsPerKm"] == 350
+def test_unknown_multiplier_and_partial_notes_leave_only_known_volumes():
+    unknown = session(1)
+    unknown.update(p.repetition_summary(unknown["trainingNotes"], None))
+    unknown.update(runMeters=2000, trackMeters=4000)
+    partial = session(2, notes="6 pushups + pullups")
+    partial.update(runMeters=2000, trackMeters=1000)
+    series = p.volume_series([unknown, partial])
+    assert series[0]["volumeRunMeters"] == 2000
+    assert all(series[0][field] is None for field in p.VOLUME_FIELDS[1:])
+    assert series[1]["volumeRunMeters"] is None
+    assert series[1]["volumePushups"] == 24
+    assert series[1]["volumePullups"] is None and series[1]["volumeSitups"] is None
+    assert all(value is None for value in p.volume_changes(series)[0].values())
 
 
-@pytest.mark.parametrize("changed", ["class", "long_break"])
-def test_pace_median_resets_across_different_session_classes_or_long_breaks(changed):
-    records = [session(1), session(2)]
-    for record, meters in zip(records, (4000, 3000)):
-        record.update(runMeters=meters, trackMeters=4000)
-    if changed == "class":
-        records[-1]["trainingNotes"] = p.parse_notes("normal run")
-    else:
-        records[-1]["startTime"] += timedelta(days=30)
-    last = p.pace_series(records)[-1]
-    assert last["paceBreak"] and last["paceTrendSecondsPerKm"] == 400
+@pytest.mark.parametrize("field", ["truncated", "analysisStale"])
+def test_incomplete_uploads_do_not_create_zero_volume_points(field):
+    record = session(1)
+    record.update(runMeters=2000, trackMeters=4000)
+    record[field] = True
+    point = p.volume_series([record])[0]
+    assert all(point[key] is None for key in p.VOLUME_FIELDS)
+
+
+def test_explicit_zero_counts_are_known_and_do_not_produce_infinite_percentages():
+    zero, after = session(1, notes="0 0 0"), session(2)
+    series = p.volume_series([zero, after])
+    assert series[0]["volumePushups"] == 0
+    changes, percentages = p.volume_changes(series)
+    assert changes["volumePushups"] == 32 and percentages["volumePushups"] is None
+    assert all(value is None for value in p.volume_changes([])[0].values())
+
+
+@pytest.mark.parametrize("invalid", [float("nan"), float("inf"), -5, 3.5])
+def test_bad_rep_counts_never_generate_a_workload_curve(invalid):
+    record = session(1)
+    record["reps"]["pushups"] = invalid
+    assert p.volume_series([record])[0]["volumePushups"] is None
+
+
+def test_long_breaks_reset_comparisons_without_conflating_changed_routines():
+    records = [session(1), session(2, notes="9 3 11")]
+    series = p.volume_series(records)
+    assert not series[-1]["volumeBreak"]
+    assert p.volume_changes(series)[0]["volumePushups"] == 4
+    records[-1]["startTime"] += timedelta(days=30)
+    series = p.volume_series(records)
+    assert series[-1]["volumeBreak"] and series[-1]["volumePushups"] == 36
+    assert all(value is None for value in p.volume_changes(series)[0].values())
