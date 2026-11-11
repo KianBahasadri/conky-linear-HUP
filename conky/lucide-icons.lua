@@ -2,6 +2,8 @@
 -- Every icon sits on the 24×24 grid and is stroked at 2px with round caps
 -- and joins; `<rect rx>` elements are written as equivalent arc paths.
 return {
+  heart = {'M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5'},
+  ['rotate-cw'] = {'M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8', 'M21 3v5h-5'},
   radiation = {
     'M12 12h.01',
     'M14 15.4641a4 4 0 0 1-4 0L7.52786 19.74597 A 1 1 0 0 0 7.99303 21.16211 10 10 0 0 0 16.00697 21.16211 1 1 0 0 0 16.47214 19.74597z',

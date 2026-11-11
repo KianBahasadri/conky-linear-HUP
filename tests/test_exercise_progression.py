@@ -276,3 +276,81 @@ def test_long_breaks_reset_comparisons_without_conflating_changed_routines():
     series = p.volume_series(records)
     assert series[-1]["volumeBreak"] and series[-1]["volumePushups"] == 36
     assert all(value is None for value in p.volume_changes(series)[0].values())
+
+
+def combined_records(count=5):
+    records = [session(day) for day in range(count)]
+    for record in records:
+        record.update(runMeters=2000, trackMeters=4000)
+    return records
+
+
+def test_combined_work_normalizes_each_activity_before_equal_weighting():
+    records = combined_records()
+    records[-1].update(p.repetition_summary(records[-1]['trainingNotes'], 8))
+    records[-1]['runMeters'] = 4000
+    result = p.combined_work(records, p.volume_series(records), (BASE + timedelta(days=5)).timestamp())
+    assert result['value'] == 200 and result['changePercent'] == 100
+    assert result['components'] == list(p.VOLUME_FIELDS)
+    records[-1].update(p.repetition_summary(records[-1]['trainingNotes'], 4))
+    result = p.combined_work(records, p.volume_series(records), (BASE + timedelta(days=5)).timestamp())
+    assert result['value'] == 125 and result['changePercent'] == 25
+
+
+def test_combined_marker_is_independent_of_metres_versus_kilometres():
+    records = combined_records()
+    records[-1]['runMeters'] = 3000
+    volumes = p.volume_series(records)
+    now = (BASE + timedelta(days=5)).timestamp()
+    expected = p.combined_work(records, volumes, now)
+    converted = [{**point, 'volumeRunMeters': point['volumeRunMeters'] / 1000} for point in volumes]
+    actual = p.combined_work(records, converted, now)
+    assert actual['points'] == expected['points']
+    assert actual['changePercent'] == expected['changePercent']
+
+
+def test_missing_exercise_is_a_gap_instead_of_a_reweighted_or_invented_score():
+    records = combined_records()
+    volumes = p.volume_series(records)
+    volumes[-1]['volumePullups'] = None
+    result = p.combined_work(records, volumes, (BASE + timedelta(days=5)).timestamp())
+    assert result['value'] is None and result['points'][-1]['combinedWorkIndex'] is None
+    assert result['forecast'] == [] and result['changePercent'] is None
+
+
+def test_later_workouts_do_not_move_an_established_reference():
+    records = combined_records()
+    now = (BASE + timedelta(days=5)).timestamp()
+    initial = p.combined_work(records, p.volume_series(records), now)
+    records[-1]['runMeters'] = 4000
+    after = p.combined_work(records, p.volume_series(records), now)
+    assert after['references'] == initial['references']
+    assert after['points'][:-1] == initial['points'][:-1]
+
+
+def test_projection_is_separate_from_observed_markers_and_requires_distinct_days():
+    records = combined_records(6)
+    for index, record in enumerate(records):
+        record['runMeters'] = 1500 + index * 300
+    now = (BASE + timedelta(days=6)).timestamp()
+    result = p.combined_work(records, p.volume_series(records), now)
+    assert len(result['forecast']) == 2
+    assert result['forecast'][0]['value'] > result['value']
+    assert result['forecast'][1]['value'] > result['forecast'][0]['value']
+    assert len(result['points']) == len(records)
+    for index, record in enumerate(records):
+        record['startTime'] = BASE + timedelta(hours=index)
+    assert p.combined_work(records, p.volume_series(records), now)['forecast'] == []
+
+
+def test_combined_zero_work_and_zero_baselines_never_generate_infinite_changes():
+    records = combined_records()
+    records[-1].update(runMeters=0, reps=dict.fromkeys(p.EXERCISES, 0))
+    result = p.combined_work(records, p.volume_series(records), (BASE + timedelta(days=5)).timestamp())
+    assert result['value'] == 0 and result['changePercent'] == -100
+    empty = p.combined_work([], [], NOW)
+    assert empty['value'] is None and empty['forecast'] == []
+    zero = combined_records(2)
+    zero[0].update(runMeters=0, reps=dict.fromkeys(p.EXERCISES, 0))
+    result = p.combined_work(zero, p.volume_series(zero), (BASE + timedelta(days=2)).timestamp())
+    assert result['value'] == 100 and result['changePercent'] is None

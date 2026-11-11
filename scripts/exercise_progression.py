@@ -274,6 +274,53 @@ def volume_changes(series):
     return changes, percentages
 
 
+def combined_work(workouts, volumes, now):
+    """One dimensionless work index, with observed inputs and a separate forecast.
+
+    Equal weights describe a dashboard index, not physiological equivalence.
+    Reference medians use the first three complete positive sessions for the
+    current exercise mix, so later uploads do not keep moving the reference.
+    """
+    notes = (workouts[-1].get("trainingNotes") or parse_notes(workouts[-1].get("notes"))) if workouts else parse_notes("")
+    mentioned = set(notes["counts"]) | set(notes["unquantified"])
+    mentioned.update((workouts[-1].get("reps") or {}) if workouts else {})
+    fields = [VOLUME_FIELDS[0]] + [field for exercise, field in zip(EXERCISES, VOLUME_FIELDS[1:]) if exercise in mentioned]
+    anchors = [row for row in volumes if all(finite(row.get(key), 0) > 0 for key in fields)][:3]
+    references = {}
+    for key in fields:
+        positives = [finite(row[key]) for row in anchors] or [finite(row.get(key)) for row in volumes if finite(row.get(key), 0) > 0][:3]
+        references[key] = statistics.median(positives) if positives else 1.0
+    points = []
+    for row in volumes:
+        values = [finite(row.get(key)) for key in fields]
+        score = 100 * sum(value / references[key] for key, value in zip(fields, values)) / len(fields) if all(value is not None and value >= 0 for value in values) else None
+        points.append({"combinedWorkIndex": round(score, 2) if finite(score) is not None else None,
+                       "combinedWorkBreak": bool(row.get("volumeBreak"))})
+    current = points[-1]["combinedWorkIndex"] if points else None
+    previous = points[-2]["combinedWorkIndex"] if len(points) >= 2 else None
+    change = current - previous if current is not None and previous is not None and not points[-1]["combinedWorkBreak"] else None
+    percent = 100 * change / previous if change is not None and previous > 0 else None
+    forecast = []
+    latest = epoch(workouts[-1].get("startTime")) if workouts else None
+    daily = {}
+    if current is not None and latest is not None and 0 <= now - latest <= 10 * DAY:
+        for index, (workout, point) in enumerate(zip(workouts, points)):
+            start = epoch(workout.get("startTime"))
+            if start is not None and latest - 28 * DAY <= start <= latest and point["combinedWorkIndex"] is not None:
+                daily[int(start // DAY)] = (index, point["combinedWorkIndex"])
+        observations = sorted(daily.values())[-6:]
+        if len(observations) >= 4:
+            slopes = [(b[1] - a[1]) / (b[0] - a[0]) for a, b in itertools.combinations(observations, 2) if b[0] > a[0]]
+            slope = statistics.median(slopes)
+            forecast = [{"step": step, "value": round(max(0, current + slope * step), 2)} for step in (1, 2)]
+            if any(finite(point["value"]) is None for point in forecast):
+                forecast = []
+    return {"points": points, "components": fields, "references": references,
+            "value": current, "change": round(change, 2) if change is not None else None,
+            "changePercent": round(percent, 1) if finite(percent) is not None else None,
+            "forecast": forecast, "forecastMethod": "Theil-Sen slope; next two workouts" if forecast else None}
+
+
 def _comparison(workout, history, category, now):
     neutral = {"state": "baseline", "kind": "neutral", "text": "Building baseline", "matchedCount": 0,
                "change": None, "unit": "seconds" if category == "circuit" else "s/km"}

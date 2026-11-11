@@ -7,18 +7,28 @@ AQI, UV, condition, and location readouts are removed. Both personal-metrics
 bands communicate progress implicitly through semantic color and micro-charts
 rather than explicit section headers or status chips:
 
-- **Training (top 62px band):** A static summary shows the latest circuit
-  laps/elapsed time (or workout distance/duration) and recorded reps. Run age
-  and stale status stay at the right edge. Narrow screens use complete
-  slash-separated rep totals in push/pull/sit order.
+- **Training (top 62px band):** Three compact static rows retain total distance,
+  running pace, a loop icon with lap count, run age, push/pull/sit totals, a
+  heart icon with HR, and elapsed circuit time (or session duration when no
+  circuit was detected). A tilde marks partial HR coverage. Narrow widths
+  shorten units and omit the redundant `reps` word before hiding a value;
+  unknown-multiplier `/lap` qualifiers stay intact.
 
-  Four labeled work curves show running distance (`km`/`mi`), push-ups, pull-ups,
-  and sit-ups. Each uses its own zero-based scale. Higher points mean more work
-  completed; pace never lowers the curves. Green/up or red/down endpoints and
-  label arrows compare each available total with the previous workout. Unknown
-  quantities remain gaps. All four curves stay visible together at supported
-  sizes, with no rotation or additional logging prompts.
-  [Exercise progression](run-analysis.md) owns calculation and quality rules.
+  The third row holds the combined work index/change in blue and workout-time
+  model temperature/humidity in purple. Estimated weather carries a tilde.
+  Compact weather retains temperature/humidity while dropping the redundant
+  unit letter, with a rounded temperature-only fallback for unusually long
+  values. This replaces repeated prose/color-key labels with the data itself.
+
+  One combined curve uses solid blue strokes and filled markers for recorded
+  inputs, and dashed purple strokes with hollow markers for its optional
+  two-workout extrapolation. Blue is `#72aaff` in dark mode and `#2563b8` in
+  light; estimates use the derived purple token. Faint background bars restore
+  total-distance history with the running share filled. Projected positions
+  never acquire observed distance bars. The 100-point guide stays neutral.
+  Missing recorded values remain gaps and estimates never replace the recorded
+  endpoint. [Exercise progression](run-analysis.md) owns normalization,
+  component selection, missing-data rules, and projection meaning.
 - **Weight (bottom 49px band):** The first line shows the latest weigh-in, the
   signed 30-day trend delta (colored green when moving toward the openScale goal
   weight, red when moving away), and measurement age (caution yellow when >3

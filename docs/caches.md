@@ -33,10 +33,14 @@
   - the last run's totals, walk-excluded pace, inferred lap count, and recorded reps;
   - separate performance assessments and seven-/28-day volume, HR, and session-RPE workload;
   - prior-weight and historical weather context with quality flags;
-  - static `training*` text fields and the last 14 runs' separate running-metre
+  - static `training*` text fields, including circuit/session duration,
+    workout-time weather formatting and HR-coverage flags; the last 14 runs' separate running-metre
     and push/pull/sit totals (`volume*` fields), with gap flags for the work curves;
   - absolute/percentage changes for each quantity against the immediately
-    preceding run, plus its date. Missing comparisons remain null.
+    preceding run, plus its date. Missing comparisons remain null;
+  - `combinedWork`: the normalized workload index, component references, observed
+    change, and separately identified future projections; recent rows carry
+    recorded `combinedWorkIndex` values and break flags.
     Paging and the former pace-curve/baseline fields are no longer emitted.
 
   Run counts exclude rides and untyped workouts without running; workload

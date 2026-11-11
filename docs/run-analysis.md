@@ -105,34 +105,55 @@ uses the existing phone recordings and notes.
 Recorded reps describe training volume, not maximal repetition capacity. There
 are no cross-exercise rep points or inferred maximal-strength scores.
 
-## Recorded work curves
+## Combined work marker
 
-The static display plots four independent quantities from the last 12 running
-workouts: detected running distance, push-ups, pull-ups, and sit-ups completed
-per session. Every curve starts at zero and has its own scale and unit. Values
-are not added, weighted, or normalized into an overall fitness score.
+The static display combines running distance and the exercises named in the
+latest routine into one dimensionless **work index**. Each component has equal
+weight after division by its own reference quantity:
 
-More completed distance or reps moves the corresponding curve upward immediately.
-There is no pace input or rolling-median delay. A demanding circuit can therefore
-show more work even when running pace slows. These are training-volume changes,
-not proof of physiological adaptation or maximal strength.
+```text
+work index = 100 × mean(recorded quantity / reference quantity)
+```
+
+For `8 3 11`, running distance, push-ups, pull-ups, and sit-ups each contribute
+one quarter. This is an explicit dashboard convention, not a validated equation
+for physiological fitness or a conversion from repetitions into running metres.
+An index change describes this composite workload; it is not a percentage gain
+in fitness. More recorded work increases the marker without a pace penalty.
+
+References are component medians from the first three complete positive sessions
+for the current exercise mix. Initially the available one or two sessions are
+used. Once three exist, ordinary later uploads leave the references fixed. If
+no complete positive session exists, use each component's first three positive
+observations; an always-zero component uses a unit reference and contributes
+zero. All displayed sessions use the same references and component set, so
+missing data cannot silently change the weights.
 
 Running distance requires a complete, current recording with at least 90% track
-coverage. Rep totals require a known lap multiplier or explicit total notes;
-partial notes retain each known exercise separately. Missing counts, unknown
-multipliers, malformed values, and incomplete/stale uploads stay unknown rather
-than becoming zero. Explicit zero counts are valid. Each missing value breaks
-only its own curve. Gaps over 28 days break all curves.
+coverage. Rep totals require known laps or explicit total notes; each known
+quantity remains available separately. Missing totals, malformed values,
+unknown multipliers, and stale/truncated uploads never become zero. A combined
+recorded point requires every component; missing points and gaps over 28 days
+break the line. Explicit zero work is valid.
 
-Endpoint colors and arrows compare each quantity with the immediately preceding
-recorded running workout. A missing previous quantity is not replaced with an
-older one. Percent changes are available only with a positive previous value;
-a zero-to-positive change retains its absolute increase without inventing an
-infinite percentage. No extra logging or exercise tests are needed.
+The blue points and solid line use recorded quantities only, with no rolling
+smoothing. The caption compares the latest recorded index with the immediately
+previous run's index. A missing prior index leaves the change unknown; a zero
+prior index never produces an infinite percentage.
 
-The walk/run pace and matched performance assessments remain separate data in
-the cache. Weight and weather remain context for those comparisons; they do not
-alter an observed count of metres or repetitions.
+The purple dashed continuation is an estimate for the next two workouts. It
+requires four complete observations on distinct UTC days in the last 28 days,
+uses the last six such observations, and anchors the median pairwise
+(Theil–Sen) slope at the latest recorded index. The horizontal unit is workout
+number, not a predicted calendar date. Negative predictions are clamped to zero.
+No projection is made when the current record is incomplete or more than ten
+days old. This short extrapolation is illustrative and has no calibrated error
+bound; it is never stored as a recorded workout or used to invent rep/lap totals.
+
+The separate raw volumes, walk/run pace, HR workload, and matched performance
+assessments remain in the cache. Weight and weather are context for matched
+performance comparisons, not bonus points in the recorded-work index. No new
+logging or physical exercise tests are required.
 
 ## Weight and workout-time weather
 

@@ -594,11 +594,30 @@ def test_more_work_is_visible_even_when_pace_slows():
     after = analyzed_run(now - timedelta(hours=1), 29, run_meters=3600, runSeconds=1440,
                          notes="8 3 11", reps={"pushups": 32, "pullups": 12, "situps": 44}, laps=4)
     status = workouts.build_status([before, after], metric_units(), now)
-    assert status["schemaVersion"] == 4
+    assert status["schemaVersion"] == 5
     assert status["volumeChangePercent"]["volumeRunMeters"] == 80
     assert all(value > 0 for value in status["volumeChanges"].values())
+    assert status["combinedWork"]["value"] > status["recent"][-2]["combinedWorkIndex"]
+    assert status["combinedWork"]["changePercent"] > 0
     assert "paceBaselineSecondsPerKm" not in status
     assert "paceTrendSecondsPerKm" not in status["recent"][-1]
+
+
+@pytest.mark.parametrize("imperial, expected, short", [(False, "~10.0°C 50%", "~10.0°50%"), (True, "~50.0°F 50%", "~50.0°50%")])
+def test_dense_summary_preserves_circuit_time_and_historical_weather_units(imperial, expected, short):
+    now = datetime(2026, 10, 30, 12, tzinfo=timezone.utc)
+    config = metric_units()
+    if imperial:
+        config.update(name="imperial", distanceDivisor=1609.344, distanceSymbol="mi", paceSymbol="/mi")
+    record = analyzed_run(now - timedelta(hours=1), 30, notes="8 3 11", laps=4,
+                          reps={"pushups": 32, "pullups": 12, "situps": 44},
+                          circuit={"seconds": 1200}, hrLoad={"coverage": 1},
+                          context={"weather": {"available": True, "temperatureC": 10, "humidityPercent": 50}})
+    status = workouts.build_status([record], config, now)
+    assert status["trainingWeather"] == expected
+    assert status["trainingWeatherShort"] == short
+    assert status["trainingDuration"] == "20:00"
+    assert status["trainingHeartRatePartial"] is False
 
 
 @pytest.mark.parametrize("incomplete", ["truncated", "distance"])

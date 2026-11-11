@@ -68,9 +68,17 @@ return function(shared, repo_root)
         volumePullups = shared.json_number(entry, 'volumePullups', nil),
         volumeSitups = shared.json_number(entry, 'volumeSitups', nil),
         volume_break = shared.json_boolean(entry, 'volumeBreak', true),
+        combined_index = shared.json_number(entry, 'combinedWorkIndex', nil),
+        combined_break = shared.json_boolean(entry, 'combinedWorkBreak', true),
       })
     end
     local changes = shared.json_field(content, 'volumeChanges') or '{}'
+    local combined = shared.json_field(content, 'combinedWork') or '{}'
+    local forecast = {}
+    for _, entry in ipairs(shared.json_array_objects(combined, 'forecast')) do
+      local value = shared.json_number(entry, 'value', nil)
+      if value and value >= 0 then forecast[#forecast + 1] = value end
+    end
 
     local hr_short = json_string(content, 'lastHeartRateShortText', '')
     if hr_short == '' then
@@ -92,6 +100,13 @@ return function(shared, repo_root)
       pace_text = json_string(content, 'trainingPace', ''),
       comparison = json_string(content, 'trainingComparison', ''),
       training_kind = json_string(content, 'trainingKind', 'neutral'),
+      duration = json_string(content, 'trainingDuration', json_string(content, 'lastDurationText', '')),
+      weather_text = json_string(content, 'trainingWeather', ''),
+      weather_short = json_string(content, 'trainingWeatherShort', ''),
+      weather_minimal = json_string(content, 'trainingWeatherMinimal', ''),
+      hr_partial = shared.json_boolean(content, 'trainingHeartRatePartial', false),
+      cadence = json_string(content, 'lastCadenceShortText', ''),
+      laps = shared.json_number(content, 'lastLapCount', nil),
       volume_changes = {
         volumeRunMeters = shared.json_number(changes, 'volumeRunMeters', nil),
         volumePushups = shared.json_number(changes, 'volumePushups', nil),
@@ -99,6 +114,10 @@ return function(shared, repo_root)
         volumeSitups = shared.json_number(changes, 'volumeSitups', nil),
       },
       distance_unit = json_string(content, 'unitName', 'metric') == 'imperial' and 'mi' or 'km',
+      combined_value = shared.json_number(combined, 'value', nil),
+      combined_change = shared.json_number(combined, 'change', nil),
+      combined_percent = shared.json_number(combined, 'changePercent', nil),
+      forecast = forecast,
       last_date = json_string(content, 'lastDateText', ''),
       last_age = json_string(content, 'lastAgeText', ''),
       last_age_days = json_number(content, 'lastAgeDays', 0),
@@ -163,46 +182,81 @@ return function(shared, repo_root)
     end
   end
 
-  -- Four independent session-volume curves. Each has its own zero baseline;
-  -- there is no conversion between running distance and exercise repetitions.
-  local function draw_work_curves(cr, workouts, x, y, w, h, show_labels)
-    local recent = workouts.recent
+  -- One normalized work index from recorded inputs, followed by a separate
+  -- short projection. Source colors are fixed: blue data, dashed purple estimate.
+  local function draw_combined_work(cr, workouts, x, y, w, h, show_labels)
+    local observed = ui.theme == 'light' and '2563b8' or '72aaff'
+    local estimated = ui.derived
+    local recent, forecast = workouts.recent, workouts.forecast
     local n = math.min(#recent, 12)
     if n == 0 then return end
     local first = #recent - n + 1
-    local gap = 6
-    local cell_w = (w - 3 * gap) / 4
-    local fields = {'volumeRunMeters', 'volumePushups', 'volumePullups', 'volumeSitups'}
-    local names = {workouts.distance_unit, 'push', 'pull', 'sit'}
     local function valid(value) return value and value >= 0 and value < math.huge end
-    for column, field in ipairs(fields) do
-      local left = x + (column - 1) * (cell_w + gap)
-      local maximum = 1
-      for i = first, #recent do
-        local value = recent[i][field]
-        if valid(value) then maximum = math.max(maximum, value) end
+    if show_labels then
+      local value, percent = workouts.combined_value, workouts.combined_percent
+      local full = valid(value) and string.format('Work %.0f', value) or 'Work —'
+      local short = full
+      if percent then
+        full = full .. string.format(' · %+.0f%%', percent)
+        short = string.format('Work %+.0f%%', percent)
+      elseif workouts.combined_change and workouts.combined_change ~= 0 then
+        full = full .. (workouts.combined_change > 0 and ' ↑' or ' ↓')
       end
-      local change = workouts.volume_changes[field]
-      local color = change and change > 0 and ui.good or change and change < 0 and ui.danger or ui.muted
-      if show_labels then
-        local arrow = change and change > 0 and '↑' or change and change < 0 and '↓' or ''
-        local label = names[column] .. arrow
-        if ui.width(cr, label, 11, true) > cell_w then label = names[column] end
-        ui.text(cr, label, left, y - 5, {size = 11, mono = true, color = color, width = cell_w})
+      local weather = workouts.weather_text
+      local weather_w = weather ~= '' and ui.width(cr, weather, 11, true) + 4 or 0
+      if ui.width(cr, full, 11, true) + weather_w > w then full = short end
+      if ui.width(cr, full, 11, true) + weather_w > w then
+        weather = workouts.weather_short
+        weather_w = weather ~= '' and ui.width(cr, weather, 11, true) + 4 or 0
       end
-      ui.line_between(cr, left, y + h - 0.5, left + cell_w, y + h - 0.5, ui.line_strong, 1, 0.5)
-      local previous
-      for index = 1, n do
-        local item = recent[first + index - 1]
-        local value = item[field]
-        if item.volume_break or not valid(value) then previous = nil end
+      if ui.width(cr, full, 11, true) + weather_w > w then
+        weather = workouts.weather_minimal
+        weather_w = weather ~= '' and ui.width(cr, weather, 11, true) + 4 or 0
+      end
+      ui.text(cr, full, x, y - 5, {size = 11, mono = true, color = observed, width = w - weather_w})
+      if weather ~= '' then
+        ui.text(cr, weather, x + w, y - 5, {size = 11, mono = true, color = estimated, align = 'right'})
+      end
+    end
+    local maximum = 100
+    for i = first, #recent do
+      if valid(recent[i].combined_index) then maximum = math.max(maximum, recent[i].combined_index) end
+    end
+    for _, value in ipairs(forecast) do if valid(value) then maximum = math.max(maximum, value) end end
+    maximum = maximum * 1.05
+    local function px(index) return x + 2 + (index - 1) / math.max(1, n + #forecast - 1) * (w - 4) end
+    local function py(value) return y + h - 2 - value / maximum * (h - 4) end
+    ui.line_between(cr, x, y + h - 0.5, x + w, y + h - 0.5, ui.line_strong, 1, 0.5)
+    ui.dash(cr, x, py(100), x + w, py(100), ui.line_strong, 1, 2, 2, 0.5)
+    local max_distance = 1
+    for i = first, #recent do max_distance = math.max(max_distance, recent[i].distance_units) end
+    for index = 1, n do
+      local item = recent[first + index - 1]
+      local bh = math.max(0, (h - 3) * item.distance_units / max_distance)
+      local bw = math.min(7, (w - 4) / math.max(1, n + #forecast) - 2)
+      if bh > 0 and bw > 0 then
+        local share = item.run_units and item.distance_units > 0 and shared.clamp(item.run_units / item.distance_units, 0, 1) or 1
+        ui.rect(cr, px(index) - bw / 2, y + h - bh, bw, bh, ui.muted, 0, 0.16, 0.6)
+        ui.rect(cr, px(index) - bw / 2, y + h - bh * share, bw, bh * share, observed, 0, 0.12)
+      end
+    end
+    local previous
+    for index = 1, n do
+      local item = recent[first + index - 1]
+      if item.combined_break or not valid(item.combined_index) then previous = nil end
+      if valid(item.combined_index) then
+        local cx, cy = px(index), py(item.combined_index)
+        if previous then ui.line_between(cr, previous[1], previous[2], cx, cy, observed, 1.5, 0.95) end
+        ui.circle(cr, cx, cy, item.is_last and 2.5 or 1.2, observed, 1)
+        previous = {cx, cy}
+      end
+    end
+    if previous and valid(recent[#recent].combined_index) then
+      for step, value in ipairs(forecast) do
         if valid(value) then
-          local cx = left + 2 + (index - 1) / math.max(1, n - 1) * (cell_w - 4)
-          local cy = y + h - 2 - value / maximum * (h - 4)
-          if previous then
-            ui.line_between(cr, previous[1], previous[2], cx, cy, item.is_last and color or ui.accent, 1.5, item.is_last and 1 or 0.65)
-          end
-          if item.is_last then ui.circle(cr, cx, cy, 2, color, 1) end
+          local cx, cy = px(n + step), py(value)
+          ui.dash(cr, previous[1], previous[2], cx, cy, estimated, 1.5, 3, 2, 0.95)
+          ui.circle(cr, cx, cy, 2, estimated, 0.9, 1)
           previous = {cx, cy}
         end
       end
@@ -288,30 +342,59 @@ return function(shared, repo_root)
       ui.text(cr, workouts.error, 0, top + 14, {size = 11, mono = true, color = ui.muted, width = width})
       return
     end
-    local color = semantic_color(workouts.training_kind)
     local recency = workouts.stale and 'Stale' or short_age(workouts.last_age, workouts.last_date)
     local recency_w = recency ~= '' and (ui.width(cr, recency, 11, true) + 6) or 0
     local recency_color = (workouts.stale or workouts.last_age_days >= 10) and ui.caution or ui.muted
     local limit = width - recency_w
-    local function fitted(primary, compact, size, available)
-      if ui.width(cr, primary or '', size, true, size == 13.5 and 'bold' or nil) <= available then return primary or '' end
-      return compact and compact ~= '' and compact or primary or ''
+    local distance = workouts.last_distance:gsub('%s+', '')
+    local head_size = width < 160 and 11 or 13.5
+    local lap_text = workouts.laps and tostring(workouts.laps) or ''
+    local lap_w = lap_text ~= '' and (14 + ui.width(cr, lap_text, 11, true)) or 0
+    local text_limit = limit - (lap_w > 0 and lap_w + 5 or 0)
+    local x = 0
+    local distance_w = ui.width(cr, distance, head_size, true, 'bold')
+    ui.text(cr, distance, 0, top + 11, {size = head_size, mono = true, bold = 'bold', color = ui.ink, width = text_limit})
+    x = distance_w + (width < 160 and 2 or 4)
+    local pace = workouts.last_pace
+    if x + ui.width(cr, pace, 11, true) > text_limit then pace = pace:gsub('/[a-z]+$', '') end
+    if x + ui.width(cr, pace, 11, true) <= text_limit then
+      ui.text(cr, pace, x, top + 11, {size = 11, mono = true, color = ui.muted})
     end
-    local headline = workouts.headline ~= '' and workouts.headline or workouts.last_distance .. ' · ' .. workouts.last_pace
-    headline = fitted(headline, workouts.short_headline, 13.5, limit)
-    ui.text(cr, headline, 0, top + 11, {size = 13.5, mono = true, bold = 'bold', color = ui.ink, width = limit})
+    if lap_w > 0 then
+      local lap_x = limit - lap_w
+      ui.icon(cr, 'rotate-cw', lap_x, top + 1, 12, ui.muted)
+      ui.text(cr, lap_text, lap_x + 14, top + 11, {size = 11, mono = true, color = ui.muted})
+    end
     if recency ~= '' then
       ui.text(cr, recency, width, top + 11, {size = 11, mono = true, color = recency_color, align = 'right'})
     end
-
-    local detail = workouts.detail ~= '' and workouts.detail or (workouts.last_strength ~= '' and workouts.last_strength or workouts.last_duration)
     if (available_height or training_h) >= 30 then
-      ui.text(cr, fitted(detail, workouts.short_detail, 11, width), 0, top + 26,
-        {size = 11, mono = true, color = ui.muted, width = width})
+      local duration = workouts.duration
+      local duration_w = duration ~= '' and ui.width(cr, duration, 11, true) or 0
+      local heart = workouts.last_heart_rate:match('(%d+)') or ''
+      if heart ~= '' and workouts.hr_partial then heart = '~' .. heart end
+      local heart_w = heart ~= '' and (12 + ui.width(cr, heart, 11, true)) or 0
+      local detail = workouts.last_strength ~= '' and (workouts.short_detail ~= '' and workouts.short_detail or workouts.last_strength) or workouts.cadence
+      if detail == '' and heart == '' then detail = workouts.detail end
+      local detail_limit = width - duration_w - (duration_w > 0 and 6 or 0) - heart_w - (heart_w > 0 and 2 or 0)
+      if ui.width(cr, detail, 11, true) > detail_limit then detail = detail:gsub(' reps$', '') end
+      if ui.width(cr, detail, 11, true) > detail_limit then
+        heart, heart_w = '', 0
+        detail_limit = width - duration_w - (duration_w > 0 and 6 or 0)
+      end
+      ui.text(cr, detail, 0, top + 26, {size = 11, mono = true, color = ui.muted, width = detail_limit})
+      if heart_w > 0 then
+        local heart_x = width - duration_w - (duration_w > 0 and 6 or 0) - heart_w
+        ui.icon(cr, 'heart', heart_x, top + 16, 11, ui.muted)
+        ui.text(cr, heart, heart_x + 12, top + 26, {size = 11, mono = true, color = ui.muted})
+      end
+      if duration_w > 0 then
+        ui.text(cr, duration, width, top + 26, {size = 11, mono = true, color = ui.muted, align = 'right'})
+      end
     end
     local compact = (available_height or training_h) < training_h
     if #workouts.recent > 0 and (available_height or training_h) >= 48 then
-      draw_work_curves(cr, workouts, 0, top + (compact and 31 or 45), width, 17, not compact)
+      draw_combined_work(cr, workouts, 0, top + (compact and 31 or 45), width, 17, not compact)
     end
   end
 

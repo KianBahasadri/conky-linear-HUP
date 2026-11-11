@@ -390,7 +390,7 @@ def build_status(workouts, units, now=None):
         "workoutCount": len(workouts),
         "runCount": len(runs),
         "unitName": units["name"],
-        "schemaVersion": 4,
+        "schemaVersion": 5,
         "excludedWorkouts": observed_count - len(workouts),
     }
 
@@ -505,9 +505,11 @@ def build_status(workouts, units, now=None):
 
     divisor = units["distanceDivisor"]
     volumes = progression.volume_series(runs)
+    combined = progression.combined_work(runs, volumes, now.timestamp())
     status["recent"] = [
         {
             **volume,
+            **point,
             "dateText": format_date_text(run["startTime"] or now, now),
             "sport": short_sport(run["sport"]),
             "distanceText": format_distance(run["distanceMeters"], units),
@@ -518,10 +520,11 @@ def build_status(workouts, units, now=None):
             "inWindow": bool(run["startTime"] and run["startTime"].astimezone() >= month_start),
             "isLast": run is last,
         }
-        for run, volume in list(zip(runs, volumes))[-RECENT_LIMIT:]
+        for run, volume, point in list(zip(runs, volumes, combined["points"]))[-RECENT_LIMIT:]
     ]
     status["volumeChanges"], status["volumeChangePercent"] = progression.volume_changes(volumes)
     status["volumeComparisonDateText"] = format_date_text(runs[-2]["startTime"], now) if len(runs) >= 2 else ""
+    status["combinedWork"] = {key: value for key, value in combined.items() if key != "points"}
     return status
 
 
@@ -547,9 +550,23 @@ def training_display(last, status, units):
             change = format_signed_duration(delta)
         else:
             change = f"{delta:+.0f} bpm"
+    weather = (last.get("context") or {}).get("weather") or {}
+    temperature = weather.get("temperatureC")
+    weather_text = weather_short = weather_minimal = ""
+    if weather.get("available") and progression.finite(temperature) is not None:
+        temperature = temperature * 9 / 5 + 32 if units["name"] == "imperial" else temperature
+        symbol = "F" if units["name"] == "imperial" else "C"
+        humidity = progression.finite(weather.get("humidityPercent"))
+        suffix = f" {humidity:.0f}%" if humidity is not None else ""
+        weather_text = f"~{temperature:.1f}°{symbol}" + suffix
+        weather_short = f"~{temperature:.1f}°" + suffix.replace(" ", "")
+        weather_minimal = f"~{temperature:.0f}°{symbol}"
     return {"trainingHeadline": headline, "trainingShortHeadline": short_headline,
             "trainingDetail": detail, "trainingShortDetail": short_detail, "trainingPace": pace,
-            "trainingComparison": change, "trainingKind": assessment["kind"]}
+            "trainingComparison": change, "trainingKind": assessment["kind"],
+            "trainingDuration": format_duration(circuit["seconds"]) if circuit else status["lastDurationText"],
+            "trainingWeather": weather_text, "trainingWeatherShort": weather_short, "trainingWeatherMinimal": weather_minimal,
+            "trainingHeartRatePartial": (last.get("hrLoad") or {}).get("coverage", 0) < 0.9}
 
 
 def write_error(message):

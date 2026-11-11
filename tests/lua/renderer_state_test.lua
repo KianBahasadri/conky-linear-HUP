@@ -4,7 +4,7 @@ local root = arg[1]
 local shared = dofile(root .. '/conky/renderer-shared.lua')
 local ui = shared.ui
 local files, labels, trails, dashes, rects, lines, text_calls = {}, {}, {}, {}, {}, {}, {}
-local marks = {}
+local marks, icons = {}, {}
 local width, height = 1136, 420
 shared.read_file = function(path) return files[path:match('/([^/]+)$')] end
 shared.wrap_title = function(_, value) return {value} end
@@ -26,7 +26,10 @@ ui.polygon = function() end
 ui.polyline = function(_, points, color)
   trails[#trails + 1] = {points = points, color = color}
 end
-ui.icon = function() return true end
+ui.icon = function(_, name, x, y, size)
+  icons[#icons + 1] = {name = name, x = x, y = y, size = size}
+  return true
+end
 ui.mark = function(_, key, x, y, size)
   marks[#marks + 1] = {key = key, x = x, y = y, size = size}
   return true
@@ -47,7 +50,7 @@ os.time = function(date) return date and original_time(date) or 120000 end
 
 local function draw(name)
   labels, trails, dashes, rects, lines, text_calls = {}, {}, {}, {}, {}, {}
-  marks = {}
+  marks, icons = {}, {}
   dofile(root .. '/conky/' .. name)(shared, '/fixture').draw()
 end
 local function has(value)
@@ -208,7 +211,7 @@ files['weight-status.json'] = [[{"ok":true,"stale":false,"lastWeight":199.1,"las
   "recent":[{"value":201.4,"isLast":false},{"value":199.1,"isLast":true}]}]]
 width, height = 188, 124
 draw('weather-renderer.lua')
-assert(not has('AQI') and not has('Temp') and has('2.6 km') and has('199.1 lb') and has('−2.3'),
+assert(not has('AQI') and not has('Temp') and has('2.6km') and has('199.1 lb') and has('−2.3'),
   'replace the old weather metrics while preserving compact training and weight')
 assert(not has('Better') and not has('Worse') and #trails >= 1 and not has('5K 26:10'),
   'legacy caches retain volume and weight while hiding unvalidated fitness predictions')
@@ -259,40 +262,53 @@ assert(has('5:12/km') and not has('5:53') and not has('−0:42') and not has('Bu
   'static legacy fallback keeps recorded pace without old fitness changes or input requests')
 
 files['workouts-status.json'] = [[{"ok":true,"lastDateText":"Today","lastAgeDays":0,
+  "lastDistanceText":"4.9 km","lastRunPaceText":"6:07 /km","lastLapCount":4,
+  "lastStrengthText":"32 push · 12 pull · 44 sit","lastHeartRateShortText":"151 bpm",
+  "trainingDuration":"34:32","trainingWeather":"~10°C 50%","trainingWeatherShort":"~10°50%","trainingWeatherMinimal":"~10°C",
   "trainingHeadline":"4 laps · 34:32","trainingShortHeadline":"4 laps",
   "trainingDetail":"32 push · 12 pull · 44 sit","trainingShortDetail":"32/12/44 reps",
   "trainingPace":"Run 6:07/km","trainingComparison":"","trainingKind":"neutral",
   "volumeChanges":{"volumeRunMeters":1600,"volumePushups":11,"volumePullups":3,"volumeSitups":14},
-  "recent":[{"volumeRunMeters":2000,"volumePushups":21,"volumePullups":9,"volumeSitups":30,"volumeBreak":true,"isLast":false},
-    {"volumeRunMeters":3600,"volumePushups":32,"volumePullups":12,"volumeSitups":44,"volumeBreak":false,"isLast":true}]}]]
+  "combinedWork":{"value":160,"change":60,"changePercent":60,"forecast":[{"step":1,"value":170},{"step":2,"value":180}]},
+  "recent":[{"combinedWorkIndex":100,"combinedWorkBreak":true,"isLast":false},
+    {"combinedWorkIndex":160,"combinedWorkBreak":false,"isLast":true}]}]]
 os.time = function(date) return date and original_time(date) or 120000 end
 width = 188
 draw('weather-renderer.lua')
-assert(has('4 laps') and has('32 push') and has('km') and has('push↑') and not has('5K ') and not has('RPE'),
-  'static summary labels separate observed work curves without requesting new inputs')
-local rising = 0
+assert(has('4.9km') and has('6:07/km') and has('32/12/44') and has('151') and has('34:32') and has('Work 160') and has('~10°C 50%') and not has('RPE'),
+  'compact summary must retain distance, pace, reps, HR, timing, combined work, and exercise-time weather together')
+assert(#icons == 2 and icons[1].name == 'rotate-cw' and icons[2].name == 'heart',
+  'lap count and heart rate use compact vector symbols')
+local blue = ui.theme == 'light' and '2563b8' or '72aaff'
+local rising, projected = 0, 0
 for _, line in ipairs(lines) do
-  if line.color == ui.good and line.y1 <= 67 then
-    assert(line.y2 < line.y1, 'more completed work must make each curve rise')
+  if line.color == blue and line.y1 <= 67 then
+    assert(line.y2 < line.y1, 'more combined work must make the observed curve rise')
     rising = rising + 1
   end
 end
-assert(rising == 4 and text_color_for('push↑') == ui.good,
-  'running, pushups, pullups and situps must all show the recorded increases')
+for _, dash in ipairs(dashes) do
+  if dash.color == ui.derived then projected = projected + 1 end
+end
+assert(rising == 1 and projected == 2 and text_color_for('~10°C 50%') == ui.derived,
+  'one blue observed curve must be separate from the two dashed purple projected steps')
 width = 132
+local generic_width = ui.width
+ui.width = function(_, value) return (utf8.len(tostring(value)) or #tostring(value)) * 7 end
 draw('weather-renderer.lua')
-assert(has('4 laps') and has('32/12/44 reps') and not has('32 push'),
+assert(has('4.9km') and has('6:07/km') and has('32/12/44') and has('151') and has('34:32') and not has('32 push'),
   'narrow screens use compact complete repetition totals')
 local static_labels = table.concat(labels, '|')
 os.time = function(date) return date and original_time(date) or 120012 end
 draw('weather-renderer.lua')
-assert(table.concat(labels, '|') == static_labels and has('4 laps') and has('km'),
+assert(table.concat(labels, '|') == static_labels and has('4.9km') and has('Work +60%'),
   'all workout metrics must stay static as time passes')
-files['workouts-status.json'] = files['workouts-status.json']:gsub('"volumeBreak":false', '"volumeBreak":true')
+files['workouts-status.json'] = files['workouts-status.json']:gsub('"combinedWorkBreak":false', '"combinedWorkBreak":true')
 draw('weather-renderer.lua')
 for _, line in ipairs(lines) do
-  assert(line.color ~= ui.good or line.y1 > 67, 'workload curves must not bridge a long recording break')
+  assert(line.color ~= blue or line.y1 > 67, 'the combined curve must not bridge missing recorded work')
 end
+ui.width = generic_width
 width = 188
 draw('thermometer-renderer.lua')
 assert(has('Weather') and has('unavailable') and not has('199.1 lb'), 'a legacy cache cannot invent a weekly comparison')
@@ -300,12 +316,12 @@ height = 70
 files['workouts-status.json'] = [[{"ok":true,"lastDistanceText":"2.6 km","lastRunPaceText":"5:12 /km","lastDurationText":"29:25"}]]
 os.time = function(date) return date and original_time(date) or 120000 end
 draw('weather-renderer.lua')
-assert(has('2.6 km') and has('199.1 lb') and not has('1/2'),
+assert(has('2.6km') and has('199.1 lb') and not has('1/2'),
   'a shortened window must retain both static workout and weight summaries')
 assert(not has('Weather unavailable'), 'compact summaries must not overlap')
 os.time = function(date) return date and original_time(date) or 120030 end
 draw('weather-renderer.lua')
-assert(has('199.1 lb') and has('2.6 km') and not has('2/2'), 'shortened summaries must never paginate')
+assert(has('199.1 lb') and has('2.6km') and not has('2/2'), 'shortened summaries must never paginate')
 assert(not has('Weather unavailable'), 'compact summaries must not overlap')
 width, height = 1136, 124
 files['weight-status.json'] = [[{"ok":true,"stale":true,"lastWeightText":"199.1 lb"}]]
