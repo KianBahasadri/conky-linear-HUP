@@ -4,9 +4,10 @@ This project provides multi-monitor Conky desktop overlays backed by Python data
 
 ## Seeing the overlays
 
-All widgets on the bottom row must share the same top and bottom edges, flush
+All widgets on the bottom row must share the same visible top and bottom edges, flush
 across the row. Preserve existing widget and section heights and alignment when
 changing content or improving readability; fit changes within those bounds.
+Verify the rendered row together, including content padding and drawing clearance.
 
 Do not ask for a screenshot to check how a change looks. Run
 `uv run python scripts/render_desktop.py` and read the PNG it writes; see

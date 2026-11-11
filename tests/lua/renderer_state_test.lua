@@ -209,7 +209,7 @@ files['weight-status.json'] = [[{"ok":true,"stale":false,"lastWeight":199.1,"las
   "progressVerdict":"Better","progressKind":"good","trendDeltaText":"−2.3 lb",
   "goalWeight":183.0,"unit":"lb",
   "recent":[{"value":201.4,"isLast":false},{"value":199.1,"isLast":true}]}]]
-width, height = 188, 124
+width, height = 188, 112
 draw('weather-renderer.lua')
 assert(not has('AQI') and not has('Temp') and has('2.6km') and has('199.1 lb') and has('−2.3'),
   'replace the old weather metrics while preserving compact training and weight')
@@ -257,7 +257,7 @@ for _, trail in ipairs(trails) do
     if pt[2] > max_trail_y then max_trail_y = pt[2] end
   end
 end
-assert(max_trail_y >= 120, 'personal-metrics bands must anchor flush to the bottom of the 124px window')
+assert(max_trail_y >= height - 4, 'personal-metrics bands must anchor flush to the bottom of the shared row')
 assert(has('5:12/km') and not has('5:53') and not has('−0:42') and not has('Building baseline'),
   'static legacy fallback keeps recorded pace without old fitness changes or input requests')
 

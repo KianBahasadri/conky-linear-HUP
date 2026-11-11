@@ -149,14 +149,18 @@ position overrides are documented in [Configuration](configuration.md).
 ## Display
 
 The 120×124px thermometer window is pinned 8px from the left and bottom monitor
-edges, and the 124px-high personal-metrics window (`188px` wide on standard
-displays, `132px` on narrow displays) sits 8px to its right, filling the space
-between the thermometer and the rate-limit panel. When Minecraft is enabled,
-both sit 24px above it. Repository and standalone session lists reserve room
-above them and page their records when needed.
+edges. Its drawing clearance surrounds the visible bottom-row band. The
+personal-metrics window (`188px` wide on standard displays, `132px` on narrow
+displays) sits 8px to its right and uses the shared 112px bottom-row height,
+matching the wide rate-limit panel and visible billing map. Its top moves down
+12px from the thermometer window's top, keeping their visible content flush at
+both edges. When Minecraft is enabled, both sit 24px above it. Repository and
+standalone session lists reserve room above them and page their records when
+needed.
 
 All three components stay visible at the supported monitor sizes, including
-1280×720. Training and weight are separated by 8px. Manually shortened windows
+1280×720. Training and weight retain their 62px and 49px heights, with 1px
+between them to fit the shared row. Manually shortened windows
 retain both static summaries, omitting the third training row and charts as
 necessary. No metrics are paginated. Both windows use
 `WEATHER_OVERLAY_ENABLED`; `WEATHER_GAP_X` and `WEATHER_GAP_Y` continue to move

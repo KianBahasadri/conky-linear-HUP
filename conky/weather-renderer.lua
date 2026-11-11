@@ -5,7 +5,7 @@ return function(shared, repo_root)
   local ui = shared.ui
   local section_h = 49
   local training_h = 62
-  local gap = 8
+  local gap = 1
 
   local function json_string(content, key, fallback)
     local value = shared.json_string(content, key, nil)
@@ -374,25 +374,26 @@ return function(shared, repo_root)
     local limit = width - recency_w
     local distance = workouts.last_distance:gsub('%s+', '')
     local head_size = width < 160 and 11 or 13.5
+    local head_y = top + (width < 160 and 12 or 13)
     local lap_text = workouts.laps and tostring(workouts.laps) or ''
     local lap_w = lap_text ~= '' and (14 + ui.width(cr, lap_text, 11, true)) or 0
     local text_limit = limit - (lap_w > 0 and lap_w + 5 or 0)
     local x = 0
     local distance_w = ui.width(cr, distance, head_size, true, 'bold')
-    ui.text(cr, distance, 0, top + 11, {size = head_size, mono = true, bold = 'bold', color = ui.ink, width = text_limit})
+    ui.text(cr, distance, 0, head_y, {size = head_size, mono = true, bold = 'bold', color = ui.ink, width = text_limit})
     x = distance_w + (width < 160 and 2 or 4)
     local pace = workouts.last_pace
     if x + ui.width(cr, pace, 11, true) > text_limit then pace = pace:gsub('/[a-z]+$', '') end
     if x + ui.width(cr, pace, 11, true) <= text_limit then
-      ui.text(cr, pace, x, top + 11, {size = 11, mono = true, color = ui.muted})
+      ui.text(cr, pace, x, head_y, {size = 11, mono = true, color = ui.muted})
     end
     if lap_w > 0 then
       local lap_x = limit - lap_w
-      ui.icon(cr, 'rotate-cw', lap_x, top + 1, 12, ui.muted)
-      ui.text(cr, lap_text, lap_x + 14, top + 11, {size = 11, mono = true, color = ui.muted})
+      ui.icon(cr, 'rotate-cw', lap_x, head_y - 10, 12, ui.muted)
+      ui.text(cr, lap_text, lap_x + 14, head_y, {size = 11, mono = true, color = ui.muted})
     end
     if recency ~= '' then
-      ui.text(cr, recency, width, top + 11, {size = 11, mono = true, color = recency_color, align = 'right'})
+      ui.text(cr, recency, width, head_y, {size = 11, mono = true, color = recency_color, align = 'right'})
     end
     if (available_height or training_h) >= 30 then
       local duration = workouts.duration

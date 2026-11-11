@@ -41,13 +41,17 @@ def test_planned_windows_fit_without_overlap_under_changing_record_counts(size, 
 @pytest.mark.parametrize("accounts", [0, 1, 4, 8, 9, 12, 13, 15, 30, 150])
 def test_wide_rate_limit_band_stays_aligned_when_profiles_change(size, accounts):
     width, height = size
-    base = overlay_layout.plan(width, height, 40, {"accounts": 13}, {})
-    changed = overlay_layout.plan(width, height, 40, {"accounts": accounts, "gemini_pro": 3}, {})
+    env = {"MINECRAFT_OVERLAY_ENABLED": "0"}
+    base = overlay_layout.plan(width, height, 40, {"accounts": 13}, env)
+    changed = overlay_layout.plan(width, height, 40, {"accounts": accounts, "gemini_pro": 3}, env)
     assert changed == base
     quota = changed["rate-limit-panel"]
     assert quota[3] == 112
     assert quota[1] + quota[3] == height - 8
     assert changed["billing"][1] + 8 == quota[1]
+    # Match the compact row itself, not just a bottom-aligned larger window.
+    assert changed["weather"][1] == quota[1]
+    assert changed["weather"][3] == quota[3]
 
 
 def test_rate_limit_panel_is_centered_in_center_column_and_is_narrower():
@@ -74,7 +78,7 @@ def test_narrow_rate_limit_panel_uses_center_width_without_moving_other_panels()
         "minecraft": [8, 916, 260, 100],
         "resource-monitor": [912, 8, 360, 176],
         "billing": [1012, 896, 260, 128],
-        "weather": [136, 892, 132, 124],
+        "weather": [136, 904, 132, 112],
         "thermometer": [8, 892, 120, 124],
     }
 
@@ -104,8 +108,8 @@ def test_thermometer_and_personal_metrics_sit_between_left_edge_and_rate_limit_p
     assert thermometer[2:] == [120, 124]
     assert thermometer[1] + thermometer[3] == height - 8 - (124 if minecraft else 0)
     assert weather[0] == thermometer[0] + thermometer[2] + 8
-    assert weather[1] == thermometer[1]
-    assert weather[3] == 124
+    assert weather[1] + weather[3] == thermometer[1] + thermometer[3]
+    assert weather[3] == 112
     assert weather[0] + weather[2] + 12 <= quota[0]
 
 

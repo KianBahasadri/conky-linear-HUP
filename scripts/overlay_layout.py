@@ -8,6 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 KEYS = ("linear", "rate-limit-panel", "minecraft", "github", "weather", "thermometer",
         "resource-monitor", "billing", "git", "sessions")
+BOTTOM_ROW_HEIGHT = 112
 
 
 def cache_object(name, cache_dir):
@@ -182,7 +183,7 @@ def plan(width, height, top=40, counts=None, env=None):
     quota_limit = min(int(available * (0.55 if available >= 900 else 0.44)), max_quota_available)
     quota_rows = max(1, min(account_count, quota_limit // row))
     stacked_extra = 6 * counts.get("gemini_pro", 0) if row <= 16 else 0
-    quota_h = 112 if two_col else max(100, quota_rows * row + stacked_extra)
+    quota_h = BOTTOM_ROW_HEIGHT if two_col else max(100, quota_rows * row + stacked_extra)
     github = env.get("GITHUB_OVERLAY_ENABLED", "1") != "0"
     github_h = 128 if available >= 900 else 112
     quota_y = height - margin - quota_h
@@ -209,7 +210,7 @@ def plan(width, height, top=40, counts=None, env=None):
     billing_w = left
     billing_x = width - margin - billing_w
     billing_clearance = 8 if billing_w < 480 else 16
-    billing_h = 112 + 2 * billing_clearance
+    billing_h = BOTTOM_ROW_HEIGHT + 2 * billing_clearance
     billing_y = height - margin - billing_h
 
     # Left rail: sessions join repositories at the top. The standalone sessions
@@ -223,14 +224,14 @@ def plan(width, height, top=40, counts=None, env=None):
     minecraft_h = 100
     minecraft_foot = minecraft_h + gutter if minecraft else 0
     thermometer_w = 120
-    thermometer_h = 124
+    thermometer_h = BOTTOM_ROW_HEIGHT + 12
     thermometer_y = height - margin - minecraft_foot - thermometer_h
     thermometer_foot = thermometer_h + gutter if enabled(env, "WEATHER_OVERLAY_ENABLED") else 0
     left_foot = minecraft_foot + thermometer_foot
     weather_x = margin + thermometer_w + 8
-    weather_y = thermometer_y
     weather_w = left - thermometer_w - 8
-    weather_h = thermometer_h
+    weather_h = BOTTOM_ROW_HEIGHT
+    weather_y = thermometer_y + thermometer_h - weather_h
     merged = enabled(env, "GIT_OVERLAY_ENABLED") and enabled(env, "SESSIONS_OVERLAY_ENABLED")
     git_limit = available - left_foot
     repo_heights = counts.get("repo_heights") or [36] * (counts.get("repos", 0) or 1)
