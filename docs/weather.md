@@ -7,7 +7,7 @@ AQI, UV, condition, and location readouts are removed. Both personal-metrics
 bands communicate progress implicitly through semantic color and micro-charts
 rather than explicit section headers or status chips:
 
-- **Training (top 62px band):** Three compact static rows retain total distance,
+- **Training (top 75px band):** Three compact static rows retain total distance,
   running pace, a loop icon with lap count, run age, push/pull/sit totals, a
   heart icon with HR, and elapsed circuit time (or session duration when no
   circuit was detected). A tilde marks partial HR coverage. Narrow widths
@@ -20,16 +20,21 @@ rather than explicit section headers or status chips:
   unit letter, with a rounded temperature-only fallback for unusually long
   values. This replaces repeated prose/color-key labels with the data itself.
 
-  One combined curve uses solid blue strokes and filled markers for recorded
-  inputs, and dashed purple strokes with hollow markers for its optional
-  two-workout extrapolation. Blue is `#72aaff` in dark mode and `#2563b8` in
-  light; estimates use the derived purple token. Faint background bars restore
-  total-distance history with the running share filled. Projected positions
-  never acquire observed distance bars. The 100-point guide stays neutral.
+  The plot gets 33px of height within the same 124px window. One combined curve
+  uses thick solid blue strokes and filled markers for recorded inputs, and
+  dashed purple strokes with hollow markers for its optional two-workout
+  extrapolation. A canvas-colored outline separates strokes and markers from
+  the distance bars. Blue is `#72aaff` in dark mode and `#2563b8` in light;
+  estimates use the derived purple token. Higher-contrast, spaced bars show
+  total-distance history with the running share filled. Unknown running shares
+  stay neutral, and projected positions never acquire observed distance bars.
+  Bars retain a linear scale from zero. The line uses a padded range containing
+  the neutral 100-point guide, with a minimum span of 40 index points so tiny
+  changes are not magnified. This changes the drawing scale, not the index.
   Missing recorded values remain gaps and estimates never replace the recorded
   endpoint. [Exercise progression](run-analysis.md) owns normalization,
   component selection, missing-data rules, and projection meaning.
-- **Weight (bottom 49px band):** The first line shows the latest weigh-in, the
+- **Weight (bottom 45px band):** The first line shows the latest weigh-in, the
   signed 30-day trend delta (colored green when moving toward the openScale goal
   weight, red when moving away), and measurement age (caution yellow when >3
   days ago, danger red when >5 days ago, or `Stale`). The second
@@ -38,7 +43,9 @@ rather than explicit section headers or status chips:
   sparkline plots shaded segment areas and curve segments colored by direction
   (green when weight decreased, red when it increased) above a grounded
   baseline against the dashed 30-day average baseline, ending with a matching
-  endpoint marker flush with the adjacent panels' bottom rail. The [phone data source](workout-data-source.md#weight-backups-from-openscale)
+  endpoint marker flush with the adjacent panels' bottom rail. Tighter text-row
+  spacing preserves the 18px weight chart while making room for the taller
+  training plot. The [phone data source](workout-data-source.md#weight-backups-from-openscale)
   describes how openScale backups are read. An unreadable or incomplete upload
   keeps the last successful weight summary and marks it `Stale`; without a
   successful reading, the section shows an explanatory placeholder.

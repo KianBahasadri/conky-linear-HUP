@@ -282,7 +282,7 @@ assert(#icons == 2 and icons[1].name == 'rotate-cw' and icons[2].name == 'heart'
 local blue = ui.theme == 'light' and '2563b8' or '72aaff'
 local rising, projected = 0, 0
 for _, line in ipairs(lines) do
-  if line.color == blue and line.y1 <= 67 then
+  if line.color == blue then
     assert(line.y2 < line.y1, 'more combined work must make the observed curve rise')
     rising = rising + 1
   end
@@ -306,7 +306,7 @@ assert(table.concat(labels, '|') == static_labels and has('4.9km') and has('Work
 files['workouts-status.json'] = files['workouts-status.json']:gsub('"combinedWorkBreak":false', '"combinedWorkBreak":true')
 draw('weather-renderer.lua')
 for _, line in ipairs(lines) do
-  assert(line.color ~= blue or line.y1 > 67, 'the combined curve must not bridge missing recorded work')
+  assert(line.color ~= blue, 'the combined curve must not bridge missing recorded work')
 end
 ui.width = generic_width
 width = 188

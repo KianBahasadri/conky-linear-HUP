@@ -3,9 +3,9 @@ return function(shared, repo_root)
   local workouts_path = repo_root .. '/cache/workouts-status.json'
   local weight_path = repo_root .. '/cache/weight-status.json'
   local ui = shared.ui
-  local section_h = 49
-  local training_h = 62
-  local gap = 8
+  local section_h = 45
+  local training_h = 75
+  local gap = 4
 
   local function json_string(content, key, fallback)
     local value = shared.json_string(content, key, nil)
@@ -218,26 +218,42 @@ return function(shared, repo_root)
         ui.text(cr, weather, x + w, y - 5, {size = 11, mono = true, color = estimated, align = 'right'})
       end
     end
-    local maximum = 100
+    local minimum, maximum = 100, 100
     for i = first, #recent do
-      if valid(recent[i].combined_index) then maximum = math.max(maximum, recent[i].combined_index) end
+      if valid(recent[i].combined_index) then
+        minimum = math.min(minimum, recent[i].combined_index)
+        maximum = math.max(maximum, recent[i].combined_index)
+      end
     end
-    for _, value in ipairs(forecast) do if valid(value) then maximum = math.max(maximum, value) end end
-    maximum = maximum * 1.05
-    local function px(index) return x + 2 + (index - 1) / math.max(1, n + #forecast - 1) * (w - 4) end
-    local function py(value) return y + h - 2 - value / maximum * (h - 4) end
+    for _, value in ipairs(forecast) do
+      if valid(value) then
+        minimum = math.min(minimum, value)
+        maximum = math.max(maximum, value)
+      end
+    end
+    -- The line has its own padded range; the distance bars retain zero.
+    -- A minimum 40-point range keeps tiny index changes from looking dramatic.
+    local padding = math.max(8, (maximum - minimum) * 0.15)
+    minimum = math.max(0, minimum - padding)
+    maximum = math.max(maximum + padding, minimum + 40)
+    local bar_h = h - 1
+    local line_h = h
+    local step_w = (w - 8) / math.max(1, n + #forecast - 1)
+    local function px(index) return x + 4 + (index - 1) * step_w end
+    local function py(value) return y + line_h - 3 - (value - minimum) / (maximum - minimum) * (line_h - 6) end
     ui.line_between(cr, x, y + h - 0.5, x + w, y + h - 0.5, ui.line_strong, 1, 0.5)
-    ui.dash(cr, x, py(100), x + w, py(100), ui.line_strong, 1, 2, 2, 0.5)
+    ui.dash(cr, x, py(100), x + w, py(100), ui.line_strong, 1, 2, 3, 0.6)
     local max_distance = 1
     for i = first, #recent do max_distance = math.max(max_distance, recent[i].distance_units) end
+    local bw = math.max(2, math.min(8, math.floor(step_w - 3)))
     for index = 1, n do
       local item = recent[first + index - 1]
-      local bh = math.max(0, (h - 3) * item.distance_units / max_distance)
-      local bw = math.min(7, (w - 4) / math.max(1, n + #forecast) - 2)
-      if bh > 0 and bw > 0 then
-        local share = item.run_units and item.distance_units > 0 and shared.clamp(item.run_units / item.distance_units, 0, 1) or 1
-        ui.rect(cr, px(index) - bw / 2, y + h - bh, bw, bh, ui.muted, 0, 0.16, 0.6)
-        ui.rect(cr, px(index) - bw / 2, y + h - bh * share, bw, bh * share, observed, 0, 0.12)
+      local bh = math.max(0, bar_h * item.distance_units / max_distance)
+      if bh > 0 then
+        local share = item.run_units and item.distance_units > 0 and shared.clamp(item.run_units / item.distance_units, 0, 1) or 0
+        local bx = math.floor(px(index) - bw / 2)
+        ui.rect(cr, bx, y + h - bh, bw, bh, ui.muted, 0, 0.45)
+        ui.rect(cr, bx, y + h - bh * share, bw, bh * share, observed, 0, 0.65)
       end
     end
     local previous
@@ -246,8 +262,12 @@ return function(shared, repo_root)
       if item.combined_break or not valid(item.combined_index) then previous = nil end
       if valid(item.combined_index) then
         local cx, cy = px(index), py(item.combined_index)
-        if previous then ui.line_between(cr, previous[1], previous[2], cx, cy, observed, 1.5, 0.95) end
-        ui.circle(cr, cx, cy, item.is_last and 2.5 or 1.2, observed, 1)
+        if previous then
+          ui.line_between(cr, previous[1], previous[2], cx, cy, ui.canvas, 4, 0.9)
+          ui.line_between(cr, previous[1], previous[2], cx, cy, observed, 2.25, 1)
+        end
+        ui.circle(cr, cx, cy, item.is_last and 4 or 3, ui.canvas, 0.9)
+        ui.circle(cr, cx, cy, item.is_last and 3 or 2, observed, 1)
         previous = {cx, cy}
       end
     end
@@ -255,11 +275,17 @@ return function(shared, repo_root)
       for step, value in ipairs(forecast) do
         if valid(value) then
           local cx, cy = px(n + step), py(value)
-          ui.dash(cr, previous[1], previous[2], cx, cy, estimated, 1.5, 3, 2, 0.95)
-          ui.circle(cr, cx, cy, 2, estimated, 0.9, 1)
+          ui.dash(cr, previous[1], previous[2], cx, cy, ui.canvas, 4, 3, 2, 0.9)
+          ui.dash(cr, previous[1], previous[2], cx, cy, estimated, 2, 3, 2, 1)
+          ui.circle(cr, cx, cy, 3.5, ui.canvas, 0.9)
+          ui.circle(cr, cx, cy, 2.5, estimated, 1, 1.5)
           previous = {cx, cy}
         end
       end
+      -- Keep the recorded endpoint blue above the first projected dash.
+      local cx, cy = px(n), py(recent[#recent].combined_index)
+      ui.circle(cr, cx, cy, 4, ui.canvas, 0.9)
+      ui.circle(cr, cx, cy, 3, observed, 1)
     end
   end
 
@@ -382,19 +408,20 @@ return function(shared, repo_root)
         heart, heart_w = '', 0
         detail_limit = width - duration_w - (duration_w > 0 and 6 or 0)
       end
-      ui.text(cr, detail, 0, top + 26, {size = 11, mono = true, color = ui.muted, width = detail_limit})
+      ui.text(cr, detail, 0, top + 24, {size = 11, mono = true, color = ui.muted, width = detail_limit})
       if heart_w > 0 then
         local heart_x = width - duration_w - (duration_w > 0 and 6 or 0) - heart_w
-        ui.icon(cr, 'heart', heart_x, top + 16, 11, ui.muted)
-        ui.text(cr, heart, heart_x + 12, top + 26, {size = 11, mono = true, color = ui.muted})
+        ui.icon(cr, 'heart', heart_x, top + 14, 11, ui.muted)
+        ui.text(cr, heart, heart_x + 12, top + 24, {size = 11, mono = true, color = ui.muted})
       end
       if duration_w > 0 then
-        ui.text(cr, duration, width, top + 26, {size = 11, mono = true, color = ui.muted, align = 'right'})
+        ui.text(cr, duration, width, top + 24, {size = 11, mono = true, color = ui.muted, align = 'right'})
       end
     end
-    local compact = (available_height or training_h) < training_h
+    local compact = (available_height or training_h) < 64
     if #workouts.recent > 0 and (available_height or training_h) >= 48 then
-      draw_combined_work(cr, workouts, 0, top + (compact and 31 or 45), width, 17, not compact)
+      local chart_y = compact and 29 or 42
+      draw_combined_work(cr, workouts, 0, top + chart_y, width, (available_height or training_h) - chart_y, not compact)
     end
   end
 
@@ -430,14 +457,14 @@ return function(shared, repo_root)
       strip_unit(weight.change),
       weight.previous_date ~= '' and weight.previous_date or weight.last_date,
     }, ' · ')
-    ui.text(cr, step_str, 0, top + 26, {
+    ui.text(cr, step_str, 0, top + 24, {
       size = 11,
       mono = true,
       color = ui.muted,
       width = math.max(40, width - goal_w),
     })
     if goal_str ~= '' then
-      ui.text(cr, goal_str, width, top + 26, {
+      ui.text(cr, goal_str, width, top + 24, {
         size = 11,
         mono = true,
         color = ui.muted,
@@ -445,8 +472,8 @@ return function(shared, repo_root)
       })
     end
 
-    if #weight.recent >= 2 and (available_height or section_h) >= 49 then
-      draw_weight_sparkline(cr, weight.recent, weight.kind, 0, top + 31, width, 18)
+    if #weight.recent >= 2 and (available_height or section_h) >= 45 then
+      draw_weight_sparkline(cr, weight.recent, weight.kind, 0, top + 27, width, 18)
     elseif (available_height or section_h) >= 41 then
       ui.line_between(cr, 0, top + 40, width, top + 40, color, 1.5, 0.7)
     end
