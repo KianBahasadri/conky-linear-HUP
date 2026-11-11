@@ -211,9 +211,56 @@ def _context_match(a, b, weather=True):
     return None
 
 
+def recorded_pace(workout):
+    """Observed moving-run pace, including interval routines, never a race prediction."""
+    seconds, meters = finite(workout.get("runSeconds")), finite(workout.get("runMeters"))
+    track, total = finite(workout.get("trackMeters")), finite(workout.get("distanceMeters"))
+    if workout.get("truncated") or workout.get("analysisStale"):
+        return None
+    if seconds is None or meters is None or seconds < 300 or meters < 500:
+        return None
+    if track is None or total is None or total <= 0 or track < 0.9 * total:
+        return None
+    return round(seconds / meters * 1000, 2)
+
+
+def _running_observation(workout):
+    notes = workout.get("trainingNotes", parse_notes(workout.get("notes")))
+    continuous = workout.get("continuousRun")
+    if not notes["isCircuit"] and isinstance(continuous, dict):
+        return {**continuous, "mode": "continuous"}
+    pace = recorded_pace(workout)
+    route = workout.get("circuit")
+    if pace is None or not isinstance(route, dict):
+        return None
+    return {**route, "paceSecondsPerKm": pace, "seconds": workout["runSeconds"], "mode": "interval"}
+
+
+def pace_series(workouts):
+    """A causal three-session median of recorded pace, never an effort score."""
+    values, days, previous_class, previous_start = [], {}, None, None
+    for workout in workouts:
+        pace = recorded_pace(workout)
+        start = epoch(workout.get("startTime"))
+        notes = workout.get("trainingNotes", parse_notes(workout.get("notes")))
+        routine_class = bool(notes["isCircuit"])
+        gap = previous_start is not None and start is not None and start - previous_start > 28 * DAY
+        break_line = pace is None or routine_class != previous_class or gap
+        if break_line:
+            days.clear()
+        trend = None
+        if pace is not None and start is not None:
+            days[int(start // DAY)] = pace
+            days = dict(sorted(days.items())[-3:])
+            trend = round(statistics.median(days.values()), 2)
+        values.append({"paceSecondsPerKm": pace, "paceTrendSecondsPerKm": trend, "paceBreak": break_line})
+        previous_class, previous_start = routine_class, start
+    return values
+
+
 def _comparison(workout, history, category, now):
     neutral = {"state": "baseline", "kind": "neutral", "text": "Building baseline", "matchedCount": 0,
-               "change": None, "unit": "seconds" if category == "circuit" else "s/km" if category == "running" else "reps"}
+               "change": None, "unit": "seconds" if category == "circuit" else "s/km"}
     notes = workout.get("trainingNotes", parse_notes(workout.get("notes")))
     if notes["errors"] or workout.get("analysisStale") or workout.get("truncated"):
         return {**neutral, "reason": "Incomplete workout or notes"}
@@ -225,27 +272,15 @@ def _comparison(workout, history, category, now):
             return {**neutral, "reason": "Complete circuit prescription needed"}
         value, resolution = finite(observation.get("seconds")), finite(observation.get("timingResolutionSeconds"), 40)
     elif category == "running":
-        observation = workout.get("continuousRun")
-        if notes["isCircuit"] or not isinstance(observation, dict):
-            return {**neutral, "reason": "Continuous run needed"}
-        use_hr = notes["rpe"] is None
-        if use_hr and (observation.get("steadyHR") is None or observation.get("hrCoverage", 0) < 0.9):
-            return {**neutral, "reason": "RPE or steady HR needed"}
+        observation = _running_observation(workout)
+        if observation is None:
+            return {**neutral, "reason": "No comparable running segment in this recording"}
+        use_hr = (finite(observation.get("steadyHR")) is not None and observation.get("hrCoverage", 0) >= 0.9)
         value, resolution = finite(observation.get("steadyHR") if use_hr else observation.get("paceSecondsPerKm")), 1.0
         if use_hr:
             neutral["unit"] = "bpm"
-    else:
-        exercise = notes["test"]
-        if exercise not in EXERCISES or exercise not in notes["rir"] or notes["restSeconds"] is None:
-            return {**neutral, "reason": "Rep benchmark + RIR needed"}
-        observation = notes["counts"].get(exercise)
-        if observation is None:
-            return {**neutral, "reason": "Rep count needed"}
-        value, resolution = observation, 1.0
-    if finite(value) is None or value < 0 or (value == 0 and category != "strength") or resolution < 0:
+    if finite(value) is None or value <= 0 or resolution < 0:
         return {**neutral, "reason": "Invalid performance measurement"}
-    if notes["rpe"] is None and category == "circuit":
-        return {**neutral, "reason": "Add RPE for comparisons"}
     matches = []
     reasons = []
     latest_start = epoch(workout["startTime"])
@@ -260,7 +295,11 @@ def _comparison(workout, history, category, now):
         n = other.get("trainingNotes", parse_notes(other.get("notes")))
         if n["errors"] or n["variant"] != notes["variant"] or n["restSeconds"] != notes["restSeconds"]:
             continue
-        if category != "strength" and not (category == "running" and use_hr) and (n["rpe"] is None or abs(n["rpe"] - notes["rpe"]) > 1):
+        # Existing notes identify a routine. No effort rating or special test
+        # is needed, but a changed prescription cannot imply a fitness change.
+        if n["counts"] != notes["counts"] or n["perLap"] != notes["perLap"] or n["isCircuit"] != notes["isCircuit"]:
+            continue
+        if notes["isCircuit"] and (other.get("repsIncomplete") or workout.get("repsIncomplete") or other.get("laps") != workout.get("laps")):
             continue
         if category == "circuit":
             obs = other.get("circuit")
@@ -270,8 +309,10 @@ def _comparison(workout, history, category, now):
                 continue
             measure = finite(obs.get("seconds"))
         elif category == "running":
-            obs = other.get("continuousRun")
-            if n["isCircuit"] or not obs or not _route_match(observation, obs):
+            obs = _running_observation(other)
+            if not obs or obs["mode"] != observation["mode"] or not _route_match(observation, obs):
+                continue
+            if abs(obs["seconds"] / observation["seconds"] - 1) > 0.2:
                 continue
             if use_hr:
                 if obs.get("steadyHR") is None or obs.get("hrCoverage", 0) < 0.9 or abs(obs["paceSecondsPerKm"] / observation["paceSecondsPerKm"] - 1) > 0.02:
@@ -279,11 +320,13 @@ def _comparison(workout, history, category, now):
                 measure = finite(obs["steadyHR"])
             else:
                 measure = finite(obs.get("paceSecondsPerKm"))
-        else:
-            if n["test"] != exercise or exercise not in n["rir"] or abs(n["rir"][exercise] - notes["rir"][exercise]) > 1:
-                continue
-            measure = n["counts"].get(exercise)
-        reason = _context_match(workout.get("context", {}), other.get("context", {}), category != "strength")
+        # Automatically available HR can rule out clearly different effort.
+        # Missing HR stays unknown; it never requires another user input.
+        loads = [record.get("hrLoad") or {} for record in (workout, other)]
+        rates = [finite(record.get("avgHeartRate")) for record in (workout, other)]
+        if (category == "circuit" or not use_hr) and all(load.get("coverage", 0) >= 0.9 for load in loads) and all(rate is not None for rate in rates) and abs(rates[0] - rates[1]) > 5:
+            continue
+        reason = _context_match(workout.get("context", {}), other.get("context", {}))
         if reason:
             reasons.append(reason)
             continue
@@ -295,7 +338,7 @@ def _comparison(workout, history, category, now):
     by_day.pop(int(latest_start // DAY), None)
     matches = sorted(by_day.values())
     if not matches:
-        return {**neutral, "reason": reasons[-1] if reasons else "Same prescription needed"}
+        return {**neutral, "reason": reasons[-1] if reasons else "No matching routine in recorded history"}
     descriptive = value - statistics.median(measure for _, measure in matches[-4:])
     result = {**neutral, "matchedCount": len(matches), "change": round(descriptive, 2),
               "reason": "More matched sessions needed", "method": "matched-session medians"}
@@ -322,9 +365,9 @@ def _comparison(workout, history, category, now):
                   recentFromEpoch=matches[-3][0], recentToEpoch=latest_start,
                   reason="Change within observed variation")
     if p <= 0.05 and observed > resolution:
-        better = difference > 0 if category == "strength" else difference < 0
+        better = difference < 0
         result.update(state="improving" if better else "declining", kind="good" if better else "danger",
-                      text="More reps" if category == "strength" and better else "Fewer reps" if category == "strength" else "Faster" if better else "Slower",
+                      text="Faster" if better else "Slower",
                       reason="Matched performance change")
         if category == "running" and use_hr:
             result["text"] = "Lower HR" if better else "Higher HR"
@@ -337,7 +380,7 @@ def summarize(workouts, now, subject=None):
     records = usable_workouts(workouts, now)
     performance = {}
     latest = subject if subject is not None else records[-1] if records else None
-    for category in ("circuit", "running", "strength"):
+    for category in ("circuit", "running"):
         performance[category] = _comparison(latest, records, category, now) if latest else {
             "state": "baseline", "kind": "neutral", "text": "Building baseline", "reason": "No completed workouts", "matchedCount": 0, "change": None}
     periods = {}

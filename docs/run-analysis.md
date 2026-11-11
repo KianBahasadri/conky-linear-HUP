@@ -54,34 +54,17 @@ Exactly three nonnegative integers mean **push-ups, pull-ups, sit-ups per lap**:
 
 ```text
 8 3 11
-8 3 11; rpe=7
-8 3 11; rpe=7; variant=standard; rest=60
 ```
 
-Named routines such as `8 push-ups + 3 pullups + 11 situps` use the same order
-and per-lap interpretation. Explicit `total` notes are not multiplied. Unknown
-rep counts, such as a bare `pullups`, stay unknown; no default count is invented.
+Existing named routines such as `8 push-ups + 3 pullups + 11 situps` have the
+same per-lap interpretation. Explicit `total` notes are not multiplied. Unknown
+rep counts, such as a bare `pullups`, stay unknown; no count is invented.
 
-Optional metadata follows semicolons and uses `key=value` or `key:value`:
-
-| Field | Meaning |
-| --- | --- |
-| `rpe` | Whole-session effort, 0–10; enables matched-effort circuit and running comparisons and session-RPE workload |
-| `variant` | Exercise/form identifier; defaults to `usual`, which assumes the usual form was maintained |
-| `rest` | Recorded rest protocol in seconds, 0–3600; comparisons require the same recorded value |
-| `laps` | Explicit positive integer count; disagreement with GPS leaves the count conflicted and unmultiplied |
-| `rir` | Estimated reps in reserve, 0–30; one value for all named exercises or push/pull/sit values such as `2/1/3` |
-| `test` | `run`, `pushups`, `pullups`, or `situps`; an exercise test describes a single recorded benchmark set |
-
-A repetition-capacity benchmark can be logged as:
-
-```text
-20 pushups total; test=pushups; rir=2; rest=120; variant=standard
-```
-
-Repeated or invalid metadata is retained as a quality error and excludes the
-session from comparisons. Valid recorded reps and basic volumes remain usable.
-Effort ratings are optional; missing ratings never become inferred zeroes.
+The uploaded routine notes are sufficient. No new effort ratings, exercise
+tests, or note fields are required. Previously supported optional metadata is
+still readable for compatibility; its absence never blocks an ordinary circuit
+or pace comparison. Repeated or malformed metadata remains a quality error. Valid
+recorded reps and basic volumes remain usable.
 
 ## GPS circuits
 
@@ -111,20 +94,36 @@ Seven- and 28-day windows report run distance/count, total session minutes, and
 separate push/pull/sit totals. Unknown-multiplier reps do not enter total reps;
 partly quantified sessions retain known totals and an incomplete count.
 
-Two internal-load series remain separate:
+HR TRIMP integrates the Banister rate over successive valid timestamped HR
+samples using trapezoidal integration. Coverage must be at least 90%; gaps
+over ten seconds, conflicting duplicates, invalid calibration, or inconsistent
+timing leave the load unknown. Resting/maximal HR are configurable estimates.
+No MET fallback fills missing HR. If old files already contain session-effort
+metadata, its separate workload diagnostic is retained; the normal workflow
+uses the existing phone recordings and notes.
 
-- **HR TRIMP estimate:** integrate the Banister rate over successive valid HR
-  samples using trapezoidal integration. Coverage must be at least 90%; gaps
-  over ten seconds, conflicting duplicate readings, invalid calibration, or
-  coverage inconsistent with duration leave the load unknown. Resting and
-  maximal HR are configurable estimates. No MET fallback fills missing HR.
-- **Session-RPE:** session minutes multiplied by the recorded RPE. Only sessions
-  with valid effort metadata contribute. Report the number of covered sessions
-  beside each sum, so partial histories are not silently treated as complete.
+Recorded reps describe training volume, not maximal repetition capacity. There
+are no cross-exercise rep points or inferred maximal-strength scores.
 
-Neither series includes arbitrary cross-exercise rep points. Neither is a
-percentage improvement in fitness, and workload changes do not set the
-performance color.
+## Recorded pace trend
+
+The display's pace dots come from observed running seconds/metres, excluding
+walking and stops. At least five running minutes, 500 running metres, 90% track
+coverage, and a complete, current analysis are required for a plotted point.
+These are recording-quality checks, not a request to change the routine.
+
+The dashed pace line is a trailing median of the last three distinct UTC days,
+using only data already recorded at each point. Same-day repeats update that
+day's value. Missing observations, breaks longer than 28 days, and a change
+between running-only and exercise-circuit sessions break the line and reset
+its median. A separate guide is the prior 28-day median for the current session
+class. Faster running pace plots higher. Distance bars remain a separate
+volume layer.
+
+This chart shows the recorded pace history, including ordinary interval
+running. Different rep prescriptions can influence that pace; the line alone
+is not a claim that underlying fitness rose or fell. The explicit performance
+comparisons below keep changed prescriptions separate.
 
 ## Weight and workout-time weather
 
@@ -152,36 +151,40 @@ or apply an unvalidated seconds-per-pound or seconds-per-degree correction.
 
 ## Performance comparisons
 
-Comparisons use up to 84 days of earlier sessions and distinguish:
+Comparisons use up to 84 days of existing sessions:
 
-- **Circuit performance:** the same rep prescription, per-lap/total convention,
-  lap count, route, form identifier, rest protocol, and RPE within one point.
-- **Running performance:** sustained runs on comparable routes/distances.
-  With RPE, compare pace at matched effort. Without RPE, valid steady HR can
-  be compared at paces within 2%, yielding `Lower HR`/`Higher HR` response labels.
-- **Repetition capacity:** the same exercise test, form, recorded rest protocol,
-  and RIR within one repetition. Ordinary circuit rep totals remain workload.
+- Circuit elapsed times require the same recorded reps, per-lap/total convention,
+  lap count, route, and any already recorded form/rest identifiers.
+- Running comparisons use available continuous-run observations or the observed
+  running pace within ordinary circuits. These modes stay separate. Circuit
+  comparisons retain the same rep prescription and lap count, and running
+  durations must be within 20%. No ten-minute run is required for interval pace.
+- When an existing continuous segment has sufficient steady HR, compare HR at
+  paces within 2%, yielding `Lower HR`/`Higher HR`. Otherwise compare recorded
+  pace directly. For elapsed-time/pace comparisons, automatically recorded
+  whole-session HR with at least 90% coverage excludes pairs differing by more
+  than 5 bpm. Unavailable HR is not
+  invented and does not trigger a request for manual effort ratings.
 
 Routes must have centres within 50 m, distances within 5%, and similar width
-and height (within 10% or 20 m). Weight medians must be within 2%. Circuit and
-running comparisons additionally require temperature and dew point within 3°C,
-wind within 5 km/h, and solar radiation within 150 W/m². These are conservative
-matching calipers, not validated correction equations. Missing context, stale
-uploads, changed prescriptions, and workouts older than ten days prevent a
-current performance verdict.
+and height (within 10% or 20 m). Weight medians must be within 2%; temperature
+and dew point within 3°C, wind within 5 km/h, and solar radiation within
+150 W/m². These are engineering matching calipers, not validated correction
+formulas. Missing context, stale uploads, changed prescriptions, and workouts
+older than ten days prevent a current matched verdict; the measured pace
+history and known rep volumes remain visible.
 
-A single matched difference is descriptive and stays neutral. At least eight
-sessions on distinct UTC days are required for the change screen: the latest
-four versus the preceding four. An exact two-sided rank-sum permutation screen
-must meet p ≤ 0.05, and the median difference must exceed measurement resolution
-(40 seconds for circuits, 1 second/km or bpm for running, 1 rep for capacity).
-Otherwise the result stays within variation or continues building a baseline.
+Single matched differences stay descriptive. Eight ordinary sessions on distinct
+UTC days enable the change screen: the latest four versus the preceding four.
+An exact two-sided rank-sum permutation screen must meet p ≤ 0.05, and the median
+difference must exceed the measurement resolution (40 seconds for circuits,
+1 second/km or bpm for running). Otherwise the assessment stays neutral.
 
 The screen assumes comparable, sufficiently independent observations. It labels
-an observed matched performance change (`Faster`, `Slower`, or a specific HR/rep
-response); it does not establish a causal training effect or a calibrated
-probability that overall fitness changed. Repeated laps and same-day sessions
-are not counted as independent longitudinal evidence.
+observed session-performance changes, not a causal training effect or a
+calibrated probability of overall fitness improvement. Unknown effort, technique,
+and unrecorded changes remain limitations; recorded work is not reinterpreted
+as a maximal-strength test. No additional physical tests are requested.
 
 ## Evidence behind the design
 

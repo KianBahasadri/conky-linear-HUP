@@ -13,7 +13,7 @@ def context():
             "weather": {"available": True, "temperatureC": 10, "dewPointC": 5, "windKmh": 8, "solarWm2": 30}}
 
 
-def session(day, seconds=2400, notes="8 3 11; rpe=7"):
+def session(day, seconds=2400, notes="8 3 11"):
     parsed = p.parse_notes(notes)
     record = {"file": f"run-{day}.tcx", "sport": "Running", "startTime": BASE + timedelta(days=day),
               "endTime": BASE + timedelta(days=day, seconds=seconds + 600),
@@ -85,7 +85,7 @@ def test_conflicting_hr_readings_and_nonfinite_values_cannot_make_a_good_load():
 
 
 def test_completed_unique_workouts_only_and_no_mixed_load_units():
-    valid = session(1)
+    valid = session(1, notes="8 3 11; rpe=7")
     duplicate = {**valid, "file": "uploaded-again.tcx"}
     future = session(30)
     invalid = {**session(3), "durationSeconds": float("nan")}
@@ -128,14 +128,13 @@ def test_reproducible_matched_performance_change_needs_independent_history():
 
 
 @pytest.mark.parametrize("change, reason", [
-    (lambda w: w["trainingNotes"].update(rpe=None), "Add RPE"),
-    (lambda w: w["trainingNotes"]["counts"].update(pushups=9), "Same prescription"),
+    (lambda w: w["trainingNotes"]["counts"].update(pushups=9), "No matching routine"),
     (lambda w: w["context"]["weight"].update(medianKg=100), "Different bodyweight"),
     (lambda w: w["context"]["weight"].update(stale=True), "Recent weight"),
     (lambda w: w["context"]["weather"].update(temperatureC=30), "Different weather"),
     (lambda w: w["context"]["weather"].update(available=False), "Weather context"),
-    (lambda w: w["circuit"].update(longitude=-70), "Same prescription"),
-    (lambda w: w["circuit"].update(widthMeters=1000), "Same prescription"),
+    (lambda w: w["circuit"].update(longitude=-70), "No matching routine"),
+    (lambda w: w["circuit"].update(widthMeters=1000), "No matching routine"),
 ])
 def test_confounded_changes_do_not_generate_an_improvement(change, reason):
     records = improving_sessions()
@@ -160,6 +159,8 @@ def test_hr_response_can_be_compared_only_at_matched_continuous_pace():
         record = session(day, notes="easy run")
         record["continuousRun"] = {**record["circuit"], "seconds": 1800, "paceSecondsPerKm": 360,
                                    "steadyHR": 150 if day < 4 else 140, "hrCoverage": 1}
+        record["avgHeartRate"] = record["continuousRun"]["steadyHR"]
+        record["hrLoad"] = {"coverage": 1}
         records.append(record)
     result = p.summarize(records, (BASE + timedelta(days=8)).timestamp())["performance"]["running"]
     assert result["text"] == "Lower HR" and result["unit"] == "bpm"
@@ -168,13 +169,12 @@ def test_hr_response_can_be_compared_only_at_matched_continuous_pace():
     assert result["state"] == "baseline"
 
 
-def test_strength_benchmark_is_exercise_specific_and_matched_to_rir_and_rest():
-    records = [session(day, notes=f"{10 if day < 4 else 15} pushups total; test=pushups; rir=2; rest=120") for day in range(8)]
-    result = p.summarize(records, (BASE + timedelta(days=8)).timestamp())["performance"]["strength"]
-    assert result["text"] == "More reps" and result["unit"] == "reps"
-    records[-1]["trainingNotes"]["rir"]["pushups"] = 8
-    result = p.summarize(records, (BASE + timedelta(days=8)).timestamp())["performance"]["strength"]
-    assert result["state"] == "baseline"
+def test_normal_notes_alone_produce_reps_and_automatic_circuit_comparisons():
+    records = improving_sessions()
+    result = p.summarize(records, (BASE + timedelta(days=8)).timestamp())
+    assert result["performance"]["circuit"]["text"] == "Faster"
+    assert "strength" not in result["performance"]
+    assert result["workload"]["28"]["reps"] == {"pushups": 256, "pullups": 96, "situps": 352}
 
 
 def test_workout_without_an_end_timestamp_must_still_be_finished():
@@ -189,13 +189,10 @@ def test_latest_comparison_is_independent_of_upload_order():
     assert result["text"] == "Faster" and result["recentToEpoch"] == (BASE + timedelta(days=7)).timestamp()
 
 
-def test_zero_effort_is_recorded_and_zero_rep_benchmarks_remain_valid():
+def test_optional_preexisting_zero_effort_is_still_recorded():
     record = session(18, notes="easy session; rpe=0")
     result = p.summarize([record], NOW)
     assert result["workload"]["7"]["sessionRpe"] == {"value": 0.0, "coveredSessions": 1, "totalSessions": 1}
-    records = [session(day, notes=f"{5 if day < 4 else 0} pushups total; test=pushups; rir=0; rest=120") for day in range(8)]
-    result = p.summarize(records, (BASE + timedelta(days=8)).timestamp())["performance"]["strength"]
-    assert result["text"] == "Fewer reps" and result["change"] == -5
 
 
 def test_nonfinite_observation_cannot_produce_a_performance_change():
@@ -203,3 +200,48 @@ def test_nonfinite_observation_cannot_produce_a_performance_change():
     records[-1]["circuit"]["seconds"] = float("nan")
     result = p.summarize(records, (BASE + timedelta(days=8)).timestamp())["performance"]["circuit"]
     assert result["state"] == "baseline" and result["change"] is None
+
+
+def test_interval_running_compares_existing_pace_without_additional_logging():
+    records = [session(day) for day in range(8)]
+    for day, record in enumerate(records):
+        record.update(runMeters=3000 if day < 4 else 3300, trackMeters=4000)
+    result = p.summarize(records, (BASE + timedelta(days=8)).timestamp())["performance"]["running"]
+    assert result["text"] == "Faster" and result["unit"] == "s/km"
+    assert result["change"] == pytest.approx(-36.36)
+    records[-1]["trainingNotes"]["counts"]["pullups"] = 6
+    assert p.summarize(records, (BASE + timedelta(days=8)).timestamp())["performance"]["running"]["state"] == "baseline"
+
+
+def test_pace_trend_uses_past_recordings_and_breaks_at_missing_data():
+    records = [session(day) for day in range(4)]
+    for record, meters in zip(records, (4000, 2000, 3600, 3000)):
+        record.update(runMeters=meters, trackMeters=4000)
+    values = p.pace_series(records)
+    assert [v["paceTrendSecondsPerKm"] for v in values[:3]] == [300, 450, 333.33]
+    records[2]["truncated"] = True
+    values = p.pace_series(records)
+    assert values[2]["paceTrendSecondsPerKm"] is None and values[2]["paceBreak"]
+    assert values[3]["paceTrendSecondsPerKm"] == 400
+    records[3]["runMeters"] = float("nan")
+    assert p.recorded_pace(records[3]) is None
+
+
+def test_same_day_workouts_do_not_overweight_the_pace_median():
+    records = [session(1), session(2), session(2.1)]
+    for record, meters in zip(records, (4000, 2000, 3000)):
+        record.update(runMeters=meters, trackMeters=4000)
+    assert p.pace_series(records)[-1]["paceTrendSecondsPerKm"] == 350
+
+
+@pytest.mark.parametrize("changed", ["class", "long_break"])
+def test_pace_median_resets_across_different_session_classes_or_long_breaks(changed):
+    records = [session(1), session(2)]
+    for record, meters in zip(records, (4000, 3000)):
+        record.update(runMeters=meters, trackMeters=4000)
+    if changed == "class":
+        records[-1]["trainingNotes"] = p.parse_notes("normal run")
+    else:
+        records[-1]["startTime"] += timedelta(days=30)
+    last = p.pace_series(records)[-1]
+    assert last["paceBreak"] and last["paceTrendSecondsPerKm"] == 400

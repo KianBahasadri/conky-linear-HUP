@@ -33,7 +33,9 @@
   - the last run's totals, walk-excluded pace, inferred lap count, and recorded reps;
   - separate performance assessments and seven-/28-day volume, HR, and session-RPE workload;
   - prior-weight and historical weather context with quality flags;
-  - formatted training pages and the last 14 runs' total/running distance for the volume chart.
+  - static `training*` text fields and the last 14 runs' total/running distance,
+    recorded pace, trailing pace median, and gap flags for the layered chart;
+  - the prior 28-day pace median guide. `trainingPages` is no longer emitted.
 
   Run counts exclude rides and untyped workouts without running; workload
   bookkeeping includes all sports. See [Exercise progression](run-analysis.md).
@@ -82,7 +84,8 @@ settings are in [Configuration](configuration.md#launcher-lifecycle).
 - Minecraft: `60s`
 - GitHub: `1800s`
 - Weather and air quality: `600s`
-- Workouts: `20s` (override with `WORKOUTS_REFRESH_SECONDS`); local parse of new or changed TCX files only, no network
+- Workouts: `20s` (override with `WORKOUTS_REFRESH_SECONDS`); local parse of new or changed TCX files, with historical weather context
+  fetched through the bounded cache described in [Exercise progression](run-analysis.md)
 - Weight: `20s` (override with `WEIGHT_REFRESH_SECONDS`); local openScale ZIP parse, no network
 - Billing: `900s` (override with `BILLING_REFRESH_SECONDS`); AWS Cost Explorer is cached daily (`86400s` / `BILLING_AWS_CACHE_TTL_SECONDS`) to avoid per-query API fees on daily-refreshed backend data
 - Sessions: `20s` (override with `SESSIONS_REFRESH_SECONDS`)

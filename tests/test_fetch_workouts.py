@@ -556,7 +556,10 @@ def test_numeric_notes_reanalyze_existing_upload_and_reach_overlay_status(tmp_pa
     assert status["lastStrengthText"] == "32 push · 12 pull · 44 sit"
     assert "lastStrengthLoad" not in status and "lastTotalLoad" not in status
     assert status["workload"]["7"]["reps"] == {"pushups": 32, "pullups": 12, "situps": 44}
-    assert status["performance"]["circuit"]["reason"] == "Add RPE for comparisons"
+    assert status["performance"]["circuit"]["reason"] == "No matching routine in recorded history"
+    assert status["trainingHeadline"].startswith("4 laps")
+    assert status["trainingShortDetail"] == "32/12/44 reps"
+    assert "trainingPages" not in status
     saved = json.loads(analysis_path.read_text(encoding="utf-8"))
     assert saved["version"] == workouts.ANALYSIS_VERSION
     assert saved["files"][tcx_path.name]["workout"]["reps"] == {
@@ -576,8 +579,7 @@ def test_unknown_gps_laps_display_per_lap_reps_and_mark_load_incomplete(tmp_path
     assert status["lastStrengthText"] == "8 push · 3 pull · 11 sit /lap"
     assert status["workload"]["7"]["reps"] == {"pushups": 0, "pullups": 0, "situps": 0}
     assert status["workload"]["7"]["unquantifiedRepSessions"] == 1
-    assert "+?" in status["trainingPages"][2]["headline"]
-    assert "+?" in status["trainingPages"][2]["shortHeadline"]
+    assert status["trainingShortDetail"].endswith("/lap")
     assert "rateOfProgressText" not in status
     assert status["progressVerdict"] == "Building baseline"
     assert status["progressKind"] == "neutral"

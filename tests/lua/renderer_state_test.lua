@@ -255,28 +255,41 @@ for _, trail in ipairs(trails) do
   end
 end
 assert(max_trail_y >= 120, 'personal-metrics bands must anchor flush to the bottom of the 124px window')
-assert(has('5:12/km') and not has('5:53') and not has('−0:42') and has('Building baseline'),
-  'unvalidated legacy fitness changes must not be displayed as progression')
+assert(has('5:12/km') and not has('5:53') and not has('−0:42') and not has('Building baseline'),
+  'static legacy fallback keeps recorded pace without old fitness changes or input requests')
 
 files['workouts-status.json'] = [[{"ok":true,"lastDateText":"Today","lastAgeDays":0,
-  "trainingPages":[
-    {"headline":"4 laps · 34:32","shortHeadline":"4 laps","detail":"32 push · 12 pull · 44 sit",
-     "shortDetail":"32/12/44 reps","comparison":"Add RPE for comparisons","shortComparison":"Add RPE to compare","kind":"neutral"},
-    {"headline":"Run 6:07/km","detail":"3.6 km · 22:11","comparison":"Continuous run needed","kind":"neutral"}],
-  "recent":[{"distanceUnits":4.0,"runUnits":3.0,"isLast":false},{"distanceUnits":4.9,"runUnits":3.6,"isLast":true}]}]]
+  "trainingHeadline":"4 laps · 34:32","trainingShortHeadline":"4 laps",
+  "trainingDetail":"32 push · 12 pull · 44 sit","trainingShortDetail":"32/12/44 reps",
+  "trainingPace":"Run 6:07/km","trainingComparison":"","trainingKind":"neutral",
+  "paceBaselineSecondsPerKm":380,
+  "recent":[{"distanceUnits":4.0,"runUnits":3.0,"paceSecondsPerKm":390,"paceTrendSecondsPerKm":390,"paceBreak":true,"isLast":false},
+    {"distanceUnits":4.9,"runUnits":3.6,"paceSecondsPerKm":367,"paceTrendSecondsPerKm":378.5,"paceBreak":false,"isLast":true}]}]]
 os.time = function(date) return date and original_time(date) or 120000 end
 width = 188
 draw('weather-renderer.lua')
-assert(has('4 laps') and has('32 push') and has('Add RPE') and not has('5K '),
-  'circuit observations, recorded reps, and comparison quality must be distinct')
+assert(has('4 laps') and has('32 push') and has('Run 6:07/km') and not has('5K ') and not has('RPE'),
+  'static summary uses existing circuit, reps, and pace without requesting new inputs')
+local pace_trend
+for _, dash in ipairs(dashes) do
+  if dash.color == ui.derived then pace_trend = dash end
+end
+assert(pace_trend and pace_trend.y2 < pace_trend.y1 and pace_trend.y1 <= 67,
+  'restored pace trend must rise for faster running and stay within its chart')
 width = 132
 draw('weather-renderer.lua')
 assert(has('4 laps') and has('32/12/44 reps') and not has('32 push'),
   'narrow screens use compact complete repetition totals')
+local static_labels = table.concat(labels, '|')
 os.time = function(date) return date and original_time(date) or 120012 end
 draw('weather-renderer.lua')
-assert(has('Run 6:07/km') and has('Continuous run needed') and not has('4 laps'),
-  'workout pages rotate independently without mixing circuit and running evidence')
+assert(table.concat(labels, '|') == static_labels and has('4 laps') and has('Run 6:07/km'),
+  'all workout metrics must stay static as time passes')
+files['workouts-status.json'] = files['workouts-status.json']:gsub('"paceBreak":false', '"paceBreak":true')
+draw('weather-renderer.lua')
+for _, dash in ipairs(dashes) do
+  assert(dash.color ~= ui.derived, 'pace trend must not bridge a recording gap or session-class change')
+end
 width = 188
 draw('thermometer-renderer.lua')
 assert(has('Weather') and has('unavailable') and not has('199.1 lb'), 'a legacy cache cannot invent a weekly comparison')
@@ -284,13 +297,13 @@ height = 70
 files['workouts-status.json'] = [[{"ok":true,"lastDistanceText":"2.6 km","lastRunPaceText":"5:12 /km","lastDurationText":"29:25"}]]
 os.time = function(date) return date and original_time(date) or 120000 end
 draw('weather-renderer.lua')
-assert(has('2.6 km') and not has('199.1 lb') and has('1/2'),
-  'training must remain bounded on a manually shortened panel')
-assert(not has('Weather unavailable'), 'compact pages must not overlap')
+assert(has('2.6 km') and has('199.1 lb') and not has('1/2'),
+  'a shortened window must retain both static workout and weight summaries')
+assert(not has('Weather unavailable'), 'compact summaries must not overlap')
 os.time = function(date) return date and original_time(date) or 120030 end
 draw('weather-renderer.lua')
-assert(has('199.1 lb') and has('2/2'), 'compact weight page must remain bounded and labeled')
-assert(not has('2.6 km') and not has('Weather unavailable'), 'compact pages must not overlap')
+assert(has('199.1 lb') and has('2.6 km') and not has('2/2'), 'shortened summaries must never paginate')
+assert(not has('Weather unavailable'), 'compact summaries must not overlap')
 width, height = 1136, 124
 files['weight-status.json'] = [[{"ok":true,"stale":true,"lastWeightText":"199.1 lb"}]]
 draw('weather-renderer.lua')

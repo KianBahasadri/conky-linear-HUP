@@ -390,7 +390,7 @@ def build_status(workouts, units, now=None):
         "workoutCount": len(workouts),
         "runCount": len(runs),
         "unitName": units["name"],
-        "schemaVersion": 2,
+        "schemaVersion": 3,
         "excludedWorkouts": observed_count - len(workouts),
     }
 
@@ -501,11 +501,12 @@ def build_status(workouts, units, now=None):
     status["progressKind"] = assessment["kind"] if last_age_days < 10 else "caution"
     status["trendText"] = assessment["text"]
     status["lastContext"] = last.get("context", {})
-    status["trainingPages"] = training_pages(last, status, units)
+    status.update(training_display(last, status, units))
 
     divisor = units["distanceDivisor"]
     status["recent"] = [
         {
+            **pace,
             "dateText": format_date_text(run["startTime"] or now, now),
             "sport": short_sport(run["sport"]),
             "distanceText": format_distance(run["distanceMeters"], units),
@@ -516,78 +517,40 @@ def build_status(workouts, units, now=None):
             "inWindow": bool(run["startTime"] and run["startTime"].astimezone() >= month_start),
             "isLast": run is last,
         }
-        for run in runs[-RECENT_LIMIT:]
+        for run, pace in list(zip(runs, progression.pace_series(runs)))[-RECENT_LIMIT:]
     ]
+    prior_paces = [progression.recorded_pace(run) for run in month_runs if run is not last
+                   and bool(run.get("trainingNotes", progression.parse_notes(run.get("notes")))["isCircuit"]) == notes["isCircuit"]]
+    prior_paces = [pace for pace in prior_paces if pace is not None]
+    status["paceBaselineSecondsPerKm"] = round(statistics.median(prior_paces), 2) if prior_paces else None
     return status
 
 
-def training_pages(last, status, units):
-    notes = last.get("trainingNotes", progression.parse_notes(last.get("notes")))
-    performance = status["performance"]
-    week = status["workload"]["7"]
-    pages = []
-
-    def comparison(category):
-        result = performance[category]
-        if result["state"] in ("improving", "declining"):
-            delta = result["change"]
-            change = format_signed_duration(delta) if result["unit"] == "seconds" else f"{delta:+.1f} {result['unit']}"
-            return result["text"] + " " + change
-        if result["matchedCount"]:
-            return f"{result['matchedCount']} matches · {result['text'].lower()}"
-        return result.get("reason") or result["text"]
-
-    def compact_comparison(category, fallback):
-        result = performance[category]
-        return comparison(category) if result["state"] in ("improving", "declining", "steady") else fallback
-
-    if notes["isCircuit"]:
-        circuit = last.get("circuit")
-        pages.append({"headline": f"{last['laps']} laps · {format_duration(circuit['seconds'])}" if circuit else "Circuit logged",
-                      "shortHeadline": f"{last['laps']} laps" if last.get("laps") else "Circuit logged",
-                      "detail": status["lastStrengthText"],
-                      "shortDetail": "/".join(str((last.get("reps") or {}).get(k, "?")) for k in progression.EXERCISES) + (" /lap" if last.get("repsPerLap") else " reps"),
-                      "comparison": comparison("circuit"), "shortComparison": compact_comparison("circuit", "Add RPE to compare" if notes["rpe"] is None else "Building baseline"),
-                      "kind": performance["circuit"]["kind"]})
-    continuous = last.get("continuousRun")
-    pages.append({"headline": "Run " + (status["lastRunPaceText"] or status["lastPaceText"]).replace(" /", "/"),
-                  "shortHeadline": "Run " + (status["lastRunPaceText"] or status["lastPaceText"]).split(" ")[0],
-                  "detail": f"{status['lastRunDistanceText'] or status['lastDistanceText']} · {format_duration(last.get('runSeconds') or last['durationSeconds'])}",
-                  "comparison": comparison("running"), "shortComparison": compact_comparison("running", "Continuous run needed" if not continuous or notes["isCircuit"] else "Building baseline"),
-                  "kind": performance["running"]["kind"]})
-    counts = week["reps"]
-    rep_triplet = "/".join(str(counts[k]) for k in progression.EXERCISES)
-    pages.append({"headline": "7d " + rep_triplet + ("+?" if week["unquantifiedRepSessions"] else "") + " reps",
-                  "shortHeadline": "7d " + rep_triplet + ("+?" if week["unquantifiedRepSessions"] else ""),
-                  "detail": "push / pull / sit",
-                  "comparison": comparison("strength"), "shortComparison": compact_comparison("strength", "Rep benchmark needed"),
-                  "kind": performance["strength"]["kind"]})
-    def load_text(label, record):
-        value = "—" if record["value"] is None else f"{record['value']:.0f} AU"
-        return f"{label} {value} · {record['coveredSessions']}/{record['totalSessions']} logs"
-    pages.append({"headline": "7d " + ("~" if week["staleSessions"] else "") + format_distance(week["runMeters"], units) + f" · {week['runs']} runs",
-                  "shortHeadline": "7d " + ("~" if week["staleSessions"] else "") + format_distance(week["runMeters"], units),
-                  "detail": load_text("HR~", week["hrTrimp"]),
-                  "comparison": load_text("RPE", week["sessionRpe"]),
-                  "shortComparison": "RPE not logged" if week["sessionRpe"]["value"] is None else load_text("RPE", week["sessionRpe"]),
-                  "kind": "neutral"})
-    context = last.get("context", {})
-    weather, weight = context.get("weather", {}), context.get("weight", {})
-    temperature = weather.get("temperatureC")
-    if weather.get("available"):
-        if units["name"] == "imperial":
-            temperature = temperature * 9 / 5 + 32
-        weather_text = f"~{temperature:.1f}°{'F' if units['name'] == 'imperial' else 'C'} · {weather['humidityPercent']:.0f}% RH"
+def training_display(last, status, units):
+    """One static summary using the phone's existing fields and notes."""
+    circuit = last.get("circuit")
+    if circuit:
+        headline = f"{last['laps']} laps · {format_duration(circuit['seconds'])}"
+        short_headline = f"{last['laps']} laps"
     else:
-        weather_text = weather.get("reason") or "Weather pending"
-    if weight.get("available"):
-        age = weight["ageDays"] * 24
-        weight_text = f"{weight['value']:.1f} {weight['unit']} · {age:.0f}h before"
-    else:
-        weight_text = weight.get("reason") or "Weight unavailable"
-    pages.append({"headline": weather_text, "shortHeadline": weather_text.replace(" RH", ""),
-                  "detail": weight_text, "comparison": "At workout · model weather", "shortComparison": "Workout conditions", "kind": "neutral"})
-    return pages
+        headline = status["lastDistanceText"] + " · " + status["lastDurationText"]
+        short_headline = status["lastDistanceText"]
+    detail = status["lastStrengthText"] or status["lastHeartRateText"] or status["monthSummaryText"]
+    short_detail = ("/".join(str((last.get("reps") or {}).get(k, "?")) for k in progression.EXERCISES)
+                    + (" /lap" if last.get("repsPerLap") else " reps")) if last.get("reps") else detail
+    pace = (("Run " + status["lastRunPaceText"]) if status["lastRunPaceText"] else ("Pace " + status["lastPaceText"])).replace(" /", "/")
+    assessment = status["performance"]["running"]
+    change = ""
+    if assessment["state"] in ("improving", "declining"):
+        delta = assessment["change"]
+        if assessment["unit"] == "s/km":
+            delta *= units["distanceDivisor"] / 1000
+            change = format_signed_duration(delta)
+        else:
+            change = f"{delta:+.0f} bpm"
+    return {"trainingHeadline": headline, "trainingShortHeadline": short_headline,
+            "trainingDetail": detail, "trainingShortDetail": short_detail, "trainingPace": pace,
+            "trainingComparison": change, "trainingKind": assessment["kind"]}
 
 
 def write_error(message):
