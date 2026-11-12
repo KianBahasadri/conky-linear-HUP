@@ -4,6 +4,16 @@ local shared = dofile(root .. '/conky/renderer-shared.lua')
 local ui = shared.ui
 local files, labels, icons, boxes = {}, {}, {}, {}
 local width, height, now = 316, 800, 0
+local scale, last_scale, saved_scales = 1, 1, {}
+cairo_save = function() saved_scales[#saved_scales + 1] = scale end
+cairo_scale = function(_, sx, sy)
+  assert(sx == sy and sx > 0 and sx <= 1, 'repository scaling must preserve proportions')
+  scale = scale * sx
+  last_scale = scale
+end
+cairo_restore = function()
+  scale = assert(table.remove(saved_scales), 'unbalanced Cairo restore')
+end
 local env = {SESSIONS_OVERLAY_ENABLED = '1', GIT_DEFAULT_BRANCHES = 'main,master'}
 local getenv = os.getenv
 os.getenv = function(key) return env[key] or getenv(key) end
@@ -18,26 +28,31 @@ ui.text = function(cr, text, x, y, opts)
   assert(w >= 0, 'negative text allocation: ' .. text)
   if opts.align == 'right' then x = x - w end
   labels[#labels + 1] = tostring(text)
-  if w > 0 then boxes[#boxes + 1] = {text = text, x = x, y = y, w = w, natural = natural, color = opts.color} end
+  if w > 0 then boxes[#boxes + 1] = {text = text, x = x * scale, y = y * scale,
+    w = w * scale, natural = natural * scale, color = opts.color} end
   return w
 end
 ui.icon = function(_, name, x, y, size, color)
   assert(ui.icons[name], 'icon must be vendored: ' .. name)
-  icons[#icons + 1] = {name = name, color = color, x = x, y = y, size = size}
+  icons[#icons + 1] = {name = name, color = color, x = x * scale, y = y * scale, size = size * scale}
   return true
 end
 ui.badge = function(cr, text, right, y)
   local w = ui.width(cr, text, 12, false) + 16
-  boxes[#boxes + 1] = {text = text, x = right - w, y = y + 14, w = w, natural = w}
+  boxes[#boxes + 1] = {text = text, x = (right - w) * scale, y = (y + 14) * scale,
+    w = w * scale, natural = w * scale}
   labels[#labels + 1] = text
   return w
 end
+local renderer = dofile(root .. '/conky/git-status-renderer.lua')(shared, '/fixture')
 local function draw()
   labels, icons, boxes = {}, {}, {}
-  dofile(root .. '/conky/git-status-renderer.lua')(shared, '/fixture').draw()
+  last_scale = 1
+  renderer.draw()
+  assert(scale == 1 and #saved_scales == 0, 'drawing must restore the Cairo transform before the footer')
   for i, box in ipairs(boxes) do
     assert(box.x >= -0.01 and box.x + box.w <= width + 0.01, 'horizontal overflow: ' .. box.text)
-    assert(box.y <= height, 'vertical overflow: ' .. box.text)
+    assert(box.y <= height + 0.01, 'vertical overflow: ' .. box.text)
     for j = i + 1, #boxes do
       local other = boxes[j]
       if box.y == other.y then
@@ -47,7 +62,8 @@ local function draw()
     end
   end
   for _, mark in ipairs(icons) do
-    assert(mark.y + mark.size <= height, 'glyph must stay within its page')
+    assert(mark.y + mark.size <= height + 0.01, 'glyph must stay within the panel')
+    assert(mark.x >= 0 and mark.x + mark.size <= width + 0.01, 'glyph must stay within the panel width')
     if mark.name == 'eye' or mark.name == 'eye-closed' then
       assert(mark.color == ui.muted, 'eyes must stay neutral in every state')
     end
@@ -79,6 +95,7 @@ files['sessions.json'] = [[{"ok":true,"devices":[
   {"name":"debug","repo":"alpha","path":"/work/alpha","windows":1,"attached":"laptop","idleSeconds":15},
   {"name":"dashboard","repo":"dashboard","path":"/work/dashboard","windows":0,"codeviewPresent":true,"codeviewRunning":false}]}]]
 draw()
+assert(last_scale == 1, 'a fitting list must keep its normal text and icon sizes')
 assert(count('alpha') == 1 and count('dashboard') == 1, 'repositories must not be duplicated by sessions')
 assert(mark_count('laptop-minimal') == 2 and mark_count('smartphone') == 1,
   'one glyph per session attachment, including repeats on the same host')
@@ -113,6 +130,13 @@ assert(count('spare-host') == 0 and count('login 8m') == 0, 'a login without a s
 assert(count('unrelated-copy') == 1 and count('scratch') == 1, 'orphan sessions and equal basenames must survive')
 assert(count('extra-dashboard') == 1 and mark_count('eye-closed') == 1, 'dashboards outside the visible fleet must survive')
 assert(count('0s') == 0 and count('5m') == 0 and count('unknown') == 0, 'session idle is not drawn')
+height = 80
+draw()
+assert(last_scale < 1 and count('alpha') == 1 and count('bravo') == 1 and count('dashboard') == 1,
+  'overflow must keep every Git repository')
+assert(count('Unknown remote') == 1 and count('unrelated-copy') == 1 and count('scratch') == 1
+  and count('extra-dashboard') == 1, 'overflow must also keep alerts, orphan sessions, and dashboards')
+height = 800
 
 -- A fresh session cache is consumed on every draw; no restart is required.
 files['sessions.json'] = '{"ok":true,"devices":[],"sessions":[]}'
@@ -130,16 +154,45 @@ assert(count('Sessions') == 0 and #icons == 0, 'disabled sessions must not read 
 env.SESSIONS_OVERLAY_ENABLED = '1'
 files['sessions.json'] = '{"ok":true,"devices":[],"sessions":[]}'
 
--- Every whole row remains reachable when a fixed window starts paging.
-height = 100
-local seen = {}
+-- Every row stays on screen together, even when the list outgrows the window.
+height = 60
 for i = 0, 3 do
   now = i * 30
   draw()
-  for _, label in ipairs(labels) do seen[label] = true end
+  assert(count('alpha') == 1 and count('bravo') == 1 and count('dashboard') == 1,
+    'overflow must scale the complete list without dropping or paging repositories')
+  assert(last_scale < 1, 'an overflowing list must shrink to fit')
 end
-assert(seen.alpha and seen.bravo and seen.dashboard, 'paging must expose all repositories')
 height, now = 800, 0
+draw()
+assert(last_scale == 1, 'normal sizing must return when space becomes available')
+
+-- Reproduce the live 340px panel: five busy rows push the 14th repo to 342px.
+local function fleet(busy, stale)
+  local repos = {}
+  for index = 1, 14 do
+    local name = index == 13 and 'Chainreactor-paper' or index == 14 and 'bahasadri_cisc595' or 'repo-' .. index
+    repos[index] = string.format('{"name":"%s","ok":true,"branch":"main","state":"%s","modified":%d}',
+      name, index <= busy and 'dirty' or 'clean', index <= busy and 1 or 0)
+  end
+  files['git-status.json'] = '{"ok":true,"stale":' .. tostring(stale) .. ',"repos":[' .. table.concat(repos, ',') .. ']}'
+end
+height = 340
+for _, busy in ipairs({0, 5, 14, 0}) do
+  fleet(busy, false)
+  draw()
+  assert(count('Chainreactor-paper') == 1 and count('bahasadri_cisc595') == 1,
+    'status changes must never hide pinned repositories at the end')
+  assert((last_scale < 1) == (busy > 0), 'scale only when the list needs more room')
+end
+fleet(5, true)
+draw()
+assert(count('Stale cache') == 1 and count('bahasadri_cisc595') == 1,
+  'the stale footer must coexist with the full fleet')
+for _, box in ipairs(boxes) do
+  if box.text ~= 'Stale cache' then assert(box.y < height - 16, 'rows must leave the stale footer clear') end
+end
+height = 800
 files['git-status.json'] = '{"ok":false,"error":"git scan failed","repos":[]}'
 files['sessions.json'] = [[{"ok":true,"devices":[],"sessions":[
   {"name":"scratch","path":"/notes","windows":1,"idleSeconds":120}]}]]

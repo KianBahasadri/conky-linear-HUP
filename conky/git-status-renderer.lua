@@ -280,21 +280,27 @@ return function(shared, repo_root)
         ui.text(cr, 'No repositories or sessions', 0, 16, {size = 13.5, color = ui.muted})
         return
       end
-      local heights, layouts = {}, {}
+      local layouts, total_height = {}, 0
       for index, row in ipairs(rows) do
         layouts[index] = layout_row(cr, row, width)
-        heights[index] = layouts[index].pitch
+        total_height = total_height + layouts[index].pitch
       end
-      local first, last, page = ui.stack(heights, height, 0, state.stale)
+      -- Grow through the reserved rail at the normal size, then shrink the
+      -- complete list together when needed. Never drop a repository as its
+      -- status or session presence changes between draws.
+      local available = math.max(1, height - (state.stale and 16 or 0))
+      local scale = math.min(1, available / total_height)
+      if scale < 1 then
+        cairo_save(cr)
+        cairo_scale(cr, scale, scale)
+      end
       local y = 0
-      for index = first, last do
-        draw_row(cr, rows[index], layouts[index], width, y)
-        y = y + heights[index]
+      for index, row in ipairs(rows) do
+        draw_row(cr, row, layouts[index], width / scale, y)
+        y = y + layouts[index].pitch
       end
-      local notes = {}
-      if state.stale then notes[#notes + 1] = 'Stale cache' end
-      if page ~= '' then notes[#notes + 1] = page end
-      ui.footer(cr, table.concat(notes, ' · '), width, height, state.stale and ui.caution or nil)
+      if scale < 1 then cairo_restore(cr) end
+      if state.stale then ui.footer(cr, 'Stale cache', width, height, ui.caution) end
     end)
   end
   return {draw = draw}

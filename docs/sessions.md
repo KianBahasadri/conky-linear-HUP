@@ -118,12 +118,11 @@ row.
 ## Placement
 
 When Git and sessions are enabled, the launcher creates one Git window per
-monitor and removes the previous standalone sessions configs. It allocates that
-window from the joined cache records, with the left rail available down to its
-reserved bottom panels; see [thermometer placement](weather.md#display).
-Cairo measures the actual rows and rotates whole records
-in 30-second pages if the fixed allocation fills. Session data is reread each
-draw and fetching remains on its independent 20-second timer.
+monitor and removes the previous standalone sessions configs. Window sizing and
+overflow follow the [repository panel's fitting rules](git.md#reading-the-panel);
+see [thermometer placement](weather.md#display) for its lower neighbors.
+Session data is reread each draw and fetching remains on its independent
+20-second timer.
 
 Disabling session data leaves the Git list without presence. If Git is disabled,
 the legacy standalone sessions renderer remains available at the bottom left;

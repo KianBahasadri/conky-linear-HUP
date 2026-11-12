@@ -110,9 +110,8 @@ current cache counts; startup does not fetch data to measure the windows.
 The default has 8px outer insets, 24px right gutter, a 12px gutter between the
 left rail and center column, and 40px top clearance on the primary monitor (8px on other monitors).
 
-Each region is sized to its records and the remainder is spent on its rail, so
-no gap is left between panels. The left rail's repository/session composition is
-described in [Sessions](sessions.md), with Minecraft pinned to the foot when enabled.
+Regions reserve space for their live records. The left rail's repository/session
+composition is described in [Sessions](sessions.md), with Minecraft pinned to the foot when enabled.
 The center holds the task grid,
 the contribution calendar, and AI usage rows at the bottom. On wide displays with many accounts,
 the quota panel splits into two columns side by side across the bottom.
@@ -123,9 +122,9 @@ The smaller layout uses 260px and 360px rails; 1280×720 and 1366×768 are
 covered by geometry tests and headless renders.
 
 Windows have explicit sizes and zero Conky border margins. They stay inside
-separate allocated regions when new records arrive. A list that fits is drawn
-whole; one that overflows gives up a single 16px line to a footer naming the
-visible range, then rotates in 30-second pages so every record appears once per
+separate allocated regions when new records arrive. Lists using paging draw a
+fitting list whole; an overflowing list gives up a single 16px line to a footer
+naming the visible range, then rotates in 30-second pages so every record appears once per
 complete cycle. Where records differ in height, whole records are packed into
 each page rather than counted against a fixed pitch. The weather panel's
 section paging is described in [Weather and running overlay](weather.md).

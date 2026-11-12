@@ -19,115 +19,8 @@ def cache_object(name, cache_dir):
         return {}
 
 
-def repo_height(repo):
-    """Mirror git-status-renderer: a settled repository collapses to one line.
-
-    Anything not clean, and any repository whose Actions run failed or is still
-    going, keeps the two-line row with its badge.
-    """
-    if not repo.get("ok") or (repo.get("state") or "error") != "clean":
-        return 36
-    return 36 if repo.get("actions") in ("fail", "run") else 18
-
-
 def enabled(env, key):
     return env.get(key, "1").lower() not in {"0", "false", "no", "off", "disabled"}
-
-
-def merged_heights(repos, state, width, env):
-    """Conservative natural heights; Cairo measures and packs the actual rows.
-
-    Count only real sessions, resolve all attached device names, and keep
-    unmatched sessions in the allocation. Idle who logins are omitted; an
-    unknown remote still takes a row. The mono estimate rounds up so a
-    width-dependent extra line has room at launch.
-    """
-    def name_list(value):
-        return [name.strip() for name in (value or "").split(",") if name.strip()]
-
-    def path_of(value):
-        value = os.path.expanduser(value or "")
-        return os.path.normpath(value) if os.path.isabs(value) else None
-
-    def age(seconds):
-        if seconds is None or seconds < 0:
-            return "unknown"
-        for unit, scale in (("d", 86400), ("h", 3600), ("m", 60)):
-            if seconds >= scale:
-                return f"{int(seconds // scale)}{unit}"
-        return f"{int(seconds)}s"
-
-    default_branches = set(env.get("GIT_DEFAULT_BRANCHES", "main,master").replace(":", ",").replace(" ", ",").split(","))
-    groups = [{"repo": repo, "sessions": []} for repo in repos]
-    residual = []
-    sessions = [s for s in state.get("sessions") or [] if isinstance(s, dict)] if state.get("ok") else []
-    for session in sessions:
-        path = path_of(session.get("path"))
-        matches, named = [], []
-        for group in groups:
-            repo = group["repo"]
-            repo_path = path_of(repo.get("path"))
-            if path and repo_path:
-                if path == repo_path or path.startswith(repo_path + "/"):
-                    matches.append((len(repo_path), group))
-            elif session.get("repo") and repo.get("name") == session["repo"]:
-                named.append(group)
-        target = max(matches, key=lambda item: item[0])[1] if matches else named[0] if len(named) == 1 else None
-        if target is None:
-            residual.append({"repo": {}, "sessions": [session]})
-        else:
-            target["sessions"].append(session)
-
-    def group_height(group):
-        repo, records = group["repo"], group["sessions"]
-        live = [s for s in records if s.get("windows", 0) > 0]
-        marks = []
-        for session in live:
-            attached = name_list(session.get("attached"))
-            marks.extend(attached or ["terminal"])
-        cv = next((s for s in records if s.get("codeviewRunning")),
-                  next((s for s in records if s.get("codeviewPresent")), None))
-        cv_width = 14 if cv else 0
-        dev_count = len(marks)
-        dev_width = (dev_count * 14 + (dev_count - 1) * 6) if dev_count > 0 else 0
-        parts = (1 if cv_width > 0 else 0) + (1 if dev_width > 0 else 0)
-        presence = cv_width + dev_width + (max(0, parts - 1) * 6)
-        pitch = repo_height(repo) if repo else 18
-        branch = repo.get("branch", "") if pitch >= 36 or repo.get("branch") not in default_branches else ""
-        available = width
-        if (presence > available * 0.5
-                or (branch and min(width * 0.5, available - 96) - presence - (8 if presence else 0) < 48)):
-            pitch = 36
-        tokens = [prefix + str(repo.get(key)) for key, prefix in
-                  (("staged", "S"), ("modified", "M"), ("untracked", "U"), ("conflicted", "C"),
-                   ("ahead", "ahead "), ("behind", "behind "), ("stash", "stash ")) if repo.get(key, 0) > 0]
-        counts_width = len("  ".join(tokens)) * 7.2
-        if pitch >= 36:
-            below = presence > 0 and (presence > width * 0.46 or counts_width + presence + (48 if branch else 0) + 24 > available)
-            detail_width = available - (presence + 12 if presence and not below else 0)
-            if len(tokens) > 1 and counts_width + (48 if branch else 0) + 12 > detail_width:
-                line, lines = "", 1
-                for token in tokens:
-                    candidate = (line + "  " if line else "") + token
-                    if line and len(candidate) * 7.2 > available:
-                        lines += 1
-                        line = token
-                    else:
-                        line = candidate
-                pitch += 18 * lines
-                below = presence > 0
-            if below:
-                pitch += 18
-        return pitch
-
-    heights = [group_height(group) for group in groups]
-    logins = [d for d in state.get("devices") or [] if isinstance(d, dict)
-              and d.get("state") == "alert"] if state.get("ok") else []
-    extra = [18 for _ in logins]
-    extra += [group_height(group) for group in residual]
-    if not state.get("ok"):
-        extra.append(36)
-    return heights + extra
 
 
 def cache_counts(cache_dir):
@@ -147,11 +40,7 @@ def cache_counts(cache_dir):
         except OSError:
             pass
     sessions = cache_object("sessions.json", cache_dir)
-    repos = [r for r in cache_object("git-status.json", cache_dir).get("repos") or []
-             if isinstance(r, dict)]
     return {"cards": len(cards), "accounts": accounts, "gemini_pro": gemini_pro,
-            "repos": len(repos), "repo_heights": [repo_height(r) for r in repos],
-            "repo_records": repos, "session_state": sessions,
             "sessions": len(sessions.get("devices") or []) + len(sessions.get("sessions") or []),
             "providers": len(cache_object("billing-usage.json", cache_dir).get("providers") or [])}
 
@@ -232,20 +121,10 @@ def plan(width, height, top=40, counts=None, env=None):
     weather_w = left - thermometer_w - 8
     weather_h = BOTTOM_ROW_HEIGHT
     weather_y = thermometer_y + thermometer_h - weather_h
-    merged = enabled(env, "GIT_OVERLAY_ENABLED") and enabled(env, "SESSIONS_OVERLAY_ENABLED")
-    git_limit = available - left_foot
-    repo_heights = counts.get("repo_heights") or [36] * (counts.get("repos", 0) or 1)
-    if merged:
-        if "repo_records" in counts:
-            repo_heights = merged_heights(counts["repo_records"], counts["session_state"], left, env) or [36]
-        else:
-            repo_heights = repo_heights + [36] * counts.get("sessions", 0)
-    git_used = 0
-    for pitch in repo_heights:
-        if git_used + pitch > git_limit - 16:
-            break
-        git_used += pitch
-    git_h = max(100, 16 + git_used)
+    # Keep the transparent rail available for future cache updates. Cairo
+    # measures and fits the live list, independently of its size at launch.
+    git_top = int((env.get("GIT_GAP_Y") or "").strip() or top)
+    git_h = max(100, height - git_top - margin - left_foot)
     max_sessions_available = available - left_foot
     sessions_limit = min(456, max(100, max_sessions_available))
     session_rows = max(1, min(counts.get("sessions", 0) or 1, int((sessions_limit - 16) // 44)))

@@ -1,5 +1,4 @@
 import itertools
-import json
 
 import pytest
 
@@ -73,7 +72,7 @@ def test_narrow_rate_limit_panel_uses_center_width_without_moving_other_panels()
     assert windows == {
         "linear": [280, 8, 608, 464],
         "github": [280, 344, 608, 128],
-        "git": [8, 8, 260, 100],
+        "git": [8, 8, 260, 860],
         "sessions": [8, 768, 260, 100],
         "minecraft": [8, 916, 260, 100],
         "resource-monitor": [912, 8, 360, 176],
@@ -142,30 +141,17 @@ def test_cache_counts_follow_linear_urgency_filter_and_keep_empty_account_rows(t
     assert counts["sessions"] == 0
 
 
-def test_merged_allocation_counts_joined_sessions_once_and_keeps_residuals(tmp_path):
-    repos = [{"name": name, "path": "/work/" + name, "ok": True,
-              "state": "clean", "actions": "ok", "branch": "main"}
-             for name in ("alpha", "bravo", "charlie", "delta", "echo", "foxtrot")]
-    repos[0].update(state="dirty", modified=11, untracked=1, branch="checkpoint/long-branch")
-    sessions = {"ok": True, "devices": [{"name": "laptop", "glyph": "laptop", "session": "edit", "state": "live"}],
-                "sessions": [
-                    {"name": "edit", "repo": "bravo", "path": "/work/bravo/src", "windows": 1,
-                     "attached": "laptop", "idleSeconds": 79, "codeviewPresent": True},
-                    {"name": "charlie", "repo": "charlie", "path": "/work/charlie", "windows": 0,
-                     "codeviewPresent": True},
-                ]}
-    (tmp_path / "git-status.json").write_text(json.dumps({"ok": True, "repos": repos}))
-    (tmp_path / "sessions.json").write_text(json.dumps(sessions))
-    counts = overlay_layout.cache_counts(tmp_path)
-    plan = overlay_layout.plan(1920, 1080, 40, counts, {})
-    assert plan["git"][3] == 142  # one dirty row at 36px + five settled rows at 18px = 126px plus the 16px footer allowance
-    sessions["sessions"][0]["attached"] = "laptop, phone"
-    sessions["devices"].extend([
-        {"name": "phone", "glyph": "phone", "session": "edit", "state": "live"},
-        {"name": "unknown", "glyph": "alert", "session": "edit", "state": "alert"},
-    ])
-    sessions["sessions"].append({"name": "same-name-other-repo", "repo": "bravo", "path": "/other/bravo", "windows": 1})
-    heights = overlay_layout.merged_heights(repos, sessions, 248, {})
-    assert len(heights) == 8  # six repositories, an attached alert, and a distinct repo session
-    assert heights[1] == 18  # attached devices sit horizontally in presence without extra row height
-    assert sum(heights) > 126
+@pytest.mark.parametrize("size", [(1280, 720), (1366, 768), (1920, 1200), (2560, 1440)])
+@pytest.mark.parametrize("minecraft", [False, True])
+@pytest.mark.parametrize("git_top", ["", "48"])
+def test_repository_panel_reserves_the_full_rail_before_repositories_arrive(size, minecraft, git_top):
+    width, height = size
+    env = {"MINECRAFT_OVERLAY_ENABLED": str(int(minecraft)), "GIT_GAP_Y": git_top}
+    empty = overlay_layout.plan(width, height, 40, {}, env)
+    crowded = overlay_layout.plan(width, height, 40, {"repos": 150, "sessions": 150}, env)
+    assert empty["git"] == crowded["git"]
+    _, y, _, h = empty["git"]
+    assert y == int(git_top or 40)
+    assert y + h + 24 == empty["thermometer"][1]
+    assert empty["thermometer"] == crowded["thermometer"]
+    assert empty["weather"] == crowded["weather"]

@@ -76,7 +76,11 @@ spending a green pill on it buries the rows that need attention. A stale cache
 is named in the panel's footer line.
 
 The list uses the [Desktop design system](design-system.md). The renderer keeps
-the fetcher's severity order and displays whole rows that fit within its bounded region,
-dropping overflowing extras without paging. Because rows differ in height, the launcher
-sizes the window to the records the cache holds, so a fleet that is mostly settled
-leaves the rail shorter.
+the fetcher's severity order and shows every selected repository at once. The
+transparent window reserves the available left rail above the bottom widgets,
+independently of the cache contents at launch. On every draw, rows use their
+normal text size while they fit; if the list fills the rail, the renderer scales
+the entire list uniformly to fit, keeping the right-hand metadata aligned to
+the panel edge. Repositories, session presence, and unmatched session rows stay
+visible as the data changes, without restarting the overlay. The stale-cache
+footer retains its normal size and reserved clearance.
