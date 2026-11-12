@@ -81,6 +81,6 @@ transparent window reserves the available left rail above the bottom widgets,
 independently of the cache contents at launch. On every draw, rows use their
 normal text size while they fit; if the list fills the rail, the renderer scales
 the entire list uniformly to fit, keeping the right-hand metadata aligned to
-the panel edge. Repositories, session presence, and unmatched session rows stay
-visible as the data changes, without restarting the overlay. The stale-cache
+the panel edge. Repositories and their session presence stay visible as the
+data changes, without restarting the overlay. The stale-cache
 footer retains its normal size and reserved clearance.

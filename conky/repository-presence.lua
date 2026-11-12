@@ -1,5 +1,5 @@
 -- Join session presence to the visible fleet without requiring another fetch.
--- Paths disambiguate equal repository names; unmatched records remain visible.
+-- Paths disambiguate equal repository names; only matching repos get presence.
 return function(shared, repo_root)
   local presence = {}
   local glyphs = {laptop = 'laptop-minimal', phone = 'smartphone',
@@ -67,7 +67,7 @@ return function(shared, repo_root)
   end
 
   function presence.join(repos, state)
-    local rows, residual, devices, active = {}, {}, {}, {}
+    local rows, devices = {}, {}
     for _, device in ipairs(state.devices) do
       -- Several logins may share a host; an alert must never be overwritten.
       if not devices[device.name] or device.state == 'alert' then devices[device.name] = device end
@@ -90,29 +90,26 @@ return function(shared, repo_root)
     end
     for _, session in ipairs(state.sessions) do
       local row = target_for(session)
-      if not row then
-        row = {name = session.name, devices = {}, session_count = 0, idle = -1}
-        residual[#residual + 1] = row
-      end
-      if session.live then
-        active[session.name] = true
-        row.session_count = row.session_count + 1
-        if session.idle >= 0 and (row.idle < 0 or session.idle < row.idle) then row.idle = session.idle end
-        if #session.attached == 0 then
-          row.devices[#row.devices + 1] = {glyph = 'terminal'}
-        else
-          for _, name in ipairs(session.attached) do
-            row.devices[#row.devices + 1] = devices[name] or {name = name, glyph = 'terminal'}
+      if row then
+        if session.live then
+          row.session_count = row.session_count + 1
+          if session.idle >= 0 and (row.idle < 0 or session.idle < row.idle) then row.idle = session.idle end
+          if #session.attached == 0 then
+            row.devices[#row.devices + 1] = {glyph = 'terminal'}
+          else
+            for _, name in ipairs(session.attached) do
+              row.devices[#row.devices + 1] = devices[name] or {name = name, glyph = 'terminal'}
+            end
           end
         end
-      end
-      if session.cv_present then
-        -- A dashboard-only record contributes no session or device. A serving
-        -- record wins over a stopped one; known ages win over unknown ages.
-        if not row.cv or (session.cv_running and not row.cv.running)
-            or (session.cv_running == row.cv.running and session.cv_age >= 0
-              and (row.cv.age < 0 or session.cv_age < row.cv.age)) then
-          row.cv = {running = session.cv_running, age = session.cv_age}
+        if session.cv_present then
+          -- A dashboard-only record contributes no session or device. A serving
+          -- record wins over a stopped one; known ages win over unknown ages.
+          if not row.cv or (session.cv_running and not row.cv.running)
+              or (session.cv_running == row.cv.running and session.cv_age >= 0
+                and (row.cv.age < 0 or session.cv_age < row.cv.age)) then
+            row.cv = {running = session.cv_running, age = session.cv_age}
+          end
         end
       end
     end
@@ -129,7 +126,6 @@ return function(shared, repo_root)
       if (a.login.state == 'alert') ~= (b.login.state == 'alert') then return a.login.state == 'alert' end
       return a.name < b.name
     end)
-    for _, row in ipairs(residual) do extra[#extra + 1] = row end
     for _, row in ipairs(extra) do
       rows[#rows + 1] = row
     end

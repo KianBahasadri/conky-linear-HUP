@@ -277,7 +277,7 @@ return function(shared, repo_root)
         rows[#rows + 1] = {name = 'Sessions', error = sessions.error, devices = {}, session_count = 0}
       end
       if #rows == 0 then
-        ui.text(cr, 'No repositories or sessions', 0, 16, {size = 13.5, color = ui.muted})
+        ui.text(cr, 'No repositories', 0, 16, {size = 13.5, color = ui.muted})
         return
       end
       local layouts, total_height = {}, 0

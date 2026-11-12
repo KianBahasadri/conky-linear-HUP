@@ -123,20 +123,41 @@ files['sessions.json'] = [[{"ok":true,"devices":[
   {"name":"edit","repo":"alpha","path":"/work/alpha","windows":1,"attached":"unknown-peer","idleSeconds":0},
   {"name":"unrelated-copy","repo":"alpha","path":"/other/alpha","windows":1,"idleSeconds":300},
   {"name":"scratch","repo":"","path":"/notes","windows":1},
+  {"name":"kian","repo":"kian","path":"~","windows":1,"attached":"spare-host"},
   {"name":"extra-dashboard","repo":"not-in-fleet","path":"/work/not-in-fleet","windows":0,"codeviewPresent":true,"codeviewRunning":false}]}]]
 draw()
 assert(count('Unknown remote') == 1, 'unknown remote must remain loud even when attached')
 assert(count('spare-host') == 0 and count('login 8m') == 0, 'a login without a session stays off the list')
-assert(count('unrelated-copy') == 1 and count('scratch') == 1, 'orphan sessions and equal basenames must survive')
-assert(count('extra-dashboard') == 1 and mark_count('eye-closed') == 1, 'dashboards outside the visible fleet must survive')
+assert(count('unrelated-copy') == 0 and count('scratch') == 0 and count('kian') == 0,
+  'unmatched paths and home-directory sessions must not create rows')
+assert(mark_count('triangle-alert') == 1 and #icons == 1,
+  'only the matched session contributes device marks')
+assert(count('extra-dashboard') == 0 and mark_count('eye-closed') == 0,
+  'dashboards outside the visible fleet must not create rows')
 assert(count('0s') == 0 and count('5m') == 0 and count('unknown') == 0, 'session idle is not drawn')
 height = 80
 draw()
 assert(last_scale < 1 and count('alpha') == 1 and count('bravo') == 1 and count('dashboard') == 1,
   'overflow must keep every Git repository')
-assert(count('Unknown remote') == 1 and count('unrelated-copy') == 1 and count('scratch') == 1
-  and count('extra-dashboard') == 1, 'overflow must also keep alerts, orphan sessions, and dashboards')
+assert(count('Unknown remote') == 1 and count('unrelated-copy') == 0 and count('scratch') == 0
+  and count('kian') == 0 and count('extra-dashboard') == 0, 'fitting must preserve alerts and omit unmatched records')
 height = 800
+
+-- Presence follows a session into and out of a repo without adding session rows.
+local moving_session = [[{"ok":true,"devices":[
+  {"name":"laptop","glyph":"laptop","state":"live"}],"sessions":[
+  {"name":"kian","repo":"kian","path":"~","windows":1,"attached":"laptop"}]}]]
+files['sessions.json'] = moving_session
+draw()
+assert(count('alpha') == 1 and count('kian') == 0 and #icons == 0, 'a home session must leave the fleet unchanged')
+files['sessions.json'] = moving_session:gsub('"path":"~"', '"path":"/work/alpha/src"')
+draw()
+assert(count('alpha') == 1 and count('kian') == 0 and mark_count('laptop-minimal') == 1,
+  'a session inside a nested repo directory must add presence to that repository')
+files['sessions.json'] = moving_session:gsub('"path":"~"', '"path":"/work/alpha-scratch"')
+draw()
+assert(count('alpha') == 1 and count('kian') == 0 and #icons == 0,
+  'a shared path prefix must not count as being inside a repository')
 
 -- A fresh session cache is consumed on every draw; no restart is required.
 files['sessions.json'] = '{"ok":true,"devices":[],"sessions":[]}'
@@ -197,7 +218,11 @@ files['git-status.json'] = '{"ok":false,"error":"git scan failed","repos":[]}'
 files['sessions.json'] = [[{"ok":true,"devices":[],"sessions":[
   {"name":"scratch","path":"/notes","windows":1,"idleSeconds":120}]}]]
 draw()
-assert(count('git scan failed') == 1 and count('scratch') == 1, 'session records survive an unavailable fleet')
+assert(count('git scan failed') == 1 and count('scratch') == 0, 'an unavailable fleet must not turn sessions into repo rows')
+files['git-status.json'] = '{"ok":true,"repos":[]}'
+draw()
+assert(count('No repositories') == 1 and count('scratch') == 0 and #icons == 0,
+  'sessions outside repos must not populate an empty fleet')
 
 files['git-status.json'] = [[{"ok":true,"repos":[
   {"name":"mixed","path":"/work/mixed","ok":true,"branch":"main","state":"dirty","staged":3,"modified":5,"ahead":1,"actions":"ok"}]}]]

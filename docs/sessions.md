@@ -81,8 +81,8 @@ are `codeviewPresent`, `codeviewRunning`, `codeviewPort`, and
 `.codeview/cache/`, `-1` when unknown).
 
 A codeview record survives its tmux session closing. Each cycle probes the
-fleet list (with a shallow home scan fallback), so a discovered dashboard
-remains visible even when no tmux session remains.
+fleet list (with a shallow home scan fallback), so a dashboard on a listed
+repository remains visible even when no tmux session remains.
 `SESSIONS_CODEVIEW_REPO_PATHS` pins extra roots and `SESSIONS_CODEVIEW_SCAN_ROOT`
 overrides the scan root.
 
@@ -108,12 +108,12 @@ can add lines. Branches truncate first, preserving the Git
 counts and presence; counts wrap as complete tokens when necessary. Repository
 health badges retain the ordering described in [Git status](git.md).
 
-Sessions outside the visible Git fleet and orphan dashboards share one
-continuous list with the repositories, using the same row spacing. Session
-names remain on these unmatched rows. Logins that are not driving a session
-are left off that list. Unknown remote logins retain their square danger
-badge, even when they are attached to a session already shown in a repository
-row.
+Session and CodeView records contribute presence only when they match a
+repository in the visible Git fleet. Sessions in the home directory or other
+unmatched paths do not create standalone rows; their records remain in the
+session cache. Logins that are not driving a session are left off that list.
+Unknown remote logins retain their square danger badge, even when they are
+attached to a session already shown in a repository row.
 
 ## Placement
 
