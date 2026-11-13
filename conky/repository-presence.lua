@@ -45,19 +45,15 @@ return function(shared, repo_root)
       state.devices[#state.devices + 1] = {
         name = shared.json_string(object, 'name', '?'),
         glyph = glyphs[shared.json_string(object, 'glyph', '')] or 'terminal',
-        session = shared.json_string(object, 'session', ''),
         state = shared.json_string(object, 'state', 'idle'),
-        age = shared.json_number(object, 'ageSeconds', -1),
       }
     end
     for _, object in ipairs(shared.json_array_objects(content, 'sessions')) do
       state.sessions[#state.sessions + 1] = {
-        name = shared.json_string(object, 'name', '?'),
         repo = shared.json_string(object, 'repo', ''),
         path = path_of(shared.json_string(object, 'path', '')),
         attached = names(shared.json_string(object, 'attached', '')),
         live = shared.json_number(object, 'windows', 0) > 0,
-        idle = shared.json_number(object, 'idleSeconds', -1),
         cv_present = shared.json_boolean(object, 'codeviewPresent', false),
         cv_running = shared.json_boolean(object, 'codeviewRunning', false),
         cv_age = shared.json_number(object, 'codeviewIndexAgeSeconds', -1),
@@ -74,7 +70,7 @@ return function(shared, repo_root)
     end
     for _, repo in ipairs(repos) do
       rows[#rows + 1] = {name = repo.name, repo = repo, path = path_of(repo.path),
-        devices = {}, session_count = 0, idle = -1}
+        devices = {}}
     end
     local function target_for(session)
       local target, length, same_name, matches = nil, 0, nil, 0
@@ -86,14 +82,13 @@ return function(shared, repo_root)
           same_name, matches = row, matches + 1
         end
       end
-      return target or (matches == 1 and same_name or nil)
+      if target then return target end
+      if matches == 1 then return same_name end
     end
     for _, session in ipairs(state.sessions) do
       local row = target_for(session)
       if row then
         if session.live then
-          row.session_count = row.session_count + 1
-          if session.idle >= 0 and (row.idle < 0 or session.idle < row.idle) then row.idle = session.idle end
           if #session.attached == 0 then
             row.devices[#row.devices + 1] = {glyph = 'terminal'}
           else
@@ -113,20 +108,15 @@ return function(shared, repo_root)
         end
       end
     end
-    local extra = {}
+    local alerts = {}
     for _, device in ipairs(state.devices) do
-      -- Idle who rows (pts/N, "login 3h") stay off the list for now.
-      -- An unknown remote still gets its own row.
+      -- Unknown remotes stay visible even when attached to a listed repo.
       if device.state == 'alert' then
-        extra[#extra + 1] = {name = device.name, devices = {device}, login = device,
-          session_count = 0, idle = -1}
+        alerts[#alerts + 1] = {name = device.name, devices = {device}, login = device}
       end
     end
-    table.sort(extra, function(a, b)
-      if (a.login.state == 'alert') ~= (b.login.state == 'alert') then return a.login.state == 'alert' end
-      return a.name < b.name
-    end)
-    for _, row in ipairs(extra) do
+    table.sort(alerts, function(a, b) return a.name < b.name end)
+    for _, row in ipairs(alerts) do
       rows[#rows + 1] = row
     end
     return rows
