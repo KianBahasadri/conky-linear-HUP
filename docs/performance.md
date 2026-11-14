@@ -39,9 +39,10 @@ sudo; sampling and measured workloads then live in separate sibling groups.
 The benchmark runs the real launcher, Conky windows, Lua renderers, project
 Python, shell fetch loops and subprocesses. Each run has all panels enabled:
 nine windows per monitor, twelve data fetch loops, the desktop-theme watcher,
-and the shared GPU producer. The current suite supervises fourteen loops; the
-pinned reference supervises thirteen and samples GPUs from each resource
-window. Sessions are merged into Git, as on the production desktop.
+and the shared GPU producer. The optimized reference and current suite supervise
+fourteen loops. The archived pre-optimization version used for rejection proof
+supervises thirteen and samples GPUs from each resource window. Sessions are
+merged into Git, as on the production desktop.
 
 The profiles and measurement policy live in
 [`benchmarks/policy.json`](../benchmarks/policy.json). `single` uses one
@@ -55,7 +56,7 @@ Refresh bursts interrupt the actual fetch loops' sleeping children every six
 seconds. They also invalidate repository discovery, Actions results, workout
 analysis, and AWS's local daily cache. Long-interval fetchers therefore run
 without waiting minutes or hours. GPU sampling continues through the real
-producer and renderer cache reader, or the reference's renderer-launched
+producer and renderer cache reader, or the archived version's renderer-launched
 helper. Every fetcher and GPU sampling must complete in the burst phase;
 every window must draw in both measured phases. Health checks require the
 appropriate producer/loop count for each copied source version.
@@ -140,32 +141,44 @@ imported: supply proposed timer values explicitly for the fixed benchmark.
 
 `--smoke --profile single` runs a short harness diagnostic without a performance
 comparison. A smoke report cannot satisfy the CI gate or establish a baseline.
-`--inject-regression` deliberately
-adds a busy CPU process to candidate runs and should return nonzero.
+`--inject-regression` deliberately adds a busy CPU process to candidate runs and
+should return nonzero. `--prove-regression` requires rejection of both a measured
+CPU hog and a measured copy of the pinned pre-optimization version. The latter
+runs once per monitor profile without injected CPU work or interval overrides.
 
 ## Baseline review and noise
 
-The baseline commit is explicitly pinned in the policy. Every invocation
-re-measures it on the same machine as the candidate; old desktop observations
-are not acceptance thresholds. Limits combine a relative margin with an
-absolute floor, and compare medians from three runs. A single outlier does not
+The optimized baseline commit (`905e1cc`) is explicitly pinned in the policy.
+Every invocation re-measures it on the same machine as the candidate; old desktop
+observations are not acceptance thresholds. CPU limits are 1.25 times the
+reference median plus three percentage points of one core in steady operation
+or five during bursts. Memory and per-window draw budgets remain in the same
+policy. Limits compare medians from three runs, so a single outlier does not
 decide acceptance. The reference noise limit is the larger of 60% of its median
 and twice the metric's absolute floor, explicitly set in the policy. A wider
 reference range fails as inconclusive. Rerun on a quiet, comparable environment and inspect the raw
 ranges; do not widen thresholds to make a candidate pass.
 
-The current three-run calibration for each monitor profile is preserved in
+The current optimized-reference calibration for each monitor profile is preserved in
 [`benchmarks/calibration.json`](../benchmarks/calibration.json), including the
 environment, both source versions' measurements, observed ranges, comparisons,
-and measured regression rejection. On the twenty-logical-CPU host, fixture
-version 2 produced these medians, as percentages of one logical core:
+and measured regression rejection. The optimization's original before/after
+comparison is retained in
+[`benchmarks/calibration-optimization.json`](../benchmarks/calibration-optimization.json).
+The latest local proof rejected the archived version at 13.68% single-monitor
+and 27.37% dual-monitor steady CPU, against limits of 8.36% and 9.94%. These are
+same-host calibration observations; CI derives its limits from fresh reference
+measurements on each runner.
+
+The original optimization comparison on the twenty-logical-CPU host produced
+these fixture-version-2 medians, as percentages of one logical core:
 
 | Profile | Steady reference | Steady candidate | Burst reference | Burst candidate |
 | --- | ---: | ---: | ---: | ---: |
 | Single monitor | 14.18% | 4.07% | 49.65% | 34.97% |
 | Dual monitor | 28.69% | 5.39% | 59.59% | 34.78% |
 
-The candidate's median steady PSS was 108.4 MiB single and 173.7 MiB dual.
+That candidate's median steady PSS was 108.4 MiB single and 173.7 MiB dual.
 These short runs establish CPU improvements, not long-term resident-memory
 stability. The text-extents allocation regression is checked separately by
 the Lua characterization harness.
@@ -190,8 +203,13 @@ benchmark never rewrites the policy or baseline automatically.
 Ubuntu runners on every pull request, push and merge-group event. It uses the
 same command with `--profile` per matrix entry, then independently verifies
 the report. A further measured run adds a CPU hog and must exceed the policy's
-CPU limit, demonstrating rejection of a real resource regression. Correctness
-tests also exercise missing/invalid measurements and skipped-result rejection.
+CPU limit. Each profile also measures the pinned pre-optimization commit
+(`630d37a`) and requires its steady CPU to exceed that same limit. CI fails if
+either proof is missing, incomplete, inconsistent with raw CPU counters, or not
+rejected. This demonstrates that the permitted headroom cannot admit the old
+CPU usage on that runner. Correctness tests also check that the recorded old
+CPU figures fail and that 20% CPU/draw variation passes, alongside missing,
+invalid and skipped-result rejection.
 
 The repository's existing active `clusterfork-remote-development:main` ruleset
 requires the `test` status context with strict up-to-date checks and no bypass

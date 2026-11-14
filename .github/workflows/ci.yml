@@ -61,7 +61,7 @@ jobs:
           sudo chown "$(id -u):$(id -g)" "$bench_group" "$bench_group/cgroup.procs" "$bench_group/cgroup.subtree_control" "$bench_group/cgroup.threads"
           mkdir "$bench_group/supervisor"
           echo "CONKY_BENCH_CGROUP_ROOT=$bench_group" >> "$GITHUB_ENV"
-      - name: Measure baseline, candidate, and an intentional regression
+      - name: Measure optimized baseline, candidate, and regression rejection
         run: |
           # Migration from the runner's service needs root once. Subsequent
           # workload children move between siblings in our delegated subtree.

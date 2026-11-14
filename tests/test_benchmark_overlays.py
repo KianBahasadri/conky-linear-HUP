@@ -31,27 +31,44 @@ def complete_report():
     runs = measurements()
     for result in runs:
         shared = result["role"] == "candidate"
-        result.update(windows=9, fetch_loops=13 + int(shared), shared_gpu_sampler=shared)
+        result.update(windows=9, fetch_loops=13 + int(shared), shared_gpu_sampler=shared,
+                      source_revision=POLICY["baseline_commit"] if result["role"] == "baseline" else None)
         result["render_windows"] = {f"overlay-{i}": {"p95_cpu_ms": 2.0, "frames": 10} for i in range(9)}
         for phase in ("warmup", "steady", "burst"):
             duration = POLICY["settings"][phase+"_seconds"]
             result.setdefault(phase, {})
-            result[phase].update(wall_seconds=duration, cpu_seconds=2.0,
+            cpu_percent = result[phase].get("cpu_core_percent", 10.0)
+            cpu_seconds = cpu_percent*duration/100
+            result[phase].update(wall_seconds=duration, cpu_seconds=cpu_seconds, cpu_core_percent=cpu_percent,
                 samples=[{"time": 100.0, "cpu_seconds": 10.0, "pss_mib": 100, "rss_mib": 400,
                           "cgroup_memory_mib": 110, "processes": 50},
-                         {"time": 100.0+duration, "cpu_seconds": 12.0, "pss_mib": 100, "rss_mib": 400,
+                         {"time": 100.0+duration, "cpu_seconds": 10.0+cpu_seconds, "pss_mib": 100, "rss_mib": 400,
                           "cgroup_memory_mib": 110, "processes": 50}])
     rows, _ = benchmark.compare(runs, POLICY, ["single"], 3)
     proof = copy.deepcopy(runs[3])
     proof.update(repetition="regression-proof", injected_regression=True)
-    proof["steady"]["cpu_core_percent"] = 100.0
+    set_steady_cpu(proof, 100.0)
     runs.append(proof)
     limit = next(row["limit"] for row in rows if row["metric"] == "steady.cpu_core_percent")
+    legacy = copy.deepcopy(runs[0])
+    legacy.update(role="legacy", source_revision=POLICY["regression_commit"], injected_regression=False)
+    set_steady_cpu(legacy, 40.0)
+    runs.append(legacy)
     return {"status": "pass", "smoke": False, "failures": [], "runs": runs, "comparisons": rows,
             "profiles": {"single": POLICY["profiles"]["single"]}, "settings": POLICY["settings"],
             "fixture_version": POLICY["fixture_version"], "baseline_commit": POLICY["baseline_commit"],
+            "regression_commit": POLICY["regression_commit"],
             "changes": {"draw": {}, "env": {}},
-            "regression_proof": {"rejected": True, "observed_cpu_core_percent": 100.0, "limit": limit}}
+            "regression_proof": {"rejected": True, "observed_cpu_core_percent": 100.0, "limit": limit},
+            "legacy_regression_proofs": [{"profile": "single", "commit": POLICY["regression_commit"],
+                                          "rejected": True, "observed_cpu_core_percent": 40.0, "limit": limit}]}
+
+
+def set_steady_cpu(result, percent):
+    measured = result["steady"]
+    measured["cpu_core_percent"] = percent
+    measured["cpu_seconds"] = measured["wall_seconds"]*percent/100
+    measured["samples"][-1]["cpu_seconds"] = measured["samples"][0]["cpu_seconds"]+measured["cpu_seconds"]
 
 
 def test_regression_budget_rejects_cpu_memory_and_individual_slow_panel():
@@ -96,7 +113,8 @@ def test_missing_or_invalid_measurements_fail(fault):
 
 @pytest.mark.parametrize("field,value", [("status", "skipped"), ("smoke", True), ("failures", ["incomplete"]),
                                         ("regression_proof", {"rejected": False}), ("comparisons", []),
-                                        ("settings", {}), ("baseline_commit", "other")])
+                                        ("settings", {}), ("baseline_commit", "other"),
+                                        ("regression_commit", "other"), ("legacy_regression_proofs", [])])
 def test_ci_gate_refuses_skipped_missing_or_modified_results(field, value):
     report = complete_report()
     verify(report, POLICY)
@@ -170,3 +188,60 @@ def test_ci_gate_rejects_a_missing_shared_sampler_loop():
     candidate["fetch_loops"] = 13
     with pytest.raises(ValueError, match="fetch-loop coverage"):
         verify(report, POLICY)
+
+
+@pytest.mark.parametrize("fault", ["missing_run", "duplicate_proof", "not_rejected", "wrong_limit",
+                                  "wrong_revision", "injected", "missing_samples", "false_cpu_percent"])
+def test_ci_gate_requires_a_measured_preoptimization_rejection(fault):
+    report = complete_report()
+    verify(report, POLICY)
+    legacy = next(run for run in report["runs"] if run["role"] == "legacy")
+    evidence = report["legacy_regression_proofs"][0]
+    if fault == "missing_run":
+        report["runs"].remove(legacy)
+    elif fault == "duplicate_proof":
+        report["legacy_regression_proofs"].append(copy.deepcopy(evidence))
+    elif fault == "not_rejected":
+        evidence["rejected"] = False
+    elif fault == "wrong_limit":
+        evidence["limit"] = 1.0
+    elif fault == "wrong_revision":
+        legacy["source_revision"] = POLICY["baseline_commit"]
+    elif fault == "injected":
+        legacy["injected_regression"] = True
+    elif fault == "missing_samples":
+        legacy["steady"]["samples"] = []
+    elif fault == "false_cpu_percent":
+        legacy["steady"]["cpu_core_percent"] *= 2
+    with pytest.raises(ValueError):
+        verify(report, POLICY)
+
+
+def calibrated_runs(profile, legacy=False):
+    calibration = json.loads((benchmark.BENCH / "calibration-optimization.json").read_text())["profiles"][profile]
+    runs = []
+    for role, key in (("baseline", "candidate_measurements"),
+                      ("candidate", "reference_measurements" if legacy else "candidate_measurements")):
+        for measurement in calibration[key]:
+            runs.append({**copy.deepcopy(measurement), "role": role, "profile": profile, "render_windows": {}})
+    return runs
+
+
+@pytest.mark.parametrize("profile", ["single", "dual"])
+def test_policy_rejects_measured_preoptimization_cpu(profile):
+    rows, failures = benchmark.compare(calibrated_runs(profile, legacy=True), POLICY, [profile], 3)
+    steady = next(row for row in rows if row["metric"] == "steady.cpu_core_percent")
+    assert steady["candidate"] > steady["limit"]
+    assert any("steady.cpu_core_percent" in failure for failure in failures)
+
+
+@pytest.mark.parametrize("profile", ["single", "dual"])
+def test_policy_allows_twenty_percent_cpu_and_render_variation(profile):
+    runs = calibrated_runs(profile)
+    for result in runs:
+        if result["role"] == "candidate":
+            for phase in ("steady", "burst"):
+                result[phase]["cpu_core_percent"] *= 1.2
+            result["render_p95_cpu_ms"] *= 1.2
+    _, failures = benchmark.compare(runs, POLICY, [profile], 3)
+    assert failures == []

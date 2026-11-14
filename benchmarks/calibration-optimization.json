@@ -1,0 +1,1168 @@
+{
+  "schema": 1,
+  "purpose": "Repeated calibration after the verified CPU and memory fixes, using fixture version 2 without import tracing. The baseline commit and acceptance budgets are unchanged. Historical fixture-version-1 calibration is retained separately. Acceptance still remeasures both source versions on the candidate host.",
+  "profiles": {
+    "single": {
+      "measured_at": "2026-11-14T17:30:20.925241+00:00",
+      "baseline_commit": "630d37a606398c586abeb798b6fd5748fa5ff529",
+      "environment": {
+        "kernel": "7.2.15-arch1-1",
+        "platform": "Linux-7.2.15-arch1-1-x86_64-with-glibc2.44",
+        "python": "3.12.12 (main, Feb 12 2026, 00:42:14) [Clang 21.1.4 ]",
+        "affinity_cpus": 20,
+        "online_cpus": 20,
+        "cpu_affinity": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19
+        ],
+        "cpu_model": "13th Gen Intel(R) Core(TM) i7-13650HX",
+        "xvfb": "/home/kian/conky-linear-HUP/cache/benchmark-tools/usr/bin/Xvfb",
+        "conky": "conky 1.25.2-pre-6caddca3 compiled for Linux x86_64\n\nCompiled in features:\n\nSystem config file: /etc/conky/conky.conf\nPackage library path: /usr/lib/conky\n\n\n General:\n  * math\n  * hddtemp\n  * portmon\n  * IPv6\n  * Curl\n  * RSS\n  * wireless\n  * support for IBM/Lenovo notebooks\n  * nvidia\n  * builtin default configuration\n  * old configuration syntax\n  * Imlib2\n  * OSS mixer support\n  * apcupsd\n  * iostats\n  * ncurses\n  * Internationalization support\n  * PulseAudio\n\n Lua bindings:\n  * Cairo\n  * Imlib2\n  * RSVG\n X11:\n  * Xdamage extension\n  * Xinerama extension (virtual display)\n  * Xshape extension (click through)\n  * XDBE (double buffer extension)\n  * Xft\n  * Xinput\n  * ARGB visual\n  * Own window\n  * Mouse events\n Wayland:\n  * Mouse events\n\n Music detection:\n  * CMUS\n  * MPD\n  * MOC\n\n Default values:\n  * Netdevice: eno1\n  * Local configfile: $HOME/.conkyrc\n  * Localedir: /usr/share/locale\n  * Maximum netdevices: 256\n  * Maximum text size: 16384\n  * Size text buffer: 256",
+        "uv": "uv 0.13.7 (316c827e0 2026-11-03 x86_64-unknown-linux-gnu)"
+      },
+      "settings": {
+        "repeats": 3,
+        "warmup_seconds": 5,
+        "steady_seconds": 20,
+        "burst_seconds": 12,
+        "sample_seconds": 0.1,
+        "burst_period_seconds": 6
+      },
+      "monitors": [
+        [
+          1920,
+          1080,
+          0,
+          0
+        ]
+      ],
+      "fixture_version": 2,
+      "harness_sha256": "8e23c96a116ffab04d21e712b5aba864a536a13c379add9458a4dedf14dd9525",
+      "reference_measurements": [
+        {
+          "repetition": 1,
+          "source_sha256": "e51af50a354ad46787e336b1e6ed261b2d82e2dc8d14ee241b40fdc98f328dab",
+          "fetch_loops": 13,
+          "shared_gpu_sampler": false,
+          "steady": {
+            "wall_seconds": 20.009651519008912,
+            "cpu_seconds": 2.785271,
+            "cpu_core_percent": 13.91963771759857,
+            "cpu_capacity_percent": 0.6959818858799286,
+            "pss_mib": 108.279296875,
+            "rss_mib": 512.8359375,
+            "peak_pss_mib": 129.7294921875,
+            "peak_rss_mib": 570.17578125
+          },
+          "burst": {
+            "wall_seconds": 12.009096595022129,
+            "cpu_seconds": 5.9621580000000005,
+            "cpu_core_percent": 49.647015100797546,
+            "cpu_capacity_percent": 2.482350755039877,
+            "pss_mib": 110.396484375,
+            "rss_mib": 515.3125,
+            "peak_pss_mib": 290.5693359375,
+            "peak_rss_mib": 1002.7890625
+          },
+          "render_p95_cpu_ms": 117.885
+        },
+        {
+          "repetition": 2,
+          "source_sha256": "e51af50a354ad46787e336b1e6ed261b2d82e2dc8d14ee241b40fdc98f328dab",
+          "fetch_loops": 13,
+          "shared_gpu_sampler": false,
+          "steady": {
+            "wall_seconds": 20.00630921899574,
+            "cpu_seconds": 2.836929999999999,
+            "cpu_core_percent": 14.180176707987545,
+            "cpu_capacity_percent": 0.7090088353993773,
+            "pss_mib": 108.1650390625,
+            "rss_mib": 513.39453125,
+            "peak_pss_mib": 127.671875,
+            "peak_rss_mib": 571.140625
+          },
+          "burst": {
+            "wall_seconds": 12.005745041009504,
+            "cpu_seconds": 5.798555,
+            "cpu_core_percent": 48.29816875331902,
+            "cpu_capacity_percent": 2.414908437665951,
+            "pss_mib": 110.78466796875,
+            "rss_mib": 516.43359375,
+            "peak_pss_mib": 296.11328125,
+            "peak_rss_mib": 1020.390625
+          },
+          "render_p95_cpu_ms": 119.784
+        },
+        {
+          "repetition": 3,
+          "source_sha256": "e51af50a354ad46787e336b1e6ed261b2d82e2dc8d14ee241b40fdc98f328dab",
+          "fetch_loops": 13,
+          "shared_gpu_sampler": false,
+          "steady": {
+            "wall_seconds": 20.00688558901311,
+            "cpu_seconds": 2.864001,
+            "cpu_core_percent": 14.315076613287486,
+            "cpu_capacity_percent": 0.7157538306643743,
+            "pss_mib": 106.9833984375,
+            "rss_mib": 511.203125,
+            "peak_pss_mib": 130.2529296875,
+            "peak_rss_mib": 573.515625
+          },
+          "burst": {
+            "wall_seconds": 12.008094317017822,
+            "cpu_seconds": 5.994005,
+            "cpu_core_percent": 49.91637175521948,
+            "cpu_capacity_percent": 2.495818587760974,
+            "pss_mib": 109.2158203125,
+            "rss_mib": 513.69140625,
+            "peak_pss_mib": 275.662109375,
+            "peak_rss_mib": 985.5703125
+          },
+          "render_p95_cpu_ms": 127.169
+        }
+      ],
+      "candidate_measurements": [
+        {
+          "repetition": 1,
+          "source_sha256": "e69c12b498767fe90e13d44586ee42e812acfce558e78865d9211f8479b851bf",
+          "fetch_loops": 14,
+          "shared_gpu_sampler": true,
+          "steady": {
+            "wall_seconds": 20.003616813017288,
+            "cpu_seconds": 0.8074669999999999,
+            "cpu_core_percent": 4.036605017721313,
+            "cpu_capacity_percent": 0.20183025088606563,
+            "pss_mib": 108.3759765625,
+            "rss_mib": 513.8515625,
+            "peak_pss_mib": 119.673828125,
+            "peak_rss_mib": 533.6015625
+          },
+          "burst": {
+            "wall_seconds": 12.009093579981709,
+            "cpu_seconds": 4.199534,
+            "cpu_core_percent": 34.969616749429946,
+            "cpu_capacity_percent": 1.7484808374714973,
+            "pss_mib": 111.0087890625,
+            "rss_mib": 516.7421875,
+            "peak_pss_mib": 176.8857421875,
+            "peak_rss_mib": 663.7734375
+          },
+          "render_p95_cpu_ms": 19.971
+        },
+        {
+          "repetition": 2,
+          "source_sha256": "e69c12b498767fe90e13d44586ee42e812acfce558e78865d9211f8479b851bf",
+          "fetch_loops": 14,
+          "shared_gpu_sampler": true,
+          "steady": {
+            "wall_seconds": 20.00288708502194,
+            "cpu_seconds": 0.8137360000000005,
+            "cpu_core_percent": 4.068092753517175,
+            "cpu_capacity_percent": 0.20340463767585878,
+            "pss_mib": 108.06494140625,
+            "rss_mib": 515.80859375,
+            "peak_pss_mib": 119.33203125,
+            "peak_rss_mib": 535.3984375
+          },
+          "burst": {
+            "wall_seconds": 12.00764279201394,
+            "cpu_seconds": 4.431286,
+            "cpu_core_percent": 36.90387927718142,
+            "cpu_capacity_percent": 1.8451939638590709,
+            "pss_mib": 110.43359375,
+            "rss_mib": 518.375,
+            "peak_pss_mib": 212.4189453125,
+            "peak_rss_mib": 697.96484375
+          },
+          "render_p95_cpu_ms": 22.876
+        },
+        {
+          "repetition": 3,
+          "source_sha256": "e69c12b498767fe90e13d44586ee42e812acfce558e78865d9211f8479b851bf",
+          "fetch_loops": 14,
+          "shared_gpu_sampler": true,
+          "steady": {
+            "wall_seconds": 20.008011972007807,
+            "cpu_seconds": 0.8162570000000002,
+            "cpu_core_percent": 4.079650697640445,
+            "cpu_capacity_percent": 0.20398253488202223,
+            "pss_mib": 108.388671875,
+            "rss_mib": 515.1484375,
+            "peak_pss_mib": 117.65625,
+            "peak_rss_mib": 532.09375
+          },
+          "burst": {
+            "wall_seconds": 12.00751215298078,
+            "cpu_seconds": 4.049621999999999,
+            "cpu_core_percent": 33.72573725852702,
+            "cpu_capacity_percent": 1.6862868629263512,
+            "pss_mib": 110.5703125,
+            "rss_mib": 517.7109375,
+            "peak_pss_mib": 203.490234375,
+            "peak_rss_mib": 705.12109375
+          },
+          "render_p95_cpu_ms": 19.797
+        }
+      ],
+      "comparison": [
+        {
+          "profile": "single",
+          "metric": "steady.cpu_core_percent",
+          "baseline": 14.180176707987545,
+          "candidate": 4.068092753517175,
+          "limit": 20.72522088498443,
+          "baseline_range": [
+            13.91963771759857,
+            14.315076613287486
+          ],
+          "candidate_range": [
+            4.036605017721313,
+            4.079650697640445
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "single",
+          "metric": "steady.pss_mib",
+          "baseline": 108.1650390625,
+          "candidate": 108.3759765625,
+          "limit": 129.389794921875,
+          "baseline_range": [
+            106.9833984375,
+            108.279296875
+          ],
+          "candidate_range": [
+            108.06494140625,
+            108.388671875
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "single",
+          "metric": "steady.peak_rss_mib",
+          "baseline": 571.140625,
+          "candidate": 533.6015625,
+          "limit": 729.92578125,
+          "baseline_range": [
+            570.17578125,
+            573.515625
+          ],
+          "candidate_range": [
+            532.09375,
+            535.3984375
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "single",
+          "metric": "burst.cpu_core_percent",
+          "baseline": 49.647015100797546,
+          "candidate": 34.969616749429946,
+          "limit": 67.05876887599693,
+          "baseline_range": [
+            48.29816875331902,
+            49.91637175521948
+          ],
+          "candidate_range": [
+            33.72573725852702,
+            36.90387927718142
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "single",
+          "metric": "burst.pss_mib",
+          "baseline": 110.396484375,
+          "candidate": 110.5703125,
+          "limit": 131.95595703125,
+          "baseline_range": [
+            109.2158203125,
+            110.78466796875
+          ],
+          "candidate_range": [
+            110.43359375,
+            111.0087890625
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "single",
+          "metric": "burst.peak_rss_mib",
+          "baseline": 1002.7890625,
+          "candidate": 697.96484375,
+          "limit": 1269.486328125,
+          "baseline_range": [
+            985.5703125,
+            1020.390625
+          ],
+          "candidate_range": [
+            663.7734375,
+            705.12109375
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "single",
+          "metric": "render_p95_cpu_ms",
+          "baseline": 119.784,
+          "candidate": 19.971,
+          "limit": 150.73000000000002,
+          "baseline_range": [
+            117.885,
+            127.169
+          ],
+          "candidate_range": [
+            19.797,
+            22.876
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "single",
+          "metric": "window:billing-overlay-0",
+          "baseline": 1.36,
+          "candidate": 1.259,
+          "limit": 2.7,
+          "baseline_range": [
+            1.249,
+            1.422
+          ],
+          "candidate_range": [
+            1.162,
+            1.431
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "single",
+          "metric": "window:git-overlay-0",
+          "baseline": 60.075,
+          "candidate": 6.14,
+          "limit": 76.09375,
+          "baseline_range": [
+            50.999,
+            72.575
+          ],
+          "candidate_range": [
+            4.95,
+            6.196
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "single",
+          "metric": "window:github-overlay-0",
+          "baseline": 81.857,
+          "candidate": 8.73,
+          "limit": 103.32124999999999,
+          "baseline_range": [
+            81.547,
+            92.597
+          ],
+          "candidate_range": [
+            8.722,
+            11.258
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "single",
+          "metric": "window:linear-overlay-0",
+          "baseline": 87.805,
+          "candidate": 26.61,
+          "limit": 110.75625000000001,
+          "baseline_range": [
+            81.826,
+            94.975
+          ],
+          "candidate_range": [
+            24.467,
+            33.89
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "single",
+          "metric": "window:minecraft-overlay-0",
+          "baseline": 4.086,
+          "candidate": 1.298,
+          "limit": 6.1075,
+          "baseline_range": [
+            3.985,
+            4.218
+          ],
+          "candidate_range": [
+            1.286,
+            1.389
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "single",
+          "metric": "window:rate-limit-panel-overlay-0",
+          "baseline": 7.638,
+          "candidate": 7.474,
+          "limit": 10.5475,
+          "baseline_range": [
+            7.39,
+            9.056
+          ],
+          "candidate_range": [
+            7.468,
+            8.662
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "single",
+          "metric": "window:resource-monitor-overlay-0",
+          "baseline": 6.511,
+          "candidate": 6.373,
+          "limit": 9.13875,
+          "baseline_range": [
+            6.077,
+            8.043
+          ],
+          "candidate_range": [
+            6.205,
+            6.564
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "single",
+          "metric": "window:thermometer-overlay-0",
+          "baseline": 14.093,
+          "candidate": 2.041,
+          "limit": 18.61625,
+          "baseline_range": [
+            12.818,
+            17.028
+          ],
+          "candidate_range": [
+            1.621,
+            2.082
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "single",
+          "metric": "window:weather-overlay-0",
+          "baseline": 136.898,
+          "candidate": 8.721,
+          "limit": 172.1225,
+          "baseline_range": [
+            124.778,
+            145.058
+          ],
+          "candidate_range": [
+            6.598,
+            9.237
+          ],
+          "passed": true,
+          "noisy": false
+        }
+      ]
+    },
+    "dual": {
+      "measured_at": "2026-11-14T17:30:20.925286+00:00",
+      "baseline_commit": "630d37a606398c586abeb798b6fd5748fa5ff529",
+      "environment": {
+        "kernel": "7.2.15-arch1-1",
+        "platform": "Linux-7.2.15-arch1-1-x86_64-with-glibc2.44",
+        "python": "3.12.12 (main, Feb 12 2026, 00:42:14) [Clang 21.1.4 ]",
+        "affinity_cpus": 20,
+        "online_cpus": 20,
+        "cpu_affinity": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19
+        ],
+        "cpu_model": "13th Gen Intel(R) Core(TM) i7-13650HX",
+        "xvfb": "/home/kian/conky-linear-HUP/cache/benchmark-tools/usr/bin/Xvfb",
+        "conky": "conky 1.25.2-pre-6caddca3 compiled for Linux x86_64\n\nCompiled in features:\n\nSystem config file: /etc/conky/conky.conf\nPackage library path: /usr/lib/conky\n\n\n General:\n  * math\n  * hddtemp\n  * portmon\n  * IPv6\n  * Curl\n  * RSS\n  * wireless\n  * support for IBM/Lenovo notebooks\n  * nvidia\n  * builtin default configuration\n  * old configuration syntax\n  * Imlib2\n  * OSS mixer support\n  * apcupsd\n  * iostats\n  * ncurses\n  * Internationalization support\n  * PulseAudio\n\n Lua bindings:\n  * Cairo\n  * Imlib2\n  * RSVG\n X11:\n  * Xdamage extension\n  * Xinerama extension (virtual display)\n  * Xshape extension (click through)\n  * XDBE (double buffer extension)\n  * Xft\n  * Xinput\n  * ARGB visual\n  * Own window\n  * Mouse events\n Wayland:\n  * Mouse events\n\n Music detection:\n  * CMUS\n  * MPD\n  * MOC\n\n Default values:\n  * Netdevice: eno1\n  * Local configfile: $HOME/.conkyrc\n  * Localedir: /usr/share/locale\n  * Maximum netdevices: 256\n  * Maximum text size: 16384\n  * Size text buffer: 256",
+        "uv": "uv 0.13.7 (316c827e0 2026-11-03 x86_64-unknown-linux-gnu)"
+      },
+      "settings": {
+        "repeats": 3,
+        "warmup_seconds": 5,
+        "steady_seconds": 20,
+        "burst_seconds": 12,
+        "sample_seconds": 0.1,
+        "burst_period_seconds": 6
+      },
+      "monitors": [
+        [
+          1920,
+          1080,
+          0,
+          0
+        ],
+        [
+          1920,
+          1080,
+          1920,
+          0
+        ]
+      ],
+      "fixture_version": 2,
+      "harness_sha256": "8e23c96a116ffab04d21e712b5aba864a536a13c379add9458a4dedf14dd9525",
+      "reference_measurements": [
+        {
+          "repetition": 1,
+          "source_sha256": "e51af50a354ad46787e336b1e6ed261b2d82e2dc8d14ee241b40fdc98f328dab",
+          "fetch_loops": 13,
+          "shared_gpu_sampler": false,
+          "steady": {
+            "wall_seconds": 20.011050654022256,
+            "cpu_seconds": 5.5667670000000005,
+            "cpu_core_percent": 27.818464388730487,
+            "cpu_capacity_percent": 1.3909232194365244,
+            "pss_mib": 170.794921875,
+            "rss_mib": 822.22265625,
+            "peak_pss_mib": 207.5380859375,
+            "peak_rss_mib": 936.3359375
+          },
+          "burst": {
+            "wall_seconds": 12.014075179991778,
+            "cpu_seconds": 7.159613,
+            "cpu_core_percent": 59.59354251356449,
+            "cpu_capacity_percent": 2.9796771256782244,
+            "pss_mib": 174.6337890625,
+            "rss_mib": 826.48828125,
+            "peak_pss_mib": 362.1689453125,
+            "peak_rss_mib": 1299.2890625
+          },
+          "render_p95_cpu_ms": 127.89
+        },
+        {
+          "repetition": 2,
+          "source_sha256": "e51af50a354ad46787e336b1e6ed261b2d82e2dc8d14ee241b40fdc98f328dab",
+          "fetch_loops": 13,
+          "shared_gpu_sampler": false,
+          "steady": {
+            "wall_seconds": 20.011649842985207,
+            "cpu_seconds": 5.741339,
+            "cpu_core_percent": 28.689983309959537,
+            "cpu_capacity_percent": 1.434499165497977,
+            "pss_mib": 178.7880859375,
+            "rss_mib": 830.28515625,
+            "peak_pss_mib": 206.6611328125,
+            "peak_rss_mib": 934.6640625
+          },
+          "burst": {
+            "wall_seconds": 12.011780979984906,
+            "cpu_seconds": 7.046863999999999,
+            "cpu_core_percent": 58.6662711528133,
+            "cpu_capacity_percent": 2.933313557640665,
+            "pss_mib": 183.6220703125,
+            "rss_mib": 835.40625,
+            "peak_pss_mib": 356.7646484375,
+            "peak_rss_mib": 1325.15234375
+          },
+          "render_p95_cpu_ms": 131.444
+        },
+        {
+          "repetition": 3,
+          "source_sha256": "e51af50a354ad46787e336b1e6ed261b2d82e2dc8d14ee241b40fdc98f328dab",
+          "fetch_loops": 13,
+          "shared_gpu_sampler": false,
+          "steady": {
+            "wall_seconds": 20.01026033598464,
+            "cpu_seconds": 5.784678999999999,
+            "cpu_core_percent": 28.90856442081044,
+            "cpu_capacity_percent": 1.445428221040522,
+            "pss_mib": 171.56640625,
+            "rss_mib": 822.85546875,
+            "peak_pss_mib": 212.32421875,
+            "peak_rss_mib": 941.55859375
+          },
+          "burst": {
+            "wall_seconds": 12.009121551993303,
+            "cpu_seconds": 7.277622000000001,
+            "cpu_core_percent": 60.600785565302594,
+            "cpu_capacity_percent": 3.0300392782651295,
+            "pss_mib": 175.66796875,
+            "rss_mib": 827.24609375,
+            "peak_pss_mib": 337.6611328125,
+            "peak_rss_mib": 1289.2421875
+          },
+          "render_p95_cpu_ms": 136.792
+        }
+      ],
+      "candidate_measurements": [
+        {
+          "repetition": 1,
+          "source_sha256": "e69c12b498767fe90e13d44586ee42e812acfce558e78865d9211f8479b851bf",
+          "fetch_loops": 14,
+          "shared_gpu_sampler": true,
+          "steady": {
+            "wall_seconds": 20.008750525012147,
+            "cpu_seconds": 1.0784380000000002,
+            "cpu_core_percent": 5.389831807098037,
+            "cpu_capacity_percent": 0.26949159035490183,
+            "pss_mib": 173.7255859375,
+            "rss_mib": 826.9453125,
+            "peak_pss_mib": 187.240234375,
+            "peak_rss_mib": 849.1328125
+          },
+          "burst": {
+            "wall_seconds": 12.011954433983192,
+            "cpu_seconds": 4.307328999999999,
+            "cpu_core_percent": 35.858685808981036,
+            "cpu_capacity_percent": 1.7929342904490517,
+            "pss_mib": 177.5146484375,
+            "rss_mib": 831.1015625,
+            "peak_pss_mib": 277.5908203125,
+            "peak_rss_mib": 1012.15234375
+          },
+          "render_p95_cpu_ms": 23.974
+        },
+        {
+          "repetition": 2,
+          "source_sha256": "e69c12b498767fe90e13d44586ee42e812acfce558e78865d9211f8479b851bf",
+          "fetch_loops": 14,
+          "shared_gpu_sampler": true,
+          "steady": {
+            "wall_seconds": 20.012292761995923,
+            "cpu_seconds": 1.0836769999999998,
+            "cpu_core_percent": 5.415056699839721,
+            "cpu_capacity_percent": 0.27075283499198605,
+            "pss_mib": 174.470703125,
+            "rss_mib": 828.97265625,
+            "peak_pss_mib": 185.666015625,
+            "peak_rss_mib": 848.2109375
+          },
+          "burst": {
+            "wall_seconds": 12.01170533100958,
+            "cpu_seconds": 4.17789,
+            "cpu_core_percent": 34.781822271433036,
+            "cpu_capacity_percent": 1.739091113571652,
+            "pss_mib": 178.4267578125,
+            "rss_mib": 833.09375,
+            "peak_pss_mib": 295.259765625,
+            "peak_rss_mib": 1049.6796875
+          },
+          "render_p95_cpu_ms": 21.712
+        },
+        {
+          "repetition": 3,
+          "source_sha256": "e69c12b498767fe90e13d44586ee42e812acfce558e78865d9211f8479b851bf",
+          "fetch_loops": 14,
+          "shared_gpu_sampler": true,
+          "steady": {
+            "wall_seconds": 20.00385487099993,
+            "cpu_seconds": 1.072883000000001,
+            "cpu_core_percent": 5.363381242859271,
+            "cpu_capacity_percent": 0.26816906214296354,
+            "pss_mib": 173.603515625,
+            "rss_mib": 827.6328125,
+            "peak_pss_mib": 185.5859375,
+            "peak_rss_mib": 847.74609375
+          },
+          "burst": {
+            "wall_seconds": 12.013541560008889,
+            "cpu_seconds": 4.157627999999999,
+            "cpu_core_percent": 34.60784631436296,
+            "cpu_capacity_percent": 1.7303923157181482,
+            "pss_mib": 177.3994140625,
+            "rss_mib": 831.80078125,
+            "peak_pss_mib": 271.68359375,
+            "peak_rss_mib": 1005.33984375
+          },
+          "render_p95_cpu_ms": 18.437
+        }
+      ],
+      "comparison": [
+        {
+          "profile": "dual",
+          "metric": "steady.cpu_core_percent",
+          "baseline": 28.689983309959537,
+          "candidate": 5.389831807098037,
+          "limit": 38.86247913744942,
+          "baseline_range": [
+            27.818464388730487,
+            28.90856442081044
+          ],
+          "candidate_range": [
+            5.363381242859271,
+            5.415056699839721
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "dual",
+          "metric": "steady.pss_mib",
+          "baseline": 171.56640625,
+          "candidate": 173.7255859375,
+          "limit": 202.30136718749998,
+          "baseline_range": [
+            170.794921875,
+            178.7880859375
+          ],
+          "candidate_range": [
+            173.603515625,
+            174.470703125
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "dual",
+          "metric": "steady.peak_rss_mib",
+          "baseline": 936.3359375,
+          "candidate": 848.2109375,
+          "limit": 1186.419921875,
+          "baseline_range": [
+            934.6640625,
+            941.55859375
+          ],
+          "candidate_range": [
+            847.74609375,
+            849.1328125
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "dual",
+          "metric": "burst.cpu_core_percent",
+          "baseline": 59.59354251356449,
+          "candidate": 34.781822271433036,
+          "limit": 79.49192814195561,
+          "baseline_range": [
+            58.6662711528133,
+            60.600785565302594
+          ],
+          "candidate_range": [
+            34.60784631436296,
+            35.858685808981036
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "dual",
+          "metric": "burst.pss_mib",
+          "baseline": 175.66796875,
+          "candidate": 177.5146484375,
+          "limit": 207.01816406249998,
+          "baseline_range": [
+            174.6337890625,
+            183.6220703125
+          ],
+          "candidate_range": [
+            177.3994140625,
+            178.4267578125
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "dual",
+          "metric": "burst.peak_rss_mib",
+          "baseline": 1299.2890625,
+          "candidate": 1012.15234375,
+          "limit": 1640.111328125,
+          "baseline_range": [
+            1289.2421875,
+            1325.15234375
+          ],
+          "candidate_range": [
+            1005.33984375,
+            1049.6796875
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "dual",
+          "metric": "render_p95_cpu_ms",
+          "baseline": 131.444,
+          "candidate": 21.712,
+          "limit": 165.30499999999998,
+          "baseline_range": [
+            127.89,
+            136.792
+          ],
+          "candidate_range": [
+            18.437,
+            23.974
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "dual",
+          "metric": "window:billing-overlay-0",
+          "baseline": 1.465,
+          "candidate": 1.392,
+          "limit": 2.83125,
+          "baseline_range": [
+            1.352,
+            1.577
+          ],
+          "candidate_range": [
+            1.261,
+            1.902
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "dual",
+          "metric": "window:billing-overlay-1",
+          "baseline": 1.284,
+          "candidate": 1.25,
+          "limit": 2.605,
+          "baseline_range": [
+            1.265,
+            1.547
+          ],
+          "candidate_range": [
+            1.2,
+            1.605
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "dual",
+          "metric": "window:git-overlay-0",
+          "baseline": 68.781,
+          "candidate": 5.259,
+          "limit": 86.97625000000001,
+          "baseline_range": [
+            67.639,
+            82.993
+          ],
+          "candidate_range": [
+            4.884,
+            6.32
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "dual",
+          "metric": "window:git-overlay-1",
+          "baseline": 71.988,
+          "candidate": 5.73,
+          "limit": 90.985,
+          "baseline_range": [
+            69.923,
+            74.821
+          ],
+          "candidate_range": [
+            5.417,
+            6.209
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "dual",
+          "metric": "window:github-overlay-0",
+          "baseline": 94.315,
+          "candidate": 9.0,
+          "limit": 118.89375,
+          "baseline_range": [
+            92.851,
+            106.633
+          ],
+          "candidate_range": [
+            8.663,
+            9.326
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "dual",
+          "metric": "window:github-overlay-1",
+          "baseline": 97.039,
+          "candidate": 8.845,
+          "limit": 122.29875,
+          "baseline_range": [
+            82.886,
+            102.868
+          ],
+          "candidate_range": [
+            8.57,
+            10.595
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "dual",
+          "metric": "window:linear-overlay-0",
+          "baseline": 103.633,
+          "candidate": 24.091,
+          "limit": 130.54125,
+          "baseline_range": [
+            102.098,
+            110.723
+          ],
+          "candidate_range": [
+            21.938,
+            29.375
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "dual",
+          "metric": "window:linear-overlay-1",
+          "baseline": 103.196,
+          "candidate": 28.228,
+          "limit": 129.995,
+          "baseline_range": [
+            99.955,
+            105.72
+          ],
+          "candidate_range": [
+            27.427,
+            28.632
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "dual",
+          "metric": "window:minecraft-overlay-0",
+          "baseline": 4.727,
+          "candidate": 1.279,
+          "limit": 6.90875,
+          "baseline_range": [
+            4.626,
+            4.986
+          ],
+          "candidate_range": [
+            1.165,
+            1.717
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "dual",
+          "metric": "window:minecraft-overlay-1",
+          "baseline": 4.938,
+          "candidate": 1.279,
+          "limit": 7.172499999999999,
+          "baseline_range": [
+            4.347,
+            5.062
+          ],
+          "candidate_range": [
+            1.166,
+            1.698
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "dual",
+          "metric": "window:rate-limit-panel-overlay-0",
+          "baseline": 7.899,
+          "candidate": 7.772,
+          "limit": 10.87375,
+          "baseline_range": [
+            7.83,
+            8.413
+          ],
+          "candidate_range": [
+            7.263,
+            8.787
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "dual",
+          "metric": "window:rate-limit-panel-overlay-1",
+          "baseline": 7.868,
+          "candidate": 8.166,
+          "limit": 10.835,
+          "baseline_range": [
+            7.842,
+            8.928
+          ],
+          "candidate_range": [
+            7.179,
+            8.711
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "dual",
+          "metric": "window:resource-monitor-overlay-0",
+          "baseline": 6.509,
+          "candidate": 7.082,
+          "limit": 9.13625,
+          "baseline_range": [
+            6.139,
+            6.907
+          ],
+          "candidate_range": [
+            5.889,
+            7.166
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "dual",
+          "metric": "window:resource-monitor-overlay-1",
+          "baseline": 6.365,
+          "candidate": 7.19,
+          "limit": 8.95625,
+          "baseline_range": [
+            6.337,
+            6.618
+          ],
+          "candidate_range": [
+            5.989,
+            7.218
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "dual",
+          "metric": "window:thermometer-overlay-0",
+          "baseline": 13.044,
+          "candidate": 2.112,
+          "limit": 17.305,
+          "baseline_range": [
+            12.795,
+            15.465
+          ],
+          "candidate_range": [
+            2.057,
+            3.25
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "dual",
+          "metric": "window:thermometer-overlay-1",
+          "baseline": 13.802,
+          "candidate": 2.084,
+          "limit": 18.252499999999998,
+          "baseline_range": [
+            12.82,
+            17.161
+          ],
+          "candidate_range": [
+            2.075,
+            2.708
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "dual",
+          "metric": "window:weather-overlay-0",
+          "baseline": 158.598,
+          "candidate": 9.455,
+          "limit": 199.2475,
+          "baseline_range": [
+            137.819,
+            191.511
+          ],
+          "candidate_range": [
+            7.352,
+            10.4
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "dual",
+          "metric": "window:weather-overlay-1",
+          "baseline": 163.559,
+          "candidate": 8.855,
+          "limit": 205.44875,
+          "baseline_range": [
+            161.671,
+            170.023
+          ],
+          "candidate_range": [
+            8.624,
+            10.408
+          ],
+          "passed": true,
+          "noisy": false
+        }
+      ]
+    }
+  },
+  "regression_proof": {
+    "rejected": true,
+    "observed_cpu_core_percent": 103.08812734952491,
+    "limit": 20.72522088498443
+  },
+  "source_commit": "b8e17c08d26c012360074fbfc9ea0346e167ac3d",
+  "dirty_diff_sha256": "6221819dffb936b775af163cd5d2d8809cb0be8f575af83531df4dd5119c3a82",
+  "limits": [
+    "Cgroup CPU includes exited children; memory is sampled and can miss peaks shorter than the sample interval.",
+    "PSS apportions shared pages; summed RSS counts them per process. Neither is GPU VRAM.",
+    "Xvfb, sampler, real compositor, GPU rendering/driver cost, network latency, battery and display-server cost are outside the measured cgroup.",
+    "Draw timings are Lua CPU milliseconds, excluding time waiting for helper subprocesses; helpers remain in total cgroup CPU."
+  ]
+}

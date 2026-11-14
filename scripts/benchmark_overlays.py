@@ -284,6 +284,7 @@ def benchmark_one(output, profile, monitors, role, repetition, revision, setting
             with Workload(root, worker_settings, group_root) as workload:
                 warmup = measure_phase(workload, "warmup", settings["warmup_seconds"], settings["sample_seconds"], len(os.sched_getaffinity(0)))
                 result = {"profile": profile, "role": role, "repetition": repetition, "injected_regression": inject,
+                          "source_revision": revision,
                           "source_sha256": source_sha256,
                           "warmup": warmup, "windows": worker_settings["expected_windows"],
                           "fetch_loops": capabilities["fetch_loops"],
@@ -417,6 +418,13 @@ def readable(report):
         lines.append(f"| {row['profile']} | {row['metric']} | {row['baseline']:.3f} | {row['candidate']:.3f} | {row['limit']:.3f} | {'PASS' if row['passed'] else 'FAIL'} |")
     for failure in report.get("failures", []):
         lines.extend(["", "- "+failure])
+    if report.get("legacy_regression_proofs"):
+        lines.extend(["", "Pre-optimization regression rejection:", "",
+                      "| Profile | Old CPU % core | Steady limit | Result |",
+                      "|---|---:|---:|---|"])
+        for proof in report["legacy_regression_proofs"]:
+            lines.append(f"| {proof['profile']} | {proof['observed_cpu_core_percent']:.3f} | "
+                         f"{proof['limit']:.3f} | {'REJECTED' if proof['rejected'] else 'NOT REJECTED'} |")
     for profile in report["profiles"]:
         if (Path(report["output"]) / f"usage-{profile}.png").exists():
             lines.extend(["", f"![{profile} resource timeline](usage-{profile}.png)"])
@@ -442,7 +450,7 @@ def main(argv=None):
     parser.add_argument("--draw-interval", action="append", default=[], metavar="OVERLAY=SECONDS")
     parser.add_argument("--env", action="append", default=[], metavar="REFRESH_VARIABLE=SECONDS")
     parser.add_argument("--smoke", action="store_true", help="short harness check; never an acceptance result")
-    parser.add_argument("--prove-regression", action="store_true", help="also run a measured CPU hog and require rejection")
+    parser.add_argument("--prove-regression", action="store_true", help="require rejection of a measured CPU hog and the pre-optimization version")
     parser.add_argument("--inject-regression", action="store_true", help="add a CPU hog to candidate runs; must fail")
     parser.add_argument("--keep-workloads", action="store_true")
     args = parser.parse_args(argv)
@@ -464,7 +472,8 @@ def main(argv=None):
     report = {"schema": 1, "status": "error", "commit": run(["git", "rev-parse", "HEAD"], cwd=ROOT),
               "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
               "dirty_diff_sha256": hashlib.sha256(run(["git", "diff", "HEAD", "--", "conky", "scripts", "assets", "pyproject.toml", "uv.lock"], cwd=ROOT).encode()).hexdigest(),
-              "baseline_commit": policy["baseline_commit"], "policy_sha256": hashlib.sha256((BENCH / "policy.json").read_bytes()).hexdigest(),
+              "baseline_commit": policy["baseline_commit"], "regression_commit": policy["regression_commit"],
+              "policy_sha256": hashlib.sha256((BENCH / "policy.json").read_bytes()).hexdigest(),
               "fixture_version": policy["fixture_version"], "harness_sha256": hashlib.sha256(b"".join(p.read_bytes() for p in sorted(BENCH.glob("*.py")))+Path(__file__).read_bytes()).hexdigest(),
               "environment": {"kernel": platform.release(), "platform": platform.platform(), "python": sys.version,
                   "affinity_cpus": len(os.sched_getaffinity(0)), "online_cpus": os.cpu_count(),
@@ -509,6 +518,22 @@ def main(argv=None):
             report["runs"].append(injected)
             if not rejected:
                 report["failures"].append("intentional measured CPU regression was not rejected")
+            report["legacy_regression_proofs"] = []
+            for profile in profiles:
+                legacy = benchmark_one(output, profile, policy["profiles"][profile], "legacy", 1,
+                    policy["regression_commit"], settings, args.cgroup_root, {"draw": {}, "env": {}}, False)
+                cpu_row = next(row for row in report["comparisons"]
+                               if row["profile"] == profile and row["metric"] == "steady.cpu_core_percent")
+                observed = legacy["steady"]["cpu_core_percent"]
+                rejected = observed > cpu_row["limit"]
+                report["runs"].append(legacy)
+                report["legacy_regression_proofs"].append({
+                    "profile": profile, "commit": policy["regression_commit"], "rejected": rejected,
+                    "observed_cpu_core_percent": observed, "limit": cpu_row["limit"],
+                })
+                write_json(output / "report.json", report)
+                if not rejected:
+                    report["failures"].append(f"{profile}: pre-optimization CPU regression was not rejected")
         report["status"] = "smoke" if args.smoke and not report["failures"] else "fail" if report["failures"] else "pass"
     except Exception as error:
         report["failures"].append(str(error))
