@@ -162,7 +162,7 @@ assert(gauges[7].value == '1.0' and gauges[7].unit == 'GB/s'
 -- readings and gaps that must not become a line through an invented zero.
 now, height, width = 2000, 240, 360
 renderer = module()
-for _, sample in ipairs({{2000, '20'}, {2002, '30'}, {2004, 'N/A'}, {2006, '40'}, {2008, '50'}}) do
+for _, sample in ipairs({{2000, '20'}, {2001, '30'}, {2002, 'N/A'}, {2003, '40'}, {2004, '50'}}) do
   now, nvidia_percent = sample[1], sample[2]
   draw(renderer)
 end
@@ -203,6 +203,27 @@ unavailable(gauges[5])
 now, intel_counter = now + 2, intel_counter + 500000000
 draw(renderer)
 assert(gauges[5].opts.reading == 25, 'a restarted producer establishes a fresh counter baseline')
+
+-- Consecutive one-second updates must collect fresh readings and normalize
+-- byte/counter deltas by one second, including the shared GPU cache reader.
+now, intel_counter, nvidia_percent = 4000, 10000000000, '20'
+files['/proc/stat'] = 'cpu 1000 0 0 4000 0 0 0 0\n'
+files['/proc/net/dev'] = 'eth1: 1000 0 0 0 0 0 0 0 500 0 0 0 0 0 0 0\n'
+snapshot(10000, 20000, 1000, 2000)
+renderer = module()
+draw(renderer)
+now, intel_counter, nvidia_percent = 4001, 10350000000, '64'
+files['/proc/stat'] = 'cpu 1025 0 0 4075 0 0 0 0\n'
+files['/proc/net/dev'] = 'eth1: 1049576 0 0 0 0 0 0 0 2097652 0 0 0 0 0 0 0\n'
+snapshot(12048, 24096, 2024, 2000)
+draw(renderer)
+assert(gauges[1].opts.reading == 25, 'CPU must update on the next second')
+assert(gauges[3].opts.reading == 1048576 and gauges[4].opts.reading == 2 * 1048576,
+  'network rates must use the one-second sampling interval')
+assert(gauges[5].opts.reading == 35 and gauges[6].opts.reading == 64,
+  'both GPUs must update on the next second')
+assert(gauges[7].opts.reading == 1.5 * 1048576 and gauges[8].opts.reading == 2 * 1048576,
+  'disk rates must use the one-second sampling interval')
 
 os.time, io.popen, os.getenv = original_time, original_popen, original_getenv
 print('resource sampling, availability, peaks, and two-row geometry OK')

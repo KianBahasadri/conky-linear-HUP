@@ -150,7 +150,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--watch", action="store_true")
     parser.add_argument("--output", type=Path, default=Path(__file__).resolve().parents[1] / "cache/gpu-usage.tsv")
-    parser.add_argument("--interval", type=float, default=2)
+    parser.add_argument("--interval", type=float, default=1)
     args = parser.parse_args(argv)
     if not 0 < args.interval < float("inf"):
         parser.error("--interval must be finite and positive")

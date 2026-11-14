@@ -87,7 +87,7 @@ settings are in [Configuration](configuration.md#launcher-lifecycle).
 
 ## Fetch intervals
 
-- GPU sampling: `2s`, once for the suite regardless of monitor count. The launcher retries an exited producer after `5s`.
+- Resource monitor: redraws and samples local CPU, memory, network, and disk counters every `1s`. The shared GPU producer also samples every `1s`, once for the suite regardless of monitor count. The launcher retries an exited producer after `5s`.
 - Linear: `60s`
 - Codex, Claude, Cursor, Gemini, Grok, OpenCode, Command Code: adaptive — `RATE_LIMIT_CHANGED_INTERVAL` (default `60s`) while any usage change has been seen in the last `RATE_LIMIT_RECENT_CHANGE_WINDOW` (default `600s`), otherwise `RATE_LIMIT_UNCHANGED_INTERVAL` (default `300s`). Claude also keeps a per-account API cache.
 - OpenCode: dashboard response is retained as a stale fallback when the latest request fails

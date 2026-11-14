@@ -178,8 +178,9 @@ The network dials use the highest recorded usage on the active network in the la
 keeps its real number and is clipped only in the gauge fill. Utilization at or above 80% turns the
 active fill and number caution, and 95% turns them danger. When readings rise, the peak tick indicator is immediately pushed up; when readings fall, it decays back down slowly at 0.05% of channel maximum per second (slowed 100× from the design guide's 5%/s baseline; configurable via `RESOURCE_PEAK_DECAY_RATE`), with the active fill arc path terminating under the tick line so its rounded cap hides beneath it.
 
-`scripts/sample_gpu_usage.py` discovers GPUs through DRM and emits a snapshot
-at most once per two-second update per monitor. NVIDIA utilization comes from
+`scripts/sample_gpu_usage.py` discovers GPUs through DRM and publishes one
+shared snapshot for all monitors at the [resource monitor's update interval](caches.md#fetch-intervals).
+NVIDIA utilization comes from
 `nvidia-smi`, matched by PCI address, with a one-second query timeout. Intel
 uses the busiest engine's elapsed busy time across readable DRM client handles
 in `/proc/*/fdinfo`. Shared handles are deduplicated by device and client ID;
@@ -188,8 +189,8 @@ temporarily regressing counters retain their previous high value until they
 catch up. See the [kernel's DRM usage counter specification](https://docs.kernel.org/gpu/drm-usage-stats.html).
 Intel readings cover accessible desktop processes; protected processes owned
 by other users are not included. No privileged service or permission change
-is required. Missing or unsupported readings show an em dash. The helper has
-a two-second timeout; NVIDIA query failures leave Intel sampling available.
+is required. Missing or unsupported readings show an em dash; NVIDIA query
+failures leave Intel sampling available.
 
 Disk rates sum read/write byte deltas from whole disks in
 `/proc/diskstats` that have a backing device in `/sys/block`; partitions and

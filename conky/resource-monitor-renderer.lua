@@ -2,7 +2,7 @@
 -- hold indicators on zero-based scales.
 return function(shared, repo_root)
   local ui = shared.ui
-  local interval = 2
+  local interval = 1
   local history_limit = math.floor(shared.clamp(tonumber(os.getenv('RESOURCE_HISTORY_SAMPLES')) or 90, 30, 180))
   local network_max = (tonumber(os.getenv('RESOURCE_NETWORK_MAX_MBPS')) or 12.5) * 1048576
   if network_max <= 0 then network_max = 12.5 * 1048576 end
