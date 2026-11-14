@@ -1,0 +1,996 @@
+{
+  "schema": 1,
+  "purpose": "Initial repeated-run calibration and review evidence. Acceptance remeasures the pinned commit on the candidate host; these historical numbers are not substituted for fresh measurements.",
+  "profiles": {
+    "single": {
+      "measured_at": "2026-11-14T03:57:27.900403+00:00",
+      "baseline_commit": "630d37a606398c586abeb798b6fd5748fa5ff529",
+      "environment": {
+        "kernel": "7.2.15-arch1-1",
+        "platform": "Linux-7.2.15-arch1-1-x86_64-with-glibc2.44",
+        "python": "3.12.12 (main, Feb 12 2026, 00:42:14) [Clang 21.1.4 ]",
+        "affinity_cpus": 20,
+        "online_cpus": 20,
+        "cpu_model": "13th Gen Intel(R) Core(TM) i7-13650HX",
+        "conky": "conky 1.25.2-pre-6caddca3 compiled for Linux x86_64\n\nCompiled in features:\n\nSystem config file: /etc/conky/conky.conf\nPackage library path: /usr/lib/conky\n\n\n General:\n  * math\n  * hddtemp\n  * portmon\n  * IPv6\n  * Curl\n  * RSS\n  * wireless\n  * support for IBM/Lenovo notebooks\n  * nvidia\n  * builtin default configuration\n  * old configuration syntax\n  * Imlib2\n  * OSS mixer support\n  * apcupsd\n  * iostats\n  * ncurses\n  * Internationalization support\n  * PulseAudio\n\n Lua bindings:\n  * Cairo\n  * Imlib2\n  * RSVG\n X11:\n  * Xdamage extension\n  * Xinerama extension (virtual display)\n  * Xshape extension (click through)\n  * XDBE (double buffer extension)\n  * Xft\n  * Xinput\n  * ARGB visual\n  * Own window\n  * Mouse events\n Wayland:\n  * Mouse events\n\n Music detection:\n  * CMUS\n  * MPD\n  * MOC\n\n Default values:\n  * Netdevice: eno1\n  * Local configfile: $HOME/.conkyrc\n  * Localedir: /usr/share/locale\n  * Maximum netdevices: 256\n  * Maximum text size: 16384\n  * Size text buffer: 256",
+        "uv": "uv 0.13.7 (316c827e0 2026-11-03 x86_64-unknown-linux-gnu)"
+      },
+      "settings": {
+        "repeats": 3,
+        "warmup_seconds": 5,
+        "steady_seconds": 20,
+        "burst_seconds": 12,
+        "sample_seconds": 0.1,
+        "burst_period_seconds": 6
+      },
+      "monitors": [
+        [
+          1920,
+          1080,
+          0,
+          0
+        ]
+      ],
+      "fixture_version": 1,
+      "harness_sha256": "4c11c4c26e395ca656c7d92d329920bccebab5add87590b87d1698a38601aec0",
+      "reference_measurements": [
+        {
+          "repetition": 1,
+          "steady": {
+            "wall_seconds": 20.0076009589975,
+            "cpu_seconds": 2.9152070000000005,
+            "cpu_core_percent": 14.570497512291796,
+            "cpu_capacity_percent": 0.7285248756145899,
+            "pss_mib": 112.85546875,
+            "rss_mib": 519.5234375,
+            "peak_pss_mib": 140.0625,
+            "peak_rss_mib": 578.0703125
+          },
+          "burst": {
+            "wall_seconds": 12.008323145986651,
+            "cpu_seconds": 6.880025999999999,
+            "cpu_core_percent": 57.29381127038874,
+            "cpu_capacity_percent": 2.864690563519437,
+            "pss_mib": 115.466796875,
+            "rss_mib": 522.0234375,
+            "peak_pss_mib": 281.080078125,
+            "peak_rss_mib": 1002.546875
+          },
+          "render_p95_cpu_ms": 132.899
+        },
+        {
+          "repetition": 2,
+          "steady": {
+            "wall_seconds": 20.005840854995768,
+            "cpu_seconds": 2.906461,
+            "cpu_core_percent": 14.528062184770462,
+            "cpu_capacity_percent": 0.7264031092385231,
+            "pss_mib": 113.8671875,
+            "rss_mib": 520.15234375,
+            "peak_pss_mib": 143.2529296875,
+            "peak_rss_mib": 585.81640625
+          },
+          "burst": {
+            "wall_seconds": 12.005687955010217,
+            "cpu_seconds": 6.887366,
+            "cpu_core_percent": 57.36752467505008,
+            "cpu_capacity_percent": 2.8683762337525036,
+            "pss_mib": 116.3505859375,
+            "rss_mib": 523.11328125,
+            "peak_pss_mib": 323.1552734375,
+            "peak_rss_mib": 1015.55078125
+          },
+          "render_p95_cpu_ms": 123.499
+        },
+        {
+          "repetition": 3,
+          "steady": {
+            "wall_seconds": 20.01002227200661,
+            "cpu_seconds": 3.2021499999999996,
+            "cpu_core_percent": 16.0027308139467,
+            "cpu_capacity_percent": 0.8001365406973351,
+            "pss_mib": 111.5380859375,
+            "rss_mib": 515.85546875,
+            "peak_pss_mib": 139.9013671875,
+            "peak_rss_mib": 580.12109375
+          },
+          "burst": {
+            "wall_seconds": 12.005992870996124,
+            "cpu_seconds": 7.041459,
+            "cpu_core_percent": 58.64953507519264,
+            "cpu_capacity_percent": 2.932476753759632,
+            "pss_mib": 113.611328125,
+            "rss_mib": 518.37890625,
+            "peak_pss_mib": 306.0166015625,
+            "peak_rss_mib": 1008.6953125
+          },
+          "render_p95_cpu_ms": 134.49
+        }
+      ],
+      "comparison": [
+        {
+          "profile": "single",
+          "metric": "steady.cpu_core_percent",
+          "baseline": 14.570497512291796,
+          "candidate": 14.934029566052203,
+          "limit": 21.213121890364746,
+          "baseline_range": [
+            14.528062184770462,
+            16.0027308139467
+          ],
+          "candidate_range": [
+            14.92027163510664,
+            15.21336918383682
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "single",
+          "metric": "steady.pss_mib",
+          "baseline": 112.85546875,
+          "candidate": 106.251953125,
+          "limit": 134.78378906249998,
+          "baseline_range": [
+            111.5380859375,
+            113.8671875
+          ],
+          "candidate_range": [
+            106.130859375,
+            111.2529296875
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "single",
+          "metric": "steady.peak_rss_mib",
+          "baseline": 580.12109375,
+          "candidate": 570.25390625,
+          "limit": 741.1513671875,
+          "baseline_range": [
+            578.0703125,
+            585.81640625
+          ],
+          "candidate_range": [
+            569.12109375,
+            574.57421875
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "single",
+          "metric": "burst.cpu_core_percent",
+          "baseline": 57.36752467505008,
+          "candidate": 59.714924837603924,
+          "limit": 76.70940584381259,
+          "baseline_range": [
+            57.29381127038874,
+            58.64953507519264
+          ],
+          "candidate_range": [
+            59.256293729381056,
+            66.64987750163863
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "single",
+          "metric": "burst.pss_mib",
+          "baseline": 115.466796875,
+          "candidate": 108.7333984375,
+          "limit": 137.78681640624998,
+          "baseline_range": [
+            113.611328125,
+            116.3505859375
+          ],
+          "candidate_range": [
+            108.34033203125,
+            113.2900390625
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "single",
+          "metric": "burst.peak_rss_mib",
+          "baseline": 1008.6953125,
+          "candidate": 1007.32421875,
+          "limit": 1276.869140625,
+          "baseline_range": [
+            1002.546875,
+            1015.55078125
+          ],
+          "candidate_range": [
+            976.24609375,
+            1034.58203125
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "single",
+          "metric": "render_p95_cpu_ms",
+          "baseline": 132.899,
+          "candidate": 121.542,
+          "limit": 167.12375,
+          "baseline_range": [
+            123.499,
+            134.49
+          ],
+          "candidate_range": [
+            119.371,
+            131.45
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "single",
+          "metric": "window:billing-overlay-0",
+          "baseline": 1.244,
+          "candidate": 1.225,
+          "limit": 2.5549999999999997,
+          "baseline_range": [
+            1.12,
+            1.246
+          ],
+          "candidate_range": [
+            1.147,
+            1.297
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "single",
+          "metric": "window:git-overlay-0",
+          "baseline": 66.749,
+          "candidate": 70.436,
+          "limit": 84.43625,
+          "baseline_range": [
+            56.175,
+            84.305
+          ],
+          "candidate_range": [
+            66.69,
+            77.038
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "single",
+          "metric": "window:github-overlay-0",
+          "baseline": 95.487,
+          "candidate": 99.15,
+          "limit": 120.35874999999999,
+          "baseline_range": [
+            91.888,
+            107.98
+          ],
+          "candidate_range": [
+            96.31,
+            105.796
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "single",
+          "metric": "window:linear-overlay-0",
+          "baseline": 101.948,
+          "candidate": 103.599,
+          "limit": 128.435,
+          "baseline_range": [
+            90.105,
+            106.958
+          ],
+          "candidate_range": [
+            103.197,
+            110.875
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "single",
+          "metric": "window:minecraft-overlay-0",
+          "baseline": 3.534,
+          "candidate": 4.11,
+          "limit": 5.4174999999999995,
+          "baseline_range": [
+            3.34,
+            4.484
+          ],
+          "candidate_range": [
+            3.641,
+            4.251
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "single",
+          "metric": "window:rate-limit-panel-overlay-0",
+          "baseline": 7.47,
+          "candidate": 8.363,
+          "limit": 10.3375,
+          "baseline_range": [
+            7.205,
+            8.025
+          ],
+          "candidate_range": [
+            6.616,
+            10.238
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "single",
+          "metric": "window:resource-monitor-overlay-0",
+          "baseline": 6.254,
+          "candidate": 6.063,
+          "limit": 8.817499999999999,
+          "baseline_range": [
+            6.086,
+            6.821
+          ],
+          "candidate_range": [
+            5.825,
+            6.406
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "single",
+          "metric": "window:thermometer-overlay-0",
+          "baseline": 12.438,
+          "candidate": 13.96,
+          "limit": 16.5475,
+          "baseline_range": [
+            11.612,
+            14.867
+          ],
+          "candidate_range": [
+            11.97,
+            19.899
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "single",
+          "metric": "window:weather-overlay-0",
+          "baseline": 157.773,
+          "candidate": 145.382,
+          "limit": 198.21625,
+          "baseline_range": [
+            141.91,
+            161.453
+          ],
+          "candidate_range": [
+            145.036,
+            203.6
+          ],
+          "passed": true,
+          "noisy": false
+        }
+      ],
+      "regression_proof": {
+        "rejected": true,
+        "observed_cpu_core_percent": 116.99674602366082,
+        "limit": 21.213121890364746
+      }
+    },
+    "dual": {
+      "measured_at": "2026-11-14T04:04:42.973300+00:00",
+      "baseline_commit": "630d37a606398c586abeb798b6fd5748fa5ff529",
+      "environment": {
+        "kernel": "7.2.15-arch1-1",
+        "platform": "Linux-7.2.15-arch1-1-x86_64-with-glibc2.44",
+        "python": "3.12.12 (main, Feb 12 2026, 00:42:14) [Clang 21.1.4 ]",
+        "affinity_cpus": 20,
+        "online_cpus": 20,
+        "cpu_model": "13th Gen Intel(R) Core(TM) i7-13650HX",
+        "conky": "conky 1.25.2-pre-6caddca3 compiled for Linux x86_64\n\nCompiled in features:\n\nSystem config file: /etc/conky/conky.conf\nPackage library path: /usr/lib/conky\n\n\n General:\n  * math\n  * hddtemp\n  * portmon\n  * IPv6\n  * Curl\n  * RSS\n  * wireless\n  * support for IBM/Lenovo notebooks\n  * nvidia\n  * builtin default configuration\n  * old configuration syntax\n  * Imlib2\n  * OSS mixer support\n  * apcupsd\n  * iostats\n  * ncurses\n  * Internationalization support\n  * PulseAudio\n\n Lua bindings:\n  * Cairo\n  * Imlib2\n  * RSVG\n X11:\n  * Xdamage extension\n  * Xinerama extension (virtual display)\n  * Xshape extension (click through)\n  * XDBE (double buffer extension)\n  * Xft\n  * Xinput\n  * ARGB visual\n  * Own window\n  * Mouse events\n Wayland:\n  * Mouse events\n\n Music detection:\n  * CMUS\n  * MPD\n  * MOC\n\n Default values:\n  * Netdevice: eno1\n  * Local configfile: $HOME/.conkyrc\n  * Localedir: /usr/share/locale\n  * Maximum netdevices: 256\n  * Maximum text size: 16384\n  * Size text buffer: 256",
+        "uv": "uv 0.13.7 (316c827e0 2026-11-03 x86_64-unknown-linux-gnu)"
+      },
+      "settings": {
+        "repeats": 3,
+        "warmup_seconds": 5,
+        "steady_seconds": 20,
+        "burst_seconds": 12,
+        "sample_seconds": 0.1,
+        "burst_period_seconds": 6
+      },
+      "monitors": [
+        [
+          1920,
+          1080,
+          0,
+          0
+        ],
+        [
+          1920,
+          1080,
+          1920,
+          0
+        ]
+      ],
+      "fixture_version": 1,
+      "harness_sha256": "a19f23d4e7953518a67b42068d4ba80e8e00288ae8676306af0ee99a9e4fb205",
+      "reference_measurements": [
+        {
+          "repetition": 1,
+          "steady": {
+            "wall_seconds": 20.008660563005833,
+            "cpu_seconds": 6.597276000000001,
+            "cpu_core_percent": 32.97210215159407,
+            "cpu_capacity_percent": 1.6486051075797037,
+            "pss_mib": 176.595703125,
+            "rss_mib": 829.62109375,
+            "peak_pss_mib": 218.3486328125,
+            "peak_rss_mib": 950.546875,
+            "max_sample_gap_seconds": 0.12009615899296477
+          },
+          "burst": {
+            "wall_seconds": 12.008755134986131,
+            "cpu_seconds": 10.119698,
+            "cpu_core_percent": 84.26933421697824,
+            "cpu_capacity_percent": 4.2134667108489126,
+            "pss_mib": 181.11328125,
+            "rss_mib": 835.0546875,
+            "peak_pss_mib": 391.2197265625,
+            "peak_rss_mib": 1367.21875,
+            "max_sample_gap_seconds": 0.13356236300023738
+          },
+          "render_p95_cpu_ms": 197.773
+        },
+        {
+          "repetition": 2,
+          "steady": {
+            "wall_seconds": 20.008891100005712,
+            "cpu_seconds": 6.358905999999999,
+            "cpu_core_percent": 31.780401863440517,
+            "cpu_capacity_percent": 1.5890200931720257,
+            "pss_mib": 169.6328125,
+            "rss_mib": 823.33984375,
+            "peak_pss_mib": 210.177734375,
+            "peak_rss_mib": 942.84765625,
+            "max_sample_gap_seconds": 0.1190871309954673
+          },
+          "burst": {
+            "wall_seconds": 12.008788880004431,
+            "cpu_seconds": 8.891966,
+            "cpu_core_percent": 74.04548525959864,
+            "cpu_capacity_percent": 3.7022742629799312,
+            "pss_mib": 174.10888671875,
+            "rss_mib": 827.6484375,
+            "peak_pss_mib": 386.0205078125,
+            "peak_rss_mib": 1375.96484375,
+            "max_sample_gap_seconds": 0.12442103600187693
+          },
+          "render_p95_cpu_ms": 166.407
+        },
+        {
+          "repetition": 3,
+          "steady": {
+            "wall_seconds": 20.009071077001863,
+            "cpu_seconds": 6.160027999999999,
+            "cpu_core_percent": 30.78617681097773,
+            "cpu_capacity_percent": 1.5393088405488864,
+            "pss_mib": 175.2197265625,
+            "rss_mib": 828.73046875,
+            "peak_pss_mib": 213.0625,
+            "peak_rss_mib": 945.87890625,
+            "max_sample_gap_seconds": 0.11857544399390463
+          },
+          "burst": {
+            "wall_seconds": 12.00873934100673,
+            "cpu_seconds": 9.824070000000003,
+            "cpu_core_percent": 81.80767123867325,
+            "cpu_capacity_percent": 4.090383561933662,
+            "pss_mib": 180.2412109375,
+            "rss_mib": 834.1875,
+            "peak_pss_mib": 336.796875,
+            "peak_rss_mib": 1304.6484375,
+            "max_sample_gap_seconds": 0.12553312700765673
+          },
+          "render_p95_cpu_ms": 155.691
+        }
+      ],
+      "comparison": [
+        {
+          "profile": "dual",
+          "metric": "steady.cpu_core_percent",
+          "baseline": 31.780401863440517,
+          "candidate": 30.719476729644157,
+          "limit": 42.725502329300646,
+          "baseline_range": [
+            30.78617681097773,
+            32.97210215159407
+          ],
+          "candidate_range": [
+            30.264452049433533,
+            32.26902779115038
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "dual",
+          "metric": "steady.pss_mib",
+          "baseline": 175.2197265625,
+          "candidate": 170.314453125,
+          "limit": 206.50268554687497,
+          "baseline_range": [
+            169.6328125,
+            176.595703125
+          ],
+          "candidate_range": [
+            170.0126953125,
+            180.578125
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "dual",
+          "metric": "steady.peak_rss_mib",
+          "baseline": 945.87890625,
+          "candidate": 944.36328125,
+          "limit": 1198.3486328125,
+          "baseline_range": [
+            942.84765625,
+            950.546875
+          ],
+          "candidate_range": [
+            933.87890625,
+            953.2109375
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "dual",
+          "metric": "burst.cpu_core_percent",
+          "baseline": 81.80767123867325,
+          "candidate": 75.39974351672086,
+          "limit": 107.25958904834157,
+          "baseline_range": [
+            74.04548525959864,
+            84.26933421697824
+          ],
+          "candidate_range": [
+            74.91652373473056,
+            83.2969452964467
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "dual",
+          "metric": "burst.pss_mib",
+          "baseline": 180.2412109375,
+          "candidate": 174.279296875,
+          "limit": 212.277392578125,
+          "baseline_range": [
+            174.10888671875,
+            181.11328125
+          ],
+          "candidate_range": [
+            173.91796875,
+            184.4765625
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "dual",
+          "metric": "burst.peak_rss_mib",
+          "baseline": 1367.21875,
+          "candidate": 1348.484375,
+          "limit": 1725.0234375,
+          "baseline_range": [
+            1304.6484375,
+            1375.96484375
+          ],
+          "candidate_range": [
+            1325.62890625,
+            1351.0625
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "dual",
+          "metric": "render_p95_cpu_ms",
+          "baseline": 166.407,
+          "candidate": 163.285,
+          "limit": 209.00875000000002,
+          "baseline_range": [
+            155.691,
+            197.773
+          ],
+          "candidate_range": [
+            154.174,
+            169.042
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "dual",
+          "metric": "window:billing-overlay-0",
+          "baseline": 0.944,
+          "candidate": 0.918,
+          "limit": 2.1799999999999997,
+          "baseline_range": [
+            0.882,
+            0.963
+          ],
+          "candidate_range": [
+            0.825,
+            0.948
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "dual",
+          "metric": "window:billing-overlay-1",
+          "baseline": 0.903,
+          "candidate": 0.944,
+          "limit": 2.12875,
+          "baseline_range": [
+            0.9,
+            0.961
+          ],
+          "candidate_range": [
+            0.898,
+            0.96
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "dual",
+          "metric": "window:git-overlay-0",
+          "baseline": 66.011,
+          "candidate": 66.733,
+          "limit": 83.51374999999999,
+          "baseline_range": [
+            64.717,
+            67.421
+          ],
+          "candidate_range": [
+            64.507,
+            67.568
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "dual",
+          "metric": "window:git-overlay-1",
+          "baseline": 65.627,
+          "candidate": 65.722,
+          "limit": 83.03375,
+          "baseline_range": [
+            63.843,
+            66.017
+          ],
+          "candidate_range": [
+            64.145,
+            65.831
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "dual",
+          "metric": "window:github-overlay-0",
+          "baseline": 96.616,
+          "candidate": 97.202,
+          "limit": 121.77,
+          "baseline_range": [
+            93.647,
+            97.746
+          ],
+          "candidate_range": [
+            92.908,
+            97.262
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "dual",
+          "metric": "window:github-overlay-1",
+          "baseline": 99.338,
+          "candidate": 99.659,
+          "limit": 125.17249999999999,
+          "baseline_range": [
+            98.899,
+            99.939
+          ],
+          "candidate_range": [
+            97.05,
+            100.036
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "dual",
+          "metric": "window:linear-overlay-0",
+          "baseline": 109.867,
+          "candidate": 106.586,
+          "limit": 138.33375,
+          "baseline_range": [
+            106.843,
+            110.739
+          ],
+          "candidate_range": [
+            104.483,
+            109.544
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "dual",
+          "metric": "window:linear-overlay-1",
+          "baseline": 107.423,
+          "candidate": 108.524,
+          "limit": 135.27875,
+          "baseline_range": [
+            104.394,
+            107.451
+          ],
+          "candidate_range": [
+            103.013,
+            112.541
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "dual",
+          "metric": "window:minecraft-overlay-0",
+          "baseline": 3.264,
+          "candidate": 3.055,
+          "limit": 5.08,
+          "baseline_range": [
+            3.208,
+            3.32
+          ],
+          "candidate_range": [
+            2.972,
+            3.262
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "dual",
+          "metric": "window:minecraft-overlay-1",
+          "baseline": 3.34,
+          "candidate": 3.271,
+          "limit": 5.175,
+          "baseline_range": [
+            3.137,
+            3.381
+          ],
+          "candidate_range": [
+            3.113,
+            3.501
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "dual",
+          "metric": "window:rate-limit-panel-overlay-0",
+          "baseline": 6.435,
+          "candidate": 5.803,
+          "limit": 9.04375,
+          "baseline_range": [
+            5.93,
+            7.055
+          ],
+          "candidate_range": [
+            5.72,
+            6.469
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "dual",
+          "metric": "window:rate-limit-panel-overlay-1",
+          "baseline": 6.161,
+          "candidate": 6.397,
+          "limit": 8.70125,
+          "baseline_range": [
+            5.758,
+            7.009
+          ],
+          "candidate_range": [
+            6.285,
+            7.391
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "dual",
+          "metric": "window:resource-monitor-overlay-0",
+          "baseline": 6.193,
+          "candidate": 6.402,
+          "limit": 8.741249999999999,
+          "baseline_range": [
+            5.855,
+            6.224
+          ],
+          "candidate_range": [
+            6.239,
+            6.444
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "dual",
+          "metric": "window:resource-monitor-overlay-1",
+          "baseline": 6.189,
+          "candidate": 6.062,
+          "limit": 8.73625,
+          "baseline_range": [
+            6.03,
+            6.426
+          ],
+          "candidate_range": [
+            5.999,
+            6.219
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "dual",
+          "metric": "window:thermometer-overlay-0",
+          "baseline": 11.609,
+          "candidate": 11.652,
+          "limit": 15.51125,
+          "baseline_range": [
+            11.592,
+            11.613
+          ],
+          "candidate_range": [
+            11.494,
+            11.797
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "dual",
+          "metric": "window:thermometer-overlay-1",
+          "baseline": 11.91,
+          "candidate": 11.638,
+          "limit": 15.8875,
+          "baseline_range": [
+            11.675,
+            11.992
+          ],
+          "candidate_range": [
+            11.609,
+            12.272
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "dual",
+          "metric": "window:weather-overlay-0",
+          "baseline": 202.439,
+          "candidate": 197.276,
+          "limit": 254.04874999999998,
+          "baseline_range": [
+            186.59,
+            205.072
+          ],
+          "candidate_range": [
+            195.975,
+            198.332
+          ],
+          "passed": true,
+          "noisy": false
+        },
+        {
+          "profile": "dual",
+          "metric": "window:weather-overlay-1",
+          "baseline": 202.574,
+          "candidate": 199.745,
+          "limit": 254.21750000000003,
+          "baseline_range": [
+            195.097,
+            205.632
+          ],
+          "candidate_range": [
+            192.14,
+            208.324
+          ],
+          "passed": true,
+          "noisy": false
+        }
+      ],
+      "regression_proof": {
+        "rejected": true,
+        "observed_cpu_core_percent": 132.56769238192328,
+        "limit": 42.725502329300646
+      }
+    }
+  },
+  "end_to_end_rejection": {
+    "created_at": "2026-11-14T04:25:44Z",
+    "command": "uv run python scripts/benchmark_overlays.py --profile single --inject-regression",
+    "verified_exit_code": 1,
+    "status": "fail",
+    "failures": [
+      "single steady.cpu_core_percent: 113.909 > 21.377",
+      "single burst.cpu_core_percent: 158.823 > 79.723"
+    ],
+    "cpu_comparisons": [
+      {
+        "profile": "single",
+        "metric": "steady.cpu_core_percent",
+        "baseline": 14.701771525594562,
+        "candidate": 113.9094315908682,
+        "limit": 21.377214406993204,
+        "baseline_range": [
+          14.212390278536699,
+          15.812405382558826
+        ],
+        "candidate_range": [
+          113.81575835685447,
+          114.45989149008471
+        ],
+        "passed": false,
+        "noisy": false
+      },
+      {
+        "profile": "single",
+        "metric": "burst.cpu_core_percent",
+        "baseline": 59.77829596372999,
+        "candidate": 158.82293308478964,
+        "limit": 79.72286995466249,
+        "baseline_range": [
+          55.291909784785666,
+          60.417141436582476
+        ],
+        "candidate_range": [
+          156.05111415781087,
+          159.6392590283187
+        ],
+        "passed": false,
+        "noisy": false
+      }
+    ],
+    "harness_sha256": "cd0e56bfa2b7269a3dcc6246e05a37a3a08e32ef03d5b60cf950eee0aad6c785",
+    "settings": {
+      "repeats": 3,
+      "warmup_seconds": 5,
+      "steady_seconds": 20,
+      "burst_seconds": 12,
+      "sample_seconds": 0.1,
+      "burst_period_seconds": 6
+    }
+  }
+}

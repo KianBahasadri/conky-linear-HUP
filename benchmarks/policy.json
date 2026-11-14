@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "baseline_commit": "630d37a606398c586abeb798b6fd5748fa5ff529",
+  "fixture_version": 1,
+  "noise": {"relative_range": 0.6, "absolute_floor_multiple": 2.0},
+  "settings": {"repeats": 3, "warmup_seconds": 5, "steady_seconds": 20, "burst_seconds": 12, "sample_seconds": 0.1, "burst_period_seconds": 6},
+  "profiles": {"single": [[1920, 1080, 0, 0]], "dual": [[1920, 1080, 0, 0], [1920, 1080, 1920, 0]]},
+  "budgets": {
+    "steady.cpu_core_percent": {"relative": 0.25, "absolute": 3.0},
+    "steady.pss_mib": {"relative": 0.15, "absolute": 5.0},
+    "steady.peak_rss_mib": {"relative": 0.25, "absolute": 16.0},
+    "burst.cpu_core_percent": {"relative": 0.25, "absolute": 5.0},
+    "burst.pss_mib": {"relative": 0.15, "absolute": 5.0},
+    "burst.peak_rss_mib": {"relative": 0.25, "absolute": 16.0},
+    "render_p95_cpu_ms": {"relative": 0.25, "absolute": 1.0}
+  }
+}

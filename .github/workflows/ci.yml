@@ -3,12 +3,13 @@ name: CI
 on:
   push:
   pull_request:
+  merge_group:
 
 permissions:
   contents: read
 
 jobs:
-  test:
+  correctness:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -29,6 +30,81 @@ jobs:
           cache/ci-lua/lua5.4 -v
       - run: uv sync --locked
       - run: uv run pytest tests/ -q
-      - run: uv run python -m py_compile scripts/*.py
+      - run: uv run python -m py_compile scripts/*.py benchmarks/*.py
       - run: bash -n scripts/*.sh
       - run: shellcheck scripts/*.sh
+
+  benchmark:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [single, dual]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: '3.12'
+      - name: Install native benchmark prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y conky-all xvfb fontconfig fonts-noto-color-emoji
+      - run: uv sync --locked
+      - name: Delegate a cgroup for complete child process accounting
+        run: |
+          bench_group="/sys/fs/cgroup/conky-benchmark-${GITHUB_RUN_ID}-${{ matrix.profile }}"
+          sudo mkdir "$bench_group"
+          sudo sh -c 'echo "+cpu +memory" > "$1/cgroup.subtree_control"' sh "$bench_group"
+          sudo chown "$(id -u):$(id -g)" "$bench_group" "$bench_group/cgroup.procs" "$bench_group/cgroup.subtree_control" "$bench_group/cgroup.threads"
+          mkdir "$bench_group/supervisor"
+          echo "CONKY_BENCH_CGROUP_ROOT=$bench_group" >> "$GITHUB_ENV"
+      - name: Measure baseline, candidate, and an intentional regression
+        run: |
+          # Migration from the runner's service needs root once. Subsequent
+          # workload children move between siblings in our delegated subtree.
+          sudo sh -c 'echo "$1" > "$2/supervisor/cgroup.procs"' sh "$$" "$CONKY_BENCH_CGROUP_ROOT"
+          uv run python scripts/benchmark_overlays.py --profile '${{ matrix.profile }}' --prove-regression --output cache/performance-${{ matrix.profile }}
+      - name: Refuse missing, partial, smoke, or failing results
+        run: uv run python benchmarks/verify_report.py cache/performance-${{ matrix.profile }}/report.json
+      - name: Retain measurements and graphs
+        id: artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-${{ matrix.profile }}-${{ github.sha }}
+          path: |
+            cache/performance-${{ matrix.profile }}/report.json
+            cache/performance-${{ matrix.profile }}/comparison.md
+            cache/performance-${{ matrix.profile }}/usage-*.png
+            cache/performance-${{ matrix.profile }}/usage-*.svg
+            cache/performance-${{ matrix.profile }}/workloads/*/cache/*.log
+            cache/performance-${{ matrix.profile }}/workloads/*/cache/benchmark-*-error
+          if-no-files-found: error
+          retention-days: 90
+      - name: Publish the comparison in the run summary
+        if: always()
+        env:
+          ARTIFACT_URL: ${{ steps.artifacts.outputs.artifact-url }}
+        run: |
+          sed '/^!\[/d' cache/performance-${{ matrix.profile }}/comparison.md >> "$GITHUB_STEP_SUMMARY"
+          printf '\n[Download measurements and resource timelines](%s)\n' "$ARTIFACT_URL" >> "$GITHUB_STEP_SUMMARY"
+
+  # Keep the already-required status context. Existing branch rules and remote
+  # acceptance workflows that wait for `test` now wait for BOTH suites. Always
+  # run this gate: GitHub treats a skipped required job as a successful check.
+  test:
+    if: always()
+    needs: [correctness, benchmark]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Require successful correctness and complete performance results
+        env:
+          CORRECTNESS_RESULT: ${{ needs.correctness.result }}
+          BENCHMARK_RESULT: ${{ needs.benchmark.result }}
+        run: |
+          test "$CORRECTNESS_RESULT" = success
+          test "$BENCHMARK_RESULT" = success
