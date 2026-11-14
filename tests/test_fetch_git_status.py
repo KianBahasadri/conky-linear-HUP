@@ -123,6 +123,21 @@ def test_inspect_repo_clean(tmp_path):
     assert status["lastModifiedEpoch"] > 0
 
 
+def test_status_counts_stashes_and_still_notices_worktree_changes(tmp_path):
+    repo = init_repo(tmp_path / "stashed")
+    for index in range(2):
+        (repo / "README.md").write_text(f"change {index}\n")
+        subprocess.run(["git", "-C", str(repo), "stash", "push", "-qm", f"stash {index}"],
+                       check=True, capture_output=True)
+    assert git_status.inspect_repo(repo, 5)["stash"] == 2
+    assert git_status.is_dirty_repo(repo, 5)
+    assert git_status.inspect_repo(repo, 5, include_stash=False)["stash"] == 0
+    (repo / "README.md").write_text("unstaged edit\n")
+    (repo / "new.txt").write_text("untracked\n")
+    status = git_status.inspect_repo(repo, 5)
+    assert status["modified"] == 1 and status["untracked"] == 1 and status["stash"] == 2
+
+
 def test_inspect_repo_dirty_and_untracked(tmp_path):
     repo = init_repo(tmp_path / "dirty-repo")
     (repo / "README.md").write_text("changed\n", encoding="utf-8")

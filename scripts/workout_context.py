@@ -8,6 +8,7 @@ import statistics
 import urllib.parse
 import urllib.request
 import zipfile
+import zlib
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
@@ -25,22 +26,47 @@ ENDPOINT = "https://archive-api.open-meteo.com/v1/archive"
 
 
 def read_cache(path):
+    return _load_cache(path)[0]
+
+
+def _remember_validated(path):
     try:
+        common.atomic_write_json(Path(path).with_suffix(".validated.json"), {
+            "version": VERSION, "source": common.file_identity(path),
+        }, compact=True)
+    except OSError:
+        pass  # Validation metadata is optional; the context data is still usable.
+
+
+def _load_cache(path):
+    try:
+        identity = common.file_identity(path)
         value = json.loads(Path(path).read_text())
         if value.get("version") != VERSION or not isinstance(value.get("tiles"), dict):
-            return {"version": VERSION, "tiles": {}}
+            return {"version": VERSION, "tiles": {}}, True
+        try:
+            validated = json.loads(Path(path).with_suffix(".validated.json").read_text())
+        except (OSError, ValueError):
+            validated = None
+        if validated == {"version": VERSION, "source": identity}:
+            return value, False
+        changed = False
         for key, tile in list(value["tiles"].items()):
             if not isinstance(tile, dict):
                 value["tiles"].pop(key)
+                changed = True
                 continue
             if "hourly" in tile:
                 try:
                     _validate_hourly({"hourly": tile["hourly"], "hourly_units": dict(zip(("time",) + VARIABLES, ("unixtime",) + UNITS))})
                 except (ValueError, TypeError, KeyError):
                     value["tiles"].pop(key)
-        return value
+                    changed = True
+        if not changed and common.file_identity(path) == identity:
+            _remember_validated(path)
+        return value, changed
     except (OSError, ValueError, TypeError, AttributeError):
-        return {"version": VERSION, "tiles": {}}
+        return {"version": VERSION, "tiles": {}}, True
 
 
 def weight_context(readings, start, stale=False):
@@ -152,19 +178,22 @@ def weather_context(workout, tile):
 
 def enrich(workouts, workouts_dir, cache_path, now, *, weight_dir=None, user_id=None, weather_enabled=True, max_requests=3, request=None):
     """Context failures never discard a workout; retries and requests are bounded."""
-    cache = read_cache(cache_path)
+    cache, changed = _load_cache(cache_path)
     stamp = epoch(now)
     issues = []
     readings, stale = [], False
     weight_dir = Path(weight_dir) if weight_dir else Path(workouts_dir) / "weight"
     try:
-        backups = sorted(weight_dir.glob("*.zip"), key=lambda p: p.stat().st_mtime_ns, reverse=True)
+        backups = sorted(weight_dir.glob("*.zip"), key=lambda p: (p.stat().st_mtime_ns, p.name), reverse=True)
         if not backups:
             raise ValueError("No weight backup")
-        readings = fetch_weight.read_backup(backups[0], user_id)
-        cache["weights"] = [{**r, "timestamp": r["timestamp"].isoformat()} for r in readings]
-        cache["weightUser"] = user_id
-    except (OSError, ValueError, zipfile.BadZipFile, sqlite3.Error, RuntimeError) as error:
+        readings = fetch_weight.read_cached_backup(
+            backups[0], user_id, cache_path=Path(cache_path).with_name("weight-history.json"))
+        weights = fetch_weight.serialize_readings(readings)
+        if cache.get("weights") != weights or cache.get("weightUser") != user_id:
+            cache["weights"], cache["weightUser"] = weights, user_id
+            changed = True
+    except (OSError, ValueError, zipfile.BadZipFile, sqlite3.Error, zlib.error, EOFError, RuntimeError) as error:
         # Backup parsing can fail with ZIP or SQLite errors during an upload.
         issues.append("Weight: " + type(error).__name__)
         if cache.get("weightUser") == user_id:
@@ -191,6 +220,7 @@ def enrich(workouts, workouts_dir, cache_path, now, *, weight_dir=None, user_id=
     requested = 0
     allowed = weather_enabled and cache.get("weatherRetryAfter", 0) <= stamp
     for _, key in sorted(pending, reverse=True)[:max_requests if allowed else 0]:
+        changed = True
         old = cache["tiles"].get(key, {})
         try:
             params = _parameters(key, stamp)
@@ -222,7 +252,9 @@ def enrich(workouts, workouts_dir, cache_path, now, *, weight_dir=None, user_id=
             pending_workouts += 1
         context = {"weight": weight_context(readings, start, stale) if start is not None else {"available": False, "reason": "Workout time missing"}, "weather": weather}
         enriched.append({**workout, "context": context})
-    common.atomic_write_json(cache_path, cache)
+    if changed:
+        common.atomic_write_json(cache_path, cache, compact=True)
+        _remember_validated(cache_path)
     return enriched, {"weatherPending": pending_workouts,
                       "weatherCovered": sum(w["context"]["weather"]["available"] for w in enriched),
                       "weightCovered": sum(w["context"]["weight"]["available"] for w in enriched),

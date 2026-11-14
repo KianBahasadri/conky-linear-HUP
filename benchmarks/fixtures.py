@@ -5,7 +5,7 @@ Only acquisition boundaries are replaced; parsing, normalization, caching, scans
 analysis, renderer code, launcher loops and helper process creation still run.
 """
 import datetime as dt
-import atexit
+import functools
 import io
 import json
 import os
@@ -22,6 +22,51 @@ FETCHERS = ["linear_tasks", "codex_usage", "cursor_usage", "gemini_usage",
 OUTPUTS = ["linear-cards", "codex-usage", "cursor-usage", "gemini-usage",
            "minecraft-status", "github-contributions", "weather-status",
            "workouts-status", "weight-status", "billing-usage", "git-status", "sessions"]
+
+
+def instrument_source(path):
+    """Patch copied entrypoints after imports, without tracing Python imports."""
+    import ast
+    source = path.read_text()
+    module = ast.parse(source, filename=str(path))
+    guards = [node for node in module.body if isinstance(node, ast.If)
+              and isinstance(node.test, ast.Compare)
+              and isinstance(node.test.left, ast.Name) and node.test.left.id == "__name__"
+              and len(node.test.ops) == 1 and isinstance(node.test.ops[0], ast.Eq)
+              and len(node.test.comparators) == 1
+              and isinstance(node.test.comparators[0], ast.Constant)
+              and node.test.comparators[0].value == "__main__"]
+    if len(guards) != 1:
+        raise RuntimeError(f"expected one entrypoint guard: {path.name}")
+    lines = source.splitlines(keepends=True)
+    first = guards[0].body[0].lineno - 1
+    indent = lines[first][:len(lines[first]) - len(lines[first].lstrip())]
+    lines.insert(first, f"{indent}from fixtures import instrument_entrypoint\n"
+                        f"{indent}instrument_entrypoint(globals(), {path.name!r})\n")
+    path.write_text("".join(lines))
+
+
+def record_invocation(name, kind):
+    root = Path(os.environ["CONKY_BENCH_ROOT"])
+    with (root / "cache/benchmark-invocations").open("a") as output:
+        output.write(json.dumps({"name": name, "pid": os.getpid(), "kind": kind,
+            "time": time.monotonic(), "phase": (root / "cache/benchmark-phase").read_text()}) + "\n")
+
+
+def instrument_entrypoint(namespace, name):
+    patch_globals(namespace, name)
+    key = "sample" if name == "sample_gpu_usage.py" else "main"
+    original = namespace[key]
+
+    @functools.wraps(original)
+    def invoke(*args, **kwargs):
+        record_invocation(name, "start")
+        try:
+            return original(*args, **kwargs)
+        finally:
+            record_invocation(name, "end")
+
+    namespace[key] = invoke
 
 
 def dump(path, value):
@@ -43,6 +88,8 @@ def prepare(root, monitors, python, real_conky):
     (data / "home").mkdir()
     (data / "bin").mkdir()
     dump(data / "monitors.json", monitors)
+    shared_gpu = "gpu-usage.tsv" in (root / "conky/resource-monitor-renderer.lua").read_text()
+    dump(data / "workload.json", {"shared_gpu_sampler": shared_gpu, "fetch_loops": 13 + int(shared_gpu)})
     (data / "python").write_text(python)
     (data / "conky").write_text(real_conky)
     (cache / "benchmark-phase").write_text("startup")
@@ -143,7 +190,16 @@ def prepare(root, monitors, python, real_conky):
     commands = {
         "xrandr": 'cat "$CONKY_BENCH_ROOT/benchmark-data/xrandr.txt"',
         "gsettings": "if [ \"$1\" = monitor ]; then exec /usr/bin/sleep 86400; else echo \"'prefer-dark'\"; fi",
-        "tmux": 'case "$1" in list-sessions) cat "$CONKY_BENCH_ROOT/benchmark-data/sessions.txt";; list-panes) cat "$CONKY_BENCH_ROOT/benchmark-data/panes.txt";; list-clients) cat "$CONKY_BENCH_ROOT/benchmark-data/clients.txt";; *) exit 1;; esac',
+        "tmux": """case "$*" in
+          *";"*)
+            for kind in session pane client; do
+              case "$kind" in session) file=sessions;; pane) file=panes;; client) file=clients;; esac
+              while IFS= read -r line; do printf '%s|%s\\n' "$kind" "$line"; done < "$CONKY_BENCH_ROOT/benchmark-data/$file.txt"
+            done;;
+          *)
+            case "$1" in list-sessions) file=sessions;; list-panes) file=panes;; list-clients) file=clients;; *) exit 1;; esac
+            while IFS= read -r line; do printf '%s\\n' "$line"; done < "$CONKY_BENCH_ROOT/benchmark-data/$file.txt";;
+        esac""",
         "tailscale": 'cat "$CONKY_BENCH_ROOT/benchmark-data/tailscale.json"',
         "who": "echo 'fixture pts/1 2026-11-12 11:00 (100.64.0.1)'",
         "ss": "echo 'LISTEN 0 128 0.0.0.0:22 0.0.0.0:*'",
@@ -158,6 +214,8 @@ def prepare(root, monitors, python, real_conky):
     shim = data / "bin" / "conky"
     shim.write_text(f"#!/bin/sh\nexec {shlex.quote(python)} {shlex.quote(str(Path(__file__).with_name('conky_wrapper.py')))} \"$@\"\n")
     shim.chmod(0o755)
+    for name in [f"fetch_{key}.py" for key in FETCHERS] + ["sample_gpu_usage.py"]:
+        instrument_source(root / "scripts" / name)
 
 
 def payload(url, body):
@@ -257,21 +315,3 @@ def install():
         body = None if isinstance(request, str) else request.data
         return io.BytesIO(json.dumps(payload(url, body)).encode())
     urllib.request.urlopen = urlopen
-    name = Path(sys.argv[0]).name
-    if name not in {f"fetch_{key}.py" for key in FETCHERS} | {"sample_gpu_usage.py"}:
-        return
-    target = str(Path(sys.argv[0]).resolve())
-    def trace(frame, event, _arg):
-        if frame.f_code.co_filename != target:
-            return None
-        if event == "call" and frame.f_code.co_name in {"main", "sample"}:
-            sys.settrace(None)
-            patch_globals(frame.f_globals, name)
-            def record(kind):
-                with (root / "cache" / "benchmark-invocations").open("a") as output:
-                    output.write(json.dumps({"name": name, "pid": os.getpid(), "kind": kind,
-                        "time": time.monotonic(), "phase": (root / "cache/benchmark-phase").read_text()})+"\n")
-            record("start")
-            atexit.register(record, "end")
-        return trace
-    sys.settrace(trace)

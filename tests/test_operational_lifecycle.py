@@ -100,6 +100,7 @@ def make_launcher_repo(tmp_path: Path, xrandr_output: str = "") -> tuple[Path, P
         """
         #!/usr/bin/env bash
         case "$*" in
+          *" -c "*) command -v python ;;
           *overlay_layout.py*)
             while [[ "$1" != "python" ]]; do shift; done
             shift

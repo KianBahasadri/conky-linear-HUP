@@ -21,6 +21,23 @@ def test_logins_drops_tmux_pseudo_terminals(monkeypatch):
     assert ttys == ["tty2", "pts/6", "pts/9"]
 
 
+def test_tmux_batch_preserves_session_pane_and_client_joins(monkeypatch):
+    calls = []
+    def query(*args):
+        calls.append(args)
+        return ("session|build\t2\t/fixture/project\t1\n"
+                "pane|build\npane|build\nclient|/dev/pts/7\tbuild\n")
+    monkeypatch.setattr(sessions, "tmux", query)
+    monkeypatch.setattr(sessions, "codeview_fields", lambda *_: {})
+    session_rows, pane_rows, client_rows = sessions.tmux_snapshot()
+    records = sessions.tmux_sessions(session_rows, pane_rows)
+    clients = sessions.tmux_clients(client_rows)
+    assert len(calls) == 1
+    assert records["build"]["windows"] == 2 and records["build"]["panes"] == 2
+    assert records["build"]["path"] == "/fixture/project"
+    assert clients == {"pts/7": "build"}
+
+
 def test_device_for_resolves_a_tailnet_peer():
     peers = {"100.94.58.124": ("Pixel 8a", "android")}
     login = {"tty": "pts/6", "origin": "100.94.58.124", "since": None}
@@ -351,11 +368,12 @@ def test_collect_includes_unattached_codeview_repos_in_sessions(tmp_path, monkey
     active_repo = make_codeview_repo(tmp_path / "active-repo")
 
     monkeypatch.setattr(sessions, "logins", lambda: [])
-    monkeypatch.setattr(sessions, "tmux_clients", lambda: {})
+    monkeypatch.setattr(sessions, "tmux_snapshot", lambda: ("", "", ""))
+    monkeypatch.setattr(sessions, "tmux_clients", lambda *_: {})
     monkeypatch.setattr(sessions, "tailnet_peers", lambda: ({}, None))
     monkeypatch.setattr(
         sessions, "tmux_sessions",
-        lambda: {
+        lambda *_: {
             "active-repo": {
                 "name": "active-repo",
                 "windows": 1,

@@ -248,35 +248,35 @@ return function(shared, repo_root)
 
   local last_gpu_check, gpu_snapshot = nil, nil
   local cached_gpus = {}
-  local function shell_quote(value)
-    return "'" .. value:gsub("'", "'\\''") .. "'"
+  local gpu_path = repo_root .. '/cache/gpu-usage.tsv'
+
+  local function unavailable_gpus()
+    for _, gpu in ipairs(cached_gpus) do gpu.percent = nil end
+    gpu_snapshot = nil
+    return cached_gpus
   end
-  local gpu_command = 'timeout 2s uv run --project ' .. shell_quote(repo_root)
-    .. ' python ' .. shell_quote(repo_root .. '/scripts/sample_gpu_usage.py') .. ' 2>/dev/null'
 
   local function parse_gpus(now)
     if last_gpu_check and now >= last_gpu_check and now - last_gpu_check < interval then
       return cached_gpus
     end
     last_gpu_check = now
-    -- Keep device identities visible through probe failures without retaining
-    -- their last readings. History and peaks are keyed by PCI address.
-    for _, gpu in ipairs(cached_gpus) do gpu.percent = nil end
-    local ok, pipe = false, nil
-    if io.popen then ok, pipe = pcall(io.popen, gpu_command) end
-    local output, success = '', false
-    if ok and pipe then
-      output = pipe:read('*a') or ''
-      success = pipe:close()
-    end
-    if not success then
-      gpu_snapshot = nil
-      return cached_gpus
-    end
+    local output = shared.read_file(gpu_path) or ''
     local snapshot = {timestamp = tonumber(output:match('^sample\t([^\n]+)')), clients = {}}
-    if not snapshot.timestamp then
-      gpu_snapshot = nil
+    local observed = tonumber(output:match('\nobserved\t([^\r\n]+)'))
+    snapshot.producer = output:match('\nproducer\t([^\r\n]+)')
+    if not snapshot.timestamp or snapshot.timestamp <= 0 or snapshot.timestamp == math.huge
+        or not observed or not snapshot.producer or now - observed > 10 or observed - now > 5
+        or output:match('\nerror\t') then
+      return unavailable_gpus()
+    end
+    if gpu_snapshot and snapshot.producer == gpu_snapshot.producer
+        and snapshot.timestamp == gpu_snapshot.timestamp then
       return cached_gpus
+    end
+    if gpu_snapshot and (snapshot.producer ~= gpu_snapshot.producer
+        or snapshot.timestamp < gpu_snapshot.timestamp) then
+      gpu_snapshot = nil
     end
     local gpus = {}
     for line in output:gmatch('[^\r\n]+') do

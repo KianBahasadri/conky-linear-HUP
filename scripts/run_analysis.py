@@ -305,8 +305,10 @@ def circuit_geometry(positions):
         points.append(projected[-1])
     meters, twice_area = [0.0], [0.0]
     anchors = {}
+    spatial_cells = {}
     previous_cell = None
     for index, (stamp, x, y) in enumerate(points):
+        spatial_cells.setdefault((math.floor(x / 40.0), math.floor(y / 40.0)), []).append(index)
         cell = (math.floor(x / 10.0), math.floor(y / 10.0))
         anchor = anchors.setdefault(cell, [x, y, 0])
         if cell != previous_cell:
@@ -323,7 +325,17 @@ def circuit_geometry(positions):
     best = None
     for anchor_x, anchor_y in candidates:
         start, entered, away, loops = None, None, False, []
-        for index, (stamp, x, y) in enumerate(points):
+        cell_x, cell_y = math.floor(anchor_x / 40.0), math.floor(anchor_y / 40.0)
+        nearby = sorted(index for dx in (-1, 0, 1) for dy in (-1, 0, 1)
+                        for index in spatial_cells.get((cell_x + dx, cell_y + dy), ()))
+        previous_index = -1
+        for index in nearby:
+            # Skipped cells are strictly outside the 40 m departure radius.
+            # Their presence establishes "away" without testing every far point.
+            if index > previous_index + 1:
+                away = True
+            previous_index = index
+            stamp, x, y = points[index]
             radius = math.hypot(x - anchor_x, y - anchor_y)
             if radius > 40.0:
                 away = True

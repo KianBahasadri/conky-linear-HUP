@@ -276,14 +276,18 @@ def benchmark_one(output, profile, monitors, role, repetition, revision, setting
                 env.update(changes["env"])
             if inject:
                 env["CONKY_BENCH_INJECT_REGRESSION"] = "1"
+            capabilities = json.loads((root / "benchmark-data/workload.json").read_text())
             worker_settings = {"env": env, "expected_windows": 9*len(monitors),
+                               "expected_fetch_loops": capabilities["fetch_loops"],
                                "burst_period_seconds": settings["burst_period_seconds"]}
             print(f"{profile}: {role} repetition {repetition} — warming up", flush=True)
             with Workload(root, worker_settings, group_root) as workload:
                 warmup = measure_phase(workload, "warmup", settings["warmup_seconds"], settings["sample_seconds"], len(os.sched_getaffinity(0)))
                 result = {"profile": profile, "role": role, "repetition": repetition, "injected_regression": inject,
                           "source_sha256": source_sha256,
-                          "warmup": warmup, "windows": worker_settings["expected_windows"], "fetch_loops": 13}
+                          "warmup": warmup, "windows": worker_settings["expected_windows"],
+                          "fetch_loops": capabilities["fetch_loops"],
+                          "shared_gpu_sampler": capabilities["shared_gpu_sampler"]}
                 for phase in ("steady", "burst"):
                     print(f"{profile}: {role} repetition {repetition} — {phase}", flush=True)
                     result[phase] = measure_phase(workload, phase, settings[phase+"_seconds"], settings["sample_seconds"], len(os.sched_getaffinity(0)))

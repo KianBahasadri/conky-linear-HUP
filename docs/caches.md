@@ -47,13 +47,16 @@
   bookkeeping includes all sports. See [Exercise progression](run-analysis.md).
   Heart rate and cadence are per-workout optionals.
 - `cache/workouts-analysis.json`: per-file parse and gait analysis keyed by file size, modification time, format version, and HR calibration settings. Failed replacement uploads retain a flagged last good summary. Deleting it costs a full re-analysis.
-- `cache/workout-context.json`: selected weight history and validated monthly historical-weather tiles, with provider/retry metadata; this is independent of per-file gait analysis.
+- `cache/workout-context.json`: selected weight history and validated monthly historical-weather tiles, with provider/retry metadata; this is independent of per-file gait analysis. It is serialized as compact JSON only when cache data changes, including repairs and retry metadata. Derived ages and due retries still run on every workout poll.
+- `cache/workout-context.validated.json`: validation version and file identity for the last validated context cache. Unchanged files skip repeated validation of every hourly tile; replacement, size, nanosecond modification/change times, or schema changes force validation again. Removing the marker safely causes revalidation.
+- `cache/weight-history.json` and `cache/weight-history.lock`: successful openScale readings shared by the weight and workout fetchers under an advisory lock. The key includes selected backup path, device/inode, size, nanosecond modification/change times, user selection, and parser version. Failed replacements do not overwrite the last good readings. Display dates and ages are rebuilt from the cached readings.
 - `cache/workouts-fetch.lock`: advisory lock preventing concurrent workout refreshes from overwriting one another.
 - `cache/weight-status.json`: the selected openScale user's latest weight, measurement dates, and change from the preceding reading, consumed by the weather panel. See [Weight backups](workout-data-source.md#weight-backups-from-openscale) for parsing.
 - `cache/git-status.json`: local git fleet status consumed by the Cairo renderer. Each repo may include `actions` (`run` / `fail` / `ok` / empty) for the name-line pip.
 - `cache/git-repo-discovery.json`: auto-discovered home repos with recent commits (TTL `GIT_SCAN_TTL_SECONDS`).
 - `cache/git-actions-cache.json`: per-path GitHub Actions pip state from `gh run list`; running TTL `GIT_ACTIONS_RUNNING_TTL_SECONDS`, completed TTL `GIT_ACTIONS_TTL_SECONDS`.
 - `cache/resource-net-peaks.tsv`: hourly max IN/OUT byte rates from the resource monitor; retained for 7 days and used as the NET sparkline scale.
+- `cache/gpu-usage.tsv`: a single shared GPU snapshot for every monitor, atomically published by the launcher's persistent `sample_gpu_usage.py --watch` process. It carries monotonic sample time, per-device readings and DRM engine counters, wall-clock observation time, and a producer identity. Readers reuse duplicate snapshots, establish a new counter baseline after producer changes, and mark samples older than ten seconds unavailable while keeping known device labels. Probe errors are explicit unavailable snapshots. The launcher owns and stops the producer through `cache/gpu-fetch-loop.pid`.
 - `cache/billing-usage.json`: full billing observations, normalized pressures, forecast details, data sources, and per-provider errors.
 - `cache/billing-usage-render.tsv`: compact affine-map input consumed by the Lua renderer; it contains no credentials.
 - `cache/billing-history.json`: dated observations for every billing provider. Each successful collect upserts that day's pressure (the affine map's past trail). OpenRouter samples also keep total-usage / balance for the burn-rate fallback. Retained from the earlier of month-start and 30 days ago.
@@ -72,6 +75,7 @@
 - `cache/conky-billing.log`: billing provider fetches, launcher placement, fallback notices, and billing Conky output.
 - `cache/conky-git.log`: git status fetch, launcher, and git Conky output.
 - `cache/conky-sessions.log`: session scans, launcher placement, and sessions Conky output.
+- `cache/conky-resource-monitor.log`: resource Conky output and shared GPU sampler diagnostics.
 
 On a live launcher start, any `cache/conky-*.log` at or above the configured
 size threshold is rotated before new writers start. An oversized log retains
@@ -83,6 +87,7 @@ settings are in [Configuration](configuration.md#launcher-lifecycle).
 
 ## Fetch intervals
 
+- GPU sampling: `2s`, once for the suite regardless of monitor count. The launcher retries an exited producer after `5s`.
 - Linear: `60s`
 - Codex, Claude, Cursor, Gemini, Grok, OpenCode, Command Code: adaptive — `RATE_LIMIT_CHANGED_INTERVAL` (default `60s`) while any usage change has been seen in the last `RATE_LIMIT_RECENT_CHANGE_WINDOW` (default `600s`), otherwise `RATE_LIMIT_UNCHANGED_INTERVAL` (default `300s`). Claude also keeps a per-account API cache.
 - OpenCode: dashboard response is retained as a stale fallback when the latest request fails

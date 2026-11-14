@@ -4,7 +4,7 @@ Top-left fleet panel for local repository health. Each configured repo shows bra
 
 ## Data
 
-- `scripts/fetch_git_status.py` builds a fleet list, then runs `git status --porcelain=v2 --branch` (and optional `git stash list`) per path.
+- `scripts/fetch_git_status.py` builds a fleet list, then runs `git status --porcelain=v2 --branch` per path. When stash counts are enabled, `--show-stash` reads them from that same status response; there is no separate stash-list subprocess. Working-tree status is still refreshed on every poll.
 - **Fleet list** = `GIT_REPO_PATHS` (pinned, always kept) ∪ home scan (repos with a commit in the last `GIT_SCAN_DAYS` days) − `GIT_REPO_BLACKLIST`.
 - Scan root defaults to `$HOME` (`GIT_SCAN_ROOT`); discovery is cached in `cache/git-repo-discovery.json` for `GIT_SCAN_TTL_SECONDS` (default `300`).
 - Blacklist matches directory basenames (`dev-box`) or paths (`~/old-project`); path rules also drop repos nested under that directory.

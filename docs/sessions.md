@@ -47,6 +47,10 @@ and OS strings are taken from it. The tailnet account identity in that payload i
 deliberately left alone. The cache also records whether `sshd` is listening for
 diagnostics; the list does not render a separate status footer.
 
+Session, pane, and client listings are queued in one tmux subprocess per poll.
+Tagged responses preserve their joins while avoiding three separate process
+launches.
+
 Three cases worth knowing:
 
 - **tmux's own panes appear in `who`**, registered with utmp as `tmux(PID).%N`.

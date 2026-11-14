@@ -77,12 +77,22 @@ def atomic_write_text(path, content, *, mode=None):
         raise
 
 
-def atomic_write_json(path, data, *, mode=None):
+def atomic_write_json(path, data, *, mode=None, compact=False):
     # ensure_ascii=False keeps characters like em dashes as UTF-8 instead of \u2014,
     # which the Conky Lua JSON string unescaper must otherwise decode.
     atomic_write_text(
-        path, json.dumps(data, indent=2, ensure_ascii=False), mode=mode
+        path, json.dumps(data, indent=None if compact else 2,
+                        separators=(",", ":") if compact else None,
+                        ensure_ascii=False), mode=mode
     )
+
+
+def file_identity(path):
+    """Identify an input, including same-size and atomic replacements."""
+    path = Path(path)
+    info = path.stat()
+    return {"path": str(path.resolve()), "device": info.st_dev, "inode": info.st_ino,
+            "size": info.st_size, "mtimeNs": info.st_mtime_ns, "ctimeNs": info.st_ctime_ns}
 
 
 def escape_tsv(value):

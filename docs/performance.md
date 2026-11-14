@@ -36,10 +36,12 @@ sudo; sampling and measured workloads then live in separate sibling groups.
 
 ## Workload and measurement
 
-The benchmark runs the real launcher, Conky windows, Lua renderers, uv, shell
-fetch loops and subprocesses. Each run has all panels enabled: nine windows per
-monitor, twelve data fetch loops and the desktop-theme watcher loop. Sessions
-are merged into Git, as on the production desktop.
+The benchmark runs the real launcher, Conky windows, Lua renderers, project
+Python, shell fetch loops and subprocesses. Each run has all panels enabled:
+nine windows per monitor, twelve data fetch loops, the desktop-theme watcher,
+and the shared GPU producer. The current suite supervises fourteen loops; the
+pinned reference supervises thirteen and samples GPUs from each resource
+window. Sessions are merged into Git, as on the production desktop.
 
 The profiles and measurement policy live in
 [`benchmarks/policy.json`](../benchmarks/policy.json). `single` uses one
@@ -52,9 +54,11 @@ seconds of intensive refreshes. The warm-up is excluded from the comparisons.
 Refresh bursts interrupt the actual fetch loops' sleeping children every six
 seconds. They also invalidate repository discovery, Actions results, workout
 analysis, and AWS's local daily cache. Long-interval fetchers therefore run
-without waiting minutes or hours. GPU sampling continues through the actual
-resource renderer and helper. Every fetcher and GPU sampling must complete in
-the burst phase; every window must draw in both measured phases.
+without waiting minutes or hours. GPU sampling continues through the real
+producer and renderer cache reader, or the reference's renderer-launched
+helper. Every fetcher and GPU sampling must complete in the burst phase;
+every window must draw in both measured phases. Health checks require the
+appropriate producer/loop count for each copied source version.
 
 [`benchmarks/fixtures.py`](../benchmarks/fixtures.py) generates versioned fixed
 data: sixteen Linear tasks, twelve real Git repositories with 48 files each
@@ -67,6 +71,13 @@ responses. Fetchers still parse, normalize, analyze, cache, discover repositorie
 spawn helpers and render. Python network connections are rejected and fail the
 run. This workload does not model live network latency, credential renewal,
 every provider configuration, or the cost of actual GPU drivers.
+
+Fixture version 2 installs acquisition patches and start/end invocation
+wrappers inside the copied scripts' entrypoint guards, after imports finish.
+It does not trace module imports. The persistent GPU producer records each
+sample iteration, so a resident process still has to complete sampling during
+the burst. The tmux boundary supports both separate reference queries and the
+current batched query. Both versions are measured with this same harness.
 
 All suite processes remain in one cgroup, including detached windows, shell
 loops, uv, git, CLI stubs, and short-lived descendants. CPU comes from the
@@ -143,14 +154,28 @@ and twice the metric's absolute floor, explicitly set in the policy. A wider
 reference range fails as inconclusive. Rerun on a quiet, comparable environment and inspect the raw
 ranges; do not widen thresholds to make a candidate pass.
 
-The initial three-run calibration for each monitor profile is preserved in
+The current three-run calibration for each monitor profile is preserved in
 [`benchmarks/calibration.json`](../benchmarks/calibration.json), including the
-environment, observed ranges, comparisons and measured regression rejection.
-On that twenty-logical-CPU host, candidate medians were 14.9% of one core and
-106 MiB PSS at steady state for one monitor, and 30.7% / 170 MiB for two.
-Forced refreshes averaged 59.7% and 75.4% of one core respectively. These are
-fixed-fixture observations with all panels enabled; the complete time samples
-and annotated graphs remain in the corresponding local reports.
+environment, both source versions' measurements, observed ranges, comparisons,
+and measured regression rejection. On the twenty-logical-CPU host, fixture
+version 2 produced these medians, as percentages of one logical core:
+
+| Profile | Steady reference | Steady candidate | Burst reference | Burst candidate |
+| --- | ---: | ---: | ---: | ---: |
+| Single monitor | 14.18% | 4.07% | 49.65% | 34.97% |
+| Dual monitor | 28.69% | 5.39% | 59.59% | 34.78% |
+
+The candidate's median steady PSS was 108.4 MiB single and 173.7 MiB dual.
+These short runs establish CPU improvements, not long-term resident-memory
+stability. The text-extents allocation regression is checked separately by
+the Lua characterization harness.
+
+The original fixture-version-1 calibration is retained in
+[`benchmarks/calibration-v1.json`](../benchmarks/calibration-v1.json). Its
+burst figures include the former import-tracing overhead and should not be
+substituted for a comparison using the current harness. Both calibrations
+are fixed-fixture observations with all panels enabled; full time samples and
+graphs remain in their local reports.
 
 To change a baseline deliberately, make a separate reviewable policy change.
 Keep reports for both reference commits and the candidate on the same host,

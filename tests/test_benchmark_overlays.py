@@ -1,5 +1,7 @@
 import copy
 import json
+import os
+import subprocess
 import sys
 
 import pytest
@@ -8,6 +10,7 @@ import benchmark_overlays as benchmark
 
 sys.path.insert(0, str(benchmark.BENCH))
 from verify_report import verify
+import fixtures
 
 POLICY = json.loads((benchmark.BENCH / "policy.json").read_text())
 
@@ -27,7 +30,8 @@ def measurements():
 def complete_report():
     runs = measurements()
     for result in runs:
-        result.update(windows=9, fetch_loops=13)
+        shared = result["role"] == "candidate"
+        result.update(windows=9, fetch_loops=13 + int(shared), shared_gpu_sampler=shared)
         result["render_windows"] = {f"overlay-{i}": {"p95_cpu_ms": 2.0, "frames": 10} for i in range(9)}
         for phase in ("warmup", "steady", "burst"):
             duration = POLICY["settings"][phase+"_seconds"]
@@ -132,3 +136,37 @@ def test_interval_overrides_reject_unrelated_environment_and_nonfinite_values():
             benchmark.assignments([raw], benchmark.ENV_INTERVALS)
     assert benchmark.assignments(["GIT_REFRESH_SECONDS=5"], benchmark.ENV_INTERVALS) == {"GIT_REFRESH_SECONDS": "5"}
     assert benchmark.assignments(["resource-monitor=0.5"]) == {"resource-monitor": 0.5}
+
+
+def test_copied_entrypoint_patches_after_imports_without_tracing(tmp_path):
+    (tmp_path / "cache").mkdir()
+    (tmp_path / "cache/benchmark-phase").write_text("burst")
+    script = tmp_path / "fetch_linear_tasks.py"
+    script.write_text("""
+import html.entities
+import sys
+def linear_graphql_request(*args):
+    raise AssertionError("provider boundary was not patched")
+def main():
+    assert sys.gettrace() is None
+    result = linear_graphql_request("fixture", "workflow", None)
+    assert len(result["data"]["workflowStates"]["nodes"][0]["issues"]["nodes"]) == 16
+    return 0
+if __name__ == "__main__":
+    raise SystemExit(main())
+""")
+    fixtures.instrument_source(script)
+    subprocess.run([sys.executable, str(script)], check=True, capture_output=True,
+                   env={**os.environ, "CONKY_BENCH_ROOT": str(tmp_path),
+                        "PYTHONPATH": str(benchmark.BENCH)})
+    events = [json.loads(line) for line in (tmp_path / "cache/benchmark-invocations").read_text().splitlines()]
+    assert [event["kind"] for event in events] == ["start", "end"]
+    assert all(event["name"] == script.name and event["phase"] == "burst" for event in events)
+
+
+def test_ci_gate_rejects_a_missing_shared_sampler_loop():
+    report = complete_report()
+    candidate = next(run for run in report["runs"] if run["role"] == "candidate")
+    candidate["fetch_loops"] = 13
+    with pytest.raises(ValueError, match="fetch-loop coverage"):
+        verify(report, POLICY)

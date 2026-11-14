@@ -81,6 +81,19 @@ eq(#strings, 3, 'json_array_strings skips null')
 eq(strings[2], 'b "q"', 'json_array_strings escaped quote')
 eq(strings[3], '\xf0\x9f\x98\x80', 'json_array_strings surrogate pair')
 
+eq(shared.json_number('{"value":1,"value":2}', 'value'), 1, 'indexed duplicate keys keep the first value')
+eq(shared.json_number('{"value":2}', 'value'), 2, 'changed input replaces cached field values')
+eq(shared.json_number('{"value":1}', 'value'), 1, 'older valid inputs remain independent')
+local mutable = shared.json_array_objects('{"objects":[{"value":1}]}', 'objects')
+mutable[1] = '{"value":99}'
+eq(shared.json_number(shared.json_array_objects('{"objects":[{"value":1}]}', 'objects')[1], 'value'), 1,
+  'array callers cannot mutate the cached parse')
+for index = 1, 100 do
+  eq(shared.json_number('{"value":' .. index .. '}', 'value'), index, 'cache eviction keeps new inputs correct')
+end
+collectgarbage('collect')
+eq(shared.json_boolean(json, 'ok', true), false, 'evicted document can be indexed again')
+
 for index, malformed in ipairs({
   '{"objects":[{"name":"open"}]',
   '{"objects":[{"name":"mismatch"]}}',

@@ -13,7 +13,25 @@ These removals do not remove compatibility handling, public configuration variab
 
 ## Renderer cache and loading seams
 
-JSON-backed renderers share one small structural cache reader in `renderer-shared.lua`. It reads direct fields and arrays while respecting nested containers, escaped quotes, and Unicode surrogate pairs; missing or malformed caches still degrade to each overlay's empty/error state. The rate-limit panel retains both the current nested Codex account cache and the older flattened `bars` shape as fallback adapters.
+JSON-backed renderers share one structural cache reader in
+`renderer-shared.lua`. It validates each complete document once and indexes
+the field and array spans of every nested container. The existing raw-JSON
+helper API uses those indexes for later lookups, including unchanged frames.
+Four recent documents are retained per Lua state; weak container views release
+evicted trees. Content keys detect same-size replacements without a stat
+subprocess. Escaped quotes, Unicode surrogate pairs, direct-field scope, and
+missing/malformed fallbacks retain their existing behavior. Arrays returned
+to callers remain independent of the cached index.
+
+The rate-limit panel retains both the current nested Codex account cache and
+the older flattened `bars` shape as fallback adapters.
+
+Text measurement reuses one native Cairo extents struct per helper. The
+installed Conky binding retains repeated struct allocations beyond Lua
+garbage collection, so allocating one for every label causes resident memory
+to grow with uptime. Metrics are still measured with the current text, font,
+and context. This does not change the per-frame X11 surface lifecycle described
+in [Desktop render](desktop-render.md#renderer-contract).
 
 `overlay-entrypoint.lua` registers every Conky hook but loads only the renderer that a window actually invokes. Renderer state and load failures therefore stay local to that overlay instead of every Conky process eagerly instantiating the full renderer set.
 

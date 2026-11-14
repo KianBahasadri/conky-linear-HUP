@@ -52,7 +52,7 @@ GIT_FETCH_PID="$CACHE_DIR/git-fetch-loop.pid"
 SESSIONS_FETCH_PID="$CACHE_DIR/sessions-fetch-loop.pid"
 
 overlay_keys=(linear rate-limit-panel minecraft github weather thermometer resource-monitor billing git sessions)
-fetch_keys=(theme linear codex cursor gemini minecraft github weather workouts weight billing git sessions)
+fetch_keys=(theme gpu linear codex cursor gemini minecraft github weather workouts weight billing git sessions)
 retired_fetch_keys=(claude grok opencode commandcode)
 
 declare -A overlay_config=(
@@ -82,6 +82,7 @@ declare -A overlay_log_path=(
 )
 declare -A fetch_label=(
   [theme]="Desktop theme"
+  [gpu]="GPU sampler"
   [linear]="Linear"
   [codex]="Codex"
   [claude]="Claude"
@@ -101,6 +102,7 @@ declare -A fetch_label=(
 )
 declare -A fetch_overlay_key=(
   [theme]="theme"
+  [gpu]="resource-monitor"
   [linear]="linear"
   [codex]="rate-limit-panel"
   [claude]="rate-limit-panel"
@@ -120,6 +122,7 @@ declare -A fetch_overlay_key=(
 )
 declare -A fetch_pid_file=(
   [theme]="$CACHE_DIR/theme-fetch-loop.pid"
+  [gpu]="$CACHE_DIR/gpu-fetch-loop.pid"
   [linear]="$LINEAR_FETCH_PID"
   [codex]="$CODEX_FETCH_PID"
   [claude]="$CLAUDE_FETCH_PID"
@@ -139,6 +142,7 @@ declare -A fetch_pid_file=(
 )
 declare -A fetch_script=(
   [theme]="$ROOT/scripts/watch_desktop_theme.py"
+  [gpu]="$ROOT/scripts/sample_gpu_usage.py"
   [linear]="$ROOT/scripts/fetch_linear_tasks.py"
   [codex]="$ROOT/scripts/fetch_codex_usage.py"
   [claude]="$ROOT/scripts/fetch_claude_usage.py"

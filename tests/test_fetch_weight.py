@@ -88,6 +88,48 @@ def test_preserves_other_openscale_units(tmp_path, unit, value, symbol):
     assert status["lastWeightText"] == f"{value:.1f} {symbol}"
 
 
+def test_history_cache_reuses_successful_parse_and_repairs_corruption(tmp_path, monkeypatch):
+    archive = write_backup(tmp_path / "backup.zip")
+    cache = tmp_path / "history.json"
+    original = weight.read_backup
+    calls = []
+    def read(*args):
+        calls.append(args)
+        return original(*args)
+    monkeypatch.setattr(weight, "read_backup", read)
+    first = weight.read_cached_backup(archive, cache_path=cache)
+    first[0]["value"] = 999
+    again = weight.read_cached_backup(archive, cache_path=cache)
+    assert len(calls) == 1 and again[0]["value"] == 201.4
+    assert again[0]["timestamp"] == stamp(13).astimezone(weight.timezone.utc)
+    value = json.loads(cache.read_text())
+    value["readings"][0]["value"] = "broken"
+    cache.write_text(json.dumps(value))
+    repaired = weight.read_cached_backup(archive, cache_path=cache)
+    assert len(calls) == 2 and repaired == again
+
+
+def test_history_cache_invalidates_same_size_atomic_replacement_and_user_selection(tmp_path, monkeypatch):
+    archive = tmp_path / "backup.zip"
+    archive.write_text("1")
+    calls = []
+    def read(path, user_id):
+        calls.append(user_id)
+        return [{"timestamp": stamp(13), "value": float(path.read_text()),
+                 "unit": "KG", "userId": user_id or 1}]
+    monkeypatch.setattr(weight, "read_backup", read)
+    cache = tmp_path / "history.json"
+    assert weight.read_cached_backup(archive, cache_path=cache)[0]["value"] == 1
+    stat = archive.stat()
+    replacement = tmp_path / "replacement.zip"
+    replacement.write_text("2")
+    os.utime(replacement, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+    os.replace(replacement, archive)
+    assert weight.read_cached_backup(archive, cache_path=cache)[0]["value"] == 2
+    assert weight.read_cached_backup(archive, 2, cache_path=cache)[0]["userId"] == 2
+    assert calls == [None, None, 2]
+
+
 def test_invalid_readings_do_not_replace_real_weight(tmp_path):
     archive = write_backup(tmp_path / "backup.zip", rows=[
         (1, 1, stamp(10), 199.100014),

@@ -26,7 +26,10 @@ def verify(report, policy):
             if sorted(r["repetition"] for r in runs) != list(range(1, policy["settings"]["repeats"]+1)):
                 raise ValueError("missing or duplicate repetitions")
             for result in runs:
-                if result["windows"] != len(monitors)*9 or len(result["render_windows"]) != result["windows"] or result["fetch_loops"] != 13:
+                if (type(result["shared_gpu_sampler"]) is not bool
+                        or result["windows"] != len(monitors)*9
+                        or len(result["render_windows"]) != result["windows"]
+                        or result["fetch_loops"] != 13 + int(result["shared_gpu_sampler"])):
                     raise ValueError("incomplete window or fetch-loop coverage")
                 for phase in ("warmup", "steady", "burst"):
                     measured = result[phase]

@@ -55,8 +55,14 @@ if ! command -v uv >/dev/null 2>&1; then
   exit 1
 fi
 
+# Let uv validate/sync the project once, then keep every poll on that interpreter.
+OVERLAY_PYTHON="$(uv --project "$ROOT" run --no-dev python -c 'import sys; print(sys.executable)')"
+if [[ ! -x "$OVERLAY_PYTHON" ]]; then
+  printf 'uv did not resolve an executable project Python\n' >&2
+  exit 1
+fi
 run_python() {
-  uv --project "$ROOT" run --no-dev python "$@"
+  "$OVERLAY_PYTHON" "$@"
 }
 
 bash "$SCRIPT_DIR/install_overlay_fonts.sh"
@@ -127,7 +133,7 @@ GENERATED_CONFIG_COUNT=0
 GENERATION_STAGE_DIR=""
 
 overlay_keys=(linear rate-limit-panel minecraft github weather thermometer resource-monitor billing git sessions)
-fetch_keys=(theme linear codex cursor gemini minecraft github weather workouts weight billing git sessions)
+fetch_keys=(theme gpu linear codex cursor gemini minecraft github weather workouts weight billing git sessions)
 retired_fetch_keys=(claude grok opencode commandcode)
 
 declare -A overlay_disabled_name=(
@@ -188,6 +194,7 @@ declare -a queued_launch_notes=()
 
 declare -A fetch_label=(
   [theme]="Desktop theme"
+  [gpu]="GPU sampler"
   [linear]="Linear"
   [codex]="Codex"
   [claude]="Claude"
@@ -207,6 +214,7 @@ declare -A fetch_label=(
 )
 declare -A fetch_overlay_key=(
   [theme]="theme"
+  [gpu]="resource-monitor"
   [linear]="linear"
   [codex]="rate-limit-panel"
   [claude]="rate-limit-panel"
@@ -229,6 +237,7 @@ declare -A fetch_overlay_key=(
 # fetch_interval values are unused fallbacks only.
 declare -A fetch_interval=(
   [theme]="5"
+  [gpu]="5"
   [linear]="60"
   [codex]="$RATE_LIMIT_UNCHANGED_INTERVAL"
   [claude]="$RATE_LIMIT_UNCHANGED_INTERVAL"
@@ -248,6 +257,7 @@ declare -A fetch_interval=(
 )
 declare -A fetch_script=(
   [theme]="$ROOT/scripts/watch_desktop_theme.py"
+  [gpu]="$ROOT/scripts/sample_gpu_usage.py"
   [linear]="$ROOT/scripts/fetch_linear_tasks.py"
   [codex]="$ROOT/scripts/fetch_codex_usage.py"
   [claude]="$ROOT/scripts/fetch_claude_usage.py"
@@ -267,6 +277,7 @@ declare -A fetch_script=(
 )
 declare -A fetch_pid_file=(
   [theme]="$CACHE_DIR/theme-fetch-loop.pid"
+  [gpu]="$CACHE_DIR/gpu-fetch-loop.pid"
   [linear]="$LINEAR_FETCH_PID"
   [codex]="$CODEX_FETCH_PID"
   [claude]="$CLAUDE_FETCH_PID"
@@ -385,6 +396,8 @@ start_fetch_loop() {
   local log_key="${fetch_overlay_key[$fetch_key]}"
   local log_path="${overlay_log_path[$log_key]}"
   local render_path="${fetch_render_path[$fetch_key]:-}"
+  local -a script_arguments=()
+  if [[ "$fetch_key" == "gpu" ]]; then script_arguments=(--watch); fi
 
   stop_fetch_loop "$fetch_key"
 
@@ -404,6 +417,9 @@ start_fetch_loop() {
     unchanged_interval="$6"
     recent_change_window="$7"
     project_root="$8"
+    python_path="$9"
+    shift 9
+    script_arguments=("$@")
     fingerprint_path=""
     last_change_path=""
     [[ -n "$render_path" ]] && fingerprint_path="${render_path}.fingerprint"
@@ -429,7 +445,7 @@ start_fetch_loop() {
       last_change_epoch=""
       [[ -n "$fingerprint_path" && -f "$fingerprint_path" ]] && prev_fp="$(<"$fingerprint_path")"
       [[ -n "$last_change_path" && -f "$last_change_path" ]] && last_change_epoch="$(<"$last_change_path")"
-      uv --project "$project_root" run --no-dev python "$script_path" >/dev/null 2>>"$log_path" || true
+      "$python_path" "$script_path" "${script_arguments[@]}" >/dev/null 2>>"$log_path" || true
       if [[ -n "$render_path" ]]; then
         new_fp="$(compute_fingerprint)"
         now_epoch="$(date +%s)"
@@ -449,7 +465,8 @@ start_fetch_loop() {
     done
   ' bash "$script_path" "$log_path" "$interval_seconds" "$render_path" \
     "$RATE_LIMIT_CHANGED_INTERVAL" "$RATE_LIMIT_UNCHANGED_INTERVAL" \
-    "$RATE_LIMIT_RECENT_CHANGE_WINDOW" "$ROOT" </dev/null >/dev/null 2>&1 &
+    "$RATE_LIMIT_RECENT_CHANGE_WINDOW" "$ROOT" "$OVERLAY_PYTHON" "${script_arguments[@]}" \
+    </dev/null >/dev/null 2>&1 &
   printf '%s\n' "$!" > "$pid_file"
   if [[ -n "$render_path" ]]; then
     log_overlay "$log_key" "started $label fetch loop adaptive (changed=${RATE_LIMIT_CHANGED_INTERVAL}s unchanged=${RATE_LIMIT_UNCHANGED_INTERVAL}s recent_window=${RATE_LIMIT_RECENT_CHANGE_WINDOW}s) pid=$!"
@@ -860,6 +877,7 @@ else
   done
   log_overlay linear "stopped existing matching Conky processes"
   rotate_oversized_logs
+  rm -f "$CACHE_DIR/gpu-usage.tsv"
 
   if (( ${#queued_launch_configs[@]} > 0 )); then
     run_python "$SCRIPT_DIR/watch_desktop_theme.py" --once >> "$CACHE_DIR/conky-theme.log" 2>&1

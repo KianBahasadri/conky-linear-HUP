@@ -24,6 +24,10 @@ for each monitor; see [Desktop design system](design-system.md).
 
 Each overlay can be disabled with its `*_OVERLAY_ENABLED=0` variable in `.env`. See [Configuration](configuration.md) for setup.
 
+The launcher uses uv once to validate the project environment and resolve its
+Python interpreter. Fetch loops and the theme watcher then invoke that
+interpreter directly. Restart the suite after changing project dependencies.
+
 For GNOME login startup, run `./scripts/install_autostart.sh`. It installs a
 desktop entry for the whole overlay suite with a five-second GNOME startup
 delay. Rerun it if the repository moves so the absolute executable path stays

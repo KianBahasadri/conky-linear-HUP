@@ -80,3 +80,39 @@ def test_snapshot_keeps_intel_counters_and_nvidia_failure_independent(monkeypatc
     output = gpu.sample().splitlines()
     assert output[1:3] == [f"gpu\t{INTEL}\tIntel\t", f"gpu\t{NVIDIA}\tNVIDIA\t"]
     assert output[3] == f"engine\t{INTEL}\t30\trender\t300\t1"
+
+
+def test_watch_publishes_complete_samples_and_recovers_after_probe_failure(tmp_path, monkeypatch):
+    path = tmp_path / "gpu.tsv"
+    results = iter([f"sample\t1\ngpu\t{NVIDIA}\tNVIDIA\t24\n",
+                    PermissionError("process disappeared"),
+                    f"sample\t3\ngpu\t{NVIDIA}\tNVIDIA\t12\n"])
+    def sample():
+        value = next(results)
+        if isinstance(value, Exception):
+            raise value
+        return value
+    monkeypatch.setattr(gpu, "sample", sample)
+    monkeypatch.setattr(gpu.time, "time", lambda: 1000.5)
+    snapshots = []
+    class Stop:
+        def is_set(self):
+            return len(snapshots) == 3
+        def wait(self, seconds):
+            assert 0 <= seconds <= 2
+            snapshots.append(path.read_text())
+    gpu.watch(path, 2, Stop())
+    assert "NVIDIA\t24" in snapshots[0]
+    assert "error\tprobe" in snapshots[1] and "NVIDIA\t24" not in snapshots[1]
+    assert "NVIDIA\t12" in snapshots[2]
+    producers = {text.split("producer\t")[1].strip() for text in snapshots}
+    assert len(producers) == 1
+    assert all("observed\t1000.500000\n" in text for text in snapshots)
+    assert list(tmp_path.iterdir()) == [path]
+
+
+@pytest.mark.parametrize("interval", ["0", "-1", "nan", "inf"])
+def test_watch_rejects_invalid_intervals(interval):
+    with pytest.raises(SystemExit) as error:
+        gpu.main(["--watch", "--interval", interval])
+    assert error.value.code == 2

@@ -353,12 +353,29 @@ def fleet_codeview_repos(now=None):
     return records
 
 
-def tmux_sessions():
-    """name -> session record. Empty when no tmux server is running."""
-    listing = tmux(
+def tmux_snapshot():
+    """Read sessions, panes, and clients in one tmux command queue."""
+    output = tmux(
         "list-sessions", "-F",
-        "#{session_name}\t#{session_windows}\t#{session_path}\t#{session_activity}",
+        "session|#{session_name}\t#{session_windows}\t#{session_path}\t#{session_activity}",
+        ";", "list-panes", "-a", "-F", "pane|#{session_name}",
+        ";", "list-clients", "-F", "client|#{client_tty}\t#{session_name}",
     )
+    rows = {"session": [], "pane": [], "client": []}
+    for line in (output or "").splitlines():
+        kind, separator, value = line.partition("|")
+        if separator and kind in rows:
+            rows[kind].append(value)
+    return tuple("\n".join(rows[kind]) for kind in ("session", "pane", "client"))
+
+
+def tmux_sessions(listing=None, panes=None):
+    """name -> session record. Empty when no tmux server is running."""
+    if listing is None:
+        listing = tmux(
+            "list-sessions", "-F",
+            "#{session_name}\t#{session_windows}\t#{session_path}\t#{session_activity}",
+        )
     if not listing:
         return {}
 
@@ -394,7 +411,8 @@ def tmux_sessions():
         record.update(codeview_by_path[path])
         sessions[name] = record
 
-    panes = tmux("list-panes", "-a", "-F", "#{session_name}")
+    if panes is None:
+        panes = tmux("list-panes", "-a", "-F", "#{session_name}")
     if panes:
         for line in panes.splitlines():
             if line in sessions:
@@ -403,9 +421,10 @@ def tmux_sessions():
     return sessions
 
 
-def tmux_clients():
+def tmux_clients(listing=None):
     """tty (without /dev/) -> session name."""
-    listing = tmux("list-clients", "-F", "#{client_tty}\t#{session_name}")
+    if listing is None:
+        listing = tmux("list-clients", "-F", "#{client_tty}\t#{session_name}")
     if not listing:
         return {}
 
@@ -563,8 +582,9 @@ def add_fleet_codeview_sessions(sessions, codeview_repos):
 
 
 def collect():
-    sessions = tmux_sessions()
-    clients = tmux_clients()
+    session_rows, pane_rows, client_rows = tmux_snapshot()
+    sessions = tmux_sessions(session_rows, pane_rows)
+    clients = tmux_clients(client_rows)
     peers, local_host = tailnet_peers()
     now = datetime.now(timezone.utc).timestamp()
 

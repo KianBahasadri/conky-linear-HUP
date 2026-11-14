@@ -11,12 +11,20 @@ local files = {
   ['/sys/block/nvme0n1/device/uevent'] = 'DRIVER=nvme\n',
   ['/sys/block/sda/device/uevent'] = 'DEVTYPE=scsi_device\n',
 }
-shared.read_file = function(path) return files[path] end
 local now, width, height = 1000, 400, 176
 local intel_counter, nvidia_percent, gpu_success, query_count = 100000000000, '0', true, 0
+local gpu_time, gpu_observed, gpu_producer = nil, nil, 'fixture'
 local function gpu_output()
   return string.format('sample\t%d\ngpu\t0000:00:02.0\tIntel\t\ngpu\t0000:01:00.0\tNVIDIA\t%s\n'
-    .. 'engine\t0000:00:02.0\t30\trender\t%.0f\t1\n', now, nvidia_percent, intel_counter)
+    .. 'engine\t0000:00:02.0\t30\trender\t%.0f\t1\nobserved\t%d\nproducer\t%s\n',
+    gpu_time or now, nvidia_percent, intel_counter, gpu_observed or now, gpu_producer)
+end
+shared.read_file = function(path)
+  if path == '/fixture/cache/gpu-usage.tsv' then
+    query_count = query_count + 1
+    return gpu_success and gpu_output() or nil
+  end
+  return files[path]
 end
 local original_time, original_popen, original_getenv = os.time, io.popen, os.getenv
 os.time = function() return now end
@@ -24,13 +32,7 @@ os.getenv = function(name)
   if name:match('^RESOURCE_') then return nil end
   return original_getenv(name)
 end
-io.popen = function()
-  query_count = query_count + 1
-  return {
-    read = function() return gpu_output() end,
-    close = function() return gpu_success end,
-  }
-end
+io.popen = function() error('resource rendering must not spawn a GPU sampler') end
 
 local gauges, traces, current_icon = {}, {}, nil
 ui.draw = function(callback) callback({}, width, height) end
@@ -181,6 +183,26 @@ assert(gauges[5].opts.reading == 0, 'a regressing DRM counter must not yield neg
 now, intel_counter = 3006, 11500000000
 draw(renderer)
 assert(gauges[5].opts.reading == 25, 'DRM counter recovery must not count the same work twice')
+
+-- A file can be read twice before the producer publishes another snapshot.
+gpu_time = now
+now = now + 2
+draw(renderer)
+assert(gauges[5].opts.reading == 25, 'duplicate shared snapshots retain measured GPU utilization')
+
+gpu_observed = now - 11
+now = now + 2
+draw(renderer)
+unavailable(gauges[5])
+unavailable(gauges[6])
+
+gpu_observed, gpu_time, gpu_producer = nil, nil, 'restarted'
+now = now + 2
+draw(renderer)
+unavailable(gauges[5])
+now, intel_counter = now + 2, intel_counter + 500000000
+draw(renderer)
+assert(gauges[5].opts.reading == 25, 'a restarted producer establishes a fresh counter baseline')
 
 os.time, io.popen, os.getenv = original_time, original_popen, original_getenv
 print('resource sampling, availability, peaks, and two-row geometry OK')

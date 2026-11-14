@@ -109,11 +109,34 @@ function shared.unescape_json_string(value)
   return table.concat(parts)
 end
 
--- The render caches are JSON, but Conky does not ship a JSON module on every
--- supported Lua build.  Keep the parser deliberately small: it only exposes
--- direct object-field lookup plus arrays of objects/strings, which is all the
--- renderers need.  Unlike the old Lua patterns, the scanner understands nested
--- containers and ignores braces, brackets, and escaped quotes inside strings.
+-- Index each complete JSON document once, including its nested containers.
+-- Keep raw-source views for the existing renderer API, without repeatedly
+-- scanning an entire object for each field. Four recent documents cover the
+-- active inputs of a window; weak views release their old trees after eviction.
+local json_documents = {}
+local json_recent = {}
+local json_nodes = setmetatable({}, { __mode = 'v' })
+
+local function remember_json_document(document)
+  if json_recent[1] == document then return end
+  for index, previous in ipairs(json_recent) do
+    if previous == document then table.remove(json_recent, index); break end
+  end
+  table.insert(json_recent, 1, document)
+  json_documents[document.text] = document
+  if #json_recent > 4 then
+    local previous = table.remove(json_recent)
+    json_documents[previous.text] = nil
+  end
+end
+
+local function index_json_container(document, first, last, fields, values)
+  table.insert(document.nodes, {
+    document = document, first = first, last = last, fields = fields, values = values,
+  })
+  return last
+end
+
 local function skip_json_whitespace(text, index)
   while index <= #text and text:sub(index, index):match('%s') do
     index = index + 1
@@ -200,14 +223,15 @@ end
 
 local json_value_end
 
-local function json_object_end(text, start_index, on_member)
+local function json_object_end(text, start_index, document)
   if text:sub(start_index, start_index) ~= '{' then
     return nil
   end
 
+  local fields = {}
   local index = skip_json_whitespace(text, start_index + 1)
   if text:sub(index, index) == '}' then
-    return index
+    return index_json_container(document, start_index, index, fields)
   end
 
   while index <= #text do
@@ -224,18 +248,18 @@ local function json_object_end(text, start_index, on_member)
     end
 
     local value_start = skip_json_whitespace(text, index + 1)
-    local value_end = json_value_end(text, value_start)
+    local value_end = json_value_end(text, value_start, document)
     if not value_end then
       return nil
     end
-    if on_member then
-      on_member(key, value_start, value_end)
+    if fields[key] == nil then
+      fields[key] = { value_start, value_end }
     end
 
     index = skip_json_whitespace(text, value_end + 1)
     local delimiter = text:sub(index, index)
     if delimiter == '}' then
-      return index
+      return index_json_container(document, start_index, index, fields)
     end
     if delimiter ~= ',' then
       return nil
@@ -248,30 +272,29 @@ local function json_object_end(text, start_index, on_member)
   return nil
 end
 
-local function json_array_end(text, start_index, on_value)
+local function json_array_end(text, start_index, document)
   if text:sub(start_index, start_index) ~= '[' then
     return nil
   end
 
+  local values = {}
   local index = skip_json_whitespace(text, start_index + 1)
   if text:sub(index, index) == ']' then
-    return index
+    return index_json_container(document, start_index, index, nil, values)
   end
 
   while index <= #text do
     local value_start = index
-    local value_end = json_value_end(text, value_start)
+    local value_end = json_value_end(text, value_start, document)
     if not value_end then
       return nil
     end
-    if on_value then
-      on_value(value_start, value_end)
-    end
+    table.insert(values, { value_start, value_end })
 
     index = skip_json_whitespace(text, value_end + 1)
     local delimiter = text:sub(index, index)
     if delimiter == ']' then
-      return index
+      return index_json_container(document, start_index, index, nil, values)
     end
     if delimiter ~= ',' then
       return nil
@@ -284,16 +307,16 @@ local function json_array_end(text, start_index, on_value)
   return nil
 end
 
-json_value_end = function(text, start_index)
+json_value_end = function(text, start_index, document)
   local character = text:sub(start_index, start_index)
   if character == '"' then
     return json_string_end(text, start_index)
   end
   if character == '{' then
-    return json_object_end(text, start_index)
+    return json_object_end(text, start_index, document)
   end
   if character == '[' then
-    return json_array_end(text, start_index)
+    return json_array_end(text, start_index, document)
   end
   if character == '-' or character:match('%d') then
     return json_number_end(text, start_index)
@@ -307,31 +330,38 @@ json_value_end = function(text, start_index)
   return nil
 end
 
+local function json_node(text)
+  if type(text) ~= 'string' then return nil end
+  local node = json_nodes[text]
+  if node then
+    remember_json_document(node.document)
+    return node
+  end
+  local document = json_documents[text]
+  if document then
+    remember_json_document(document)
+    return nil -- A previously rejected document.
+  end
+  document = { text = text, nodes = {} }
+  local first = skip_json_whitespace(text, 1)
+  local last = json_value_end(text, first, document)
+  if last and skip_json_whitespace(text, last + 1) > #text then
+    for _, indexed in ipairs(document.nodes) do
+      json_nodes[text:sub(indexed.first, indexed.last)] = indexed
+    end
+    node = document.nodes[#document.nodes]
+    json_nodes[text] = node
+  end
+  remember_json_document(document)
+  return node
+end
+
 -- Return one direct object's field as JSON source, or nil for missing/malformed
 -- input.  Nested fields with the same name are intentionally ignored.
 function shared.json_field(text, key)
-  if not text or not key then
-    return nil
-  end
-
-  local object_start = skip_json_whitespace(text, 1)
-  if text:sub(object_start, object_start) ~= '{' then
-    return nil
-  end
-
-  local found
-  local object_end = json_object_end(text, object_start, function(candidate, value_start, value_end)
-    if candidate == key and found == nil then
-      found = text:sub(value_start, value_end)
-    end
-  end)
-  if not object_end then
-    return nil
-  end
-  if skip_json_whitespace(text, object_end + 1) <= #text then
-    return nil
-  end
-  return found
+  local node = key and json_node(text)
+  local field = node and node.fields and node.fields[key]
+  return field and node.document.text:sub(field[1], field[2]) or nil
 end
 
 function shared.json_string(text, key, fallback)
@@ -371,16 +401,11 @@ end
 
 local function json_array_values(text, key)
   local array = shared.json_field(text, key)
-  if not array or array:sub(1, 1) ~= '[' then
-    return {}
-  end
-
+  local node = json_node(array)
+  if not node or not node.values then return {} end
   local values = {}
-  local array_end = json_array_end(array, 1, function(value_start, value_end)
-    table.insert(values, array:sub(value_start, value_end))
-  end)
-  if array_end ~= #array then
-    return {}
+  for _, span in ipairs(node.values) do
+    table.insert(values, node.document.text:sub(span[1], span[2]))
   end
   return values
 end
@@ -433,8 +458,11 @@ function shared.rounded_rect(cr, x, y, width, height, corner_radius)
   cairo_close_path(cr)
 end
 
+local truncate_extents, wrap_extents
+
 function shared.truncate_title(cr, title, max_width)
-  local extents = cairo_text_extents_t:create()
+  truncate_extents = truncate_extents or cairo_text_extents_t:create()
+  local extents = truncate_extents
   cairo_text_extents(cr, title, extents)
 
   if extents.width <= max_width then
@@ -474,7 +502,8 @@ function shared.wrap_title(cr, title, max_width, max_lines)
 
   local lines = {}
   local current = ''
-  local extents = cairo_text_extents_t:create()
+  wrap_extents = wrap_extents or cairo_text_extents_t:create()
+  local extents = wrap_extents
 
   for _, word in ipairs(words) do
     local candidate = current == '' and word or current .. ' ' .. word

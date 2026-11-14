@@ -103,9 +103,46 @@ def test_context_cache_is_reused_and_failed_weight_upload_is_marked_stale(source
     def broken(*_args):
         raise ValueError("Incomplete upload")
     monkeypatch.setattr(c.fetch_weight, "read_backup", broken)
+    (directory / "backup.zip").write_bytes(b"incomplete replacement upload")
     rows, _ = c.enrich([workout()], directory.parent, path, BASE + timedelta(days=2, hours=2), weight_dir=directory, request=request)
     weight = rows[0]["context"]["weight"]
     assert weight["stale"] and not weight["available"] and weight["value"] == 200.0
+
+
+def test_unchanged_context_skips_zip_validation_and_serialization(sources, monkeypatch):
+    directory, path = sources
+    now = BASE + timedelta(days=2)
+    c.enrich([workout()], directory.parent, path, now, weight_dir=directory,
+             request=lambda _: payload())
+    original = c.common.file_identity(path)
+    def unexpected(*_args, **_kwargs):
+        raise AssertionError("unchanged source was processed again")
+    monkeypatch.setattr(c.fetch_weight, "read_backup", unexpected)
+    monkeypatch.setattr(c, "_validate_hourly", unexpected)
+    monkeypatch.setattr(c.common, "atomic_write_json", unexpected)
+    rows, meta = c.enrich([workout()], directory.parent, path, now + timedelta(hours=1),
+                         weight_dir=directory, request=unexpected)
+    assert rows[0]["context"]["weather"]["available"]
+    assert rows[0]["context"]["weight"]["available"]
+    assert meta["requests"] == 0
+    assert c.common.file_identity(path) == original
+
+
+def test_changed_context_is_revalidated_and_repaired(sources):
+    directory, path = sources
+    now = BASE + timedelta(days=2)
+    c.enrich([workout()], directory.parent, path, now, weight_dir=directory,
+             request=lambda _: payload())
+    cached = json.loads(path.read_text())
+    next(iter(cached["tiles"].values()))["hourly"]["time"].pop()
+    path.write_text(json.dumps(cached))
+    calls = []
+    def request(params):
+        calls.append(params)
+        return payload()
+    rows, _ = c.enrich([workout()], directory.parent, path, now + timedelta(hours=1),
+                      weight_dir=directory, request=request)
+    assert len(calls) == 1 and rows[0]["context"]["weather"]["available"]
 
 
 def test_weather_failure_preserves_workouts_and_retries_are_bounded(sources):

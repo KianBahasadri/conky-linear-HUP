@@ -99,6 +99,7 @@ def parse_workout(path):
     parents = []
     truncated = False
     notes = ""
+    tag_names = {}
 
     def add_lap(fields):
         nonlocal duration, distance, calories
@@ -112,8 +113,13 @@ def parse_workout(path):
 
     try:
         for event, element in ET.iterparse(str(path), events=("start", "end")):
-            tag = local_tag(element)
             if event == "start":
+                raw_tag = element.tag
+                tag = tag_names.get(raw_tag)
+                if tag is None:
+                    tag = local_tag(element)
+                    tag_names[raw_tag] = tag
+                element.tag = tag
                 if tag == "Activity":
                     activity_count += 1
                     sport = sport or str(element.get("Sport") or "")
@@ -121,6 +127,7 @@ def parse_workout(path):
                     lap = {}
                 parents.append(tag)
                 continue
+            tag = element.tag
             parents.pop()
             if tag == "Notes":
                 notes = element.text or ""
@@ -130,26 +137,26 @@ def parse_workout(path):
             if tag == "Trackpoint":
                 stamp = meters = steps = latitude = longitude = rate = None
                 for child in element:
-                    child_tag = local_tag(child)
+                    child_tag = child.tag
                     if child_tag == "Time":
                         stamp = parse_time(child.text)
                     elif child_tag == "DistanceMeters":
                         meters = progression.finite(child.text)
                     elif child_tag == "Position":
                         for coordinate in child:
-                            if local_tag(coordinate) == "LatitudeDegrees":
+                            if coordinate.tag == "LatitudeDegrees":
                                 latitude = common.as_float(coordinate.text, None)
-                            elif local_tag(coordinate) == "LongitudeDegrees":
+                            elif coordinate.tag == "LongitudeDegrees":
                                 longitude = common.as_float(coordinate.text, None)
                     elif child_tag == "HeartRateBpm":
                         for sub_child in child:
-                            if local_tag(sub_child) == "Value":
+                            if sub_child.tag == "Value":
                                 rate = common.as_int(sub_child.text, 0)
                                 if 30 <= rate <= 240:
                                     heart_rates.append(rate)
                     elif child_tag == "Extensions":
                         for ext in child.iter():
-                            if local_tag(ext) == "RunCadence":
+                            if ext.tag == "RunCadence":
                                 steps = common.as_int(ext.text, 0)
                                 if steps > 0:
                                     cadences.append(steps)

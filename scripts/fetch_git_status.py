@@ -266,7 +266,7 @@ def is_dirty_repo(repo_path: Path, timeout: float) -> bool:
     try:
         porcelain = run_git(
             repo_path,
-            ["status", "--porcelain=v2", "-z", "--branch", "--untracked-files=normal"],
+            ["status", "--porcelain=v2", "-z", "--branch", "--show-stash", "--untracked-files=normal"],
             timeout=timeout,
         )
     except (RuntimeError, TimeoutError):
@@ -280,9 +280,10 @@ def is_dirty_repo(repo_path: Path, timeout: float) -> bool:
         or parsed["ahead"] > 0
         or parsed["behind"] > 0
         or parsed["detached"]
+        or parsed["stash"] > 0
     ):
         return True
-    return count_stashes(repo_path, timeout) > 0
+    return False
 
 
 def scan_home_for_recent_repos(
@@ -522,6 +523,7 @@ def parse_porcelain_v2(output):
     modified = 0
     untracked = 0
     conflicted = 0
+    stash = 0
     changed_paths = []
 
     nul_delimited = "\0" in output
@@ -550,6 +552,10 @@ def parse_porcelain_v2(output):
             continue
         if line.startswith("# branch.ab "):
             ahead, behind = parse_ahead_behind(line)
+            continue
+        if line.startswith("# stash "):
+            raw_count = line[len("# stash "):].strip()
+            stash = int(raw_count) if raw_count.isdigit() else 0
             continue
         if line.startswith("#"):
             continue
@@ -597,16 +603,9 @@ def parse_porcelain_v2(output):
         "modified": modified,
         "untracked": untracked,
         "conflicted": conflicted,
+        "stash": stash,
         "changed_paths": changed_paths,
     }
-
-
-def count_stashes(repo_path, timeout):
-    try:
-        output = run_git(repo_path, ["stash", "list"], timeout=timeout)
-    except (RuntimeError, TimeoutError):
-        return 0
-    return sum(1 for line in output.splitlines() if line.strip())
 
 
 def compute_state(repo):
@@ -701,13 +700,15 @@ def inspect_repo(repo_path, timeout, include_stash=True):
         return base
 
     try:
+        status_args = ["status", "--porcelain=v2", "-z", "--branch", "--untracked-files=normal"]
+        status_args.append("--show-stash" if include_stash else "--no-show-stash")
         porcelain = run_git(
             repo_path,
-            ["status", "--porcelain=v2", "-z", "--branch", "--untracked-files=normal"],
+            status_args,
             timeout=timeout,
         )
         parsed = parse_porcelain_v2(porcelain)
-        stash = count_stashes(repo_path, timeout=timeout) if include_stash else 0
+        stash = parsed.pop("stash")
     except (RuntimeError, TimeoutError) as error:
         base["error"] = str(error)[:160] or "git status failed"
         base["lastModifiedEpoch"] = last_commit_epoch(repo_path, timeout=timeout) or 0

@@ -22,6 +22,9 @@ local palettes = {
 }
 
 return function(shared)
+  -- The Conky binding retains native extents allocations beyond Lua GC.
+  -- Reuse one scratch struct per measurement path instead of allocating per text.
+  local width_extents, text_extents, emoji_extents, callout_extents
   local ui = {
     sans = 'IBM Plex Sans', mono = 'IBM Plex Mono',
   }
@@ -64,7 +67,8 @@ return function(shared)
 
   function ui.width(cr, value, size, mono, bold)
     ui.font(cr, size, mono, bold)
-    local ext = cairo_text_extents_t:create()
+    width_extents = width_extents or cairo_text_extents_t:create()
+    local ext = width_extents
     cairo_text_extents(cr, tostring(value or ''), ext)
     -- Reserve both ink and spacing: some glyphs overhang their advance, and
     -- ui.text's truncation checks ink width against this measurement.
@@ -76,7 +80,8 @@ return function(shared)
     ui.font(cr, opts.size or 15, opts.mono, opts.bold)
     local label = tostring(value or '')
     if opts.width then label = shared.truncate_title(cr, label, math.max(0, opts.width)) end
-    local ext = cairo_text_extents_t:create()
+    text_extents = text_extents or cairo_text_extents_t:create()
+    local ext = text_extents
     cairo_text_extents(cr, label, ext)
     local glyphs = {}
     if opts.tracking then
@@ -120,7 +125,8 @@ return function(shared)
     local artwork = emoji_artwork[glyph]
     cairo_select_font_face(cr, 'Noto Color Emoji', CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL)
     cairo_set_font_size(cr, size or 11)
-    local ext = cairo_text_extents_t:create()
+    emoji_extents = emoji_extents or cairo_text_extents_t:create()
+    local ext = emoji_extents
     cairo_text_extents(cr, artwork and artwork.base or glyph, ext)
     if artwork then
       local surface = cairo_image_surface_create_from_png(module_dir .. '/../assets/emoji/' .. artwork.file)
@@ -572,7 +578,8 @@ return function(shared)
     ui.font(cr, 13.5)
     local words, lines, current = {}, {}, ''
     for word in tostring(message or ''):gmatch('%S+') do words[#words + 1] = word end
-    local extents = cairo_text_extents_t:create()
+    callout_extents = callout_extents or cairo_text_extents_t:create()
+    local extents = callout_extents
     local limit = width - 20 - prefix_width - 5
     for _, word in ipairs(words) do
       local candidate = current == '' and word or current .. ' ' .. word

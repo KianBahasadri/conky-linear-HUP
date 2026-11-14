@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Summarize an openScale 3 backup for the weather, running, and weight panel."""
 
+import fcntl
 import json
 import math
 import os
@@ -22,6 +23,7 @@ DEFAULT_WORKOUTS_DIR = CACHE_DIR / "workouts"
 DATABASE_NAME = "openScale.db"
 MAX_BACKUP_BYTES = 64 * 1024 * 1024
 UNIT_SYMBOLS = {"KG": "kg", "LB": "lb", "ST": "st"}
+HISTORY_VERSION = 1
 
 log_event = common.make_logger(LOG_PATH, "fetch_weight")
 atomic_write_json = common.atomic_write_json
@@ -120,6 +122,49 @@ def read_backup(path, user_id=None):
         for reading in readings:
             reading["goal"] = goal_value
     return readings
+
+
+def serialize_readings(readings):
+    return [{**row, "timestamp": row["timestamp"].isoformat()} for row in readings]
+
+
+def deserialize_readings(rows):
+    if not isinstance(rows, list) or not rows:
+        raise ValueError("Missing cached weight readings")
+    readings = [{**row, "timestamp": datetime.fromisoformat(row["timestamp"])} for row in rows]
+    for row in readings:
+        if (row["timestamp"].tzinfo is None or row["unit"] not in UNIT_SYMBOLS
+                or not math.isfinite(row["value"]) or row["value"] <= 0):
+            raise ValueError("Invalid cached weight reading")
+    if len({row["userId"] for row in readings}) != 1 or len({row["unit"] for row in readings}) != 1:
+        raise ValueError("Inconsistent cached weight readings")
+    if any(a["timestamp"] > b["timestamp"] for a, b in zip(readings, readings[1:])):
+        raise ValueError("Unsorted cached weight readings")
+    return readings
+
+
+def read_cached_backup(path, user_id=None, *, cache_path=None):
+    """Share successful ZIP/SQLite parses between the weight and workout polls."""
+    cache_path = Path(cache_path) if cache_path else CACHE_DIR / "weight-history.json"
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    with cache_path.with_suffix(".lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        identity = common.file_identity(path)
+        try:
+            cached = json.loads(cache_path.read_text())
+            if (cached.get("version") == HISTORY_VERSION and cached.get("source") == identity
+                    and cached.get("userId") == user_id):
+                return deserialize_readings(cached["readings"])
+        except (OSError, ValueError, TypeError, KeyError, AttributeError):
+            pass
+        readings = read_backup(path, user_id)
+        if common.file_identity(path) != identity:
+            raise OSError("Weight backup changed while it was being read")
+        common.atomic_write_json(cache_path, {
+            "version": HISTORY_VERSION, "source": identity, "userId": user_id,
+            "readings": serialize_readings(readings),
+        }, compact=True)
+        return readings
 
 
 def date_text(stamp, now):
@@ -275,7 +320,7 @@ def main():
         if not backups:
             raise ValueError("No openScale backup uploaded yet")
         path = max(backups, key=lambda item: (item.stat().st_mtime_ns, item.name))
-        readings = read_backup(path, user_id)
+        readings = read_cached_backup(path, user_id)
         status = build_status(readings)
         status["sourceFile"] = path.name
     except (OSError, ValueError, sqlite3.Error, zipfile.BadZipFile, zlib.error, EOFError, RuntimeError) as error:

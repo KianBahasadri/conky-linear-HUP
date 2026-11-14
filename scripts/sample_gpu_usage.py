@@ -1,12 +1,18 @@
 #!/usr/bin/env python3
 """Emit per-device GPU readings and DRM client counters for the Conky sampler."""
 
+import argparse
 import csv
 import os
 from pathlib import Path
 import re
+import signal
 import subprocess
+import sys
+import threading
 import time
+
+from fetch_common import atomic_write_text
 
 
 def pci_address(value):
@@ -78,20 +84,21 @@ def drm_clients(device_ids, proc_root=Path("/proc")):
     clients = {}
     if not device_ids:
         return clients
-    for process in proc_root.iterdir():
+    for process in os.scandir(proc_root):
         if not process.name.isdigit():
             continue
         try:
             # Only inspect graphics handles, not every fdinfo file in the
             # desktop session. Other users' protected handles are skipped.
-            handles = list((process / "fd").iterdir())
+            handles = list(os.scandir(os.path.join(process.path, "fd")))
         except OSError:
             continue
         for handle in handles:
             try:
-                if not os.readlink(handle).startswith("/dev/dri/"):
+                if not os.readlink(handle.path).startswith("/dev/dri/"):
                     continue
-                client = parse_drm_client((process / "fdinfo" / handle.name).read_text())
+                with open(os.path.join(process.path, "fdinfo", handle.name)) as source:
+                    client = parse_drm_client(source.read())
             except OSError:
                 continue
             if client is None or client[0] not in device_ids:
@@ -123,5 +130,39 @@ def sample():
     return "\n".join(lines) + "\n"
 
 
+def watch(output, interval, stop):
+    """Publish one shared sample on a monotonic schedule, without restarting Python."""
+    producer = f"{os.getpid()}:{time.monotonic_ns()}"
+    output.parent.mkdir(parents=True, exist_ok=True)
+    while not stop.is_set():
+        started = time.monotonic()
+        try:
+            snapshot = sample()
+        except OSError as error:
+            snapshot = f"sample\t{time.monotonic():.9f}\nerror\tprobe\n"
+            print(f"GPU sampling unavailable: {error}", file=sys.stderr, flush=True)
+        snapshot += f"observed\t{time.time():.6f}\nproducer\t{producer}\n"
+        atomic_write_text(output, snapshot)
+        stop.wait(max(0, interval - (time.monotonic() - started)))
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--watch", action="store_true")
+    parser.add_argument("--output", type=Path, default=Path(__file__).resolve().parents[1] / "cache/gpu-usage.tsv")
+    parser.add_argument("--interval", type=float, default=2)
+    args = parser.parse_args(argv)
+    if not 0 < args.interval < float("inf"):
+        parser.error("--interval must be finite and positive")
+    if not args.watch:
+        print(sample(), end="")
+        return 0
+    stop = threading.Event()
+    signal.signal(signal.SIGTERM, lambda *_: stop.set())
+    signal.signal(signal.SIGINT, lambda *_: stop.set())
+    watch(args.output, args.interval, stop)
+    return 0
+
+
 if __name__ == "__main__":
-    print(sample(), end="")
+    raise SystemExit(main())

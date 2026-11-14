@@ -29,7 +29,7 @@ def process_info(pid):
 def force_refresh(root):
     # Invalidate the expensive local paths before waking the actual launcher
     # loops. Killing their sleep child ends only the current timer, preserving
-    # the real loop body, uv invocations and adaptive fingerprint bookkeeping.
+    # the real loop body, Python invocations and adaptive fingerprint bookkeeping.
     for name in ("git-repo-discovery.json", "git-actions-cache.json", "workouts-analysis.json", "billing-aws-cache.json"):
         (root / "cache" / name).unlink(missing_ok=True)
     for pid_path in (root / "cache").glob("*-fetch-loop.pid"):
@@ -65,9 +65,12 @@ def validate(root, expected_windows):
     required = {f"fetch_{name}.py" for name in FETCHERS} | {"sample_gpu_usage.py"}
     if required - completed:
         raise NotReady(f"unfinished workload paths: {sorted(required - completed)}")
+    capabilities = json.loads((root / "benchmark-data/workload.json").read_text())
+    if capabilities["shared_gpu_sampler"] and not (root / "cache/gpu-usage.tsv").is_file():
+        raise NotReady("shared GPU snapshot has not been published")
 
 
-def check_health(root, expected_windows):
+def check_health(root, expected_windows, expected_fetch_loops):
     relative = Path("/proc/self/cgroup").read_text().strip().split("::")[1]
     pids = (Path("/sys/fs/cgroup") / relative.lstrip("/") / "cgroup.procs").read_text().split()
     windows = 0
@@ -78,8 +81,8 @@ def check_health(root, expected_windows):
     if windows != expected_windows:
         raise RuntimeError(f"expected {expected_windows} running Conky processes, got {windows}")
     loops = list((root / "cache").glob("*-fetch-loop.pid"))
-    if len(loops) != 13:
-        raise RuntimeError(f"expected 13 running fetch loops, got {len(loops)}")
+    if len(loops) != expected_fetch_loops:
+        raise RuntimeError(f"expected {expected_fetch_loops} running fetch loops, got {len(loops)}")
     for path in loops:
         info = process_info(int(path.read_text()))
         if not info or b'project_root="$8"' not in b" ".join(info[0]):
@@ -118,7 +121,7 @@ def main():
             force_refresh(root)
             next_burst = time.monotonic()+settings["burst_period_seconds"]
         if time.monotonic() >= next_health:
-            check_health(root, settings["expected_windows"])
+            check_health(root, settings["expected_windows"], settings["expected_fetch_loops"])
             next_health = time.monotonic()+0.5
         # Reap any adopted child without waiting for the long-running suite.
         while True:
