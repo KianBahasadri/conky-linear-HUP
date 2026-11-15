@@ -9,7 +9,7 @@ import sys
 import time
 import traceback
 
-from fixtures import FETCHERS, OUTPUTS
+from fixtures import active_workload
 
 
 class NotReady(RuntimeError):
@@ -48,7 +48,8 @@ def validate(root, expected_windows):
     errors = root / "cache/benchmark-errors"
     if errors.exists() and errors.stat().st_size:
         raise RuntimeError(errors.read_text())
-    for name in OUTPUTS:
+    fetchers, outputs = active_workload(root)
+    for name in outputs:
         data = json.loads((root / "cache" / (name+".json")).read_text())
         if data.get("ok") is False or data.get("error") or data.get("errors"):
             raise RuntimeError(f"{name}: {data.get('error') or data.get('errors') or 'not ok'}")
@@ -62,7 +63,7 @@ def validate(root, expected_windows):
         raise NotReady(f"expected {expected_windows} drawing windows, got {len(windows)}")
     invocations = [json.loads(line) for line in (root / "cache/benchmark-invocations").read_text().splitlines()]
     completed = {item["name"] for item in invocations if item["kind"] == "end"}
-    required = {f"fetch_{name}.py" for name in FETCHERS} | {"sample_gpu_usage.py"}
+    required = {f"fetch_{name}.py" for name in fetchers} | {"sample_gpu_usage.py"}
     if required - completed:
         raise NotReady(f"unfinished workload paths: {sorted(required - completed)}")
     capabilities = json.loads((root / "benchmark-data/workload.json").read_text())

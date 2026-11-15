@@ -26,7 +26,7 @@ import uuid
 ROOT = Path(__file__).resolve().parents[1]
 BENCH = ROOT / "benchmarks"
 sys.path.insert(0, str(BENCH))
-from fixtures import FETCHERS, prepare  # noqa: E402
+from fixtures import active_workload, prepare  # noqa: E402
 
 MIB = 1024 * 1024
 ENV_INTERVALS = {"MINECRAFT_REFRESH_SECONDS", "GITHUB_REFRESH_SECONDS", "WEATHER_REFRESH_SECONDS",
@@ -190,6 +190,7 @@ def environment(root, display):
         "GIT_SCAN_DAYS": "36500", "GIT_HIDE_CLEAN": "0", "GIT_TIMEOUT_SECONDS": "10",
         "WEATHER_LATITUDE": "40", "WEATHER_LONGITUDE": "-75", "WEATHER_LOCATION_LABEL": "Fixture",
         "MINECRAFT_SERVER": "fixture.invalid:25565", "BILLING_AWS_ENABLED": "1", "OPENROUTER_API_KEY": "fixture",
+        "OPENCODE_API_KEY": "fixture", "OPENCODE_WORKSPACE_ID": "wrk_fixture",
         "PRIMARY_WAIT_SECONDS": "0", "TZ": "UTC"})
     for name in ("LINEAR_OVERLAY_ENABLED", "RATE_LIMIT_PANEL_ENABLED", "MINECRAFT_OVERLAY_ENABLED", "GITHUB_OVERLAY_ENABLED",
                  "WEATHER_OVERLAY_ENABLED", "RESOURCE_MONITOR_OVERLAY_ENABLED", "BILLING_OVERLAY_ENABLED", "GIT_OVERLAY_ENABLED", "SESSIONS_OVERLAY_ENABLED"):
@@ -236,7 +237,8 @@ def extract_coverage(root, window_count, smoke):
         raise RuntimeError("missing per-window steady/burst render measurements")
     events = [json.loads(line) for line in (root / "cache/benchmark-invocations").read_text().splitlines()]
     completed = {item["name"] for item in events if item["kind"] == "end" and item["phase"] == "burst"}
-    required = {f"fetch_{key}.py" for key in FETCHERS} | {"sample_gpu_usage.py"}
+    fetchers, _outputs = active_workload(root)
+    required = {f"fetch_{key}.py" for key in fetchers} | {"sample_gpu_usage.py"}
     if required - completed:
         raise RuntimeError(f"refresh burst missed: {sorted(required-completed)}")
     if not smoke and any(len(values) < 5 for values in frames.values()):

@@ -8,11 +8,21 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from benchmark_overlays import BENCH, compare
 
 
+def expected_fetch_loops(result, policy):
+    """Loop count for this measured revision.
+
+    Thirteen is the pre-optimization suite. The shared GPU producer adds one.
+    The candidate adds the OpenCode loop the pinned baseline does not start.
+    """
+    extra = policy["candidate_extra_fetch_loops"] if result["role"] == "candidate" else 0
+    return 13 + int(result["shared_gpu_sampler"]) + extra
+
+
 def verify_run(result, monitors, policy):
     if (type(result["shared_gpu_sampler"]) is not bool
             or result["windows"] != len(monitors)*9
             or len(result["render_windows"]) != result["windows"]
-            or result["fetch_loops"] != 13 + int(result["shared_gpu_sampler"])):
+            or result["fetch_loops"] != expected_fetch_loops(result, policy)):
         raise ValueError("incomplete window or fetch-loop coverage")
     for phase in ("warmup", "steady", "burst"):
         measured = result[phase]

@@ -73,6 +73,35 @@ def dump(path, value):
     path.write_text(json.dumps(value), encoding="utf-8")
 
 
+# Fetchers the pinned baseline and the pre-optimization revision do not start.
+# Coverage follows the copied launcher so those revisions are not required to
+# run a loop they never launch.
+LAUNCHER_FETCHERS = {
+    "opencode": ("opencode_usage", "opencode-usage"),
+}
+
+
+def launcher_fetch_keys(root):
+    import re
+    text = (Path(root) / "scripts/start_conky_overlays.sh").read_text()
+    match = re.search(r"^fetch_keys=\(([^)]*)\)", text, re.M)
+    if not match:
+        raise RuntimeError(f"start script has no fetch_keys list: {root}")
+    return match.group(1).split()
+
+
+def active_workload(root):
+    """Return the fetchers and cache outputs the copied launcher starts."""
+    fetchers = list(FETCHERS)
+    outputs = list(OUTPUTS)
+    for key in launcher_fetch_keys(root):
+        extra = LAUNCHER_FETCHERS.get(key)
+        if extra and extra[0] not in fetchers:
+            fetchers.append(extra[0])
+            outputs.append(extra[1])
+    return fetchers, outputs
+
+
 def prepare(root, monitors, python, real_conky):
     """Build fixed data outside the measured cgroup; no personal cache is copied."""
     import hashlib
@@ -89,7 +118,8 @@ def prepare(root, monitors, python, real_conky):
     (data / "bin").mkdir()
     dump(data / "monitors.json", monitors)
     shared_gpu = "gpu-usage.tsv" in (root / "conky/resource-monitor-renderer.lua").read_text()
-    dump(data / "workload.json", {"shared_gpu_sampler": shared_gpu, "fetch_loops": 13 + int(shared_gpu)})
+    fetchers, _outputs = active_workload(root)
+    dump(data / "workload.json", {"shared_gpu_sampler": shared_gpu, "fetch_loops": len(launcher_fetch_keys(root))})
     (data / "python").write_text(python)
     (data / "conky").write_text(real_conky)
     (cache / "benchmark-phase").write_text("startup")
@@ -214,7 +244,7 @@ def prepare(root, monitors, python, real_conky):
     shim = data / "bin" / "conky"
     shim.write_text(f"#!/bin/sh\nexec {shlex.quote(python)} {shlex.quote(str(Path(__file__).with_name('conky_wrapper.py')))} \"$@\"\n")
     shim.chmod(0o755)
-    for name in [f"fetch_{key}.py" for key in FETCHERS] + ["sample_gpu_usage.py"]:
+    for name in [f"fetch_{key}.py" for key in fetchers] + ["sample_gpu_usage.py"]:
         instrument_source(root / "scripts" / name)
 
 
@@ -251,6 +281,12 @@ def payload(url, body):
                            "relative_humidity_2m": [50]*8, "apparent_temperature": [20.0]*8,
                            "weather_code": [2]*8, "wind_speed_10m": [5.0]*8,
                            "wind_gusts_10m": [8.0]*8, "visibility": [15000]*8}}
+    if parsed.hostname == "opencode.ai" and parsed.path == "/zen/go/v1/usage":
+        return {"usage": {
+            "rolling": {"status": "ok", "percent": 0, "resetsAt": "2026-11-12T17:00:00Z"},
+            "weekly": {"status": "ok", "percent": 7, "resetsAt": "2026-11-16T00:00:00Z"},
+            "monthly": {"status": "ok", "percent": 3, "resetsAt": "2026-12-14T02:03:33Z"},
+        }}
     raise RuntimeError(f"unmocked provider request: {parsed.hostname}{parsed.path}")
 
 

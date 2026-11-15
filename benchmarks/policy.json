@@ -3,6 +3,7 @@
   "baseline_commit": "905e1cc4af7eeff697a5b6c76dda7aa2c8d90c31",
   "regression_commit": "630d37a606398c586abeb798b6fd5748fa5ff529",
   "fixture_version": 2,
+  "candidate_extra_fetch_loops": 1,
   "noise": {"relative_range": 0.6, "absolute_floor_multiple": 2.0},
   "settings": {"repeats": 3, "warmup_seconds": 5, "steady_seconds": 20, "burst_seconds": 12, "sample_seconds": 0.1, "burst_period_seconds": 6},
   "profiles": {"single": [[1920, 1080, 0, 0]], "dual": [[1920, 1080, 0, 0], [1920, 1080, 1920, 0]]},
