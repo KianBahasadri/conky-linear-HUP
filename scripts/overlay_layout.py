@@ -31,7 +31,7 @@ def cache_counts(cache_dir):
                  ("done", "dueToday", "competitionUpcoming", "backlogDueSoon"))]
     accounts = 0
     gemini_pro = 0
-    for provider in ("codex", "cursor", "gemini"):
+    for provider in ("codex", "cursor", "gemini", "opencode"):
         try:
             for line in (cache_dir / f"{provider}-usage-render.tsv").read_text().splitlines():
                 if not line.startswith("account\t"):

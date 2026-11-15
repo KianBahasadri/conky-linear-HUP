@@ -1,16 +1,10 @@
 #!/usr/bin/env python3
-import configparser
 import json
 import os
-import re
-import shutil
 import sqlite3
-import tempfile
-import time
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
-from html import unescape
 from pathlib import Path
 
 import fetch_common as common
@@ -21,415 +15,205 @@ CACHE_DIR = ROOT / "cache"
 OUTPUT_PATH = CACHE_DIR / "opencode-usage.json"
 RENDER_PATH = CACHE_DIR / "opencode-usage-render.tsv"
 LOG_PATH = CACHE_DIR / "conky-rate-limit-panel.log"
-WEB_CACHE_PATH = CACHE_DIR / "opencode-web-cache.json"
+USAGE_CACHE_PATH = CACHE_DIR / "opencode-usage-cache.json"
 
-FIVE_HOUR_LIMIT_USD = 12.0
-WEEKLY_LIMIT_USD = 30.0
-MONTHLY_LIMIT_USD = 60.0
-
-FIVE_HOUR_WINDOW_SECONDS = common.FIVE_HOUR_WINDOW_SECONDS
-WEEKLY_WINDOW_SECONDS = common.WEEKLY_WINDOW_SECONDS
-MONTHLY_WINDOW_SECONDS = 31 * 24 * 60 * 60
-
-WORKSPACE_URL_ENV = "OPENCODE_WORKSPACE_URL"
+# The Go client reads this inference route with the workspace's API key.
+# https://github.com/anomalyco/opencode/blob/dev/packages/core/src/usage-limits.ts
+USAGE_URL = "https://opencode.ai/zen/go/v1/usage"
+API_KEY_ENV = "OPENCODE_API_KEY"
 WORKSPACE_ID_ENV = "OPENCODE_WORKSPACE_ID"
-COOKIE_ENV_NAMES = ("OPENCODE_COOKIE", "OPENCODE_AUTH_COOKIE")
-FIREFOX_PROFILE_ENV = "OPENCODE_FIREFOX_PROFILE"
-FIREFOX_HOME_ENV = "OPENCODE_FIREFOX_HOME"
-FIREFOX_CONTAINER_ENV = "OPENCODE_FIREFOX_CONTAINER"
-COOKIE_HOST_SUFFIX = "opencode.ai"
-USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/131 Safari/537.36"
+
+# resetsAt is absolute. The route does not return the window length the pace
+# tick needs, so these match the published 5-hour, weekly, and monthly meters.
+WINDOWS = (
+    ("rolling", "5h", common.FIVE_HOUR_WINDOW_SECONDS),
+    ("weekly", "weekly", common.WEEKLY_WINDOW_SECONDS),
+    ("monthly", "monthly", 31 * 24 * 60 * 60),
+)
 
 
 log_event = common.make_logger(LOG_PATH, "fetch_opencode_usage")
 flatten_bars = common.flatten_bars
 
 
-def workspace_url():
-    configured = os.environ.get(WORKSPACE_URL_ENV, "").strip()
-    if configured:
-        return configured
-
-    workspace_id = os.environ.get(WORKSPACE_ID_ENV, "").strip()
-    if workspace_id:
-        return f"https://opencode.ai/workspace/{workspace_id}/go"
-
-    raise RuntimeError(
-        f"{WORKSPACE_URL_ENV} or {WORKSPACE_ID_ENV} must be set for the OpenCode dashboard"
-    )
+def opencode_data_dir():
+    xdg = os.environ.get("XDG_DATA_HOME", "").strip()
+    base = Path(xdg).expanduser() if xdg else Path.home() / ".local" / "share"
+    return base / "opencode"
 
 
-def _normalize_cookie_env_value(env_name, value):
-    # Accept a raw Cookie header, while allowing a single token to be
-    # supplied as the historical auth-cookie shorthand.
-    parts = [part.strip() for part in value.split(";") if part.strip()]
-    if not parts:
-        raise RuntimeError(f"{env_name} must contain a valid Cookie header")
-    if all("=" in part for part in parts):
-        return "; ".join(parts)
-    if len(parts) == 1:
-        return f"auth={parts[0]}"
-    raise RuntimeError(f"{env_name} must contain a valid Cookie header")
-
-
-def firefox_home():
-    configured = os.environ.get(FIREFOX_HOME_ENV, "").strip()
-    if configured:
-        return Path(configured).expanduser()
-    return Path.home() / ".mozilla" / "firefox"
-
-
-def _profiles_ini_path(home):
-    return Path(home) / "profiles.ini"
-
-
-def resolve_firefox_profile_dir(home=None):
-    """Pick the Firefox profile whose cookies.sqlite should supply auth."""
-    home = Path(home or firefox_home())
-    configured = os.environ.get(FIREFOX_PROFILE_ENV, "").strip()
-    if configured:
-        path = Path(configured).expanduser()
-        if path.is_dir():
-            return path
-        candidate = home / configured
-        if candidate.is_dir():
-            return candidate
-        raise RuntimeError(f"Firefox profile not found: {configured}")
-
-    profiles_ini = _profiles_ini_path(home)
-    if not profiles_ini.is_file():
-        raise RuntimeError(f"Firefox profiles.ini missing: {profiles_ini}")
-
-    parser = configparser.ConfigParser()
-    parser.read(profiles_ini)
-
-    def section_path(section):
-        raw = parser.get(section, "Path", fallback="").strip()
-        if not raw:
-            return None
-        path = Path(raw)
-        if parser.getboolean(section, "IsRelative", fallback=True):
-            path = home / path
-        return path if path.is_dir() else None
-
-    # Install* Default= is what current Firefox actually launches.
-    for section in parser.sections():
-        if not section.startswith("Install"):
-            continue
-        default_path = parser.get(section, "Default", fallback="").strip()
-        if not default_path:
-            continue
-        path = Path(default_path)
-        if not path.is_absolute():
-            path = home / path
-        if path.is_dir():
-            return path
-
-    for section in parser.sections():
-        if not section.startswith("Profile"):
-            continue
-        if parser.get(section, "Default", fallback="") != "1":
-            continue
-        path = section_path(section)
-        if path:
-            return path
-
-    for section in parser.sections():
-        if not section.startswith("Profile"):
-            continue
-        path = section_path(section)
-        if path and (path / "cookies.sqlite").is_file():
-            return path
-
-    raise RuntimeError(f"no usable Firefox profile found under {home}")
-
-
-def _cookie_expiry_epoch_seconds(expiry):
+def _credential_rows(data_dir):
+    db_path = data_dir / "opencode.db"
+    if not db_path.is_file():
+        return []
     try:
-        value = int(expiry)
-    except (TypeError, ValueError):
-        return 0
-    # Some Firefox builds store moz_cookies.expiry in milliseconds.
-    if value > 10_000_000_000:
-        return value // 1000
-    return value
+        connection = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    except sqlite3.Error:
+        return []
+    try:
+        return connection.execute(
+            "SELECT integration_id, value FROM credential WHERE active = 1"
+        ).fetchall()
+    except sqlite3.Error:
+        return []
+    finally:
+        connection.close()
 
 
-def _origin_attributes_user_context_id(origin_attributes):
-    """Return Firefox's container id from a cookie originAttributes value."""
-    attributes = str(origin_attributes or "").lstrip("^")
-    for attribute in attributes.split("&"):
-        key, separator, value = attribute.partition("=")
-        if separator and key == "userContextId":
-            try:
-                return int(value)
-            except ValueError:
-                return None
+def _legacy_api_key(data_dir):
+    try:
+        payload = json.loads((data_dir / "auth.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, UnicodeError):
+        return None
+    entry = payload.get("opencode-go") if isinstance(payload, dict) else None
+    if (
+        isinstance(entry, dict)
+        and entry.get("type") == "api"
+        and isinstance(entry.get("key"), str)
+        and entry["key"].strip()
+    ):
+        return entry["key"].strip()
     return None
 
 
-def resolve_firefox_container_id(profile_dir=None, container_name=None):
-    """Resolve a configured Firefox container name to its userContextId."""
-    requested = (
-        container_name
-        if container_name is not None
-        else os.environ.get(FIREFOX_CONTAINER_ENV, "")
-    ).strip()
-    if not requested:
-        return None
-
-    profile_dir = Path(profile_dir or resolve_firefox_profile_dir())
-    containers_path = profile_dir / "containers.json"
-    try:
-        container_data = json.loads(containers_path.read_text(encoding="utf-8"))
-    except FileNotFoundError as error:
-        raise RuntimeError(
-            f"Firefox containers.json missing for profile {profile_dir.name}"
-        ) from error
-    except (json.JSONDecodeError, OSError) as error:
-        raise RuntimeError(
-            f"Firefox containers.json could not be read for profile {profile_dir.name}"
-        ) from error
-
-    matches = []
-    available = []
-    for identity in container_data.get("identities", []):
-        name = str(identity.get("name") or "").strip()
-        user_context_id = identity.get("userContextId")
-        if name and user_context_id is not None:
-            available.append(name)
-        if name.casefold() == requested.casefold():
-            try:
-                matches.append((name, int(user_context_id)))
-            except (TypeError, ValueError):
-                continue
-
-    if len(matches) > 1:
-        raise RuntimeError(
-            f"Firefox container name is ambiguous: {requested!r}"
-        )
-    if not matches:
-        available_text = ", ".join(sorted(set(available), key=str.casefold))
-        suffix = f"; available named containers: {available_text}" if available_text else ""
-        raise RuntimeError(
-            f"Firefox container not found: {requested!r} in profile {profile_dir.name}{suffix}"
-        )
-    return matches[0][1]
-
-
-def read_firefox_opencode_cookies(profile_dir=None):
-    """Return name->value cookies for opencode.ai from Firefox's cookie DB."""
-    profile_dir = Path(profile_dir or resolve_firefox_profile_dir())
-    configured_container = os.environ.get(FIREFOX_CONTAINER_ENV, "").strip()
-    container_id = resolve_firefox_container_id(profile_dir, configured_container)
-    db_path = profile_dir / "cookies.sqlite"
-    if not db_path.is_file():
-        raise RuntimeError(f"Firefox cookies.sqlite missing: {db_path}")
-
-    # Copy the live DB (and WAL siblings) so a locked Firefox profile still works.
-    with tempfile.TemporaryDirectory(prefix="opencode-ff-cookies-") as tmp_dir:
-        tmp_root = Path(tmp_dir)
-        tmp_db = tmp_root / "cookies.sqlite"
-        shutil.copy2(db_path, tmp_db)
-        for suffix in ("-wal", "-shm"):
-            sibling = Path(str(db_path) + suffix)
-            if sibling.is_file():
-                shutil.copy2(sibling, Path(str(tmp_db) + suffix))
-
-        connection = sqlite3.connect(f"file:{tmp_db}?mode=ro", uri=True)
+def stored_credentials(data_dir=None):
+    """Return the active Go API key and signed-in workspace id, if saved."""
+    data_dir = data_dir or opencode_data_dir()
+    key = None
+    workspace = None
+    for integration_id, raw in _credential_rows(data_dir):
         try:
-            rows = connection.execute(
-                """
-                SELECT name, value, host, expiry
-                    , originAttributes
-                FROM moz_cookies
-                WHERE host = ? OR host = ? OR host LIKE ?
-                ORDER BY name COLLATE NOCASE
-                """,
-                (COOKIE_HOST_SUFFIX, f".{COOKIE_HOST_SUFFIX}", f"%.{COOKIE_HOST_SUFFIX}"),
-            ).fetchall()
-        finally:
-            connection.close()
-
-    now = int(time.time())
-    cookies = {}
-    for name, value, _host, expiry, origin_attributes in rows:
-        if not name or value is None:
+            value = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if not isinstance(value, dict):
             continue
         if (
-            container_id is not None
-            and _origin_attributes_user_context_id(origin_attributes) != container_id
+            integration_id == "opencode-go"
+            and value.get("type") == "key"
+            and isinstance(value.get("key"), str)
+            and value["key"].strip()
         ):
-            continue
-        expiry_seconds = _cookie_expiry_epoch_seconds(expiry)
-        if expiry_seconds and expiry_seconds < now:
-            continue
-        cookies[str(name)] = str(value)
+            key = value["key"].strip()
+        elif integration_id == "opencode" and isinstance(value.get("metadata"), dict):
+            org_id = value["metadata"].get("orgID")
+            if isinstance(org_id, str) and org_id.strip():
+                workspace = org_id.strip()
+    if not key:
+        key = _legacy_api_key(data_dir)
+    return key, workspace
 
-    if "auth" not in cookies:
-        container_suffix = (
-            f" in Firefox container {configured_container!r}"
-            if configured_container
-            else ""
-        )
+
+def resolve_auth(data_dir=None):
+    key = os.environ.get(API_KEY_ENV, "").strip()
+    workspace = os.environ.get(WORKSPACE_ID_ENV, "").strip()
+    if not key or not workspace:
+        stored_key, stored_workspace = stored_credentials(data_dir)
+        key = key or stored_key
+        workspace = workspace or stored_workspace
+    if not key:
         raise RuntimeError(
-            f"Firefox profile {profile_dir.name}{container_suffix} has no live opencode.ai auth cookie; "
-            "log into opencode.ai in Firefox"
+            f"{API_KEY_ENV} is unset and OpenCode has no active Go API key"
         )
-    return cookies
+    if not workspace:
+        raise RuntimeError(
+            f"{WORKSPACE_ID_ENV} is unset and OpenCode has no signed-in workspace"
+        )
+    return key, workspace
 
 
-def cookie_header_from_firefox(profile_dir=None):
-    cookies = read_firefox_opencode_cookies(profile_dir)
-    # Prefer auth first so the header matches a logged-in dashboard request.
-    names = ["auth"] + sorted(name for name in cookies if name != "auth")
-    return "; ".join(f"{name}={cookies[name]}" for name in names)
-
-
-def cookie_header():
-    for env_name in COOKIE_ENV_NAMES:
-        value = os.environ.get(env_name, "").strip()
-        if value:
-            return _normalize_cookie_env_value(env_name, value)
-
+def _parse_reset(value):
+    if not isinstance(value, str) or not value.strip():
+        return None
     try:
-        return cookie_header_from_firefox()
-    except Exception as error:
-        raise RuntimeError(
-            "OpenCode dashboard cookie is missing; log into opencode.ai in Firefox "
-            f"or set OPENCODE_COOKIE ({error})"
-        ) from error
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
 
 
-def parse_reset_time_to_seconds(reset_str):
-    if not reset_str:
-        return 0
-    reset_str = unescape(str(reset_str)).lower().strip()
-
-    def extract_unit(pattern):
-        return sum(int(value) for value in re.findall(pattern, reset_str))
-
-    days = extract_unit(r"(\d+)\s*(?:days?|d\b)")
-    hours = extract_unit(r"(\d+)\s*(?:hours?|hrs?|h\b)")
-    minutes = extract_unit(r"(\d+)\s*(?:minutes?|mins?|m\b)")
-    seconds = extract_unit(r"(\d+)\s*(?:seconds?|secs?|s\b)")
-    return days * 86400 + hours * 3600 + minutes * 60 + seconds
-
-
-def _slot_text(chunk, slot):
-    match = re.search(
-        rf'data-slot\s*=\s*["\']{re.escape(slot)}["\'][^>]*>(.*?)</',
-        chunk,
-        flags=re.IGNORECASE | re.DOTALL,
-    )
-    if not match:
-        return ""
-    return re.sub(r"<[^>]+>", "", unescape(match.group(1))).strip()
-
-
-def _window_key(label):
-    normalized = label.lower().replace("–", "-").replace("—", "-")
-    if (
-        re.search(r"\b5\s*(?:h|hours?|hour)\b", normalized)
-        or "5-hour" in normalized
-        or "rolling" in normalized
-    ):
-        return "5h"
-    if "week" in normalized:
-        return "weekly"
-    if "month" in normalized:
-        return "monthly"
-    return None
-
-
-def _window_spec(label):
-    return {
-        "5h": (FIVE_HOUR_LIMIT_USD, FIVE_HOUR_WINDOW_SECONDS),
-        "weekly": (WEEKLY_LIMIT_USD, WEEKLY_WINDOW_SECONDS),
-        "monthly": (MONTHLY_LIMIT_USD, MONTHLY_WINDOW_SECONDS),
-    }[label]
-
-
-def parse_usage_html(html, now_epoch=None):
-    """Parse the three usage cards rendered by the OpenCode dashboard."""
+def parse_usage(payload, now_epoch=None):
+    """Turn the Go usage meters into the panel's 5h, weekly, and monthly windows."""
     now_epoch = int(now_epoch if now_epoch is not None else datetime.now(timezone.utc).timestamp())
-    windows = {}
+    usage = payload.get("usage") if isinstance(payload, dict) else None
+    if not isinstance(usage, dict):
+        raise RuntimeError("OpenCode Go usage response is missing usage")
 
-    # The dashboard marks each card with usage-item. Keep the card boundary so
-    # similarly named elements elsewhere on the page cannot be mixed together.
-    chunks = re.split(r"(?=usage-item\b)", html, flags=re.IGNORECASE)[1:]
-    for chunk in chunks:
-        label = _slot_text(chunk[:4000], "usage-label")
-        value = _slot_text(chunk[:4000], "usage-value")
-        window = _window_key(label)
-        if not window or not re.fullmatch(r"\d+(?:\.\d+)?%", value):
-            continue
-
-        used_percent = max(0.0, min(100.0, float(value[:-1])))
-        reset_text = _slot_text(chunk[:4000], "reset-time")
-        reset_text = re.sub(r"^resets in\s*", "", reset_text, flags=re.IGNORECASE).strip()
-        reset_after_seconds = parse_reset_time_to_seconds(reset_text)
-        reset_at_epoch = now_epoch + reset_after_seconds if reset_after_seconds > 0 else 0
-        resets_at = (
-            datetime.fromtimestamp(reset_at_epoch, tz=timezone.utc).isoformat()
-            if reset_at_epoch > 0
-            else None
+    windows = []
+    for source, label, window_seconds in WINDOWS:
+        meter = usage.get(source)
+        if not isinstance(meter, dict):
+            raise RuntimeError(f"OpenCode Go usage is missing the {source} meter")
+        percent = meter.get("percent")
+        if isinstance(percent, bool) or not isinstance(percent, (int, float)):
+            raise RuntimeError(f"OpenCode Go {source} usage percent is invalid")
+        used = max(0.0, min(100.0, float(percent)))
+        if meter.get("status") == "rate-limited":
+            used = 100.0
+        reset_at = _parse_reset(meter.get("resetsAt"))
+        reset_epoch = int(reset_at.timestamp()) if reset_at else 0
+        remaining = max(0, reset_epoch - now_epoch) if reset_epoch else 0
+        windows.append(
+            {
+                "label": label,
+                "usedPercent": round(used, 1),
+                "remainingPercent": round(100.0 - used, 1),
+                "resetsAt": reset_at.isoformat() if reset_at else None,
+                "resetAtEpoch": reset_epoch,
+                "resetAfterSeconds": remaining,
+                "windowSeconds": window_seconds,
+            }
         )
-        limit_usd, window_seconds = _window_spec(window)
-        windows[window] = {
-            "label": window,
-            "usedPercent": round(used_percent, 1),
-            "remainingPercent": round(100.0 - used_percent, 1),
-            "resetsAt": resets_at,
-            "resetAtEpoch": reset_at_epoch,
-            "resetAfterSeconds": reset_after_seconds,
-            "windowSeconds": window_seconds,
-            "costUsd": round((used_percent / 100.0) * limit_usd, 4),
-            "limitUsd": limit_usd,
-        }
-
-    expected = ("5h", "weekly", "monthly")
-    missing = [label for label in expected if label not in windows]
-    if missing:
-        raise RuntimeError(f"OpenCode dashboard usage cards missing: {', '.join(missing)}")
-    return [windows[label] for label in expected]
+    return windows
 
 
-def fetch_usage_from_web(url=None, cookies=None):
-    """Fetch usage from the OpenCode web dashboard only."""
-    url = url or workspace_url()
-    cookies = cookies or cookie_header()
+def _http_error_message(error):
+    message = f"OpenCode Go usage returned HTTP {error.code}"
+    try:
+        payload = json.loads(error.read().decode("utf-8", errors="replace"))
+    except (json.JSONDecodeError, OSError, UnicodeError):
+        payload = None
+    finally:
+        error.close()
+    if isinstance(payload, dict):
+        inner = payload.get("error")
+        if isinstance(inner, dict) and isinstance(inner.get("message"), str) and inner["message"].strip():
+            message = inner["message"].strip()
+    return message
+
+
+def fetch_usage(api_key, workspace_id, now_epoch=None):
     request = urllib.request.Request(
-        url,
+        USAGE_URL,
         headers={
-            "User-Agent": USER_AGENT,
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Cookie": cookies,
+            "Authorization": f"Bearer {api_key}",
+            "Accept": "application/json",
+            "User-Agent": "opencode",
+            "x-opencode-org-id": workspace_id,
         },
     )
-
     try:
-        with urllib.request.urlopen(request, timeout=10) as response:
-            final_url = response.geturl()
-            if any(marker in final_url.lower() for marker in ("/login", "/authorize", "auth.opencode.ai")):
-                raise RuntimeError("OpenCode dashboard session expired (redirected to login)")
-            html = response.read().decode("utf-8", errors="replace")
+        with urllib.request.urlopen(request, timeout=15) as response:
+            payload = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as error:
-        raise RuntimeError(f"OpenCode dashboard returned HTTP {error.code}") from error
+        raise RuntimeError(_http_error_message(error)) from error
     except urllib.error.URLError as error:
-        raise RuntimeError(f"OpenCode dashboard request failed: {error.reason}") from error
+        raise RuntimeError(f"OpenCode Go usage request failed: {error.reason}") from error
+    except json.JSONDecodeError as error:
+        raise RuntimeError("OpenCode Go usage response was not JSON") from error
+    return parse_usage(payload, now_epoch=now_epoch)
 
-    return parse_usage_html(html)
 
-
-def save_web_cache(windows, url):
+def save_usage_cache(windows, workspace_id):
     try:
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
         common.atomic_write_json(
-            WEB_CACHE_PATH,
+            USAGE_CACHE_PATH,
             {
                 "fetched_at": int(datetime.now(timezone.utc).timestamp()),
-                "workspace_url": url,
+                "workspace_id": workspace_id,
                 "windows": windows,
             },
         )
@@ -437,15 +221,15 @@ def save_web_cache(windows, url):
         pass
 
 
-def load_web_cache(url):
+def load_usage_cache(workspace_id):
     try:
-        raw = json.loads(WEB_CACHE_PATH.read_text(encoding="utf-8"))
-        if raw.get("workspace_url") != url:
+        raw = json.loads(USAGE_CACHE_PATH.read_text(encoding="utf-8"))
+        if raw.get("workspace_id") != workspace_id:
             return None
         windows = raw.get("windows")
         if isinstance(windows, list) and len(windows) == 3:
             return windows
-    except (FileNotFoundError, json.JSONDecodeError, OSError, AttributeError):
+    except (FileNotFoundError, json.JSONDecodeError, OSError, AttributeError, UnicodeError):
         pass
     return None
 
@@ -477,14 +261,8 @@ def empty_usage_windows():
             "resetAtEpoch": 0,
             "resetAfterSeconds": 0,
             "windowSeconds": window_seconds,
-            "costUsd": 0.0,
-            "limitUsd": limit_usd,
         }
-        for label, limit_usd, window_seconds in (
-            ("5h", FIVE_HOUR_LIMIT_USD, FIVE_HOUR_WINDOW_SECONDS),
-            ("weekly", WEEKLY_LIMIT_USD, WEEKLY_WINDOW_SECONDS),
-            ("monthly", MONTHLY_LIMIT_USD, MONTHLY_WINDOW_SECONDS),
-        )
+        for _source, label, window_seconds in WINDOWS
     ]
 
 
@@ -515,9 +293,9 @@ def main():
     label = os.environ.get("OPENCODE_USAGE_LABEL", "default").strip() or "default"
 
     try:
-        url = workspace_url()
-        windows = fetch_usage_from_web(url)
-        save_web_cache(windows, url)
+        api_key, workspace_id = resolve_auth()
+        windows = fetch_usage(api_key, workspace_id)
+        save_usage_cache(windows, workspace_id)
         account = account_payload(label, windows)
         output = {
             "updatedAt": datetime.now(timezone.utc).isoformat(),
@@ -527,19 +305,19 @@ def main():
             "bars": flatten_bars([account]),
         }
         common.write_usage_outputs(OUTPUT_PATH, RENDER_PATH, output)
-        log_event(f"completed web fetch account={label} wrote={OUTPUT_PATH.name}")
+        log_event(f"completed usage fetch account={label} wrote={OUTPUT_PATH.name}")
         print(json.dumps(output, indent=2))
         return 0
-    except Exception as web_error:
-        log_event(f"web fetch failed ({web_error})")
+    except Exception as error:
+        log_event(f"usage fetch failed ({error})")
         try:
-            url = workspace_url()
+            _api_key, workspace_id = resolve_auth()
         except RuntimeError:
-            url = ""
-        cached_windows = load_web_cache(url) if url else None
+            workspace_id = ""
+        cached_windows = load_usage_cache(workspace_id) if workspace_id else None
         if cached_windows:
-            error = f"using stale web cache after {web_error}"
-            account = account_payload(label, cached_windows, stale=True, error=error)
+            message = f"using stale usage cache after {error}"
+            account = account_payload(label, cached_windows, stale=True, error=message)
             output = {
                 "updatedAt": datetime.now(timezone.utc).isoformat(),
                 "provider": "OpenCode",
@@ -548,11 +326,11 @@ def main():
                 "bars": flatten_bars([account]),
             }
             common.write_usage_outputs(OUTPUT_PATH, RENDER_PATH, output)
-            log_event(f"using stale web usage cache for account={label}")
+            log_event(f"using stale usage cache for account={label}")
             print(json.dumps(output, indent=2))
             return 0
 
-        write_error(f"OpenCode web usage fetch failed: {web_error}", label=label)
+        write_error(f"OpenCode Go usage fetch failed: {error}", label=label)
         return 1
 
 

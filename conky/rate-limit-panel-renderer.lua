@@ -353,6 +353,8 @@ return function(shared, repo_root)
     local provider = string.lower(account.provider or '')
     if provider == 'codex' then
       return 0
+    elseif provider == 'opencode' then
+      return 5
     elseif provider == 'claude' then
       return 10
     elseif provider == 'cursor' then
@@ -361,8 +363,6 @@ return function(shared, repo_root)
       return 30
     elseif provider == 'grok' then
       return 35
-    elseif provider == 'opencode' then
-      return 38
     elseif provider == 'commandcode' then
       return 39
     end
@@ -432,6 +432,18 @@ return function(shared, repo_root)
       end
       for _, account in ipairs(gemini_usage.accounts or {}) do
         account.provider = account.provider or 'Gemini'
+        table.insert(usage.accounts, account)
+      end
+    end
+
+    local opencode_usage = read_opencode_usage_tsv()
+    if opencode_usage then
+      usage.ok = usage.ok or opencode_usage.ok
+      if usage.error == '' then
+        usage.error = opencode_usage.error or ''
+      end
+      for _, account in ipairs(opencode_usage.accounts or {}) do
+        account.provider = account.provider or 'OpenCode'
         table.insert(usage.accounts, account)
       end
     end
@@ -951,6 +963,16 @@ return function(shared, repo_root)
   local function find_split_point(accounts)
     local n = #accounts
     if n <= 1 then return 1 end
+    -- OpenCode follows Codex and stays the last group in the left column.
+    local opencode_last = nil
+    for index = 1, n do
+      if string.lower(accounts[index].provider or '') == 'opencode' then
+        opencode_last = index
+      end
+    end
+    if opencode_last and opencode_last < n then
+      return opencode_last
+    end
     local target = math.ceil(n / 2)
     if target < n and accounts[target].provider ~= accounts[target + 1].provider then
       return target
@@ -1168,6 +1190,7 @@ return function(shared, repo_root)
              gemini_duration_columns = gemini_duration_columns,
              account_pitch = account_pitch,
              provider_mark_indices = provider_mark_indices,
+             find_split_point = find_split_point,
              day_start_epoch = day_start_epoch,
              used_before_today = used_before_today,
              read_usage_history = read_usage_history,

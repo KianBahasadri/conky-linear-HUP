@@ -537,6 +537,7 @@ RATE_LIMIT_PANEL_RENDER_TSVS = (
     "codex-usage-render.tsv",
     "cursor-usage-render.tsv",
     "gemini-usage-render.tsv",
+    "opencode-usage-render.tsv",
 )
 
 

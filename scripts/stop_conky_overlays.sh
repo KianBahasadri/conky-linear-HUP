@@ -52,8 +52,8 @@ GIT_FETCH_PID="$CACHE_DIR/git-fetch-loop.pid"
 SESSIONS_FETCH_PID="$CACHE_DIR/sessions-fetch-loop.pid"
 
 overlay_keys=(linear rate-limit-panel minecraft github weather thermometer resource-monitor billing git sessions)
-fetch_keys=(theme gpu linear codex cursor gemini minecraft github weather workouts weight billing git sessions)
-retired_fetch_keys=(claude grok opencode commandcode)
+fetch_keys=(theme gpu linear codex cursor gemini opencode minecraft github weather workouts weight billing git sessions)
+retired_fetch_keys=(claude grok commandcode)
 
 declare -A overlay_config=(
   [linear]="$ROOT/conky/linear-overlay.conkyrc"

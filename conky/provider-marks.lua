@@ -91,6 +91,14 @@ local marks = {
         fill = 'currentColor'},
     },
   },
+  -- Official 240×300 frame from https://opencode.ai/brand (4:5, open counter).
+  opencode = {
+    view = {0, 0, 240, 300}, ratio = 240 / 300,
+    paths = {
+      {d = 'M180 60 H60 V240 H180 V60 Z M240 300 H0 V0 H240 V300 Z',
+        fill = 'currentColor', evenodd = true},
+    },
+  },
   commandcode = {
     view = {0, 0, 24, 24}, ratio = 1,
     paths = {

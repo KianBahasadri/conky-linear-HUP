@@ -319,10 +319,14 @@ def test_rate_limit_account_count_from_cache_skips_removed_providers(tmp_path):
         "account\tida\tPro\t1\t1\t\t0\n",
         encoding="utf-8",
     )
-    for name in ("pioneer", "claude", "grok", "opencode", "commandcode"):
+    (tmp_path / "opencode-usage-render.tsv").write_text(
+        "account\tdefault\tgo\t1\t1\t\t0\n",
+        encoding="utf-8",
+    )
+    for name in ("pioneer", "claude", "grok", "commandcode"):
         (tmp_path / f"{name}-usage-render.tsv").write_text(
             f"account\t{name}\t\t1\t1\t\t0\n",
             encoding="utf-8",
         )
     (tmp_path / "not-a-render.txt").write_text("account\tignored\n", encoding="utf-8")
-    assert common.rate_limit_account_count_from_cache(tmp_path) == 3
+    assert common.rate_limit_account_count_from_cache(tmp_path) == 4

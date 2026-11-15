@@ -133,8 +133,8 @@ GENERATED_CONFIG_COUNT=0
 GENERATION_STAGE_DIR=""
 
 overlay_keys=(linear rate-limit-panel minecraft github weather thermometer resource-monitor billing git sessions)
-fetch_keys=(theme gpu linear codex cursor gemini minecraft github weather workouts weight billing git sessions)
-retired_fetch_keys=(claude grok opencode commandcode)
+fetch_keys=(theme gpu linear codex cursor gemini opencode minecraft github weather workouts weight billing git sessions)
+retired_fetch_keys=(claude grok commandcode)
 
 declare -A overlay_disabled_name=(
   [linear]="linear"

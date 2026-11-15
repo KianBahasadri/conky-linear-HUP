@@ -78,6 +78,7 @@ local test_accounts = {
   { provider = 'Codex', label = 'bashir', plan_type = 'free' },
   { provider = 'Codex', label = 'kian', plan_type = 'pro' },
   { provider = 'Codex', label = 'ahmad', plan_type = 'plus' },
+  { provider = 'OpenCode', label = 'default', plan_type = 'go' },
   { provider = 'Gemini', label = 'kian', plan_type = 'pro' },
   { provider = 'Gemini', label = 'baba', plan_type = 'free' },
 }
@@ -88,8 +89,10 @@ for _, acct in ipairs(test_accounts) do
   table.insert(ordered, acct.provider .. ':' .. acct.label)
 end
 eq(table.concat(ordered, ','),
-  'Codex:ahmad,Codex:bashir,Codex:kian,Codex:sepehr,Cursor:21kb60,Cursor:kian,Cursor:sepehr,Gemini:baba,Gemini:kian',
+  'Codex:ahmad,Codex:bashir,Codex:kian,Codex:sepehr,OpenCode:default,Cursor:21kb60,Cursor:kian,Cursor:sepehr,Gemini:baba,Gemini:kian',
   'accounts within each provider are sorted alphabetically without separating free accounts')
+eq(renderer._test.find_split_point(test_accounts), 5,
+  'OpenCode stays at the bottom of the left column')
 
 local has_filled = renderer._test.account_has_filled_bar
 local normal_acct = { stale = false }

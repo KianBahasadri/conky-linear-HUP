@@ -27,7 +27,7 @@ providing enough space for 6-character names (such as `sepehr` and `21kb60`) to
 remain fully visible while names share a left edge regardless of which icons are
 shown. Names retain their normal ellipsis behavior and all bars and reset
 columns stay aligned with standardized spacing.
-A single horizontal rule separates provider sections in a column. A column with only one provider has no rule. Wide panels use a fixed 112px-high band aligned with the neighboring billing map, retaining two columns regardless of account count. Each column redistributes its row spacing to fill that band when profiles are added or removed, including during cache refreshes. Rows keep their minimum readable pitch; an overflowing column reserves a 16px footer and rotates through its own pages within the same band. Provider identity does not determine bar color. Shared typography, colors, and
+A single horizontal rule separates provider sections in a column. A column with only one provider has no rule. Wide panels use a fixed 112px-high band aligned with the neighboring billing map, retaining two columns regardless of account count. OpenCode follows Codex and is the last group in the left column. Each column redistributes its row spacing to fill that band when profiles are added or removed, including during cache refreshes. Rows keep their minimum readable pitch; an overflowing column reserves a 16px footer and rotates through its own pages within the same band. Provider identity does not determine bar color. Shared typography, colors, and
 overflow are owned by the [Desktop design system](design-system.md).
 
 On monitors narrower than 1600px, the panel uses the full center column width.
@@ -166,12 +166,11 @@ the provider-reported tier and its weight.
 
 ## OpenCode Go
 
-- Usage is fetched from the authenticated OpenCode Go dashboard configured by `OPENCODE_WORKSPACE_URL` (or `OPENCODE_WORKSPACE_ID`). The session cookie is read from Firefox's `cookies.sqlite` for `opencode.ai` (Install default profile, overridable with `OPENCODE_FIREFOX_PROFILE`). Set `OPENCODE_FIREFOX_CONTAINER` to select a named Firefox container; matching is case-insensitive. `OPENCODE_COOKIE` / `OPENCODE_AUTH_COOKIE` remain optional overrides.
-- The fetcher uses one dashboard `GET` request per refresh. It never reads OpenCode local auth files or SQLite usage DBs, and never calls the OpenCode API or sends a usage probe.
-- The dashboard's rolling/5-hour ($12 limit), weekly ($30 limit), and monthly ($60 limit) cards are parsed and rendered as three bars.
+- Usage is one `GET https://opencode.ai/zen/go/v1/usage` with the Go API key as a bearer token and the workspace id in `x-opencode-org-id`. `OPENCODE_API_KEY` overrides the key. Otherwise the fetcher reads the active `opencode-go` key in `${XDG_DATA_HOME:-~/.local/share}/opencode/opencode.db`, then the legacy `auth.json` `opencode-go` entry. `OPENCODE_WORKSPACE_ID` overrides the workspace; otherwise the signed-in `opencode` credential's `orgID` is used.
+- The rolling, weekly, and monthly meters are the 5-hour, weekly, and monthly bars. A `rate-limited` meter is drawn full. The route returns each reset time and not the window length, so pace ticks use 5 hours, 7 days, and 31 days.
 - The `OPENCODE` pace summary's delta uses the monthly window (skipped entirely if the row has none), unlike Codex/Claude which use the weekly window.
-- `cache/opencode-web-cache.json` stores the last successful dashboard response. If the next request fails, that response is shown as stale until a fresh dashboard request succeeds. The workspace URL is stored with the cache so data from a different workspace cannot be reused. If no matching cache exists, the panel keeps the OpenCode row with an error message instead of hiding it. Expired-session display follows the general rule in [Expired credentials and stale cache](expired-credentials.md).
-- `OPENCODE_USAGE_LABEL` controls the row label; the dashboard is represented as one selected workspace row rather than local auth profiles.
+- `cache/opencode-usage-cache.json` stores the last successful meters for that workspace. If the next request fails, those meters are shown as stale until a fresh request succeeds. A cache from a different workspace is not reused. If no matching cache exists, the panel keeps the OpenCode row with an error message instead of hiding it. Expired-key display follows the general rule in [Expired credentials and stale cache](expired-credentials.md).
+- `OPENCODE_USAGE_LABEL` controls the row label; the workspace is one selected row.
 
 ## Command Code
 
@@ -185,13 +184,12 @@ the provider-reported tier and its weight.
 
 - **Claude** account was removed from the rate limit panel because the Claude subscription expired. Its background fetch loop is stopped and disabled.
 - **Grok** was removed from the rate limit panel. Its background fetch loop is stopped and disabled.
-- **OpenCode Go** was removed from the rate limit panel. Its background fetch loop is stopped and disabled.
 - **Command Code** was removed from the rate limit panel. Its background fetch loop is stopped and disabled.
 - **Pioneer** was removed from the rate limit panel. The Pioneer fetch script, cache files, env vars, and panel chip are no longer used.
 
 ## Adaptive polling
 
-- Each active rate-limit fetcher (Codex, Cursor, Gemini) repolls adaptively instead of on a fixed cadence.
+- Each active rate-limit fetcher (Codex, Cursor, Gemini, OpenCode) repolls adaptively instead of on a fixed cadence.
 - After every fetch the loop fingerprints the meaningful usage state in that fetcher's `cache/*-usage-render.tsv`: the `meta`/`updatedAt` row is dropped, and time-derived bar columns (`resetsAt`, `resetAtEpoch`, `resetAfterSeconds`) and account availability/measurement capture timestamps are blanked. Usage, availability, selection, freshness/error and account/window structure changes still affect the fingerprint.
 - When the fingerprint changes, the loop records the change time in `cache/*-usage-render.tsv.last_change` and uses `RATE_LIMIT_CHANGED_INTERVAL` (default `60`s). It keeps that short interval for any subsequent poll whose last change is still within `RATE_LIMIT_RECENT_CHANGE_WINDOW` (default `600`s / 10 minutes), even if the latest poll itself was unchanged. After the window expires with no further changes, it backs off to `RATE_LIMIT_UNCHANGED_INTERVAL` (default `300`s).
 - The fingerprint is stored as `cache/*-usage-render.tsv.fingerprint`. Both the fingerprint and last-change files persist across overlay restarts; a restart does not force a short interval unless usage actually changed or a prior change is still inside the recent-change window.
