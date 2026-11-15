@@ -38,11 +38,13 @@ sudo; sampling and measured workloads then live in separate sibling groups.
 
 The benchmark runs the real launcher, Conky windows, Lua renderers, project
 Python, shell fetch loops and subprocesses. Each run has all panels enabled:
-nine windows per monitor, twelve data fetch loops, the desktop-theme watcher,
-and the shared GPU producer. The optimized reference and current suite supervise
-fourteen loops. The archived pre-optimization version used for rejection proof
-supervises thirteen and samples GPUs from each resource window. Sessions are
-merged into Git, as on the production desktop.
+nine windows per monitor. The current suite supervises fifteen loops: thirteen
+data fetch loops, the desktop-theme watcher, and the shared GPU producer. The
+optimized reference supervises fourteen loops. OpenCode runs only in the current
+suite. The archived pre-optimization version used for rejection proof supervises
+thirteen
+and samples GPUs from each resource window. Sessions are merged into Git, as on
+the production desktop.
 
 The profiles and measurement policy live in
 [`benchmarks/policy.json`](../benchmarks/policy.json). `single` uses one
@@ -64,8 +66,9 @@ appropriate producer/loop count for each copied source version.
 [`benchmarks/fixtures.py`](../benchmarks/fixtures.py) generates versioned fixed
 data: sixteen Linear tasks, twelve real Git repositories with 48 files each
 (four dirty), six tmux sessions, two Codex and two Cursor cloud accounts, Gemini
-quota, 401 contribution days, weather and historical weather, Minecraft status,
-AWS and OpenRouter observations, fourteen 900-point TCX runs, a real SQLite ZIP
+quota, an OpenCode Go usage response, 401 contribution days, weather and
+historical weather, Minecraft status, AWS and OpenRouter observations, fourteen
+900-point TCX runs, a real SQLite ZIP
 containing ninety weigh-ins, and two simulated GPUs with 32 DRM clients.
 Provider acquisition boundaries and desktop service commands use fixed
 responses. Fetchers still parse, normalize, analyze, cache, discover repositories,

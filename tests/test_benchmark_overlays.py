@@ -1,6 +1,7 @@
 import copy
 import json
 import os
+import pathlib
 import subprocess
 import sys
 
@@ -9,8 +10,9 @@ import pytest
 import benchmark_overlays as benchmark
 
 sys.path.insert(0, str(benchmark.BENCH))
-from verify_report import verify
+from verify_report import expected_fetch_loops, verify
 import fixtures
+import workload
 
 POLICY = json.loads((benchmark.BENCH / "policy.json").read_text())
 
@@ -30,8 +32,8 @@ def measurements():
 def complete_report():
     runs = measurements()
     for result in runs:
-        shared = result["role"] == "candidate"
-        result.update(windows=9, fetch_loops=13 + int(shared), shared_gpu_sampler=shared,
+        result["shared_gpu_sampler"] = result["role"] == "candidate"
+        result.update(windows=9, fetch_loops=expected_fetch_loops(result, POLICY),
                       source_revision=POLICY["baseline_commit"] if result["role"] == "baseline" else None)
         result["render_windows"] = {f"overlay-{i}": {"p95_cpu_ms": 2.0, "frames": 10} for i in range(9)}
         for phase in ("warmup", "steady", "burst"):
@@ -180,6 +182,44 @@ if __name__ == "__main__":
     events = [json.loads(line) for line in (tmp_path / "cache/benchmark-invocations").read_text().splitlines()]
     assert [event["kind"] for event in events] == ["start", "end"]
     assert all(event["name"] == script.name and event["phase"] == "burst" for event in events)
+
+
+def test_process_info_treats_a_vanished_process_as_absent(monkeypatch):
+    def vanished(self):
+        raise ProcessLookupError(3, "No such process")
+
+    monkeypatch.setattr(pathlib.Path, "read_bytes", vanished)
+    assert workload.process_info(1) is None
+
+
+def test_current_launcher_starts_the_opencode_loop():
+    keys = fixtures.launcher_fetch_keys(benchmark.ROOT)
+    assert "opencode" in keys
+    assert len(keys) == 14 + POLICY["candidate_extra_fetch_loops"]
+
+
+def test_workload_coverage_follows_the_copied_launcher(tmp_path):
+    script_dir = tmp_path / "scripts"
+    script_dir.mkdir()
+    (script_dir / "start_conky_overlays.sh").write_text("fetch_keys=(theme gpu linear)\n")
+    fetchers, outputs = fixtures.active_workload(tmp_path)
+    assert "opencode_usage" not in fetchers
+    assert "opencode-usage" not in outputs
+    (script_dir / "start_conky_overlays.sh").write_text("fetch_keys=(theme gpu linear opencode)\n")
+    fetchers, outputs = fixtures.active_workload(tmp_path)
+    assert fetchers[-1] == "opencode_usage"
+    assert outputs[-1] == "opencode-usage"
+
+
+def test_opencode_benchmark_payload_parses():
+    sys.path.insert(0, str(benchmark.ROOT / "scripts"))
+    import fetch_opencode_usage
+    windows = fetch_opencode_usage.parse_usage(
+        fixtures.payload("https://opencode.ai/zen/go/v1/usage", None),
+        now_epoch=fixtures.NOW,
+    )
+    assert [window["label"] for window in windows] == ["5h", "weekly", "monthly"]
+    assert all(window["resetAfterSeconds"] > 0 for window in windows)
 
 
 def test_ci_gate_rejects_a_missing_shared_sampler_loop():

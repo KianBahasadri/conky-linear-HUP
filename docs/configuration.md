@@ -63,14 +63,9 @@ outside its assigned region.
 | `GROK_AUTH_PATH` | Force a single Grok auth file |
 | `GROK_HOME` | Override the Grok config directory |
 | `GROK_CLI_CHAT_PROXY_BASE_URL` | Override the Grok billing API base URL |
-| `OPENCODE_WORKSPACE_URL` | OpenCode Go dashboard URL to fetch |
-| `OPENCODE_WORKSPACE_ID` | Workspace ID used to construct the dashboard URL when `OPENCODE_WORKSPACE_URL` is unset |
-| `OPENCODE_FIREFOX_HOME` | Override `~/.mozilla/firefox` when reading the dashboard cookie |
-| `OPENCODE_FIREFOX_PROFILE` | Firefox profile path or profile directory name under the Firefox home |
-| `OPENCODE_FIREFOX_CONTAINER` | Firefox container name whose `opencode.ai` cookies should be used; matching is case-insensitive |
-| `OPENCODE_COOKIE` | Optional Cookie header override; when unset, the fetcher reads `opencode.ai` cookies from Firefox |
-| `OPENCODE_AUTH_COOKIE` | Backward-compatible alias for `OPENCODE_COOKIE` |
-| `OPENCODE_USAGE_LABEL` | Label shown for the dashboard workspace |
+| `OPENCODE_API_KEY` | Go API key; when unset, the active key in the OpenCode credential store is used |
+| `OPENCODE_WORKSPACE_ID` | Workspace id sent as `x-opencode-org-id`; when unset, the signed-in workspace is used |
+| `OPENCODE_USAGE_LABEL` | Label shown for the OpenCode workspace |
 | `COMMAND_CODE_API_KEY` | Optional API key; when set, it overrides `~/.commandcode/auth.json` (same as the CLI) |
 | `COMMAND_CODE_USAGE_LABEL` | Row label when using `COMMAND_CODE_API_KEY` |
 | `COMMAND_CODE_HOME` | Override the Command Code config directory (`~/.commandcode`) |
