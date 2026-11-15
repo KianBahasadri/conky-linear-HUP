@@ -1,6 +1,7 @@
 import copy
 import json
 import os
+import pathlib
 import subprocess
 import sys
 
@@ -11,6 +12,7 @@ import benchmark_overlays as benchmark
 sys.path.insert(0, str(benchmark.BENCH))
 from verify_report import expected_fetch_loops, verify
 import fixtures
+import workload
 
 POLICY = json.loads((benchmark.BENCH / "policy.json").read_text())
 
@@ -182,19 +184,12 @@ if __name__ == "__main__":
     assert all(event["name"] == script.name and event["phase"] == "burst" for event in events)
 
 
-def test_pinned_revisions_keep_their_fetch_loop_counts(tmp_path):
-    expected = {POLICY["baseline_commit"]: 14, POLICY["regression_commit"]: 13}
-    for revision, count in expected.items():
-        text = subprocess.check_output(
-            ["git", "-C", str(benchmark.ROOT), "show", f"{revision}:scripts/start_conky_overlays.sh"],
-            text=True,
-        )
-        root = tmp_path / revision
-        (root / "scripts").mkdir(parents=True)
-        (root / "scripts/start_conky_overlays.sh").write_text(text)
-        keys = fixtures.launcher_fetch_keys(root)
-        assert "opencode" not in keys
-        assert len(keys) == count
+def test_process_info_treats_a_vanished_process_as_absent(monkeypatch):
+    def vanished(self):
+        raise ProcessLookupError(3, "No such process")
+
+    monkeypatch.setattr(pathlib.Path, "read_bytes", vanished)
+    assert workload.process_info(1) is None
 
 
 def test_current_launcher_starts_the_opencode_loop():

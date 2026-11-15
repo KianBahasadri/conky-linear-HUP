@@ -20,7 +20,9 @@ def process_info(pid):
     try:
         command = (Path("/proc") / str(pid) / "cmdline").read_bytes().split(b"\0")
         status = (Path("/proc") / str(pid) / "status").read_text()
-    except FileNotFoundError:
+    except (FileNotFoundError, ProcessLookupError):
+        # The process can exit after cgroup.procs listed it. Linux then
+        # raises ESRCH from the /proc read.
         return None
     parent = int(next(line.split()[1] for line in status.splitlines() if line.startswith("PPid:")))
     return command, parent
