@@ -91,6 +91,7 @@ def test_identity_join_and_serialization(monkeypatch, tmp_path, provider, local,
     assert list(map(float, fields[9:12])) == [NOW, NOW - 60, 300]
     assert fields[12] == "fresh"
     assert fields[13] == "1"
+    assert fields[14] == ""
     assert tsv[2].split("\t")[11:] == [IDENTITY, source["accounts"][0]["usage"]["windows"][0]["name"]]
     history = common.load_usage_history(tmp_path / common.RATE_LIMIT_USAGE_HISTORY_NAME)
     assert {sample["t"] for sample in history} == {NOW - 60}
@@ -218,6 +219,7 @@ def test_independent_availability_round_trip(monkeypatch, tmp_path, provider, lo
     assert json.loads((tmp_path / "usage.json").read_text())["accounts"] == accounts
     fields = (tmp_path / "usage.tsv").read_text().splitlines()[1].split("\t")
     assert fields[7] == str(int(local)) and fields[13] == str(int(cloud))
+    assert fields[14] == ""
 
 
 @pytest.mark.parametrize("provider", ["codex", "cursor"])
@@ -438,6 +440,43 @@ def test_failed_local_poll_falls_back_to_cloud_or_cache(monkeypatch, tmp_path):
     assert not accounts[0]["ok"] and accounts[0]["staleCache"]
     assert accounts[0]["error"] == "local login unavailable"
     assert accounts[0]["windows"] == [{"label": "5h", "usedPercent": 40}]
+
+
+def test_local_poll_keeps_banked_reset_count_and_cloud_does_not_invent_one(monkeypatch, tmp_path):
+    source = snapshot("codex", local=True, selected=True)
+    monkeypatch.setattr(managed, "read_snapshot", lambda *_: source)
+
+    def fetch_local(*_args):
+        return {
+            "ok": True, "planType": "plus", "rateLimitResetsAvailable": 3,
+            "windows": [{"label": "weekly", "usedPercent": 12}],
+        }
+
+    accounts, _ = managed.fetch_accounts("codex", tmp_path, tmp_path / "cache", fetch_local, now=NOW)
+    assert accounts[0]["usageSource"] == "local"
+    assert accounts[0]["rateLimitResetsAvailable"] == 3
+    common.write_usage_outputs(
+        tmp_path / "usage.json", tmp_path / "usage.tsv",
+        {"ok": True, "accounts": accounts, "bars": common.flatten_bars(accounts)},
+    )
+    assert (tmp_path / "usage.tsv").read_text().splitlines()[1].split("\t")[14] == "3"
+
+    source["accounts"][0]["local_available"] = False
+    source["accounts"][0]["local_profiles"] = []
+    accounts, _ = managed.fetch_accounts("codex", tmp_path, tmp_path / "cache", forbidden, now=NOW + 10)
+    assert accounts[0]["usageSource"] == "cloud"
+    assert "rateLimitResetsAvailable" not in accounts[0]
+
+    source["accounts"][0]["local_available"] = True
+    source["accounts"][0]["local_profiles"] = ["work-local"]
+    source["accounts"][0]["cloud_available"] = False
+    counted, _ = managed.fetch_accounts("codex", tmp_path, tmp_path / "cache", fetch_local, now=NOW + 20)
+    cache = tmp_path / "usage.json"
+    cache.write_text(json.dumps({"accounts": counted}))
+    accounts, _ = managed.fetch_accounts("codex", tmp_path, cache, local_down, now=NOW + 30)
+    assert accounts[0]["staleCache"]
+    assert accounts[0]["rateLimitResetsAvailable"] == 3
+    assert accounts[0]["windows"] == [{"label": "weekly", "usedPercent": 12}]
 
 
 def test_snapshot_failure_keeps_quota_source_without_reusing_availability(monkeypatch, tmp_path):

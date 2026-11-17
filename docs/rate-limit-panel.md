@@ -22,11 +22,13 @@ An absent computer icon never implies cloud availability. A leftover auth file
 never establishes availability. Icons appear on selected and unselected rows
 alike; selection keeps its separate highlight. Availability does not depend on
 which source supplied the displayed quota, or on that quota's freshness.
-Every row reserves two 14px icon slots inside the standardized 86px name column,
-providing enough space for 6-character names (such as `sepehr` and `21kb60`) to
-remain fully visible while names share a left edge regardless of which icons are
-shown. Names retain their normal ellipsis behavior and all bars and reset
-columns stay aligned with standardized spacing.
+Every row reserves two 14px icon slots, so names share a left edge regardless of
+which icons are shown. A known banked-reset count is one apostrophe per reset
+immediately after that account name. Zero and unknown counts add none. Each column's name area is the widest name-plus-apostrophe span in that column,
+so a gap that every row in the column would share is closed. A shorter name or
+fewer apostrophes keeps only its own difference, and that column's bars stay on
+one origin. Names still ellipsize
+within the width left after their own apostrophes.
 A single horizontal rule separates provider sections in a column. A column with only one provider has no rule. Wide panels use a fixed 112px-high band aligned with the neighboring billing map, retaining two columns regardless of account count. Gemini follows Codex in the left column; OpenCode follows Cursor in the right column. Each column redistributes its row spacing to fill that band when profiles are added or removed, including during cache refreshes. Rows keep their minimum readable pitch; an overflowing column reserves a 16px footer and rotates through its own pages within the same band. Provider identity does not determine bar color. Shared typography, colors, and
 overflow are owned by the [Desktop design system](design-system.md).
 
@@ -96,7 +98,8 @@ and usage source. The TSV appends explicit availability/identity/capture/freshne
 fields to account records and identity/source-window fields to bar records;
 legacy records with no availability fields show neither icon. Cloud availability
 is appended after freshness on TSV account records; older records without that
-field never imply cloud access.
+field never imply cloud access. Managed account records then append the banked-reset
+count, blank when that observation did not include one.
 
 Quota prefers this host's own login. When the snapshot reports fresh local
 availability (`local_available: true`, an eligible profile, metadata ≤300s old),
@@ -142,7 +145,7 @@ the provider-reported tier and its weight.
 ## Codex
 
 - Cloud-sourced rows render the snapshot's `codex/primary`, `codex/secondary`, and applicable `gpt-…/primary|secondary` windows, preserving their original names for history. Durations distinguish 5-hour, weekly and monthly windows; reserve model limits retain the `Reserve` label.
-- Locally polled accounts use `/wham/usage`. `CODEX_USAGE_DEGENERATE_RETRIES` controls retries of incomplete local responses. If the account limit is reached, only the blocking window is pinned to 100%; additional reserve limits stay separate. HTTP 401/403 refreshes the local profile's token once; cloud-sourced rows never touch credentials.
+- Locally polled accounts use `/wham/usage`. `CODEX_USAGE_DEGENERATE_RETRIES` controls retries of incomplete local responses. If the account limit is reached, only the blocking window is pinned to 100%; additional reserve limits stay separate. HTTP 401/403 refreshes the local profile's token once; cloud-sourced rows never touch credentials. The same response's `rate_limit_reset_credits.available_count` is kept as `rateLimitResetsAvailable`: the number of banked resets already granted and still unused. The row draws that many apostrophes after the account name. A missing or malformed count stays unknown and draws none, and a retained stale sample keeps the count from that sample. The cloud snapshot does not include it.
 - The `CODEX` summary's pace percentage uses the weekly window when available, falling back to 5h and monthly (for Free accounts). Pro accounts are weighted 20x relative to Plus accounts (400x relative to Free accounts), while Plus accounts are weighted 20x relative to Free accounts (weight 1) in the average. Reserve is never the summary's pace source. Free accounts have a single 30-day window.
 
 ## Claude

@@ -210,6 +210,7 @@ def test_final_account_log_includes_source_and_values(monkeypatch):
     assert "source=local" in events[0]
     assert "values=weekly(used=1.0%,remaining=99.0%" in events[0]
     assert "local_path=rollout-ricky.jsonl" in events[0]
+    assert "resets_available=-" in events[0]
 
 
 def test_local_rate_limits_follow_matching_account_after_profile_switch():
@@ -758,5 +759,44 @@ def test_normalize_local_rate_limit_window_identifies_monthly_and_weekly():
     }
     w_5h = codex.normalize_local_rate_limit_window("primary", five_hour_raw, now)
     assert w_5h["label"] == "5h"
+
+
+def test_normalize_usage_keeps_banked_reset_count():
+    now = int(datetime.now(timezone.utc).timestamp())
+    auth = {"label": "kian", "email": "", "account_id": "acct"}
+    usage = {
+        "plan_type": "plus",
+        "rate_limit": {
+            "primary_window": {
+                "used_percent": 12,
+                "limit_window_seconds": codex.FIVE_HOUR_WINDOW_SECONDS,
+                "reset_at": now + 1000,
+            },
+            "secondary_window": {
+                "used_percent": 4,
+                "limit_window_seconds": codex.WEEKLY_WINDOW_SECONDS,
+                "reset_at": now + 50000,
+            },
+        },
+        "rate_limit_reset_credits": {"available_count": 2},
+    }
+
+    account = codex.normalize_usage(auth, usage, False)
+
+    assert account["rateLimitResetsAvailable"] == 2
+    assert codex.rate_limit_resets_available({}) is None
+    assert codex.rate_limit_resets_available({"rate_limit_reset_credits": {}}) is None
+    assert codex.rate_limit_resets_available(
+        {"rate_limit_reset_credits": {"available_count": 0}}
+    ) == 0
+    assert codex.rate_limit_resets_available(
+        {"rate_limit_reset_credits": {"available_count": True}}
+    ) is None
+    assert codex.rate_limit_resets_available(
+        {"rate_limit_reset_credits": {"available_count": -1}}
+    ) is None
+    assert codex.rate_limit_resets_available(
+        {"rate_limit_reset_credits": {"available_count": 1.5}}
+    ) is None
 
 

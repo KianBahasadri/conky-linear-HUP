@@ -145,7 +145,10 @@ def normalize_cloud_usage(usage, provider, now):
 def retain_cached_usage(account, cached, now):
     if not cached or not cached.get("observedAt") or not cached.get("windows"):
         return
-    for key in ("windows", "observedAt", "maxAgeSeconds", "usageSource", "planType"):
+    for key in (
+        "windows", "observedAt", "maxAgeSeconds", "usageSource", "planType",
+        "rateLimitResetsAvailable",
+    ):
         if key in cached:
             account[key] = copy.deepcopy(cached[key])
     account.update(ageSeconds=now - account["observedAt"], freshness="stale", staleCache=True)
@@ -213,7 +216,7 @@ def fetch_accounts(provider, store, cache_path, fetch_local, *, now=None):
             if not local.get("ok"):
                 account["localError"] = local.get("error") or "local usage unavailable"
         if local and local.get("ok"):
-            for key in ("windows", "planType"):
+            for key in ("windows", "planType", "rateLimitResetsAvailable"):
                 if key in local:
                     account[key] = local[key]
             account.update(ok=True, error="", usageSource="local", observedAt=now,

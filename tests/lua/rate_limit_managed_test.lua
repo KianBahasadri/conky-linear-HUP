@@ -99,7 +99,12 @@ for _, panel_width in ipairs({368, 608, 880, 1248}) do
       end
     end
     assert(matching == 1, 'one icon sits beside each locally available name')
-    assert(name.width >= 54, 'name column width must accommodate 6-character names')
+    local expected = ui.width(nil, 'unknown', 13.5)
+    if panel_width >= 1200 and label == 'stale' then
+      expected = ui.width(nil, 'cursor', 13.5)
+    end
+    assert(math.abs(name.width - expected) < 0.001,
+      'each column closes the gap its own rows share')
   end
   local dual, cloud, local_row = frame.bars.dual[1], frame.bars.cloud[1], frame.bars['local'][1]
   assert(dual.x == cloud.x and cloud.x == local_row.x and dual.w == cloud.w and cloud.w == local_row.w,
@@ -148,5 +153,39 @@ files['codex-usage.json'] = string.format([[{"ok":true,"accounts":[
 local legacy_row = test.read_ai_usage().accounts[1]
 assert(test.account_is_local(legacy_row) and not test.account_is_cloud(legacy_row),
   'a pre-cloud-field JSON record never implies cloud access')
+
+files['codex-usage-render.tsv'] = table.concat({
+  account('dual', a, true, true, true) .. '\t2',
+  account('alias', a, false, false, false),
+  account('cloud', b, false, false, true) .. '\t',
+  account('local', c, false, true, false),
+  'account\tunknown\t\t0\t0\tNo measurement\t0',
+  bar('dual', a, 'weekly', 20, 'codex/secondary'),
+  bar('cloud', b, 'weekly', 40, 'codex/secondary'),
+  bar('local', c, 'weekly', 60, 'codex/secondary'),
+}, '\n')
+local counted = {}
+for _, row in ipairs(test.read_ai_usage().accounts) do counted[row.label] = row end
+assert(counted.dual.resets_available == 2, 'a reported banked-reset count survives the render cache')
+assert(counted.cloud.resets_available == nil, 'a blank count is unknown, not zero')
+assert(counted['local'].resets_available == nil, 'an omitted count stays unknown')
+width, height = 608, 300
+frame = {icons={}, names={}, bars={}, texts={}, selected=0}
+renderer.draw()
+assert(frame.texts["''"], 'two banked resets render as apostrophes after the name')
+assert(not frame.texts['2'], 'the reset count is not drawn as a number')
+assert(frame.bars.dual[1].x == frame.bars.cloud[1].x and frame.bars.cloud[1].x == frame.bars['local'][1].x,
+  'apostrophes do not move the shared bar origin')
+assert(frame.names.dual.x == frame.names.cloud.x, 'names stay flush when apostrophes are shown')
+local unit = ui.width(nil, "'", 13.5)
+local longest = ui.width(nil, 'unknown', 13.5)
+assert(math.abs(frame.names.dual.width - (longest - 2 * unit)) < 0.001,
+  'the name keeps the width left after its own apostrophes')
+assert(math.abs(frame.bars.dual[1].x - (frame.names.cloud.x + longest + 4)) < 0.001,
+  'bars start at the end of the longest name plus the shared clearance')
+files['codex-usage-render.tsv'] = nil
+files['codex-usage.json'] = string.format(
+  [[{"ok":true,"accounts":[{"label":"json","accountId":"%s","localAvailable":true,"rateLimitResetsAvailable":0,"windows":[]}]}]], a)
+assert(test.read_ai_usage().accounts[1].resets_available == 0, 'a reported zero stays zero')
 os.time = original_time
 print('managed rate-limit consumer OK')

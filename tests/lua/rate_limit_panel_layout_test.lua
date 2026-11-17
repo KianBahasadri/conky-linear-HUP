@@ -77,7 +77,9 @@ end
 local function assert_all_accounts(result)
   for _, label in ipairs(accounts) do
     assert(result.names[label] == 1, 'each account must be drawn exactly once: ' .. label)
-    assert((result.name_widths[label] or 0) >= 54, 'name column must allow 6-character names: ' .. label)
+    local expected = ui.width(nil, 'cdx1', 13.5)
+    assert(math.abs((result.name_widths[label] or 0) - expected) < 0.001,
+      'the name area closes the gap every row shares: ' .. label)
     assert(#(result.bars[label] or {}) == window_counts[label],
       'all quota windows must remain visible: ' .. label)
   end

@@ -532,9 +532,33 @@ def log_final_account(account):
     if account.get("localRateLimits"):
         fields.append(f"local_path={local_rate_limit_path_name(account)}")
         fields.append(f"local_updated={account.get('localRateLimitsUpdatedAt') or '-'}")
+    resets_available = account.get("rateLimitResetsAvailable")
+    fields.append(
+        f"resets_available={resets_available if resets_available is not None else '-'}"
+    )
     if account.get("error"):
         fields.append(f"error={account['error']}")
     log_event(" ".join(fields))
+
+
+def rate_limit_resets_available(usage):
+    """Banked Codex resets currently available, or None when the response omits them.
+
+    `available_count` is the number already granted and still unused. A missing
+    or malformed field is unknown, not zero.
+    """
+    credits = usage.get("rate_limit_reset_credits") if isinstance(usage, dict) else None
+    if not isinstance(credits, dict) or "available_count" not in credits:
+        return None
+    count = credits.get("available_count")
+    if isinstance(count, bool) or not isinstance(count, (int, float)):
+        return None
+    if isinstance(count, float) and not count.is_integer():
+        return None
+    count = int(count)
+    if count < 0:
+        return None
+    return count
 
 
 def account_blocking_reset_at(usage):
@@ -564,6 +588,7 @@ def normalize_usage(auth, usage, is_selected):
     rate_limit = usage.get("rate_limit") or {}
     plan_type = usage.get("plan_type", "")
     fetched_at = datetime.now(timezone.utc)
+    resets_available = rate_limit_resets_available(usage)
     windows = []
     labels_seen = set()
     exhausted = rate_limit.get("limit_reached") is True or rate_limit.get("allowed") is False
@@ -589,6 +614,7 @@ def normalize_usage(auth, usage, is_selected):
             "accountId": auth["account_id"],
             "planType": plan_type,
             "isSelected": is_selected,
+            "rateLimitResetsAvailable": resets_available,
             "windows": [],
             "error": "Codex usage API returned a degenerate paid-account quota response.",
         }
@@ -623,6 +649,7 @@ def normalize_usage(auth, usage, is_selected):
         "accountId": auth["account_id"],
         "planType": plan_type,
         "isSelected": is_selected,
+        "rateLimitResetsAvailable": resets_available,
         "windows": windows,
     }
 
@@ -855,6 +882,7 @@ def fetch_account(label, path, is_selected):
         log_event(
             f"account={label} completed plan={account['planType'] or 'unknown'} "
             f"windows={len(account['windows'])} source=api "
+            f"resets_available={account.get('rateLimitResetsAvailable') if account.get('rateLimitResetsAvailable') is not None else '-'} "
             f"values={format_usage_windows(account['windows'])}"
         )
         return account

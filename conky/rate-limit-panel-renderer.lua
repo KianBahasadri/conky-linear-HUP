@@ -122,6 +122,16 @@ return function(shared, repo_root)
     return fields
   end
 
+  -- A reported count of zero is still a count. Missing, blank, and malformed
+  -- values stay unknown so the row does not invent "no resets left".
+  local function banked_resets(value)
+    local count = tonumber(value)
+    if count and count >= 0 and count == math.floor(count) then
+      return count
+    end
+    return nil
+  end
+
   local function read_usage_tsv(path, provider)
     local content = shared.read_file(path)
     if not content then
@@ -168,6 +178,7 @@ return function(shared, repo_root)
             max_age_seconds = tonumber(fields[12]),
             freshness = fields[13],
             cloud_available = fields[14] == '1',
+            resets_available = banked_resets(fields[15]),
             windows = {},
           }
           table.insert(usage.accounts, account_index[key])
@@ -300,6 +311,7 @@ return function(shared, repo_root)
           observed_at = shared.json_number(object, 'observedAt', 0),
           max_age_seconds = shared.json_number(object, 'maxAgeSeconds', 300),
           freshness = shared.json_string(object, 'freshness', nil),
+          resets_available = banked_resets(shared.json_number(object, 'rateLimitResetsAvailable', nil)),
           ok = shared.json_boolean(object, 'ok', false),
           error = shared.json_string(object, 'error', ''),
           stale = shared.json_boolean(object, 'staleCache', false) or shared.json_boolean(object, 'stale', false),
@@ -1028,6 +1040,34 @@ return function(shared, repo_root)
       end
       local is_two_col = width >= 1200
       local col_w = is_two_col and math.floor(width / 2) or width
+      -- One apostrophe per banked reset, drawn immediately after that name.
+      -- Zero and unknown counts add none. The name area is the widest of those
+      -- name-plus-apostrophe spans, so a gap every row would share is closed
+      -- and a shorter name or fewer apostrophes keeps only its own difference.
+      local icon_space = 28
+      local name_gap = 4
+      local function reset_marks(account)
+        local count = account.resets_available
+        if count and count > 0 then return string.rep("'", count) end
+        return ''
+      end
+      local function span_width(value, bold)
+        return ui.width(cr, value, 13.5, false, bold)
+      end
+      local function column_name_limit(first, last)
+        -- Fit the rows in this column. A longer name in the other column
+        -- must not leave a gap in front of every bar here.
+        local limit = 0
+        for index = first, last do
+          local account = accounts[index]
+          local marks = reset_marks(account)
+          local bold = account.is_selected and 'medium' or nil
+          local text = span_width(account.label, bold)
+          if marks ~= '' then text = text + span_width(marks, bold) end
+          limit = math.max(limit, text)
+        end
+        return limit
+      end
       local pitch_width = is_two_col and math.max(880, col_w) or width
       local windows_for, heights = {}, {}
       for index, account in ipairs(accounts) do
@@ -1039,7 +1079,9 @@ return function(shared, repo_root)
         if first > last then return end
         local narrow = not is_two_col and col_width < 880
         local stacked = narrow and col_width < 560
-        local provider_width, name_width = col_width < 760 and 56 or 64, 86
+        local provider_width = col_width < 760 and 56 or 64
+        local name_limit = column_name_limit(first, last)
+        local name_width = icon_space + name_limit + name_gap
         local y = top or 0
         local marks = provider_mark_indices(accounts, first, last)
         for index = first, last do
@@ -1064,7 +1106,6 @@ return function(shared, repo_root)
           local has_filled_bar = account_has_filled_bar(account, wins)
           local name_color = has_filled_bar and ui.danger
             or (account.is_selected and ui.strong or ui.ink)
-          local icon_space = 28 -- Two fixed slots, even for rows with neither icon.
           local name_x = col_x + provider_width
           if account_is_local(account) then
             ui.icon(cr, 'monitor', name_x, name_baseline - 10, 11, ui.muted)
@@ -1072,9 +1113,16 @@ return function(shared, repo_root)
           if account_is_cloud(account) then
             ui.icon(cr, 'cloud', name_x + 14, name_baseline - 10, 11, ui.muted)
           end
-          ui.text(cr, account.label, name_x + icon_space, name_baseline,
-            {size = 13.5, bold = account.is_selected and 'medium' or nil,
-              color = name_color, width = name_width - 4 - icon_space})
+          local bold = account.is_selected and 'medium' or nil
+          local marks_text = reset_marks(account)
+          local marks_width = marks_text ~= '' and span_width(marks_text, bold) or 0
+          local name_advance = ui.text(cr, account.label, name_x + icon_space, name_baseline,
+            {size = 13.5, bold = bold, color = name_color,
+              width = math.max(0, name_limit - marks_width)})
+          if marks_text ~= '' then
+            ui.text(cr, marks_text, name_x + icon_space + name_advance, name_baseline,
+              {size = 13.5, bold = bold, color = name_color})
+          end
           local x = col_x + provider_width + name_width
           local bar_area = col_width - (provider_width + name_width)
           if #wins == 0 then

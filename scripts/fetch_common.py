@@ -179,6 +179,8 @@ def usage_render_tsv(output):
                         str(account.get("maxAgeSeconds", 300)),
                         escape_tsv(account.get("freshness", "unknown")),
                         "1" if account.get("cloudAvailable") is True else "0",
+                        "" if account.get("rateLimitResetsAvailable") is None
+                        else str(int(account["rateLimitResetsAvailable"])),
                     ] if account.get("accountId") and "localAvailable" in account else []),
                 ]
             )

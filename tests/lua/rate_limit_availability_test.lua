@@ -124,8 +124,10 @@ for _, theme in ipairs({'dark', 'light'}) do
         for value, x in pairs(frame.texts[row.label]) do
           assert(x == baseline.texts[value], 'window labels and countdowns must stay aligned')
           if value == '30m' or value == '3d 11h' then
-            countdowns[value] = countdowns[value] or x - col_x
-            assert(math.abs(x - col_x - countdowns[value]) < 0.001, 'countdowns must align across provider groups')
+            local key = col_x .. ':' .. value
+            countdowns[key] = countdowns[key] or (x - col_x)
+            assert(math.abs(x - col_x - countdowns[key]) < 0.001,
+              'countdowns must align within a column')
           end
         end
       end
