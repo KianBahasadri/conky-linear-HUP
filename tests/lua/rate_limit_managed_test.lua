@@ -88,7 +88,7 @@ for _, panel_width in ipairs({368, 608, 880, 1248}) do
   assert(frame.texts['Incl'], 'Cursor included pool renders with shortened Incl label')
   assert(not frame.texts['Included'], 'Cursor included pool must not render with full Included label')
   assert(#frame.icons == 7, 'local and cloud availability draw independently of selection and quota freshness')
-  assert(frame.selected == 1, 'availability does not change selection highlighting')
+  assert(frame.selected == 0, 'rotation selection does not highlight a row')
   for _, label in ipairs({'dual', 'local', 'stale'}) do
     local name = frame.names[label]
     local matching = 0

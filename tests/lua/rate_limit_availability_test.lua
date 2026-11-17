@@ -87,7 +87,7 @@ for _, theme in ipairs({'dark', 'light'}) do
       frame, current = {icons = {}, names = {}, bars = {}, texts = {}, selected = 0}, nil
       renderer.draw()
       assert(ui.theme == theme, 'exercise both real palettes')
-      assert(frame.selected == 2, 'availability must not affect selection highlighting')
+      assert(frame.selected == 0, 'rotation selection does not highlight a row')
       local baselines, countdowns = {}, {}
       local expected_icons = 0
       for _, row in ipairs(rows) do
@@ -97,7 +97,7 @@ for _, theme in ipairs({'dark', 'light'}) do
         local provider_width = col_w < 760 and 56 or 64
         assert(name.x == col_x + provider_width + 28, 'all names must share a flush left edge')
         assert(name.width >= 54, 'both icons must preserve six-character name space')
-        assert((name.weight == 'medium') == (row.index == selected), 'selection retains independent typography')
+        assert(name.weight == nil, 'rotation selection does not change the account name weight')
         if #row.label == 6 then assert(ui.width(nil, row.label, 13.5) <= name.width, 'six-character names must fit') end
         local found = {monitor = 0, cloud = 0}
         for _, icon in ipairs(frame.icons) do

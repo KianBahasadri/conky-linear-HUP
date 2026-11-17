@@ -48,6 +48,9 @@ ui.text = function(cr, value, x, y, opts)
   frame.labels[#frame.labels + 1] = {value = value, x = x, y = y}
   return ui.width(cr, value, opts and opts.size)
 end
+ui.row = function(_, x, y, w, h)
+  frame.rows[#frame.rows + 1] = {x = x, y = y, w = w, h = h}
+end
 ui.rect = function(_, x, y, w, h, color)
   local rect = {x = x, y = y, w = w, h = h}
   assert(w > 0 and h > 0, 'rendered rectangles must have positive dimensions')
@@ -68,7 +71,7 @@ os.time = function() return now end
 local renderer = dofile(root .. '/conky/rate-limit-panel-renderer.lua')(shared, '/fixture')
 
 local function draw()
-  frame = {names = {}, name_widths = {}, labels = {}, bars = {}, selected = {}}
+  frame = {names = {}, name_widths = {}, labels = {}, bars = {}, selected = {}, rows = {}}
   current_account = nil
   renderer.draw()
   return frame
@@ -88,13 +91,33 @@ end
 local complete = draw()
 assert_all_accounts(complete)
 assert(not complete.footer, '13 accounts must fit without pagination on the left monitor')
-assert(#complete.selected == 3, 'selected accounts must retain their highlighted rows')
+assert(#complete.rows == #accounts, 'every account row is drawn')
 local last_bottom = 0
-for _, rect in ipairs(complete.selected) do
-  assert(rect.h <= 24, 'selected rows must remain compact on the left monitor')
+for _, rect in ipairs(complete.rows) do
+  assert(rect.h <= 24, 'account rows must remain compact on the left monitor')
   last_bottom = math.max(last_bottom, rect.y + rect.h)
 end
-assert(last_bottom == height, 'the last selected account must end at the panel bottom')
+assert(last_bottom == height, 'the last account row must end at the panel bottom')
+local function pace_ys(result)
+  local found = {}
+  for _, label in ipairs(result.labels) do
+    if label.value:find('%', 1, true) or label.value == '—' then
+      found[#found + 1] = label.y
+    end
+  end
+  return found
+end
+local function group_baseline(rows, i, j)
+  return (rows[i].y + rows[j].y + rows[j].h) / 2 + 4
+end
+local paces = pace_ys(complete)
+assert(#paces == 3, 'each provider group has one pace value')
+assert(math.abs(paces[1] - group_baseline(complete.rows, 1, 8)) < 0.001,
+  'eight accounts center the pace between the fourth and fifth')
+assert(math.abs(paces[2] - group_baseline(complete.rows, 9, 10)) < 0.001,
+  'two accounts center the pace between them')
+assert(math.abs(paces[3] - group_baseline(complete.rows, 11, 13)) < 0.001,
+  'three accounts center the pace on the second')
 assert(complete.labels[1].y > 100, 'fitting compact content must move down inside its reserved region')
 local found_reserve, found_argon = false, false
 for _, label in ipairs(complete.labels) do
@@ -129,7 +152,7 @@ for _, bars in pairs(stacked.bars) do
     end
   end
 end
-assert(stacked.selected[#stacked.selected].y + stacked.selected[#stacked.selected].h == height,
+assert(stacked.rows[#stacked.rows].y + stacked.rows[#stacked.rows].h == height,
   'fitting stacked rows must also remain bottom anchored')
 
 -- Exercise actual timed pages at both widths and prove a full rotation visits
@@ -162,12 +185,6 @@ for _, panel_width in ipairs({608, 368}) do
 end
 
 -- Wide panels keep the same band while the live cache loses or gains profiles.
--- Highlight every row so its full bounds can be checked at the drawing boundary.
-for name, content in pairs(files) do
-  files[name] = content:gsub('(account\t[^\t]+\t[^\t]+\t)[01]', function(prefix)
-    return prefix .. '1'
-  end)
-end
 local codex_profiles = files['codex-usage-render.tsv']
 local function set_codex_count(count)
   local rows = {}
@@ -180,7 +197,7 @@ end
 
 local function assert_filled_columns(result, bottoms)
   local columns = {}
-  for _, rect in ipairs(result.selected) do
+  for _, rect in ipairs(result.rows) do
     local bottom = columns[rect.x] or 0
     assert(rect.y == bottom, 'wide rows must fill their column without gaps')
     assert(rect.h >= 16, 'wide rows must retain readable minimum spacing')

@@ -1002,31 +1002,11 @@ return function(shared, repo_root)
     return target
   end
 
-  local function provider_mark_indices(accounts, first, last)
-    local marks = {}
-    if not accounts or not first or not last or first > last then
-      return marks
-    end
-    local gstart = first
-    while gstart <= last do
-      local provider = accounts[gstart].provider
-      local gend = gstart
-      while gend + 1 <= last and accounts[gend + 1].provider == provider do
-        gend = gend + 1
-      end
-
-      local mark_index = gstart
-      for i = gstart, gend do
-        if accounts[i].is_selected then
-          mark_index = i
-          break
-        end
-      end
-      marks[mark_index] = true
-
-      gstart = gend + 1
-    end
-    return marks
+  -- Pace text baseline for a provider group. The logo is centered 4px above it,
+  -- so an odd count lands on the middle row and an even count lands on the
+  -- boundary between the two middle rows.
+  local function group_mark_baseline(top, bottom)
+    return (top + bottom) / 2 + 4
   end
 
   local function draw()
@@ -1061,9 +1041,8 @@ return function(shared, repo_root)
         for index = first, last do
           local account = accounts[index]
           local marks = reset_marks(account)
-          local bold = account.is_selected and 'medium' or nil
-          local text = span_width(account.label, bold)
-          if marks ~= '' then text = text + span_width(marks, bold) end
+          local text = span_width(account.label, nil)
+          if marks ~= '' then text = text + span_width(marks, nil) end
           limit = math.max(limit, text)
         end
         return limit
@@ -1083,29 +1062,21 @@ return function(shared, repo_root)
         local name_limit = column_name_limit(first, last)
         local name_width = icon_space + name_limit + name_gap
         local y = top or 0
-        local marks = provider_mark_indices(accounts, first, last)
+        local groups = {}
         for index = first, last do
           local account = accounts[index]
           local pitch = heights[index]
           local wins = windows_for[index]
-          if account.is_selected then ui.rect(cr, col_x, y, col_width, pitch, ui.raised, 4) end
+          if ui.row then ui.row(cr, col_x, y, col_width, pitch) end
           local name_baseline = y + 12 + math.max(0, math.floor((pitch - 16) / 2))
-          if marks[index] then
-            -- The provider's average pace delta is a derived value; it sits beside
-            -- the group mark rather than in a separate summary row.
-            local delta = calculate_provider_average_pace(accounts, account.provider)
-            local delta_width = ui.text(cr, delta and string.format('%+.0f%%', delta) or '—',
-              col_x + provider_width - 6, name_baseline, {size = 11, mono = true, color = ui.derived, align = 'right'})
-            local pkey = provider_name(account)
-            local mark_drawn = ui.mark(cr, pkey, col_x + 12, name_baseline - 4, 12, account.is_selected and ui.strong or ui.ink)
-            if not mark_drawn then
-              ui.text(cr, provider_labels[account.provider] or account.provider, col_x + 6, name_baseline,
-                {size = 13.5, color = ui.muted, width = provider_width - delta_width - 12})
-            end
+          local group = groups[#groups]
+          if not group or group.provider ~= account.provider then
+            groups[#groups + 1] = {provider = account.provider, top = y, bottom = y + pitch}
+          else
+            group.bottom = y + pitch
           end
           local has_filled_bar = account_has_filled_bar(account, wins)
-          local name_color = has_filled_bar and ui.danger
-            or (account.is_selected and ui.strong or ui.ink)
+          local name_color = has_filled_bar and ui.danger or ui.ink
           local name_x = col_x + provider_width
           if account_is_local(account) then
             ui.icon(cr, 'monitor', name_x, name_baseline - 10, 11, ui.muted)
@@ -1113,15 +1084,13 @@ return function(shared, repo_root)
           if account_is_cloud(account) then
             ui.icon(cr, 'cloud', name_x + 14, name_baseline - 10, 11, ui.muted)
           end
-          local bold = account.is_selected and 'medium' or nil
           local marks_text = reset_marks(account)
-          local marks_width = marks_text ~= '' and span_width(marks_text, bold) or 0
+          local marks_width = marks_text ~= '' and span_width(marks_text, nil) or 0
           local name_advance = ui.text(cr, account.label, name_x + icon_space, name_baseline,
-            {size = 13.5, bold = bold, color = name_color,
-              width = math.max(0, name_limit - marks_width)})
+            {size = 13.5, color = name_color, width = math.max(0, name_limit - marks_width)})
           if marks_text ~= '' then
             ui.text(cr, marks_text, name_x + icon_space + name_advance, name_baseline,
-              {size = 13.5, bold = bold, color = name_color})
+              {size = 13.5, color = name_color})
           end
           local x = col_x + provider_width + name_width
           local bar_area = col_width - (provider_width + name_width)
@@ -1160,8 +1129,20 @@ return function(shared, repo_root)
           end
           y = y + pitch
         end
-        -- One horizontal rule between provider sections. Drawn last so it sits
-        -- on top of selected-row fills. A column with a single provider has none.
+        for _, group in ipairs(groups) do
+          -- The logo and pace percentage share the group's vertical center.
+          local baseline = group_mark_baseline(group.top, group.bottom)
+          local delta = calculate_provider_average_pace(accounts, group.provider)
+          local delta_width = ui.text(cr, delta and string.format('%+.0f%%', delta) or '—',
+            col_x + provider_width - 6, baseline, {size = 11, mono = true, color = ui.derived, align = 'right'})
+          local pkey = provider_name({provider = group.provider})
+          local mark_drawn = ui.mark(cr, pkey, col_x + 12, baseline - 4, 12, ui.ink)
+          if not mark_drawn then
+            ui.text(cr, provider_labels[group.provider] or group.provider, col_x + 6, baseline,
+              {size = 13.5, color = ui.muted, width = provider_width - delta_width - 12})
+          end
+        end
+        -- One horizontal rule between provider sections. A column with a single provider has none.
         local is_only_provider = accounts[first].provider == accounts[last].provider
         if not is_only_provider then
           local gy, gstart = top or 0, first
@@ -1237,7 +1218,7 @@ return function(shared, repo_root)
              account_has_filled_bar = account_has_filled_bar,
              gemini_duration_columns = gemini_duration_columns,
              account_pitch = account_pitch,
-             provider_mark_indices = provider_mark_indices,
+             group_mark_baseline = group_mark_baseline,
              find_split_point = find_split_point,
              day_start_epoch = day_start_epoch,
              used_before_today = used_before_today,

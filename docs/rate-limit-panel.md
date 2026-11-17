@@ -2,15 +2,16 @@
 
 ## Display
 
-The provider mark (brand logo) sits on the highlighted (selected) row of its group
-(or on the first row when no profile is selected), followed by the account name and quota windows. Reset countdowns occupy a fixed-width
+The provider mark (brand logo) and its pace percentage are centered on the
+vertical middle of each provider group. Three equal rows put them on the second
+row; four put them on the boundary between the second and third. The account
+name and quota windows follow. Reset countdowns occupy a fixed-width
 Reset countdowns render as a single left-aligned readout (`4h 59m`, `1d 23h`) in
 the fixed-width countdown column flanking the flat observed-data bars on the right,
 keeping the time cohesive and bar lengths uniform.
 Pool-distinguishing labels (like `Auto`, `API`, `Reserve`, or `Argon`) flank
 on the left. Standard interval windows (`5h`, `7d`, `Month`) omit the leading label so
 bars start directly beside the account name.
-Selected profiles use a neutral raised row and a medium-weight account name.
 Managed Codex/Cursor accounts show independent Lucide computer and cloud icons
 beside the name: computer for a configured independent local login on this host,
 cloud for recorded cloud enrollment. Local-only accounts show the computer,
@@ -20,7 +21,7 @@ requires its own explicit availability flag and a metadata capture no more than
 future-dated or stale capture suppresses both.
 An absent computer icon never implies cloud availability. A leftover auth file
 never establishes availability. Icons appear on selected and unselected rows
-alike; selection keeps its separate highlight. Availability does not depend on
+alike. The selected profile is not highlighted. Availability does not depend on
 which source supplied the displayed quota, or on that quota's freshness.
 Every row reserves two 14px icon slots, so names share a left edge regardless of
 which icons are shown. A known banked-reset count is one apostrophe per reset
@@ -50,7 +51,7 @@ the 608px-wide panel shows the current 13 accounts together without paging.
   no pending reset shows its full span (`5h`, `7d`) and no pace tick.
   `wait` means the countdown ended while usage remains.
 - The provider's average pace delta in percent (`%`) sits beside its
-  brand logo on the highlighted row of each group (falling back to the first row if no account is selected), in derived-data color. There is no
+  brand logo at the group's vertical center, in derived-data color. There is no
   separate summary row and no combined pace value. The vertical tick on each
   eligible bar uses the same derived color.
 - Cache refreshes do not resize or reload windows. Startup bounds the list and
@@ -151,7 +152,7 @@ the provider-reported tier and its weight.
 ## Claude
 
 - The Claude account was removed from active display because the Claude subscription expired. Multiple accounts are discovered from `~/.claude/.credentials.json.*` when valid credentials exist; `CLAUDE_CREDENTIALS_PATH` or `CLAUDE_AUTH_PATH` forces a single credentials file.
-- Claude selected accounts use the same neutral row treatment as Codex.
+- Claude accounts are not highlighted when selected.
 - Usage is fetched with a direct Anthropic quota-check request and cached per account. `CLAUDE_HOME`, `CLAUDE_USAGE_TTL`, `CLAUDE_PLAN_TYPE`, and `ANTHROPIC_DEFAULT_HAIKU_MODEL` are advanced overrides.
 - Expired-grant display follows the general rule in [Expired credentials and stale cache](expired-credentials.md): cached 5h and weekly fills are held until each window's reset passes. The `refresh` prompt appears per window once its reset is over, or on the whole row when no cached sample exists.
 
