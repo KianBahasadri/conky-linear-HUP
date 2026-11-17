@@ -267,6 +267,93 @@ def test_cloud_error_does_not_stamp_fresh_availability_on_cached_accounts(monkey
     assert accounts[0]["usageSource"] == "cloud" and accounts[0]["staleCache"]
 
 
+@pytest.mark.parametrize("provider", ["codex", "cursor"])
+@pytest.mark.parametrize("legacy_cache", [False, True])
+def test_cloud_outage_does_not_resurrect_deleted_local_account(monkeypatch, tmp_path, provider, legacy_cache):
+    source = snapshot(provider, local=True)
+    source["accounts"][0]["cloud_available"] = False
+    monkeypatch.setattr(managed, "read_snapshot", lambda *_: source)
+    cache = tmp_path / "usage.json"
+    local_ok = lambda *_: {"ok": True, "windows": [{"label": "weekly", "usedPercent": 23}]}
+    previous, _ = managed.fetch_accounts(provider, tmp_path, cache, local_ok, now=NOW)
+    if legacy_cache:
+        previous[0].pop("cloudKnown")
+    cache.write_text(json.dumps({"accounts": previous}))
+    source.update(generated_at=NOW + 60, accounts=[], cloud_error="operator_authentication_unavailable")
+
+    accounts, error = managed.fetch_accounts(provider, tmp_path, cache, forbidden, now=NOW + 60)
+
+    assert error == "operator_authentication_unavailable"
+    assert accounts == []
+
+
+@pytest.mark.parametrize("provider", ["codex", "cursor"])
+@pytest.mark.parametrize("metadata_failure", ["command", "invalid", "stale", "future", "missing-time"])
+def test_missing_local_account_needs_fresh_host_metadata_to_be_deleted(
+    monkeypatch, tmp_path, provider, metadata_failure
+):
+    source = snapshot(provider, local=True)
+    source["accounts"][0]["cloud_available"] = False
+    monkeypatch.setattr(managed, "read_snapshot", lambda *_: source)
+    cache = tmp_path / "usage.json"
+    local_ok = lambda *_: {"ok": True, "windows": [{"label": "weekly", "usedPercent": 23}]}
+    previous, _ = managed.fetch_accounts(provider, tmp_path, cache, local_ok, now=NOW)
+    cache.write_text(json.dumps({"accounts": previous}))
+    source.update(accounts=[], cloud_error="controller_unavailable")
+    if metadata_failure == "command":
+        def failed_snapshot(*_):
+            raise RuntimeError("snapshot unavailable")
+        monkeypatch.setattr(managed, "read_snapshot", failed_snapshot)
+    elif metadata_failure == "invalid":
+        source["schema_version"] = 2
+    elif metadata_failure == "future":
+        source["generated_at"] = NOW + 601
+    elif metadata_failure == "missing-time":
+        source.pop("generated_at")
+
+    accounts, error = managed.fetch_accounts(provider, tmp_path, cache, forbidden, now=NOW + 600)
+    assert error and len(accounts) == 1
+    assert accounts[0]["windows"] == previous[0]["windows"]
+    assert accounts[0]["staleCache"] and not accounts[0]["cloudKnown"]
+    assert not accounts[0]["localAvailable"] and not accounts[0]["cloudAvailable"]
+    cache.write_text(json.dumps({"accounts": accounts}))
+
+    source.update(schema_version=1, generated_at=NOW + 660)
+    monkeypatch.setattr(managed, "read_snapshot", lambda *_: source)
+    accounts, error = managed.fetch_accounts(provider, tmp_path, cache, forbidden, now=NOW + 660)
+    assert error and accounts == []
+
+
+@pytest.mark.parametrize("provider", ["codex", "cursor"])
+@pytest.mark.parametrize("legacy_cache", [False, True])
+def test_repeated_cloud_outages_keep_cloud_account_with_locally_measured_quota(
+    monkeypatch, tmp_path, provider, legacy_cache
+):
+    source = snapshot(provider, local=True)
+    monkeypatch.setattr(managed, "read_snapshot", lambda *_: source)
+    cache = tmp_path / "usage.json"
+    local_ok = lambda *_: {"ok": True, "windows": [{"label": "weekly", "usedPercent": 23}]}
+    previous, _ = managed.fetch_accounts(provider, tmp_path, cache, local_ok, now=NOW)
+    if legacy_cache:
+        previous[0].pop("cloudKnown")
+    cache.write_text(json.dumps({"accounts": previous}))
+
+    for offset in (60, 120):
+        source.update(generated_at=NOW + offset, accounts=[], cloud_error="controller_unavailable")
+        accounts, error = managed.fetch_accounts(provider, tmp_path, cache, forbidden, now=NOW + offset)
+        assert error and len(accounts) == 1
+        assert accounts[0]["cloudKnown"] and accounts[0]["staleCache"]
+        assert not accounts[0]["cloudAvailable"] and not accounts[0]["localAvailable"]
+        assert accounts[0]["usageSource"] == "local"
+        assert accounts[0]["windows"] == previous[0]["windows"]
+        assert accounts[0]["observedAt"] == NOW
+        cache.write_text(json.dumps({"accounts": accounts}))
+
+    source.update(generated_at=NOW + 180, cloud_error=None)
+    accounts, error = managed.fetch_accounts(provider, tmp_path, cache, forbidden, now=NOW + 180)
+    assert error is None and accounts == []
+
+
 @pytest.mark.parametrize("change", ["old", "future", "reset", "unknown", "null", "bad-percent"])
 def test_usage_freshness_is_recomputed_and_unknown_never_becomes_unused(monkeypatch, tmp_path, change):
     source = snapshot("codex")

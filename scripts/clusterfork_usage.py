@@ -153,6 +153,14 @@ def retain_cached_usage(account, cached, now):
 
 def fetch_accounts(provider, store, cache_path, fetch_local, *, now=None):
     previous = read_cached_accounts(cache_path, provider)
+    # Keep cloud membership separate from expiring availability and quota source.
+    # Older caches did not record it explicitly; recover their known cloud rows.
+    previous_cloud = {
+        identity for identity, cached in previous.items()
+        if cached.get("cloudKnown", cached.get("cloudAvailable") is True
+                      or bool(cached.get("cloudState"))
+                      or cached.get("usageSource") == "cloud") is True
+    }
     try:
         snapshot = read_snapshot(provider, store)
         groups = group_accounts(snapshot, provider)
@@ -161,16 +169,19 @@ def fetch_accounts(provider, store, cache_path, fetch_local, *, now=None):
         snapshot, groups, source_error = {}, {}, "Clusterfork account snapshot unavailable"
     # The CLI generates host availability during the subprocess call.
     now = time.time() if now is None else now
+    generated = common.as_float(snapshot.get("generated_at"))
+    availability_fresh = 0 < generated <= now and now - generated <= MAX_AGE_SECONDS
 
-    # During source failure keep controller-only accounts, too. Availability is
-    # never copied from cache, even when its quota measurement is retained.
+    # A fresh host list remains authoritative for local-only deletions even when
+    # the controller fails. A total metadata failure cannot establish deletion.
+    # Cached cloud membership retains rows, never their availability flags.
     if source_error:
         for identity, cached in previous.items():
+            if availability_fresh and identity not in previous_cloud:
+                continue
             groups.setdefault(identity, [{
                 "account_id": identity, "aliases": cached.get("aliases", []),
             }])
-    generated = common.as_float(snapshot.get("generated_at"))
-    availability_fresh = 0 < generated <= now and now - generated <= MAX_AGE_SECONDS
     accounts = []
     for identity, rows in groups.items():
         cached = previous.get(identity)
@@ -190,6 +201,7 @@ def fetch_accounts(provider, store, cache_path, fetch_local, *, now=None):
             "isSelected": selected is not None, "availabilityGeneratedAt": generated,
             "usageSource": "cloud" if cloud else "local", "windows": [],
             "cloudAvailable": availability_fresh and cloud,
+            "cloudKnown": cloud or (bool(source_error) and identity in previous_cloud),
             "cloudState": next((row.get("cloud_state") for row in rows if row.get("cloud_state")), None),
             "ok": False, "staleCache": False,
         }

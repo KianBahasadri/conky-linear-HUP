@@ -126,6 +126,13 @@ availability.
 Cached availability is never reused after a failed metadata read; both icons also
 expire after 300 seconds when fetching stops. A controller error can retain a
 fresh offline availability result, independently of quota freshness.
+That fresh host account list also removes deleted local-only accounts, even
+while the controller lookup fails. Cached `cloudKnown` membership keeps cloud
+accounts visible through repeated controller failures, including accounts whose
+quota was last measured locally; it never grants availability or triggers a
+local poll. A complete metadata failure or an untrusted host capture retains
+all cached accounts until a fresh list can establish removal. A successful
+controller snapshot removes absent cloud accounts as well.
 
 Schema version 1 supplies no plan tier. Cloud-sourced rows therefore use the
 baseline capacity weight of 1 rather than inferring a subscription from aliases
