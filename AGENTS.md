@@ -2,18 +2,12 @@
 
 This project provides multi-monitor Conky desktop overlays backed by Python data fetchers and Lua/Cairo renderers.
 
-## Seeing the overlays
+## Rules
 
-All widgets on the bottom row must share the same visible top and bottom edges, flush
-across the row. Preserve existing widget and section heights and alignment when
-changing content or improving readability; fit changes within those bounds.
-Verify the rendered row together, including content padding and drawing clearance.
-
-Do not ask for a screenshot to check how a change looks. Run
-`uv run python scripts/render_desktop.py` and read the PNG it writes; see
-[docs/desktop-render.md](docs/desktop-render.md) for its options.
-
-After editing anything under `conky/` (Lua renderers, entrypoints, or `*.conkyrc`), run `./scripts/start_conky_overlays.sh` so `conky/generated/*.conkyrc` are regenerated and live windows reload — the user watches the desktop, so this is how they see your change. Then verify with `render_desktop.py`. See [docs/getting-started.md](docs/getting-started.md#iterating-on-overlays).
+- Bottom-row widgets share the same visible top and bottom edges. Preserve existing widget and section heights and alignment, and fit content changes inside those bounds. Verify the rendered row together, including padding and drawing clearance.
+- Do not ask for a screenshot to check how a change looks. Run `uv run python scripts/render_desktop.py` and read the PNG it writes.
+- After editing anything under `conky/`, run `./scripts/start_conky_overlays.sh` so the live windows reload, then verify with `render_desktop.py`.
+- Commit and push after feature changes.
 
 ## Documentation (read/write)
 
@@ -25,9 +19,11 @@ After editing anything under `conky/` (Lua renderers, entrypoints, or `*.conkyrc
 - **After behavior changes:** Update the **one** topic file under `docs/`
   that owns that fact. Do not copy the same detail into AGENTS.md,
   README.md, or multiple docs.
-- **Regenerate vs patch:** Prefer the `generate_docs` skill when docs are
-  broadly stale or many topics shifted; for small, targeted edits, patch
-  the single topic file (and `docs/README.md` if you add/remove a topic).
+- **Regenerate vs patch:** `docs/README.md` records the commit it was
+  generated from; `git diff <sha>..HEAD --stat` shows what changed since.
+  Prefer the `generate_docs` skill when docs are broadly stale or many
+  topics shifted; for small, targeted edits, patch the single topic file
+  (and `docs/README.md` if you add/remove a topic).
 - `CLAUDE.md` is a symlink to this file.
 
 Do not put implementation detail in this file — it lives under `docs/`.
