@@ -353,13 +353,13 @@ return function(shared, repo_root)
     local provider = string.lower(account.provider or '')
     if provider == 'codex' then
       return 0
-    elseif provider == 'opencode' then
+    elseif provider == 'gemini' then
       return 5
     elseif provider == 'claude' then
       return 10
     elseif provider == 'cursor' then
       return 20
-    elseif provider == 'gemini' then
+    elseif provider == 'opencode' then
       return 30
     elseif provider == 'grok' then
       return 35
@@ -963,15 +963,15 @@ return function(shared, repo_root)
   local function find_split_point(accounts)
     local n = #accounts
     if n <= 1 then return 1 end
-    -- OpenCode follows Codex and stays the last group in the left column.
-    local opencode_last = nil
+    -- Gemini follows Codex and stays the last group in the left column.
+    local gemini_last = nil
     for index = 1, n do
-      if string.lower(accounts[index].provider or '') == 'opencode' then
-        opencode_last = index
+      if string.lower(accounts[index].provider or '') == 'gemini' then
+        gemini_last = index
       end
     end
-    if opencode_last and opencode_last < n then
-      return opencode_last
+    if gemini_last and gemini_last < n then
+      return gemini_last
     end
     local target = math.ceil(n / 2)
     if target < n and accounts[target].provider ~= accounts[target + 1].provider then

@@ -89,10 +89,10 @@ for _, acct in ipairs(test_accounts) do
   table.insert(ordered, acct.provider .. ':' .. acct.label)
 end
 eq(table.concat(ordered, ','),
-  'Codex:ahmad,Codex:bashir,Codex:kian,Codex:sepehr,OpenCode:default,Cursor:21kb60,Cursor:kian,Cursor:sepehr,Gemini:baba,Gemini:kian',
+  'Codex:ahmad,Codex:bashir,Codex:kian,Codex:sepehr,Gemini:baba,Gemini:kian,Cursor:21kb60,Cursor:kian,Cursor:sepehr,OpenCode:default',
   'accounts within each provider are sorted alphabetically without separating free accounts')
-eq(renderer._test.find_split_point(test_accounts), 5,
-  'OpenCode stays at the bottom of the left column')
+eq(renderer._test.find_split_point(test_accounts), 6,
+  'Gemini stays at the bottom of the left column and OpenCode on the right')
 
 local has_filled = renderer._test.account_has_filled_bar
 local normal_acct = { stale = false }

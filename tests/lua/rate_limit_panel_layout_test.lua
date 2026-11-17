@@ -27,7 +27,7 @@ for index = 1, 8 do
   add_account('codex', 'cdx' .. index, index == 3,
     index == 3 and {'5h', 'weekly', 'reserve'} or {'5h', 'weekly'})
 end
-for index = 1, 3 do add_account('cursor', 'cur' .. index, index == 2, {'auto', 'api'}) end
+for index = 1, 3 do add_account('cursor', 'cur' .. index, index == 3, {'auto', 'api'}) end
 for index = 1, 2 do
   add_account('gemini', 'gem' .. index, index == 2,
     index == 1 and {'gemini-5h', 'gemini-weekly', 'argon'} or {'gemini-5h', 'gemini-weekly'})
@@ -191,7 +191,7 @@ local function assert_filled_columns(result, bottoms)
 end
 
 width, height = 1248, 112
-for _, count in ipairs({7, 6, 4, 0, 7}) do
+for _, count in ipairs({5, 4, 2, 0, 5}) do
   set_codex_count(count)
   local band = draw()
   assert(not band.footer, 'fitting wide profiles must not need a footer')
@@ -223,7 +223,7 @@ for _ = 1, 2 do
   end
   for label, bars in pairs(page.bars) do
     for _, bar in ipairs(bars) do
-      assert(bar.y + bar.h <= (label:match('^cdx') and height - 16 or height),
+      assert(bar.y + bar.h <= ((label:match('^cdx') or label:match('^gem')) and height - 16 or height),
         'wide quota bars must stay above their column footer')
     end
   end
