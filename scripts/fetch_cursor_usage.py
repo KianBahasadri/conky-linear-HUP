@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import fetch_common as common
-import clusterfork_usage
+import local_usage
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -52,26 +52,10 @@ def configured_auth_path():
 
 
 def discover_auth_files():
-    configured = configured_auth_path()
-    if configured:
-        return [(auth_label(configured), configured, is_selected_auth(configured))]
-
-    # Prefer the shared clusterfork-auth store when it has profiles.
-    store_dir = cursor_auth_store_dir()
-    search_dir = store_dir if store_dir.is_dir() else default_auth_path().parent
-    suffixed_paths = sorted(path for path in search_dir.glob(f"{DEFAULT_AUTH_NAME}.*") if path.is_file())
-    if suffixed_paths:
-        return [(auth_label(path), path, is_selected_auth(path)) for path in suffixed_paths]
-
-    default_path = default_auth_path()
-    return [(auth_label(default_path), default_path, is_selected_auth(default_path))]
-
-
-def is_selected_auth(path):
-    try:
-        return default_auth_path().resolve() == path.resolve()
-    except OSError:
-        return default_auth_path() == path
+    profiles = local_usage.discover_auth_profiles(
+        cursor_auth_store_dir(), default_auth_path(), configured_auth_path(),
+    )
+    return [(auth_label(path), path, selected) for path, selected in profiles]
 
 
 def auth_label(path):
@@ -94,14 +78,15 @@ def read_auth(label, path):
     except json.JSONDecodeError as error:
         raise RuntimeError(f"invalid Cursor auth JSON: {error}") from error
 
-    access_token = raw.get("accessToken", "")
-    if not access_token:
+    access_token = raw.get("accessToken", "") if isinstance(raw, dict) else ""
+    if not isinstance(access_token, str) or not access_token:
         raise RuntimeError(f"auth file has no accessToken: {path}")
 
     return {
         "label": label,
         "path": path,
         "access_token": access_token,
+        "account_id": local_usage.jwt_claims(access_token).get("sub", ""),
         "refresh_token": raw.get("refreshToken", ""),
     }
 
@@ -235,9 +220,9 @@ def normalize_error(label, message, is_selected=False):
     }
 
 
-def fetch_account(label, path, is_selected):
+def fetch_account(auth, is_selected):
+    label = auth["label"]
     try:
-        auth = read_auth(label, path)
         status, usage = cursor_request(auth, "GetCurrentPeriodUsage")
         if status != 200:
             print(json.dumps({label: usage}, indent=2), file=sys.stderr)
@@ -272,18 +257,18 @@ def write_error(message):
 def main():
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     common.load_env()
-    log_event("starting Cursor usage fetch source=clusterfork")
+    log_event("starting Cursor usage fetch source=local")
 
     try:
-        accounts, source_error = clusterfork_usage.fetch_accounts(
-            "cursor", cursor_auth_store_dir(), OUTPUT_PATH, fetch_account
+        accounts = local_usage.fetch_accounts(
+            "cursor", discover_auth_files(), OUTPUT_PATH, read_auth, fetch_account
         )
         ok_count = sum(1 for account in accounts if account.get("ok"))
         output = {
             "updatedAt": datetime.now(timezone.utc).isoformat(),
             "provider": "Cursor",
             "ok": ok_count > 0,
-            "error": source_error or "",
+            "error": "",
             "accounts": accounts,
             "bars": flatten_bars(accounts),
         }

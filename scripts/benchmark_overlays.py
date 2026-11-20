@@ -184,7 +184,6 @@ def environment(root, display):
         "XDG_CONFIG_HOME": str(data / "xdg-config"), "XDG_CACHE_HOME": str(data / "xdg-cache"),
         "PYTHONPATH": str(BENCH), "CONKY_BENCH_ROOT": str(root), "UV_NO_SYNC": "1", "UV_OFFLINE": "1",
         "UV_PYTHON": sys.executable, "UV_PROJECT_ENVIRONMENT": str(root / ".venv"),
-        "CLUSTERFORK_ACCOUNTS_SCRIPT": str(data / "accounts.py"), "CLUSTERFORK_PYTHON": sys.executable,
         "LINEAR_API_KEY": "fixture", "GITHUB_TOKEN": "fixture-token", "GITHUB_USERNAME": "fixture",
         "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_NOSYSTEM": "1", "GIT_SCAN_ROOT": str(data / "home"),
         "GIT_SCAN_DAYS": "36500", "GIT_HIDE_CLEAN": "0", "GIT_TIMEOUT_SECONDS": "10",
@@ -192,6 +191,8 @@ def environment(root, display):
         "MINECRAFT_SERVER": "fixture.invalid:25565", "BILLING_AWS_ENABLED": "1", "OPENROUTER_API_KEY": "fixture",
         "OPENCODE_API_KEY": "fixture", "OPENCODE_WORKSPACE_ID": "wrk_fixture",
         "PRIMARY_WAIT_SECONDS": "0", "TZ": "UTC"})
+    if (data / "accounts.py").is_file():
+        env.update({"CLUSTERFORK_ACCOUNTS_SCRIPT": str(data / "accounts.py"), "CLUSTERFORK_PYTHON": sys.executable})
     for name in ("LINEAR_OVERLAY_ENABLED", "RATE_LIMIT_PANEL_ENABLED", "MINECRAFT_OVERLAY_ENABLED", "GITHUB_OVERLAY_ENABLED",
                  "WEATHER_OVERLAY_ENABLED", "RESOURCE_MONITOR_OVERLAY_ENABLED", "BILLING_OVERLAY_ENABLED", "GIT_OVERLAY_ENABLED", "SESSIONS_OVERLAY_ENABLED"):
         env[name] = "1"

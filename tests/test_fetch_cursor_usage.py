@@ -110,7 +110,7 @@ def test_fetch_account_reads_usage_and_optional_metadata(monkeypatch, tmp_path):
 
     monkeypatch.setattr(cursor, "cursor_request", fake_cursor_request)
 
-    account = cursor.fetch_account("ida", auth_path, True)
+    account = cursor.fetch_account(cursor.read_auth("ida", auth_path), True)
 
     assert seen_methods == ["GetCurrentPeriodUsage", "GetMe", "GetPlanInfo"]
     assert account["ok"] is True

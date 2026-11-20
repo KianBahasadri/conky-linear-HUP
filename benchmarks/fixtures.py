@@ -104,7 +104,6 @@ def active_workload(root):
 
 def prepare(root, monitors, python, real_conky):
     """Build fixed data outside the measured cgroup; no personal cache is copied."""
-    import hashlib
     import math
     import shlex
     import sqlite3
@@ -178,22 +177,7 @@ def prepare(root, monitors, python, real_conky):
             connection.execute("INSERT INTO MeasurementValue VALUES (?, 1, ?, NULL)", (i, 90-i*0.02))
     with zipfile.ZipFile(weight / "backup.zip", "w", zipfile.ZIP_DEFLATED) as archive:
         archive.write(database, "openScale.db")
-    for provider in ("codex", "cursor"):
-        accounts = []
-        for i in range(2):
-            accounts.append({"provider": provider, "account_id": hashlib.sha256(f"{provider}-{i}".encode()).hexdigest(),
-                             "aliases": [f"fixture-{i}"], "cloud_available": True, "local_available": False,
-                             "usage": {"freshness": "fresh", "observed_at": NOW, "attempted_at": NOW,
-                                       "windows": [{"name": f"{provider}/{label}", "used_percent": 25+i*20,
-                                                    "duration_minutes": duration, "resets_at": NOW+duration*60}
-                                                   for label, duration in (("primary", 300), ("secondary", 10080))]}})
-        dump(data / f"{provider}-snapshot.json", {"schema_version": 1, "provider": provider,
-             "local_scope": "host", "generated_at": NOW, "accounts": accounts})
-    (data / "accounts.py").write_text(
-        "import os, pathlib, sys\n"
-        "provider=sys.argv[sys.argv.index('--provider')+1]\n"
-        "print((pathlib.Path(os.environ['CONKY_BENCH_ROOT'])/'benchmark-data'/"
-        "(provider+'-snapshot.json')).read_text())\n")
+    prepare_usage_profiles(root, data)
     drm = data / "drm"
     for card, driver, device in ((0, "i915", "0000:00:02.0"), (1, "nvidia", "0000:01:00.0")):
         directory = drm / f"card{card}" / "device"
@@ -246,6 +230,46 @@ def prepare(root, monitors, python, real_conky):
     shim.chmod(0o755)
     for name in [f"fetch_{key}.py" for key in fetchers] + ["sample_gpu_usage.py"]:
         instrument_source(root / "scripts" / name)
+
+
+def prepare_usage_profiles(root, data):
+    # The pinned baseline and regression revision still use the snapshot CLI.
+    if (root / "scripts/clusterfork_usage.py").is_file():
+        import hashlib
+
+        for provider in ("codex", "cursor"):
+            accounts = []
+            for i in range(2):
+                accounts.append({"provider": provider, "account_id": hashlib.sha256(f"{provider}-{i}".encode()).hexdigest(),
+                                 "aliases": [f"fixture-{i}"], "cloud_available": True, "local_available": False,
+                                 "usage": {"freshness": "fresh", "observed_at": NOW, "attempted_at": NOW,
+                                           "windows": [{"name": f"{provider}/{label}", "used_percent": 25+i*20,
+                                                        "duration_minutes": duration, "resets_at": NOW+duration*60}
+                                                       for label, duration in (("primary", 300), ("secondary", 10080))]}})
+            dump(data / f"{provider}-snapshot.json", {"schema_version": 1, "provider": provider,
+                 "local_scope": "host", "generated_at": NOW, "accounts": accounts})
+        (data / "accounts.py").write_text(
+            "import os, pathlib, sys\n"
+            "provider=sys.argv[sys.argv.index('--provider')+1]\n"
+            "print((pathlib.Path(os.environ['CONKY_BENCH_ROOT'])/'benchmark-data'/"
+            "(provider+'-snapshot.json')).read_text())\n")
+        return
+
+    import base64
+
+    store = data / "home/.local/share/clusterfork-auth"
+    for provider in ("codex", "cursor"):
+        directory = store / provider
+        directory.mkdir(parents=True)
+        for i in range(2):
+            subject = f"{provider}-{i}"
+            if provider == "codex":
+                auth = {"tokens": {"account_id": subject, "access_token": "fixture"}}
+            else:
+                claims = base64.urlsafe_b64encode(json.dumps({"sub": subject}).encode()).decode()
+                auth = {"accessToken": f"fixture.{claims}.fixture"}
+            dump(directory / f"auth.json.fixture-{i}", auth)
+        (directory / "current").symlink_to("auth.json.fixture-0")
 
 
 def payload(url, body):
@@ -304,6 +328,26 @@ def patch_globals(namespace, name):
             return {"data": {"workflowStates": {"nodes": [{"name": "In Progress", "type": "started", "issues": {"nodes": issues}}]},
                              "competitionIssues": {"nodes": []}, "backlogDueSoon": {"nodes": []}}}
         namespace["linear_graphql_request"] = graphql
+    elif name == "fetch_codex_usage.py":
+        def codex_request(auth):
+            used = 25 + 20 * int(auth["label"][-1])
+            return 200, {"plan_type": "plus", "rate_limit": {
+                name: {"used_percent": used, "limit_window_seconds": duration, "reset_at": NOW + duration}
+                for name, duration in (("primary_window", 18000), ("secondary_window", 604800))
+            }}
+        namespace["codex_request"] = codex_request
+    elif name == "fetch_cursor_usage.py":
+        def cursor_request(auth, method):
+            if method == "GetCurrentPeriodUsage":
+                used = 25 + 20 * int(auth["label"][-1])
+                return 200, {"billingCycleStart": NOW - 86400, "billingCycleEnd": NOW + 30 * 86400,
+                             "planUsage": {"autoPercentUsed": used, "apiPercentUsed": used}}
+            if method == "GetMe":
+                return 200, {"userId": auth["account_id"]}
+            if method == "GetPlanInfo":
+                return 200, {"planInfo": {"planName": "Pro"}}
+            raise ValueError(f"unexpected Cursor request: {method}")
+        namespace["cursor_request"] = cursor_request
     elif name == "fetch_gemini_usage.py":
         namespace["read_auth"] = lambda *_: {"access_token": "fixture"}
         namespace["load_code_assist"] = lambda *_: ("fixture", {"currentTier": {"id": "pro"}})

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import base64
 import json
 import os
 import sqlite3
@@ -12,7 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import fetch_common as common
-import clusterfork_usage
+import local_usage
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -20,7 +19,6 @@ CACHE_DIR = ROOT / "cache"
 OUTPUT_PATH = CACHE_DIR / "codex-usage.json"
 RENDER_PATH = CACHE_DIR / "codex-usage-render.tsv"
 LOG_PATH = CACHE_DIR / "conky-rate-limit-panel.log"
-DEFAULT_AUTH_PATH = Path.home() / ".codex" / "auth.json"
 CODEX_HOME = Path.home() / ".codex"
 CODEX_SQLITE_HOME = CODEX_HOME
 CODEX_AUTH_STORE_DIR = Path.home() / ".local" / "share" / "clusterfork-auth" / "codex"
@@ -67,26 +65,12 @@ def configure_from_env():
 
 
 def discover_auth_files():
-    configured_path = os.environ.get("CODEX_AUTH_PATH", "").strip()
-    if configured_path:
-        path = Path(configured_path).expanduser()
-        return [(auth_label(path), path, is_selected_auth(path))]
-
-    # Prefer the shared clusterfork-auth store when it has profiles.
-    store_dir = CODEX_AUTH_STORE_DIR if CODEX_AUTH_STORE_DIR.is_dir() else None
-    search_dir = store_dir if store_dir else DEFAULT_AUTH_PATH.parent
-    suffixed_paths = sorted(search_dir.glob("auth.json.*"))
-    if suffixed_paths:
-        return [(auth_label(path), path, is_selected_auth(path)) for path in suffixed_paths if path.is_file()]
-
-    return [("default", DEFAULT_AUTH_PATH, is_selected_auth(DEFAULT_AUTH_PATH))]
-
-
-def is_selected_auth(path):
-    try:
-        return DEFAULT_AUTH_PATH.resolve() == path.resolve()
-    except OSError:
-        return False
+    configured = os.environ.get("CODEX_AUTH_PATH", "").strip()
+    profiles = local_usage.discover_auth_profiles(
+        CODEX_AUTH_STORE_DIR, CODEX_HOME / "auth.json",
+        Path(configured).expanduser() if configured else None,
+    )
+    return [(auth_label(path), path, selected) for path, selected in profiles]
 
 
 def auth_label(path):
@@ -94,6 +78,8 @@ def auth_label(path):
     prefix = "auth.json."
     if name.startswith(prefix) and len(name) > len(prefix):
         return name[len(prefix):]
+    if name == "auth.json":
+        return "default"
     return path.stem
 
 
@@ -105,13 +91,14 @@ def read_auth(label, path):
     except json.JSONDecodeError as error:
         raise RuntimeError(f"invalid auth JSON: {error}") from error
 
-    tokens = raw.get("tokens") or {}
+    tokens = raw.get("tokens") if isinstance(raw, dict) else None
+    tokens = tokens if isinstance(tokens, dict) else {}
     access_token = tokens.get("access_token", "")
     refresh_token = tokens.get("refresh_token", "")
     account_id = tokens.get("account_id", "")
     id_token = tokens.get("id_token", "")
 
-    if not access_token:
+    if not isinstance(access_token, str) or not access_token:
         raise RuntimeError(f"auth file has no tokens.access_token: {path}")
 
     return {
@@ -133,23 +120,7 @@ def extract_email(raw, id_token):
     if raw.get("email"):
         return raw["email"]
 
-    return email_from_jwt(id_token)
-
-
-def email_from_jwt(token):
-    parts = token.split(".")
-    if len(parts) < 2:
-        return ""
-
-    payload = parts[1]
-    payload += "=" * (-len(payload) % 4)
-    try:
-        data = base64.urlsafe_b64decode(payload.encode("ascii"))
-        claims = json.loads(data.decode("utf-8"))
-    except Exception:
-        return ""
-
-    return claims.get("email", "")
+    return local_usage.jwt_claims(id_token).get("email", "") if isinstance(id_token, str) else ""
 
 
 def codex_request(auth):
@@ -863,9 +834,9 @@ def write_error(message):
     log_event(f"error: {message}")
 
 
-def fetch_account(label, path, is_selected):
+def fetch_account(auth, is_selected):
+    label = auth["label"]
     try:
-        auth = read_auth(label, path)
         status, usage = codex_request(auth)
 
         if status in (401, 403):
@@ -894,18 +865,18 @@ def main():
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     common.load_env()
     configure_from_env()
-    log_event("starting Codex usage fetch source=clusterfork")
+    log_event("starting Codex usage fetch source=local")
 
     try:
-        accounts, source_error = clusterfork_usage.fetch_accounts(
-            "codex", CODEX_AUTH_STORE_DIR, OUTPUT_PATH, fetch_account
+        accounts = local_usage.fetch_accounts(
+            "codex", discover_auth_files(), OUTPUT_PATH, read_auth, fetch_account
         )
         ok_count = sum(1 for account in accounts if account.get("ok"))
         output = {
             "updatedAt": datetime.now(timezone.utc).isoformat(),
             "provider": "Codex",
             "ok": ok_count > 0,
-            "error": source_error or "",
+            "error": "",
             "accounts": accounts,
             "bars": flatten_bars(accounts),
         }

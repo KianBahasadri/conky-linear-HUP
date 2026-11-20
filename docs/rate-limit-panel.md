@@ -12,17 +12,10 @@ keeping the time cohesive and bar lengths uniform.
 Pool-distinguishing labels (like `Auto`, `API`, `Reserve`, or `Argon`) flank
 on the left. Standard interval windows (`5h`, `7d`, `Month`) omit the leading label so
 bars start directly beside the account name.
-Managed Codex/Cursor accounts show independent Lucide computer and cloud icons
-beside the name: computer for a configured independent local login on this host,
-cloud for recorded cloud enrollment. Local-only accounts show the computer,
-cloud-only accounts the cloud, and accounts with both copies show both. Each icon
-requires its own explicit availability flag and a metadata capture no more than
-300 seconds old. Missing or unknown flags never show that icon; a missing,
-future-dated or stale capture suppresses both.
-An absent computer icon never implies cloud availability. A leftover auth file
-never establishes availability. Icons appear on selected and unselected rows
-alike. The selected profile is not highlighted. Availability does not depend on
-which source supplied the displayed quota, or on that quota's freshness.
+Codex and Cursor show a computer icon beside each readable local login with an
+access token. The icon appears on selected and unselected rows and expires
+300 seconds after the last availability check. Quota can be stale while the
+login icon is still visible.
 Every row reserves two 14px icon slots, so names share a left edge regardless of
 which icons are shown. A known banked-reset count is one apostrophe per reset
 immediately after that account name. Zero and unknown counts add none. Each column's name area is the widest name-plus-apostrophe span in that column,
@@ -57,96 +50,44 @@ the 608px-wide panel shows the current 13 accounts together without paging.
 - Cache refreshes do not resize or reload windows. Startup bounds the list and
   excess rows rotate through the available region.
 
-Selected profiles are resolved by Clusterfork's eligible `selected_local_profile`
-for Codex/Cursor, the active Claude credential file or matching access
-token, and Antigravity's current profile.
+Codex and Cursor select the profile pointed to by the store's `current` link,
+falling back to the CLI auth file. Claude uses the active credential file or a
+matching access token, and Gemini uses Antigravity's current profile.
+The selected profile has the same visual treatment as the other profiles.
+
 Claude requires token comparison because its
 CLI replaces the credential file during refresh.
 
 Account-rotation tooling lives in `~/.config/clusterfork`; shared Codex/Cursor
 profiles live in `~/.local/share/clusterfork-auth/`.
 
-## Managed Codex/Cursor source and ownership
+## Local Codex and Cursor profiles
 
-Both fetchers use Clusterfork's [read-only consumer contract, schema version 1](https://github.com/KianBahasadri/clusterfork/blob/5787a55a3c5cccadf0f221006fcf9c99209d8bae/docs/remote-development-accounts.md#read-only-consumer-contract-schema-version-1),
-delivered by KIAN-941. Each poll invokes the installed account CLI:
+The fetchers poll the providers directly using `auth.json.*` files under
+`~/.local/share/clusterfork-auth/codex` and
+`~/.local/share/clusterfork-auth/cursor`. They skip lock files. If the store
+directory is absent, they look for profiles under the CLI home directory
+(`~/.codex` or `~/.config/cursor`). If no suffixed profiles are found, they use
+that CLI's `auth.json`. For auth file and directory overrides, see
+[Configuration](configuration.md#rate-limit-panel).
 
-```bash
-~/.config/clusterfork/automation/venv/bin/python \
-  ~/.config/clusterfork/automation/accounts.py snapshot --provider codex \
-  --store ~/.local/share/clusterfork-auth/codex
-# Repeat with --provider cursor and the cursor store.
-```
+Codex's account ID and Cursor's access-token subject are hashed to preserve
+account identity across aliases, token rotation, and the transition from the
+retired account snapshot. Each identity has one row, one quota poll, and one
+contribution to provider pace. The poll uses the selected alias or the first
+saved alias. Credentials with no account identifier use their profile name.
+The current local profiles determine which rows appear.
 
-The CLI joins offline, host-scoped availability with the controller's read-only
-`GET /api/accounts/snapshot?provider=codex|cursor`, using the existing Azure CLI
-operator identity's management access token. It never signs in for the operator.
-The controller collects quota under its credential/lease boundary; polling this
-snapshot cannot initiate a provider probe or refresh. Install/update Clusterfork
-and retain its existing operator access before enabling these fetchers.
-`CLUSTERFORK_ACCOUNTS_SCRIPT` can override the installed `automation/accounts.py`;
-`CLUSTERFORK_PYTHON` can override its interpreter (otherwise the adjacent
-`venv/bin/python`, then the fetcher's interpreter). The subprocess has a 45-second
-timeout; command failures report a bounded error without exposing subprocess output.
-
-Rows, cached usage, daily usage history and quota contributions join by
-`(provider, account_id)`, where the upstream ID is an unprefixed 64-character
-SHA-256. Aliases are display names only. Independent sessions and multiple aliases
-produce one account row and one contribution to the provider pace average.
-The label stays stable across selection changes. JSON retains aliases, stable
-identity, local profiles, selected profile, availability capture time, cloud state,
-and usage source. The TSV appends explicit availability/identity/capture/freshness
-fields to account records and identity/source-window fields to bar records;
-legacy records with no availability fields show neither icon. Cloud availability
-is appended after freshness on TSV account records; older records without that
-field never imply cloud access. Managed account records then append the banked-reset
-count, blank when that observation did not include one.
-
-Quota prefers this host's own login. When the snapshot reports fresh local
-availability (`local_available: true`, an eligible profile, metadata ≤300s old),
-the fetcher polls the provider directly with `auth.json.<selected or first
-profile>` from the store, whether or not the account is also cloud-managed and
-even when the controller reports `cloud_error`. That path may refresh the local
-token exactly as for any local profile. A successful poll sets
-`usageSource: "local"` and keeps the local plan tier. If it fails, the error is
-kept as `localError` and the row falls back to the cloud snapshot quota; a
-local-only account instead keeps its last cached windows as stale. Accounts
-with no fresh local availability never read auth files. A leftover auth file,
-cached availability, or `CODEX_AUTH_PATH` / `CURSOR_AUTH_PATH` never triggers a
-local poll. Quota is still deduplicated by stable identity, with one poll per
-account. Auth store locations
-come from `CODEX_AUTH_STORE_DIR` / `CURSOR_AUTH_STORE_DIR`; an explicit
-`CODEX_HOME` / `CURSOR_HOME` continues to set the corresponding store by default.
-
-Usage preserves original observation/attempt timestamps, source-window names,
-reset times, durations (including unknown durations), source freshness/age and
-error codes. Freshness is recomputed from the observation time and absolute
-resets, with a maximum age of 300 seconds, both at fetch time and while rendering.
-Unknown quota produces an error row rather than zero usage. Failed/unauthorized
-snapshots retain known accounts and their last captured windows as stale; expired
-windows show `Refresh`. Stale quota contributes neither pace ticks nor averages.
-Retained quota keeps its original usage source and plan tier; neither establishes
-availability.
-Cached availability is never reused after a failed metadata read; both icons also
-expire after 300 seconds when fetching stops. A controller error can retain a
-fresh offline availability result, independently of quota freshness.
-That fresh host account list also removes deleted local-only accounts, even
-while the controller lookup fails. Cached `cloudKnown` membership keeps cloud
-accounts visible through repeated controller failures, including accounts whose
-quota was last measured locally; it never grants availability or triggers a
-local poll. A complete metadata failure or an untrusted host capture retains
-all cached accounts until a fresh list can establish removal. A successful
-controller snapshot removes absent cloud accounts as well.
-
-Schema version 1 supplies no plan tier. Cloud-sourced rows therefore use the
-baseline capacity weight of 1 rather than inferring a subscription from aliases
-or duplicating local/cloud capacity. Rows measured by direct local polling carry
-the provider-reported tier and its weight.
+Fresh measurements keep the provider-reported plan tier and reset times.
+Failed polls reuse the last measured windows when the account identity matches.
+The render cache carries availability and observation timestamps independently.
+Quota older than 300 seconds or past its reset is stale and contributes neither
+pace ticks nor the provider average. See
+[Expired credentials and stale cache](expired-credentials.md).
 
 ## Codex
 
-- Cloud-sourced rows render the snapshot's `codex/primary`, `codex/secondary`, and applicable `gpt-…/primary|secondary` windows, preserving their original names for history. Durations distinguish 5-hour, weekly and monthly windows; reserve model limits retain the `Reserve` label.
-- Locally polled accounts use `/wham/usage`. `CODEX_USAGE_DEGENERATE_RETRIES` controls retries of incomplete local responses. If the account limit is reached, only the blocking window is pinned to 100%; additional reserve limits stay separate. HTTP 401/403 refreshes the local profile's token once; cloud-sourced rows never touch credentials. The same response's `rate_limit_reset_credits.available_count` is kept as `rateLimitResetsAvailable`: the number of banked resets already granted and still unused. The row draws that many apostrophes after the account name. A missing or malformed count stays unknown and draws none, and a retained stale sample keeps the count from that sample. The cloud snapshot does not include it.
+- Codex polls `/wham/usage`. `CODEX_USAGE_DEGENERATE_RETRIES` controls retries of incomplete responses. If the account limit is reached, only the blocking window is pinned to 100%. Additional model limits keep the `Reserve` label. The response's `rate_limit_reset_credits.available_count` records the number of banked resets already granted and still unused. The row draws one apostrophe per reset after the account name. A missing or malformed count draws none. A retained stale sample keeps its recorded count.
 - The `CODEX` summary's pace percentage uses the weekly window when available, falling back to 5h and monthly (for Free accounts). Pro accounts are weighted 20x relative to Plus accounts (400x relative to Free accounts), while Plus accounts are weighted 20x relative to Free accounts (weight 1) in the average. Reserve is never the summary's pace source. Free accounts have a single 30-day window.
 
 ## Claude
@@ -158,9 +99,8 @@ the provider-reported tier and its weight.
 
 ## Cursor
 
-- Cloud-sourced rows render exactly the supplied `cursor/api` and optional `cursor/included` pools as `API` and `Incl`. Included total usage is never relabeled `Auto`. Billing-cycle resets are Unix seconds, not milliseconds; nullable duration/reset metadata does not invent a pace estimate.
-- Locally polled accounts use DashboardService's `Auto + Composer` and `API` pools (`Auto` and `API`); Free local accounts display only `Auto`.
-- Fresh measured windows display on-pace ticks and participate once per account in the `CURSOR` average. Known Pro local accounts retain weight 20, Free and unknown tiers weight 1.
+- Cursor uses DashboardService's `Auto + Composer` and `API` pools (`Auto` and `API`). Free accounts display only `Auto`.
+- Fresh measured windows display on-pace ticks and participate once per account in the `CURSOR` average. Pro accounts carry weight 20. Free and unknown tiers carry weight 1.
 
 ## Gemini
 
